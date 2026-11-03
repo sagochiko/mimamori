@@ -39,6 +39,7 @@
 
 完了と言う前に、自分で確かめた結果を見せる。
 
+- 新しいクローンや git worktree では、最初に `make bootstrap` を流す。`server/` の `npm ci` と XcodeGen の確認をする。worktree には `node_modules` が無く、そのままでは裏側のテストが走らない
 - `make verify` は変わった側のテスト(`ios/Core` の `swift test`、`server` の型検査と Vitest)をまとめて流す。出力は数行で、詳細は `.verify.log` に出る
 - `make eval` は試験用の例文の dev セットで精度を測り、[`eval/RESULTS.md`](eval/RESULTS.md) に1行足す。1日の回数は `CONDITIONS.md` の予算まで
 - 画面は `/mm-ios-verify` の手順でシミュレータに出して撮る。拡張機能(Message Filter、DNS、Safari、Call Directory)はシミュレータで確かめられないので、実機の確認を「作者: 」の Issue にする

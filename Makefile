@@ -1,10 +1,18 @@
 # One-command entry points. Claude Code and the author use the same commands.
 
-.PHONY: setup verify eval eval-split eval-holdout usage apple-skills simulator
+.PHONY: setup bootstrap verify eval eval-split eval-holdout usage apple-skills simulator
 
 # Once per clone: use the repository's git hooks (the commit convention in .githooks/commit-msg).
 setup:
 	@git config core.hooksPath .githooks && echo "git hooks: .githooks"
+
+# Once per fresh checkout or git worktree, before `make verify`: the git hooks, the server's
+# dependencies (a worktree has no node_modules), and a check that XcodeGen is there for ios/project.yml.
+bootstrap: setup
+	@if [ -f server/package-lock.json ]; then cd server && npm ci --no-audit --no-fund --loglevel=error && echo "server: npm ci done"; fi
+	@if [ -f ios/project.yml ] && [ "$$(uname)" = Darwin ]; then \
+	  if command -v xcodegen >/dev/null; then echo "ios: $$(xcodegen --version)"; \
+	  else echo "ios: xcodegen is missing (brew install xcodegen); ios/Mimamori.xcodeproj is generated from ios/project.yml"; exit 1; fi; fi
 
 # Tests for whatever exists so far. Short output; details go to .verify.log.
 verify:
