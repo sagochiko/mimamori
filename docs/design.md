@@ -276,7 +276,7 @@ APNs への送信はデプロイした Workers からなら動く見込み(Worke
 
 内部テスターは、App Store Connect のユーザーで、そのアプリを見られる人に限られる([App Store Connect のヘルプ](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers))。母を役割つきのユーザーとして招待する。どの役割なら足りるか、母に何が要るかは、作者が画面で確かめる。
 
-端末の中で日本語を文字にできるかは、Apple に対応言語の一覧が無い。`SFSpeechRecognizer` の `supportsOnDeviceRecognition` は端末ごとに返る値で決まり([Apple](https://developer.apple.com/documentation/speech/sfspeechrecognizer/supportsondevicerecognition))、iOS 26 の `SpeechTranscriber` も `supportedLocales` で確かめる作り([Apple](https://developer.apple.com/documentation/speech/speechtranscriber))なので、確かめ用のアプリで両方を実機で試す。結果待ち。
+端末の中で日本語を文字にできるかは、Apple に対応言語の一覧が無い。`SFSpeechRecognizer` の `supportsOnDeviceRecognition` は端末ごとに返る値で決まり([Apple](https://developer.apple.com/documentation/speech/sfspeechrecognizer/supportsondevicerecognition))、iOS 26 の `SpeechTranscriber` も `supportedLocales` で確かめる作り([Apple](https://developer.apple.com/documentation/speech/speechtranscriber))なので、確かめ用のアプリで両方を実機で試した。2026年11月3日 22:02〜22:04 に作者の iPhone 16(iOS 27.2)で、同じ日本語の文を3つの方式で文字にした。機内モードで Wi-Fi も切った状態(`NWPathMonitor` が unsatisfied)でも、3つとも文字になり、エラーは出なかった。録音を止めてから最後の文字が出るまでは、`SFSpeechRecognizer`(`requiresOnDeviceRecognition` を true)が0.04秒、`SpeechAnalyzer` と `DictationTranscriber` が0.05秒、`SpeechAnalyzer` と `SpeechTranscriber` が0.22秒だった。`SpeechTranscriber` だけ句読点がほとんど付かなかった。母の相談には、句読点が付き、iOS 26 より前でも動く `SFSpeechRecognizer` を使う。母の iPhone でも同じかは、機種が分かってから確かめる。
 
 Safari の拡張機能、DNS のサーバーが止まったとき、SMS の待ち時間、DNS の外部テストの審査と1日の件数は、裏側のデプロイが要り、M1 の主役には要らないので、それぞれタスク9、8、5、8で確かめる。背面タップはタスク12のスクショの部分で、Managed Agents の応答の速さはタスク11で測る。2026年11月3日に作者と決めた。
 

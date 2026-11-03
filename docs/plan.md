@@ -174,7 +174,7 @@ Structured Outputs で次の形だけを受け取る。
 **確かめること**
 
 - [ ] 母の iPhone の正確な機種と iOS を確かめる。2026年11月1日の時点で分かっているのは「Face ID の機種」ということだけ。AlarmKit は iOS 26 以降で、iOS 26 は iPhone 11 以降(第2世代 SE 以降を含む)が対象。X、XS、XR は外れる([iPhone Mania](https://iphone-mania.jp/?p=595545))ので、機種名まで確かめる。ARKit の顔トラッキングは TrueDepth カメラ(Face ID の機種)が要る
-- [ ] `SFSpeechRecognizer`(`ja-JP`)で `requiresOnDeviceRecognition` が使えるか。iOS 26 の `SpeechTranscriber` で ja_JP を端末の中で文字にできるか
+- [x] `SFSpeechRecognizer`(`ja-JP`)で `requiresOnDeviceRecognition` が使えるか。iOS 26 の `SpeechTranscriber` で ja_JP を端末の中で文字にできるか。2026年11月3日に作者の iPhone 16(iOS 27.2)で、機内モードでも3つの方式とも文字にできた(0.04〜0.22秒)。母の相談には `SFSpeechRecognizer` を使う。母の iPhone での確認は機種が分かってから
 - [ ] `CXCallObserver` で、アプリが前面にあるとき、バックグラウンドのとき、強制終了したときに、通話の終わりが分かるか。Apple の DTS は止まっているあいだは分からないと答えている([Apple Developer Forums](https://developer.apple.com/forums/thread/849682))ので、代わりのきっかけ(ショートカットの「電話を閉じたとき」のオートメーションなど)も試し、声かけの作り方を作者と決める
 - [x] パーソナルボイスを使う許可をもらい、`AVSpeechSynthesizer` の書き出しで家族の返事を音声ファイルにできるか。パーソナルボイスは日本語で作れない([Apple の iOS 27 の提供状況](https://www.apple.com/ios/feature-availability/))ので使わず、家族の返事は普通の読み上げの声にした(2026年11月3日、作者が決めた)
 - [ ] 母を App Store Connect の内部テスターに入れられるか(内部テストなら Apple の審査なしで配れる)。内部テスターは App Store Connect のユーザーに限られる([ヘルプ](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers))ので、母を役割つきのユーザーとして招待できるかを作者が確かめる
