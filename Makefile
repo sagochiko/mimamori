@@ -42,7 +42,14 @@ apple-skills:
 	for s in swiftui-specialist swiftui-whats-new-27 modernize-tests; do rm -rf .claude/skills/$$s; cp -R "$$tmp/$$s" .claude/skills/; done && \
 	rm -rf "$$tmp" && echo "exported Apple skills into .claude/skills (ignored by git)"
 
+# The simulator the skills use, always named "mimamori iPhone", on the iOS 27.1 runtime. The device
+# type is the first iPhone that runtime supports. A runtime accepts only its own device types: on
+# 2026-11-03 iOS 27.1 listed only iPhone Duo, and iPhone 18 Pro failed with "Incompatible device".
+SIM_RUNTIME := com.apple.CoreSimulator.SimRuntime.iOS-27-1
 simulator:
-	@xcrun simctl list devices available | grep -q "mimamori iPhone" || \
-	xcrun simctl create "mimamori iPhone" com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro com.apple.CoreSimulator.SimRuntime.iOS-27-1
+	@xcrun simctl list devices available | grep -q "mimamori iPhone" || { \
+	  type=$$(xcrun simctl list runtimes -j | jq -r --arg r "$(SIM_RUNTIME)" \
+	    '.runtimes[] | select(.identifier == $$r and .isAvailable) | .supportedDeviceTypes[] | select(.productFamily == "iPhone") | .identifier' | head -1); \
+	  [ -n "$$type" ] || { echo "the $(SIM_RUNTIME) runtime is missing or supports no iPhone (xcrun simctl list runtimes)"; exit 1; }; \
+	  xcrun simctl create "mimamori iPhone" "$$type" $(SIM_RUNTIME) >/dev/null && echo "created mimamori iPhone ($$type)"; }
 	@xcrun simctl list devices available | grep "mimamori iPhone"

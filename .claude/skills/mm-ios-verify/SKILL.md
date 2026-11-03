@@ -10,10 +10,11 @@ This Mac has Xcode 27.1 at `/Applications/Xcode-27.1.0.app`. There is no Simulat
 ## Simulator
 
 ```sh
-xcrun simctl list devices available | grep "mimamori" || \
-  xcrun simctl create "mimamori iPhone" com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro com.apple.CoreSimulator.SimRuntime.iOS-27-1
+make simulator
 xcrun simctl boot "mimamori iPhone" 2>/dev/null || true
 ```
+
+`make simulator` creates "mimamori iPhone" once, on the iOS 27.1 runtime, with the first iPhone device type that runtime supports. On 2026-11-03 that was iPhone Duo, the only one it listed; a type the runtime does not list fails with "Incompatible device". iPhone Duo folds, so say which display a screenshot shows.
 
 ## Build, install, launch
 
