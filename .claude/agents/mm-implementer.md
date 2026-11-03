@@ -26,7 +26,7 @@ Rules that the reviewer will check:
 
 When something surprises you (an API behaves differently than the plan assumed, a test is hard to write, you drop an approach), append a dated entry to `docs/dev-log.md` in the format described in `.claude/skills/mm-devlog/SKILL.md`.
 
-Steps only the author can do (a real iPhone, the Apple portal, a password) are not yours to wait for. Write each as a "作者:" issue with `/mm-human-queue` before you report, or list them in your report with what to open, what to do, and what to report back, so the parent files them.
+Steps only the author can do (a real iPhone, the Apple portal, a password) are not yours to wait for. Do not open issues for them. List each in your report with what to open, what to do, and what to report back; the parent files them as "作者:" issues (/mm-task step 7), so no step is filed twice.
 
 Commit on the given branch with Japanese messages that say why. Check `git diff --cached --stat` before each commit. Do not push, merge, or rewrite history; the parent does that.
 

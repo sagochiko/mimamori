@@ -61,17 +61,28 @@ Write the body with the Write tool, in Japanese: what changed and why, the verif
 
 Start the `mm-reviewer` subagent with the issue number, the working tree, and the PR number. After each round:
 
-1. Post the reviewer's report verbatim as a PR comment, so anyone can see the independent review and not only your summary of it. Do not retype it: `save-report.sh` has saved the handback as `docs/audits/raw/<YYYYMMDD-HHMM>-mm-reviewer-<first 8 characters of its agent id>.md` (the agent id is in the Agent call's result). Paste that file:
+1. Post the reviewer's report verbatim as a PR comment, so anyone can see the independent review and not only your summary of it. Do not retype it: `save-report.sh` has saved the handback as `docs/audits/raw/<YYYYMMDD-HHMM>-mm-reviewer-<first 8 characters of its agent id>.md` in the main tree, also when the PR lives in a worktree (the agent id is in the Agent call's result). Run this from the PR's working tree. It reads the file from the main tree by absolute path, stops when the file is missing or empty, and moves the file into this tree so it is committed with the branch:
 
    ```sh
-   raw=docs/audits/raw/<file>.md
-   { printf '## mm-reviewer の報告(原文)\n\n%s回目、%s を読んだもの。保存した原文は `%s`。\n\n' "<round>" "<commit>" "$raw"; cat "$raw"; } >"<scratchpad>/review-comment.md"
+   name=<YYYYMMDD-HHMM>-mm-reviewer-<id>.md
+   src="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/docs/audits/raw/$name"
+   [[ -s "$src" ]] || { echo "no saved report at $src"; exit 1; }
+   mkdir -p docs/audits/raw && raw=docs/audits/raw/$name
+   [[ "$src" -ef "$raw" ]] || mv "$src" "$raw"
+   { printf '## mm-reviewer の報告(原文)\n\n%s回目、%s を読んだもの。保存した原文は `%s`。\n\n' "<round>" "<commit>" "$raw" && cat "$raw"; } >"<scratchpad>/review-comment.md"
+   ```
+
+   Post it as a command of its own. `guard-private.sh` stops a gh write in a command that also runs `$(...)`, because it cannot see what that adds to the body:
+
+   ```sh
    gh pr comment <pr> --body-file "<scratchpad>/review-comment.md"
    ```
 
-   The merge gate accepts this comment as the review evidence. If the personal-data hook blocks it, replace only the spot it names with「(伏せた)」and say so in the comment. Commit the raw file with the branch.
+   Then `git add docs/audits/raw/<name>` and commit it on the branch. The merge gate counts only a comment that starts with this heading and holds the report's status line (Status or ステータス). If the personal-data hook blocks it, replace only the spot it names with「(伏せた)」and say so in the comment.
+
+   When no file was saved: `SubagentHandback`, the tool whose call the hook saves, is given to subagents only in auto mode (https://code.claude.com/docs/en/tools-reference). Outside auto mode, ask the reviewer with SendMessage to write the exact text it returned, unchanged, to `<scratchpad>/<name>` (it has Bash, not Write). Then run the steps above with `src=<scratchpad>/<name>`, and add「レビュー役が書き直したもの」to the preface. A guard can stop that write when the report names a file or a command the guards watch, such as the holdout unlock file or `make eval-holdout`. Then the reviewer replaces only the words that were stopped with「(伏せた)」and says so in the file's first line, the same rule as for the personal-data hook. Never write it through another tool or another spelling of the command.
 2. Check each finding yourself before you accept it; a saved report is material, not a verdict, and a reviewer can be wrong. Read the cited file and line, reproduce it when that is cheap (a failing test, a command), or open the cited document.
-3. Update the `## レビュー` section of the PR body (`gh pr edit <pr> --body-file <file>`): mm-reviewer's verdict, then each finding with 採った or 採らなかった, how you checked it (コードで見た, 再現した, 文書で見た, or 確かめていない), and what you did about it. Label anything you did not check 確かめていない; when you reject a finding, write why.
+3. Update the `## レビュー` section of the PR body (`gh pr edit <pr> --body-file <file>`): mm-reviewer's verdict, then each finding with 採った or 採らなかった (指摘なし when there were none; the merge gate looks for one of these words in this section), how you checked it (コードで見た, 再現した, 文書で見た, or 確かめていない), and what you did about it. Label anything you did not check 確かめていない; when you reject a finding, write why.
 4. Send the findings you accept to `mm-implementer` (SendMessage), then verify again.
 
 How many rounds: a serious finding (behavior that breaks a contract of `docs/plan.md` or the design, a broken hackathon or data rule, a test that cannot fail) gets another round after the fix. Low-severity findings (naming, wording, an extra edge test that changes no behavior) do not get another round during a milestone; put them in a follow-up issue in the current milestone whose body ends with `関連 #$ARGUMENTS`, and link it in the PR body. Anthropic's best practices warn that "A reviewer that's asked to find problems will always find *something*" (https://code.claude.com/docs/en/best-practices). Three rounds at most: the first reads the whole change, the second and third read only the fixes. If a serious finding is still open after the third, keep the PR as a draft, label the issue `blocked`, and record why in `docs/dev-log.md`.
@@ -92,7 +103,7 @@ Anything only a real device or the Apple portal can check becomes a "作者:" is
 gh pr merge <pr> --merge --delete-branch
 ```
 
-Run it as its own command, with the PR number. `guard-merge.sh` reads the PR first and blocks it unless the body or a comment has the review results (a heading with レビュー and the word mm-reviewer), every open line of the closed issue names where it continues, and the head contains `origin/main`. When it blocks, fix what it lists; never merge another way.
+Run it as its own command, with the PR number as the first argument after `merge`, and without `--auto`. `guard-merge.sh` reads the PR first and blocks it unless a comment holds the reviewer's report (step 6.1), the body's `## レビュー` section holds your decisions (step 6.3), every open line of the closed issue names where it continues, and the head contains `origin/main`. When it blocks, fix what it lists; never merge another way.
 
 Merge it yourself once the review is in the PR and no finding you accepted is left unfixed; do not ask the author first (the author decided this on 2026-11-03). The same holds for PRs without an issue, such as harness fixes. Never merge a PR that has not been reviewed.
 
