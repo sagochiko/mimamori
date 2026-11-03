@@ -5,7 +5,9 @@ description: Hands a step only the author can do (real iPhone checks, Apple Deve
 
 # Hand a step to the author
 
-Each step only the author can do is one GitHub issue (the author decided this on 2026-11-03). `docs/human-queue.md` only points here now. The open ones:
+The author gives inputs and decisions, not labor (decided on 2026-11-03). Before asking for anything, take the screen as far as you can yourself: open the app or the page, go to the right screen, open the dialog, until only one input or one approval is left. Ask for that one thing ("ここでパスワードを入れてください。終わったら自動で続けます"), then wait for it with a shell loop run in the background (`run_in_background`) that exits when the result shows up (a file, a process, a URL in a Chrome tab, a `gh` state), instead of asking to be told. That is often all a step needs, with no issue at all.
+
+File an issue only for a step that truly needs the author's hands or judgment and cannot be finished in this sitting: a real iPhone in the author's hand, a password or 2FA, an approval, talking with the mother. Each such step is one GitHub issue (the author decided this on 2026-11-03). `docs/human-queue.md` only points here now. The open ones:
 
 ```sh
 gh issue list --label needs-human --state open --json number,title -q '.[] | select(.title | startswith("作者:")) | "#\(.number) \(.title)"'

@@ -61,9 +61,18 @@ Write the body with the Write tool, in Japanese: what changed and why, the verif
 
 Start the `mm-reviewer` subagent with the issue number, the working tree, and the PR number. After each round:
 
-1. Post the reviewer's report verbatim as a PR comment, so anyone can see the independent review and not only your summary of it. The comment starts with `## mm-reviewer の報告(原文)`, then a line with the round number and the commit it read, then the report unchanged. Write it with the Write tool and pass it with `gh pr comment <pr> --body-file <file>`. If the personal-data hook blocks it, replace only the spot it names with「(伏せた)」and say so in the comment.
-2. Update the `## レビュー` section of the PR body (`gh pr edit <pr> --body-file <file>`): mm-reviewer's verdict, each finding, and what you did about it. You decide which findings to accept; when you reject one, write why.
-3. Send the findings you accept to `mm-implementer` (SendMessage), then verify again.
+1. Post the reviewer's report verbatim as a PR comment, so anyone can see the independent review and not only your summary of it. Do not retype it: `save-report.sh` has saved the handback as `docs/audits/raw/<YYYYMMDD-HHMM>-mm-reviewer-<first 8 characters of its agent id>.md` (the agent id is in the Agent call's result). Paste that file:
+
+   ```sh
+   raw=docs/audits/raw/<file>.md
+   { printf '## mm-reviewer の報告(原文)\n\n%s回目、%s を読んだもの。保存した原文は `%s`。\n\n' "<round>" "<commit>" "$raw"; cat "$raw"; } >"<scratchpad>/review-comment.md"
+   gh pr comment <pr> --body-file "<scratchpad>/review-comment.md"
+   ```
+
+   The merge gate accepts this comment as the review evidence. If the personal-data hook blocks it, replace only the spot it names with「(伏せた)」and say so in the comment. Commit the raw file with the branch.
+2. Check each finding yourself before you accept it; a saved report is material, not a verdict, and a reviewer can be wrong. Read the cited file and line, reproduce it when that is cheap (a failing test, a command), or open the cited document.
+3. Update the `## レビュー` section of the PR body (`gh pr edit <pr> --body-file <file>`): mm-reviewer's verdict, then each finding with 採った or 採らなかった, how you checked it (コードで見た, 再現した, 文書で見た, or 確かめていない), and what you did about it. Label anything you did not check 確かめていない; when you reject a finding, write why.
+4. Send the findings you accept to `mm-implementer` (SendMessage), then verify again.
 
 How many rounds: a serious finding (behavior that breaks a contract of `docs/plan.md` or the design, a broken hackathon or data rule, a test that cannot fail) gets another round after the fix. Low-severity findings (naming, wording, an extra edge test that changes no behavior) do not get another round during a milestone; put them in a follow-up issue in the current milestone whose body ends with `関連 #$ARGUMENTS`, and link it in the PR body. Anthropic's best practices warn that "A reviewer that's asked to find problems will always find *something*" (https://code.claude.com/docs/en/best-practices). Three rounds at most: the first reads the whole change, the second and third read only the fixes. If a serious finding is still open after the third, keep the PR as a draft, label the issue `blocked`, and record why in `docs/dev-log.md`.
 
@@ -121,4 +130,4 @@ cd .claude/worktrees/issue-<n>-<slug> && make bootstrap && make verify
 
 ## At the end of a milestone
 
-Run `mm-auditor` twice, on separate questions: once on the decisions (the sections of `.claude/checklists/audit.md` up to "ルールと安全"), once on the harness (its "ハーネス" section: settings against hooks, rules that nothing enforces, guards that blocked legitimate work, outdated or contradictory instructions). Anthropic's memory docs say to review instruction files "periodically to remove outdated or conflicting instructions" (https://code.claude.com/docs/en/memory). Save each report as `docs/audits/<YYYYMMDD-HHMM>.md`, and turn each finding you accept into an issue or a harness PR.
+Run `mm-auditor` twice, on separate questions: once on the decisions (the sections of `.claude/checklists/audit.md` up to "ルールと安全"), once on the harness (its "ハーネス" section: settings against hooks, rules that nothing enforces, guards that blocked legitimate work, outdated or contradictory instructions). Anthropic's memory docs say to review instruction files "periodically to remove outdated or conflicting instructions" (https://code.claude.com/docs/en/memory). Each report is saved verbatim under `docs/audits/raw/` by the hook. Check its findings as in step 6, write your summary and decisions as `docs/audits/<YYYYMMDD-HHMM>.md` with a link to the raw file, and turn each finding you accept into an issue or a harness PR.
