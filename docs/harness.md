@@ -56,7 +56,7 @@
 | `/mm-human-queue` | 作者にしかできない作業を積み、待たずに次へ進む |
 | `/mm-endgame` | コードを止めてから提出までの確認 |
 
-Apple Developer の登録(bundle ID、App Group、capability、端末)は、`/mm-device` と `/mm-release` の `xcodebuild -allowProvisioningUpdates` が確認なしで書き換え、何を登録したかをあとで報告する。作者が一度 `/mm-device` を通して受け入れた運用で、作者の承認が要るのは App Store Connect への送信(`-exportArchive`)と、TestFlight の Submit Review から先だ。`/mm-release` は、ビルドの処理と Submit Review が終わったかを Claude in Chrome で App Store Connect の画面の状態の文字を読んで確かめ、5分おきに最大6回まで見る。App Store Connect API をシェルから読めばトークンを使わずに待てるが、署名に作者が期間の前に作ったコードを使うことになるので採らなかった。
+Apple Developer の登録(bundle ID、App Group、capability、端末)は、`/mm-device` と `/mm-release` の `xcodebuild -allowProvisioningUpdates` が確認なしで書き換え、何を登録したかをあとで報告する。作者が一度 `/mm-device` を通しているので、受け入れた運用だと読んでいる。作者の承認が要るのは App Store Connect への送信(`-exportArchive`)と、TestFlight の Submit Review から先だ。守り方は2つで違う。`-exportArchive` は `guard-prod.sh` と `ask` の規則で止まる。Submit Review は Claude in Chrome のクリックなのでフックを通らず、skill の指示と、押すのは作者という段取りで守っている。`/mm-release` は、ビルドの処理と Submit Review が終わったかを Claude in Chrome で App Store Connect の画面の状態の文字を読んで確かめ、5分おきに最大6回まで見る。App Store Connect API をシェルから読めばトークンを使わずに待てるが、署名に作者が期間の前に作ったコードを使うことになり、API の鍵のファイルを Claude が読むことにもなるので採らなかった。アプリはアプリの番号で直に開き、ほかのアプリが並ぶ一覧は開かない。
 
 ## MCP
 
