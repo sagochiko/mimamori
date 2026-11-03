@@ -15,6 +15,9 @@ log_event() {
     '{ts:$ts, kind:$kind, name:$name, detail:$detail}' >>"$LOG_DIR/usage.jsonl"
 }
 
+# Appended to blocks that a mere mention of a name can trigger (an issue body, a PR, a commit message).
+MENTION_HINT=" If you only need to mention the name in an issue, a PR, a comment, or a commit message, write the text with the Write tool and pass it with -F or --body-file. Never retry the same read another way."
+
 # block <hook> <reason>: record the block, show the reason to Claude, refuse the tool call.
 block() {
   log_event guard "$1" "$2"
