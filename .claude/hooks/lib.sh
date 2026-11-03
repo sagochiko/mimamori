@@ -16,7 +16,7 @@ log_event() {
 }
 
 # Appended to blocks that a mere mention of a name can trigger (an issue body, a PR, a commit message).
-MENTION_HINT=" If you only need to mention the name in an issue, a PR, a comment, or a commit message, write the text with the Write tool and pass it with -F or --body-file. Never retry the same read another way."
+MENTION_HINT=" If you only need to mention the name in an issue, a PR, a comment, or a commit message, write the text with the Write tool and pass it with -F or --body-file. A document or a test that only mentions the name may be written with Edit or Write; what you write must never do what this guard protects. Never retry the same read another way."
 
 # block <hook> <reason>: record the block, show the reason to Claude, refuse the tool call.
 block() {
@@ -110,12 +110,12 @@ author_waiting() {
 
 # need_jq <hook> <json>: the gates read the command with jq. When jq is missing or fails, a gate that
 # just exited 0 would let everything through (onFailure "block" only covers a crash or a timeout). So
-# a call whose raw input mentions gh, the commands these gates check, is stopped; anything else returns
-# 1 and the caller lets it through, so ordinary Bash keeps working.
+# a call whose raw input mentions gh, --no-verify, or core.hooksPath (what these gates check) is
+# stopped; anything else returns 1 and the caller lets it through, so ordinary Bash keeps working.
 need_jq() {
   jq -e 'type == "object"' >/dev/null 2>&1 <<<"$2" && return 0
-  if [[ "$2" =~ (^|[^[:alnum:]_.-])gh([^[:alnum:]_.-]|$) ]]; then
-    echo "blocked ($1): this gate needs jq to read the command and jq is missing or failed, so a gh command does not go through. Install jq (brew install jq) and run it again." >&2
+  if [[ "$2" =~ (^|[^[:alnum:]_.-])gh([^[:alnum:]_.-]|$) || "$2" == *no-verify* || "$2" =~ hooks[Pp]ath ]]; then
+    echo "blocked ($1): this gate needs jq to read the command and jq is missing or failed, so a command with gh, --no-verify, or core.hooksPath does not go through. Install jq (brew install jq) and run it again." >&2
     exit 2
   fi
   return 1
@@ -124,15 +124,18 @@ need_jq() {
 # shell_words <command>: split a Bash command into the words the shell would see, without running or
 # expanding anything, so a word inside quotes is never taken for a flag. Sets:
 #   WORDS    the words; operators (; & && | || ( ) and a newline as ";") and redirections (< << <<< > >>
-#            and so on) are words of their own. Heredoc bodies are skipped; the gates scan the command text.
+#            2>&1 and so on, with their file descriptor) are words of their own. Heredoc bodies are
+#            skipped; the gates scan the command text. $'...' is decoded (\xHH, octal, \uHHHH below 128).
 #   EXPANDS  1 when $( or a backtick would run: outside single quotes and outside a heredoc whose
 #            delimiter is quoted.
-# Not handled: eval, bash -c "...", aliases. Unbalanced quotes run to the end of the command.
+#   HIDDEN   1 when a variable ($name, ${...}) or $'...' would expand there: text the command does not show.
+# $((...)) is one piece of a word, so its << is not a heredoc.
+# Not handled: eval, bash -c "...", aliases, ((...)) without $. Unbalanced quotes run to the end.
 # The loop is awk: bash 3.2 (/bin/bash on macOS) indexes strings in quadratic time, and a long heredoc
 # took 11 seconds there.
 shell_words() {
   local w
-  WORDS=() EXPANDS=0
+  WORDS=() EXPANDS=0 HIDDEN=0
   while IFS= read -r -d $'\036' w; do WORDS+=("$w"); done < <(printf '%s' "$1" | LC_ALL=C awk '
     function flush() {
       if (inw) {
@@ -142,9 +145,21 @@ shell_words() {
       w = ""; inw = 0; wq = 0
     }
     function emit(x) { flush(); printf "%s\036", x }
+    function num(t, base,  v, k) {
+      v = 0
+      for (k = 1; k <= length(t); k++) v = v * base + index("0123456789abcdef", tolower(substr(t, k, 1))) - 1
+      return v
+    }
+    function digits(at, set, most,  t) { # the run of characters from set starting at position at, at most "most" long
+      t = ""
+      while (length(t) < most && at + length(t) <= n && index(set, substr(s, at + length(t), 1))) t = t substr(s, at + length(t), 1)
+      return t
+    }
+    function chr(v) { return (v > 0 && v < 128) ? sprintf("%c", v) : "?" }
     { s = (NR == 1) ? $0 : s "\n" $0 }
     END {
-      n = length(s); i = 1; np = 0; ex = 0
+      n = length(s); i = 1; np = 0; ex = 0; hid = 0
+      hex = "0123456789abcdefABCDEF"
       while (i <= n) {
         c = substr(s, i, 1)
         if (c == "\\") {
@@ -163,14 +178,43 @@ shell_words() {
             if (d == "\"") break
             if (d == "\\") { w = w substr(s, from, j - from) substr(s, j + 1, 1); j += 2; from = j; continue }
             if (d == "`" || (d == "$" && substr(s, j + 1, 1) == "(")) ex = 1
+            if (d == "$" && substr(s, j + 1, 1) ~ /[A-Za-z_{]/) hid = 1
             j++
           }
           w = w substr(s, from, j - from)
           i = j + 1
         } else if (c == "`") {
           ex = 1; w = w c; inw = 1; i++
+        } else if (c == "$" && substr(s, i + 1, 1) == "\047") {
+          # ANSI-C quoting: decode it, so an escaped flag is still a flag.
+          hid = 1; inw = 1; wq = 1; j = i + 2
+          while (j <= n && substr(s, j, 1) != "\047") {
+            d = substr(s, j, 1)
+            if (d != "\\") { w = w d; j++; continue }
+            e = substr(s, j + 1, 1)
+            if (e == "x") { t = digits(j + 2, hex, 2); w = w chr(num(t, 16)); j += 2 + length(t) }
+            else if (e == "u") { t = digits(j + 2, hex, 4); w = w chr(num(t, 16)); j += 2 + length(t) }
+            else if (e == "U") { t = digits(j + 2, hex, 8); w = w chr(num(t, 16)); j += 2 + length(t) }
+            else if (e ~ /[0-7]/) { t = digits(j + 1, "01234567", 3); w = w chr(num(t, 8)); j += 1 + length(t) }
+            else { w = w (e == "n" ? "\n" : e == "t" ? "\t" : e); j += 2 }
+          }
+          i = j + 1
+        } else if (c == "$" && substr(s, i + 1, 2) == "((") {
+          # Arithmetic: one piece of the word, up to the matching parenthesis.
+          depth = 0; j = i + 1
+          while (j <= n) {
+            d = substr(s, j, 1)
+            if (d == "(") depth++
+            else if (d == ")" && --depth == 0) break
+            j++
+          }
+          t = substr(s, i, j - i + 1)
+          if (index(substr(t, 4), "$(") || index(t, "`")) ex = 1
+          w = w t; inw = 1; i = j + 1
         } else if (c == "$") {
-          if (substr(s, i + 1, 1) == "(") ex = 1
+          d = substr(s, i + 1, 1)
+          if (d == "(") ex = 1
+          if (d ~ /[A-Za-z_{]/) hid = 1
           w = w c; inw = 1; i++
         } else if (c == " " || c == "\t") {
           flush(); i++
@@ -185,6 +229,7 @@ shell_words() {
               if (hd[h]) sub(/^\t+/, "", line)
               if (line == hw[h]) break
               if (!hq[h] && (index(line, "$(") || index(line, "`"))) ex = 1
+              if (!hq[h] && line ~ /\$[A-Za-z_{]/) hid = 1
             }
           }
           np = 0
@@ -197,11 +242,14 @@ shell_words() {
           else if (c == "|" && d == "&") { emit("|"); i += 2 }
           else { emit(c); i++ }
         } else if (c == "<" || c == ">") {
-          if (substr(s, i, 3) == "<<<") { emit("<<<"); i += 3 }
-          else if (substr(s, i, 3) == "<<-") { emit("<<-"); i += 3; want = 1; dash = 1 }
-          else if (substr(s, i, 2) == "<<") { emit("<<"); i += 2; want = 1; dash = 0 }
-          else if (index("<>&|", substr(s, i + 1, 1)) && i < n) { emit(substr(s, i, 2)); i += 2 }
-          else { emit(c); i++ }
+          # A file descriptor written right before the operator (2>&1) belongs to it.
+          fd = ""
+          if (inw && !wq && w ~ /^[0-9]+$/) { fd = w; w = ""; inw = 0 }
+          if (substr(s, i, 3) == "<<<") { emit(fd "<<<"); i += 3 }
+          else if (substr(s, i, 3) == "<<-") { emit(fd "<<-"); i += 3; want = 1; dash = 1 }
+          else if (substr(s, i, 2) == "<<") { emit(fd "<<"); i += 2; want = 1; dash = 0 }
+          else if (index("<>&|", substr(s, i + 1, 1)) && i < n) { emit(fd substr(s, i, 2)); i += 2 }
+          else { emit(fd c); i++ }
         } else if (c == "#" && !inw) {
           while (i <= n && substr(s, i, 1) != "\n") i++
         } else {
@@ -209,46 +257,65 @@ shell_words() {
         }
       }
       flush()
-      printf "%d\036", ex
+      printf "%d\036%d\036", ex, hid
     }')
-  EXPANDS=${WORDS[${#WORDS[@]} - 1]}
-  unset "WORDS[${#WORDS[@]} - 1]"
+  HIDDEN=${WORDS[${#WORDS[@]} - 1]}
+  EXPANDS=${WORDS[${#WORDS[@]} - 2]}
+  unset "WORDS[${#WORDS[@]} - 1]" "WORDS[${#WORDS[@]} - 2]"
 }
 
 # is_op <word>: the word ends a simple command.
 is_op() { [[ "$1" == ";" || "$1" == "&" || "$1" == "&&" || "$1" == "|" || "$1" == "||" || "$1" == "(" || "$1" == ")" ]]; }
 
-# gh_calls: from WORDS (shell_words), every gh that runs as a command, after VAR=value prefixes and
-# before its subcommand. Prints one line per call: "<index of the first word after gh's global
-# -R/--repo flags> <repository named by -R, --repo, or GH_REPO=, or empty>".
-gh_calls() {
-  local k=0 m=${#WORDS[@]} start=1 repo w
+# is_redir <word>: a redirection operator (its target is the next word).
+is_redir() { [[ "$1" =~ ^[0-9]*[\<\>] || "$1" == "&>" ]]; }
+
+# command_starts: from WORDS, the index of the command word of each simple command, after VAR=value
+# prefixes and the reserved words that hand the head on ({ ! if then else elif do while until time).
+# Sets STARTS.
+command_starts() {
+  local k=0 m=${#WORDS[@]} start=1
+  STARTS=()
   while ((k < m)); do
-    w=${WORDS[k]}
-    if is_op "$w"; then start=1; ((k++)); continue; fi
+    if is_op "${WORDS[k]}"; then start=1; k=$((k + 1)); continue; fi
     if ((start)); then
-      repo=""
-      while ((k < m)) && [[ "${WORDS[k]}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; do
-        [[ "${WORDS[k]}" == GH_REPO=* ]] && repo=${WORDS[k]#GH_REPO=}
-        ((k++))
+      while ((k < m)); do
+        case ${WORDS[k]} in
+          '{' | '!' | if | then | else | elif | do | while | until | time) k=$((k + 1)) ;;
+          *) if [[ "${WORDS[k]}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then k=$((k + 1)); else break; fi ;;
+        esac
       done
+      if ((k < m)) && ! is_op "${WORDS[k]}"; then STARTS+=("$k"); fi
       start=0
-      ((k < m)) || break
-      w=${WORDS[k]}
-      if [[ "$w" == gh || "$w" == */gh ]]; then
-        ((k++))
-        while ((k < m)); do
-          case ${WORDS[k]} in
-            -R | --repo) repo=${WORDS[k + 1]}; ((k += 2)) ;;
-            --repo=*) repo=${WORDS[k]#--repo=}; ((k++)) ;;
-            -R?*) repo=${WORDS[k]#-R}; ((k++)) ;;
-            *) break ;;
-          esac
-        done
-        echo "$k $repo"
-        continue
-      fi
+      continue
     fi
-    ((k++))
+    k=$((k + 1))
+  done
+}
+
+# gh_calls: from WORDS (shell_words), every gh that runs as a command (command_starts). Prints one line
+# per call: "<index of the first word after gh's global -R/--repo flags> <repository named by -R,
+# --repo, or a GH_REPO= prefix, or empty>".
+gh_calls() {
+  local k j repo w
+  command_starts
+  for k in "${STARTS[@]}"; do
+    w=${WORDS[k]}
+    [[ "$w" == gh || "$w" == */gh ]] || continue
+    repo=""
+    for ((j = k - 1; j >= 0; j--)); do
+      [[ "${WORDS[j]}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || break
+      [[ "${WORDS[j]}" == GH_REPO=* ]] && repo=${WORDS[j]#GH_REPO=}
+    done
+    k=$((k + 1))
+    while ((k < ${#WORDS[@]})); do
+      case ${WORDS[k]} in
+        -R | --repo) repo=${WORDS[k + 1]}; k=$((k + 2)) ;;
+        --repo=*) repo=${WORDS[k]#--repo=}; k=$((k + 1)) ;;
+        -R?*) repo=${WORDS[k]#-R}; k=$((k + 1)) ;;
+        *) break ;;
+      esac
+    done
+    echo "$k $repo"
   done
 }

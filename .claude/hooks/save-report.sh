@@ -5,8 +5,9 @@
 # is committed (the pre-commit hook still scans it); every other report goes to .claude/logs/reports/,
 # which git ignores. Raw reports go to the main tree, also when the session runs in a worktree, so
 # /mm-task step 6 finds them in one place. A saved report is not an accepted one: the first line says
-# the parent has not checked it yet. The home path (/Users/<name>) becomes ~, because the repository
-# goes public and the user name is on the private list that pre-commit applies. This hook never blocks
+# the parent has not checked it yet. The home path (/Users/<name>) and its dashed form in scratchpad
+# paths become ~ (scripts/hide-home.sh), because the repository goes public and the user name is on
+# the private list that pre-commit applies. This hook never blocks
 # the handback; when saving fails, it logs the failure.
 source "$(dirname "$0")/lib.sh"
 in=$(cat)
@@ -28,12 +29,9 @@ if ! jq -e '.tool_input.message | type == "string" and length > 0' <<<"$in" >/de
   log_event report-not-saved "$type" "the handback had no message"
   exit 0
 fi
-home() { # replace the home path, and not a longer name that starts with it, by ~
-  if [[ -n "$HOME" && "$HOME" != "/" ]]; then H=$HOME perl -pe 's/\Q$ENV{H}\E(?![A-Za-z0-9._-])/~/g'; else cat; fi
-}
 if mkdir -p "$dir" 2>/dev/null && {
   printf '%s\n\n' "サブエージェントの報告の原文。親のセッションが確かめる前のもの。ホームの道筋だけを ~ に替えた。"
-  jq -r '.tool_input.message' <<<"$in" | home
+  jq -r '.tool_input.message' <<<"$in" | "$(dirname "$0")/../../scripts/hide-home.sh"
 } >"$f" 2>/dev/null; then
   log_event report "$type" "${f#"$PROJECT_DIR"/}"
 else

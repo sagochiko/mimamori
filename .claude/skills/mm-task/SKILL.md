@@ -61,14 +61,15 @@ Write the body with the Write tool, in Japanese: what changed and why, the verif
 
 Start the `mm-reviewer` subagent with the issue number, the working tree, and the PR number. After each round:
 
-1. Post the reviewer's report verbatim as a PR comment, so anyone can see the independent review and not only your summary of it. Do not retype it: `save-report.sh` has saved the handback as `docs/audits/raw/<YYYYMMDD-HHMM>-mm-reviewer-<first 8 characters of its agent id>.md` in the main tree, also when the PR lives in a worktree (the agent id is in the Agent call's result). Run this from the PR's working tree. It reads the file from the main tree by absolute path, stops when the file is missing or empty, and moves the file into this tree so it is committed with the branch:
+1. Post the reviewer's report verbatim as a PR comment, so anyone can see the independent review and not only your summary of it. Do not retype it: `save-report.sh` has saved the handback as `docs/audits/raw/<YYYYMMDD-HHMM>-mm-reviewer-<first 8 characters of its agent id>.md` in the main tree, also when the PR lives in a worktree (the agent id is in the Agent call's result). Run this from the PR's working tree. It reads the file from the main tree by absolute path and moves it into this tree, so it is committed with the branch. Run again (after a failed post), it uses the file already moved. It stops when neither place has a file that is not empty:
 
    ```sh
    name=<YYYYMMDD-HHMM>-mm-reviewer-<id>.md
    src="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/docs/audits/raw/$name"
-   [[ -s "$src" ]] || { echo "no saved report at $src"; exit 1; }
-   mkdir -p docs/audits/raw && raw=docs/audits/raw/$name
-   [[ "$src" -ef "$raw" ]] || mv "$src" "$raw"
+   raw=docs/audits/raw/$name
+   mkdir -p docs/audits/raw
+   if [[ -s "$src" && ! "$src" -ef "$raw" ]]; then mv "$src" "$raw"; fi
+   [[ -s "$raw" ]] || { echo "no saved report at $src or $raw"; exit 1; }
    { printf '## mm-reviewer の報告(原文)\n\n%s回目、%s を読んだもの。保存した原文は `%s`。\n\n' "<round>" "<commit>" "$raw" && cat "$raw"; } >"<scratchpad>/review-comment.md"
    ```
 
@@ -78,9 +79,16 @@ Start the `mm-reviewer` subagent with the issue number, the working tree, and th
    gh pr comment <pr> --body-file "<scratchpad>/review-comment.md"
    ```
 
-   Then `git add docs/audits/raw/<name>` and commit it on the branch. The merge gate counts only a comment that starts with this heading and holds the report's status line (Status or ステータス). If the personal-data hook blocks it, replace only the spot it names with「(伏せた)」and say so in the comment.
+   Then `git add docs/audits/raw/<name>` and commit it on the branch. The merge gate counts only a comment that starts with this heading and holds the reviewer's status in one of two forms: a line `Status: ...` or `ステータス: ...` (a list marker, bold, or a heading in front is fine), or a heading `## ステータス` (or `Status`, any level) with the verdict on the next line that is not blank and not a heading. Post the report as it came; never add a status line to make the gate pass. If the personal-data hook blocks it, replace only the spot it names with「(伏せた)」and say so in the comment.
 
-   When no file was saved: `SubagentHandback`, the tool whose call the hook saves, is given to subagents only in auto mode (https://code.claude.com/docs/en/tools-reference). Outside auto mode, ask the reviewer with SendMessage to write the exact text it returned, unchanged, to `<scratchpad>/<name>` (it has Bash, not Write). Then run the steps above with `src=<scratchpad>/<name>`, and add「レビュー役が書き直したもの」to the preface. A guard can stop that write when the report names a file or a command the guards watch, such as the holdout unlock file or `make eval-holdout`. Then the reviewer replaces only the words that were stopped with「(伏せた)」and says so in the file's first line, the same rule as for the personal-data hook. Never write it through another tool or another spelling of the command.
+   When no file was saved: `SubagentHandback`, the tool whose call the hook saves, is given to subagents only in auto mode (https://code.claude.com/docs/en/tools-reference). Outside auto mode, ask the reviewer with SendMessage to write the exact text it returned, unchanged, to `<scratchpad>/<name>` (it has Bash, not Write). The hook did not run, so put in what it would have added, the first line and the home path as `~`, before you paste:
+
+   ```sh
+   mkdir -p docs/audits/raw
+   { printf '%s\n\n' "サブエージェントの報告の原文。レビュー役が自分でファイルに書いた。ホームの道筋だけを ~ に替えた。" && scripts/hide-home.sh <"<scratchpad>/<name>"; } >"docs/audits/raw/<name>"
+   ```
+
+   Then run the steps above; they find the file in this tree. A guard can stop that write when the report names a file or a command the guards watch, such as the holdout unlock file or `make eval-holdout`. Then the reviewer replaces only the words that were stopped with「(伏せた)」and says so in the file's first line, the same rule as for the personal-data hook. Never write it through another tool or another spelling of the command.
 2. Check each finding yourself before you accept it; a saved report is material, not a verdict, and a reviewer can be wrong. Read the cited file and line, reproduce it when that is cheap (a failing test, a command), or open the cited document.
 3. Update the `## レビュー` section of the PR body (`gh pr edit <pr> --body-file <file>`): mm-reviewer's verdict, then each finding with 採った or 採らなかった (指摘なし when there were none; the merge gate looks for one of these words in this section), how you checked it (コードで見た, 再現した, 文書で見た, or 確かめていない), and what you did about it. Label anything you did not check 確かめていない; when you reject a finding, write why.
 4. Send the findings you accept to `mm-implementer` (SendMessage), then verify again.

@@ -12,23 +12,35 @@ in=$(cat)
 need_jq guard-merge "$in" || exit 0
 cmd=$(jq -r '.tool_input.command // empty' <<<"$in")
 nl=$'\n'
-# Only a gh that runs as a command, not the words inside a grep pattern or a commit message. VAR=value
-# prefixes and gh's -R/--repo before "pr" do not hide it; neither does $( or a backtick around it.
+# A cheap first look: both words somewhere in the text. Whether a merge runs is decided on the shell
+# words below, where quotes, a backslash, VAR=value prefixes, gh -R, and compound commands
+# (if/then, for/do, { }, time, !) do not hide it.
+[[ "$cmd" =~ (^|[^[:alnum:]_.-])gh([^[:alnum:]_.-]|$) && "$cmd" == *merge* ]] || exit 0
+shell_words "$cmd"
+calls=()
+while read -r k r; do
+  [[ "${WORDS[k]}" == pr && "${WORDS[k + 1]}" == merge ]] && calls+=("$((k + 2)) $r")
+done < <(gh_calls)
+# The same merge as text after an operator, a ( or a backtick: this also finds one inside $(...),
+# backticks, a heredoc, or bash -c "...; gh pr merge", which the words do not show as a command.
 at='(^|[;&|(`]|'"$nl"')[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:];&|]*[[:space:]]+)*([^[:space:];&|()`]*/)?gh[[:space:]]+((-R|--repo)([=[:space:]]+)[^[:space:];&|]+[[:space:]]+)*pr[[:space:]]+merge'
-[[ "$cmd" =~ $at ]] || exit 0
-rest=${cmd#*"${BASH_REMATCH[0]}"}
-if [[ "$rest" =~ $at ]]; then
+texts=0
+rest=$cmd
+while [[ "$rest" =~ $at ]]; do
+  texts=$((texts + 1))
+  rest=${rest#*"${BASH_REMATCH[0]}"}
+done
+if ((${#calls[@]} == 0)); then
+  ((texts == 0)) && exit 0
+  block guard-merge "blocked: run gh pr merge as a plain command (gh pr merge <number> --merge), not inside \$(...), backticks, or another command, so the merge gate can read it."
+fi
+if ((${#calls[@]} > 1 || texts > 1)); then
   block guard-merge "blocked: run one gh pr merge per command, on its own, so the merge gate checks the PR that merges."
 fi
+call=${calls[0]}
 
 # Read the merge as the shell would: the PR is the first argument after "merge", and words inside
-# quotes (--subject "fix 7") are values, not PRs.
-shell_words "$cmd"
-call=""
-while read -r k r; do
-  [[ "${WORDS[k]}" == pr && "${WORDS[k + 1]}" == merge ]] && call="$((k + 2)) $r"
-done < <(gh_calls)
-[[ -n "$call" ]] || block guard-merge "blocked: run gh pr merge as a plain command (gh pr merge <number> --merge), not inside \$(...), backticks, or another command, so the merge gate can read it."
+# quotes (--subject "fix 7") and redirections (2>&1) are not PRs.
 read -r k r <<<"$call"
 repo=()
 [[ -n "$r" ]] && repo=(-R "$r")
@@ -37,6 +49,10 @@ while ((k < ${#WORDS[@]})); do
   w=${WORDS[k]}
   is_op "$w" && break
   ((k++))
+  if is_redir "$w"; then
+    ((k++))
+    continue
+  fi
   if ((!plain)) && [[ "$w" == -* ]]; then
     case $w in
       --) plain=1 ;;
@@ -87,17 +103,22 @@ problems=""
 # 1. The review is on the PR: the reviewer's report as a comment, and the decisions in the body.
 report=0
 while IFS= read -r text64; do
-  # Starts with the heading; after the heading and the preface comes the report with its status line.
+  # Starts with the heading; after the heading and the preface comes the report with its status, as a
+  # line "Status: ..." / "- ステータス: ..." or as a heading "## ステータス" with the verdict on the next
+  # line that is not blank and not a heading.
   if base64 --decode <<<"$text64" 2>/dev/null | tr -d '\r' | awk '
     !started && /^[ \t]*$/ { next }
     !started { if ($0 ~ /^#+[ \t]+mm-reviewer の報告/) { started = 1; next } exit }
-    /^[ \t]*([-*+][ \t]+)?(\*\*)?(ステータス|Status)(\*\*)?[ \t]*(:|：)/ { found = 1 }
+    pending && /^[ \t]*$/ { next }
+    pending { if ($0 !~ /^#/) found = 1; pending = 0 }
+    /^#+[ \t]+(\*\*)?(ステータス|Status)(\*\*)?[ \t]*$/ { pending = 1; next }
+    /^[ \t]*(#+[ \t]+|[-*+][ \t]+)?(\*\*)?(ステータス|Status)(\*\*)?[ \t]*(:|：)[ \t]*[^ \t]/ { found = 1 }
     END { exit !found }'; then
     report=1
     break
   fi
 done < <(jq -r '.comments[]?.body // "" | @base64' <<<"$pr")
-((report)) || problems+="- PR #$n has no comment that starts with the heading \"mm-reviewer の報告(原文)\" and carries the reviewer's report with its status line. Run mm-reviewer and post its saved report (/mm-task step 6.1).$nl"
+((report)) || problems+="- PR #$n has no comment that starts with the heading \"mm-reviewer の報告(原文)\" and carries the reviewer's report with its status (a line \"Status: ...\" or \"ステータス: ...\", or a heading \"## ステータス\" with the verdict under it). Run mm-reviewer and post its saved report (/mm-task step 6.1).$nl"
 # The "## レビュー" section, up to the next heading of level 1 or 2, has a decision per finding.
 if ! jq -r '.body // ""' <<<"$pr" | tr -d '\r' | awk '
   /^##?[ \t]/ { sec = ($0 ~ /^##[ \t]+レビュー[ \t]*$/); next }

@@ -107,6 +107,11 @@ pr 56 "$fresh" "$decided" "$preface_only"
 pr 57 "$fresh" "$decided"
 pr 58 "$fresh" "$decided" $'まず一言。\n\n'"$report"
 pr 59 "$fresh" "$report"$'\n\n'"$review"
+# The first review of PR #38 wrote its status as a heading with the verdict on the next line.
+report_heading=$'## mm-reviewer の報告(原文)\n\n1回目、abc1234 を読んだもの。\n\nサブエージェントの報告の原文。親のセッションが確かめる前のもの。\n\n前置きの1行。\n## ステータス\n直してから(changes needed)。上の2件は直す。\n\n## 指摘\n\n- a.ts:12'
+report_empty_heading=$'## mm-reviewer の報告(原文)\n\n1回目、abc1234 を読んだもの。\n\n## ステータス\n\n## 指摘\n\n- a.ts:12'
+pr 60 "$fresh" "$decided" "$report_heading"
+pr 61 "$fresh" "$decided" "$report_empty_heading"
 gh_path=$PATH
 PATH="$T/bin:$PATH"
 merge 0 'gh pr merge 41 --merge --delete-branch' "a reviewed PR whose open items say where they continue merges"
@@ -128,6 +133,22 @@ merge 2 'gh pr merge 50 --merge' "an issue gh cannot read is blocked (fail close
 merge 2 'gh pr merge --merge --delete-branch' "a merge without a PR number is blocked"
 merge 2 'gh pr merge 41 --merge && gh pr merge 42 --merge' "two merges in one command are blocked"
 merge 0 'grep -n "gh pr merge" .claude/skills/mm-task/SKILL.md' "searching for the words gh pr merge passes"
+merge 0 'gh pr merge 60 --merge' "a status written as a heading with the verdict on the next line counts"
+merge 2 'gh pr merge 61 --merge' "a status heading with nothing under it does not count"
+# A merge inside a compound command, or with quotes or a backslash around its words, is still read.
+merge 2 'for n in 42; do gh pr merge 42 --merge; done' "a merge inside for ... do is checked"
+merge 2 'if gh pr checks 42; then gh pr merge 42 --merge; fi' "a merge inside if ... then is checked"
+merge 2 '{ gh pr merge 42 --merge; }' "a merge inside { } is checked"
+merge 2 'time gh pr merge 42 --merge' "a merge after time is checked"
+merge 2 '! gh pr merge 42 --merge' "a merge after ! is checked"
+merge 2 '"gh" pr merge 42 --merge' "a quoted gh is checked"
+merge 2 '\gh pr merge 42 --merge' "a backslashed gh is checked"
+merge 2 'gh "pr" merge 42 --merge' "a quoted pr is checked"
+merge 2 'gh pr "merge" 42 --merge' "a quoted merge is checked"
+merge 0 'if gh pr checks 41; then gh pr merge 41 --merge; fi' "a reviewed PR merges from inside if ... then"
+merge 0 'gh pr merge 41 --merge --delete-branch 2>&1' "a redirection is not taken for a second PR"
+merge 0 'gh pr merge 41 --merge > /dev/null' "a redirection target is not taken for a second PR"
+merge 0 'gh pr view 41 && git fetch origin && git merge origin/main' "gh and git merge in one command pass"
 # The PR is the first argument after merge, wherever the flags and their values stand.
 merge 2 'GH_REPO=sagochiko/mimamori gh pr merge 42 --merge' "a VAR=value prefix does not hide the merge"
 merge 2 'gh -R sagochiko/mimamori pr merge 42 --merge' "gh -R before pr does not hide the merge"
@@ -167,6 +188,8 @@ nojq 2 guard-merge.sh 'gh pr merge 41 --merge' "the merge gate stops gh when jq 
 nojq 0 guard-merge.sh 'ls -la server' "the merge gate lets ordinary commands through when jq fails"
 nojq 2 guard-private.sh 'gh issue create --title x --body y' "the personal-data gate stops gh when jq fails"
 nojq 0 guard-private.sh 'git status --short' "the personal-data gate lets ordinary commands through when jq fails"
+nojq 2 guard-private.sh 'git commit --no-verify -m x' "the commit-hooks guard holds when jq fails"
+nojq 2 guard-private.sh 'git -c core.hooksPath=/dev/null commit -m x' "the hooks-path guard holds when jq fails"
 # stop-gate: judged in the tree of the input's cwd, against origin/main, and never passing untested.
 # $T/work is the throwaway repository of the merge tests. Its local main stays behind origin/main.
 g switch -q -c gate origin/main 2>/dev/null
@@ -229,11 +252,11 @@ first="サブエージェントの報告の原文。親のセッションが確�
   { echo "hook test failed: a reviewer's report is saved verbatim under docs/audits/raw with the unchecked line first"; fail=1; }
 # The repository goes public, and the user name of this Mac is on the private list: home paths become ~.
 rm -f "$T/raw"/*
-hand mm-reviewer $'- Status: approve\n- /Users/testperson/develop/a.md と /Users/testperson と /Users/testpersonal/b' |
+hand mm-reviewer $'- Status: approve\n- /Users/testperson/develop/a.md と /Users/testperson と /Users/testpersonal/b\n- /tmp/claude-501/-Users-testperson-develop-x/a.md と -Users-testpersonal-y' |
   HOME=/Users/testperson "$H/save-report.sh"
 saved=$(ls "$T/raw"/*-mm-reviewer-a4d2c8f1.md 2>/dev/null | head -1)
-[[ -n "$saved" && "$(tail -n 1 "$saved")" == "- ~/develop/a.md と ~ と /Users/testpersonal/b" ]] ||
-  { echo "hook test failed: save-report turns the home path, and only it, into ~"; fail=1; }
+[[ -n "$saved" && "$(tail -n 2 "$saved")" == $'- ~/develop/a.md と ~ と /Users/testpersonal/b\n- /tmp/claude-501/-~-develop-x/a.md と -Users-testpersonal-y' ]] ||
+  { echo "hook test failed: save-report turns the home path and its dashed form in scratchpad paths, and only those, into ~"; fail=1; }
 rm -f "$T/raw"/*
 hand mm-implementer "done" | "$H/save-report.sh"
 ls "$MM_LOG_DIR/reports"/*-mm-implementer-a4d2c8f1.md >/dev/null 2>&1 || { echo "hook test failed: other reports go to .claude/logs/reports"; fail=1; }
@@ -297,6 +320,24 @@ priv 0 "git commit -qm 'x -n'" "a message after -qm is not a flag"
 priv 2 "git commit -nm x" "-n inside a cluster of short flags is blocked"
 priv 2 "git commit -m x -n" "-n after the message is blocked"
 priv 2 "git commit --no-verif -m x" "an abbreviated --no-verify is blocked"
+# Forms the word reading must not lose: compound commands and commands run through another command.
+priv 2 "{ git commit --no-verify -m x; }" "a commit inside { } is checked"
+priv 2 "if true; then git commit --no-verify -m x; fi" "a commit inside if ... then is checked"
+priv 2 "env git commit --no-verify -m x" "a commit after env falls back to the text check"
+priv 2 "bash -c \"git commit --no-verify -m x\"" "a commit inside bash -c falls back to the text check"
+priv 2 "bash -c \"cd /tmp; gh issue create --title x --body-file $T/term.md\"" "a gh write inside bash -c is blocked"
+priv 2 $'bash <<"E"\ngh issue create --title x --body-file '"$T"$'/term.md\nE' "a gh write fed to bash by a heredoc is blocked"
+priv 2 "gh issue create --title x \$'--body-file' $T/term.md" "an ANSI-C quoted flag in a gh write is blocked"
+priv 2 "git commit \$'--no-verify' -m x" "an ANSI-C quoted --no-verify is blocked"
+priv 2 "git commit \$'\\x2d-no-verify' -m x" "an ANSI-C escaped --no-verify is blocked"
+priv 2 $'echo $((1<<2))\ngit commit --no-verify -m x' "an arithmetic shift is not a heredoc"
+priv 2 "read -rd '' X < $T/term.md; gh issue create --title x --body \"\$X\"" "a body from a variable is blocked"
+priv 2 "gh issue create --title x --body-file \"\$HOME/x.md\"" "a body file named through a variable is blocked"
+priv 2 "gh issue create --title x -F - <<<x < $T/term.md" "a redirection after a here-string replaces the body"
+priv 0 $'cat <<\'E\' | gh issue create --title x -F -\n機種を確かめる。\nE' "a heredoc piped through cat into -F - passes"
+priv 2 $'cat <<\'E\' '"$T"$'/term.md | gh issue create --title x -F -\nx\nE' "cat with a file next to the heredoc is blocked"
+priv 2 "cd $T/Tanukiyama && gh issue create --title x -F clean.md" "a relative body file after cd is blocked"
+priv 0 "git commit -m 'x'; echo done" "a plain commit passes"
 out=$(jq -nc --arg c "gh issue create --title x --body-file $T/term.md" '{tool_name:"Bash",tool_input:{command:$c}}' | "$H/guard-private.sh" 2>&1)
 [[ "$out" == *"term.md line 2: private term"* && "$out" != *[Tt][Aa][Nn][Uu][Kk][Ii]* ]] ||
   { echo "hook test failed: guard-private names the place and the rule, never the term"; fail=1; }
@@ -340,6 +381,25 @@ printf '%s\n' 'docs: 記録を足す' '' 'fox-dummy-app の書き方を見た' >
 hand mm-reviewer "$report" | env -u MM_RAW_REPORT_DIR CLAUDE_PROJECT_DIR="$T/wt" "$H/save-report.sh"
 ls "$R/docs/audits/raw"/*-mm-reviewer-a4d2c8f1.md >/dev/null 2>&1 && [[ ! -d "$T/wt/docs/audits/raw" ]] ||
   { echo "hook test failed: save-report writes raw reports into the main tree, also from a worktree"; fail=1; }
+# /mm-task step 6.1 as written: run it twice from the worktree (a failed post is retried).
+tpl=$(awk '/^   name=<YYYYMMDD-HHMM>-mm-reviewer-<id>.md$/,/review-comment.md"$/' .claude/skills/mm-task/SKILL.md | sed 's/^   //')
+rname=$(basename "$(ls "$R/docs/audits/raw"/*-mm-reviewer-a4d2c8f1.md | head -1)")
+mkdir -p "$T/sp"
+tpl=${tpl//<YYYYMMDD-HHMM>-mm-reviewer-<id>.md/$rname}
+tpl=${tpl//<round>/1}
+tpl=${tpl//<commit>/abc1234}
+tpl=${tpl//<scratchpad>/$T/sp}
+# Run it only when it is the block we expect: seven lines, and no gh (the real gh is on PATH here).
+if [[ $(wc -l <<<"$tpl") -eq 7 && "$tpl" != *gh\ * ]]; then
+  for round in 1 2; do
+    (cd "$T/wt" && bash -c "$tpl") >/dev/null 2>&1 || { echo "skill test failed: the step 6.1 template fails on run $round"; fail=1; }
+  done
+else
+  echo "skill test failed: the step 6.1 template is not the seven-line block this test expects"; fail=1
+fi
+[[ -s "$T/wt/docs/audits/raw/$rname" && ! -e "$R/docs/audits/raw/$rname" ]] && grep -q 'Status: changes needed' "$T/sp/review-comment.md" &&
+  [[ "$(head -1 "$T/sp/review-comment.md")" == "## mm-reviewer の報告(原文)" ]] ||
+  { echo "skill test failed: the step 6.1 template moves the report into the worktree and builds the comment"; fail=1; }
 
 # The holdout unlock lives in the main tree. `make eval-holdout` and guard-holdout.sh look there,
 # also from a worktree. A fake npx stands in for the measurement.
