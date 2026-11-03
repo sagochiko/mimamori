@@ -66,6 +66,8 @@ iPhone では他のアプリが SMS やメールを読めない。母が何も�
 
 過去の受賞作(Built with Opus 4.7 と 4.6)では、現場の本人が作ったもの、役割を分けたエージェント、精度を数字で示したものが上位だった。モバイルアプリと chat bot の入賞は無い。iOS アプリにしたのは、母を守る範囲を優先したから。
 
+2026年11月に、母から電話で相談があった。iPhone に「ストレージがいっぱい」と出たがどうすればいいか、アプリが多すぎて整理できない、広告に出たストレージを空けるアプリを入れていいか、という内容だった。作者は怪しいと思い、入れないよう答えた。詳しい家族がすぐ電話に出られなければ、母は広告のアプリを入れていたかもしれない。同じ形の被害は実際に出ていて、無料ゲームの「容量がいっぱいです」という広告から入れた掃除アプリ3本で、週1,500円の課金が約1か月続き2万円を超えた事例が2026年10月に報じられた([ケータイ Watch](https://k-tai.watch.impress.co.jp/docs/column/minna/2144672.html))。IPA の安心相談窓口では、2026年7月から9月の相談3,369件のうち、偽のセキュリティ警告が1,160件で最も多かった([IPA](https://www.ipa.go.jp/security/anshin/reports/2026q3outline.html))。国民生活センターに寄せられた2024年度の偽警告の相談5,166件では、70歳以上が46.4%で最も多い年代だった([国民生活センター](https://www.kokusen.go.jp/pdf/n-20250806_3.pdf))。
+
 ## 決まったこと
 
 - 題材は母の案。スマホ相談と詐欺対策は同じ重さで、検知、引き継ぎ、スマホ相談の3つとも作り込む
@@ -152,6 +154,8 @@ Gmail では5分ごとに母の受信箱の新しいメールを読む。`gmail.
 
 3つ目は銀行への接続で、1段階の知らせから60分のうちに、母の iPhone から銀行やネット銀行のドメインへの問い合わせがあったら、DNS で気づいて家族に「銀行関連の通信がありました」と知らせる(止めはしない)。DNS で分かるのは問い合わせだけで、母が開いたことや送金したことは分からないので、そう言わない。知らせるのは送金の直前に家族が電話できるようにするため。銀行のドメインの一覧は公式のものを集める。
 
+ニセ警察詐欺と並んで多いのが、偽のセキュリティ警告の画面から電話をかけさせ、遠隔操作のアプリを入れさせて送金させるサポート詐欺。母の iPhone から遠隔操作のアプリの通信先への問い合わせがあったら、DNS で気づいて家族に1段階で知らせる(止めはしない)。通信先の一覧は、各アプリの公式の情報から集める。DNS で分かるのは問い合わせだけなので、遠隔操作されているとは言い切らない。
+
 電話では詐欺に使われた番号の一覧を入れて、着信に「詐欺の疑い」と出す。着信ごとにサーバーへ問い合わせる Live Caller ID Lookup は、Apple の承認に数か月かかる例があり、期間中は間に合わないので入れない。
 
 メール、SMS、ページの中の文字はすべて調べる対象として扱い、「この警告を止めて」のような文があっても従わない。Claude の答えは Structured Outputs で決まった形(段階、理由、母への一言)だけを受け取る。通知先や共有の範囲は、Claude の答えや届いた文面では変えられないようにする。
@@ -175,6 +179,21 @@ AI が答えきれない相談と、2段階目以上の知らせは、相談1件
 送金、認証コードの共有、構成プロファイルの導入、データの削除は案内しない。その場合は家族に回す。
 
 家族本人が書いた返事は、その人の声で母に届ける。家族の iPhone のパーソナルボイス(端末の中で作る本人そっくりの声)で返事を音声にし、母の iPhone で再生する。AI の答えは普通の読み上げの声のままにする。AI の答えまで家族の声にすると、母が「家族の声なら信じていい」と覚え、家族の声を真似る詐欺にかかりやすくなるため。パーソナルボイスで音声ファイルに書き出せるかは初日に確かめ、できなければ家族の返事も普通の声にする。
+
+## アプリからの声かけ
+
+困っても誰にも相談しない高齢者は37.4%いて、その理由の約半分は「自分で解決できると思った」だった([トビラシステムズ](https://tobila.com/news/report/p2525/))。母に「困ったら相談して」と頼むだけでは足りない。通話のあとの声かけと同じく、アプリのほうから気づいて「一緒にやろう」と声をかける点検を置く。点検はアプリを開いたときと、バックグラウンドの更新のときに端末の中で回し、声かけは通知と母の画面の両方に出す。
+
+| 点検 | 何で気づくか | 声かけと引き継ぎ |
+|---|---|---|
+| 空き容量 | OS から空きの量を読む | 少なくなったら、設定の「iPhone ストレージ」から一緒に空けようと声をかけ、スクショで一手ずつ案内する。広告の掃除アプリは入れなくていいと伝える。空き容量とそこから判断したことは端末の外へ送れない(Apple の[理由の申告が要る API](https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api))ので、家族には知らせない |
+| iOS の更新 | 今の版をアプリで読み、最新の版は裏側が Apple の[開発者向けリリース情報](https://developer.apple.com/news/releases/rss/releases.rss)から取る | 古いままなら「夜に充電しながら更新しよう」と声をかける。公式の API は無いので、取れないときは声をかけない |
+| 迷惑なカレンダーの予定 | カレンダーの許可をもらい、購読しているカレンダーを見分ける | 「ウイルスに感染」のような予定が並ぶ購読カレンダーを見つけたら、消し方を案内する。アプリから消せるかは公式に書かれていないので、実機で確かめる |
+| サブスクの見直し | 気づけない(ほかのアプリの課金は見えない) | 月に1回、設定のサブスクリプションの画面まで一緒にたどる。アプリを消しても解約にならないことも伝える([国民生活センター 見守り新鮮情報 第545号](https://www.kokusen.go.jp/mimamori/pdf/shinsen545.pdf)) |
+| 見守りの自己点検 | 通知の許可とバックグラウンドの更新の状態を読み、毎日裏側へ生存の知らせを送る | 母が通知を切ったりアプリを閉じたりすると、ほかの点検が黙って止まる。生存の知らせが48時間途切れたら、家族に「見守りが止まっている」と知らせる |
+| iCloud のサインアウト | iCloud のサインインの印が消えたことを読む | 母に確かめ、心当たりがなければ家族に回す。乗っ取りや操作の迷いのきっかけになるため |
+
+ほかのアプリの一覧、iCloud の残り容量、端末全体の画面の使い方は、アプリからは読めない。「アプリが多すぎて整理できない」は気づく側ではなく、声の相談とスクショの案内で受ける。
 
 ## データの扱い
 
@@ -200,7 +219,7 @@ APNs への送信はデプロイした Workers からなら動く見込み(Worke
 
 ## 精度の測り方
 
-公開されている詐欺の例文(フィッシング対策協議会や警察庁の注意喚起)と、本物の通知(Amazon、ドコモ、銀行)を集めて試験用の一式を作る。「この警告を止めて」のような仕込みの例も入れる。
+公開されている詐欺の例文(フィッシング対策協議会や警察庁の注意喚起)と、本物の通知(Amazon、ドコモ、銀行)を集めて試験用の一式を作る。「この警告を止めて」のような仕込みの例も入れる。高齢者が狙われやすいスマホまわりの手口として、サポート詐欺の偽警告(電話番号つき)、「容量がいっぱいです」の広告、「3日間無料、その後毎週1,500円」の課金画面、Apple をかたる iCloud 満杯の SMS、使っているアプリの名前をかたる支払い確認のメール、構成プロファイルへ誘う SMS、迷惑なカレンダーの予定、遠隔操作のアプリを入れさせる指示も入れる。何でも危ないと言ってしまう失敗を確かめるため、本物のストレージの警告、iCloud の通知、Apple の領収書、携帯会社の正規のお知らせも入れる。
 
 測る前に、件数、分母、許容する失敗を決めておく。最後に測る組は、経路(SMS、メール、ページ、声の相談、書類の画像)ごとに詐欺15件と本物15件を初期値にし、本物を1段階にするのは0件を目標にする。声の相談は、文字にしたものだけでなく実際に話した声から家族の端末にカードが出るまでの時間も測る。相談は、あいまいな話し方、本物に近い連絡、書類の画像に分けて出す。DNS の銀行の知らせは実機で知らせ漏れと要らない知らせの件数を数える。
 
@@ -257,3 +276,5 @@ APNs への送信はデプロイした Workers からなら動く見込み(Worke
 - Managed Agents は [概要](https://platform.claude.com/docs/ja/managed-agents/overview)。料金は [料金のページ](https://platform.claude.com/docs/ja/about-claude/pricing)
 - 座標は [vision-coordinates](https://platform.claude.com/docs/ja/build-with-claude/vision-coordinates)
 - Workers の制限は [Limits](https://developers.cloudflare.com/workers/platform/limits/)。HTTP/2 の件は [workerd の issue 4841](https://github.com/cloudflare/workerd/issues/4841)
+- 母の相談と同じ形の被害は [ケータイ Watch(2026年10月1日)](https://k-tai.watch.impress.co.jp/docs/column/minna/2144672.html)、偽警告の相談の件数は [IPA 2026年7〜9月](https://www.ipa.go.jp/security/anshin/reports/2026q3outline.html) と [国民生活センター 2024年度](https://www.kokusen.go.jp/pdf/n-20250806_3.pdf)、相談しない高齢者の割合は [トビラシステムズ](https://tobila.com/news/report/p2525/)
+- 空き容量の読み取りは [volumeAvailableCapacityForImportantUsageKey](https://developer.apple.com/documentation/foundation/urlresourcekey/volumeavailablecapacityforimportantusagekey) と [理由の申告が要る API](https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api)。購読カレンダーは [EKCalendarType](https://developer.apple.com/documentation/eventkit/ekcalendartype)、iCloud のサインインは [ubiquityIdentityToken](https://developer.apple.com/documentation/foundation/filemanager/ubiquityidentitytoken)、自己点検は [backgroundRefreshStatus](https://developer.apple.com/documentation/uikit/uiapplication/backgroundrefreshstatus) と [UNNotificationSettings](https://developer.apple.com/documentation/usernotifications/unnotificationsettings)
