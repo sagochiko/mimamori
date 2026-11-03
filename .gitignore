@@ -1,0 +1,42 @@
+# secrets: never commit
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+*.p8
+*.p12
+*.mobileprovision
+client_secret*.json
+.env
+.env.*
+
+# Claude Code: per-machine settings and runtime state
+.claude/settings.local.json
+.claude/prior-work.local
+.claude/state/
+.claude/logs/
+CLAUDE.local.md
+
+# Apple's skills exported from Xcode (`make apple-skills`). Apple's content, not ours to redistribute.
+.claude/skills/swiftui-specialist/
+.claude/skills/swiftui-whats-new-27/
+.claude/skills/modernize-tests/
+
+# eval: the holdout set and the unsplit pool stay out of git (and out of grep) until the final
+# measurement; /mm-endgame publishes them after that run.
+eval/cases/holdout/*
+eval/cases/pool/*
+!eval/cases/holdout/.gitkeep
+!eval/cases/pool/.gitkeep
+eval/out/
+
+# build output
+node_modules/
+.wrangler/
+dist/
+build/
+DerivedData/
+*.xcresult
+.verify.log
+spikes/
+
+.DS_Store

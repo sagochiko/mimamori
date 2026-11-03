@@ -1,0 +1,6 @@
+{
+  "name": "mm-band",
+  "version": "0.1.0",
+  "description": "A band above the prompt with the hackathon clock, the current milestone, the latest dev accuracy, and steps waiting for the author",
+  "author": { "name": "mimamori" }
+}

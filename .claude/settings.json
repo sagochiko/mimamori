@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "attribution": {
+    "commit": "Co-Authored-By: Claude <noreply@anthropic.com>",
+    "sessionUrl": false
+  },
+  "permissions": {
+    "allow": [
+      "Bash(make verify*)",
+      "Bash(make eval)",
+      "Bash(make usage*)",
+      "Bash(swift test*)",
+      "Bash(swift build*)",
+      "Bash(xcodebuild *)",
+      "Bash(xcrun swift-format *)",
+      "Bash(xcrun simctl *)",
+      "Bash(xcrun xcresulttool *)",
+      "Bash(npx vitest *)",
+      "Bash(npx tsc *)",
+      "Bash(npx tsx eval/*)",
+      "Bash(npx wrangler types*)",
+      "Bash(npx wrangler dev *)",
+      "Bash(npx wrangler tail *)",
+      "Bash(npx wrangler deploy --dry-run*)",
+      "Bash(npx wrangler d1 migrations create *)",
+      "Bash(npx wrangler d1 migrations list * --local*)",
+      "Bash(npx wrangler d1 migrations apply * --local*)",
+      "Bash(npx wrangler d1 execute * --local*)",
+      "Bash(gh issue *)",
+      "Bash(gh pr *)",
+      "Bash(gh project *)",
+      "Bash(gh auth status*)",
+      "mcp__claude-docs__search_docs",
+      "mcp__claude-docs__get_doc",
+      "mcp__claude-docs__get_navigation",
+      "mcp__claude-docs__get_api_endpoint",
+      "mcp__cloudflare-docs__search_cloudflare_documentation"
+    ],
+    "ask": [
+      "Bash(*wrangler*--remote*)",
+      "Bash(*wrangler deploy)",
+      "Bash(*wrangler deploy --env*)",
+      "Bash(*wrangler versions deploy*)",
+      "Bash(*wrangler rollback*)",
+      "Bash(*wrangler secret*)",
+      "Bash(npm run deploy*)",
+      "Bash(xcodebuild *-exportArchive*)",
+      "Bash(xcrun simctl erase *)",
+      "Bash(xcrun simctl delete *)",
+      "Bash(gh pr merge*--admin*)",
+      "Bash(gh api *)"
+    ],
+    "deny": [
+      "Read(**/.dev.vars)",
+      "Read(**/.dev.vars.*)",
+      "Read(!**/.dev.vars.example)",
+      "Read(**/*.p8)",
+      "Read(**/*.p12)",
+      "Read(**/AuthKey_*)",
+      "Read(**/client_secret*.json)",
+      "Read(~/Library/Preferences/.wrangler/**)",
+      "Read(~/.config/gh/**)",
+      "Read(eval/cases/holdout/**)",
+      "Bash(*wrangler delete*)",
+      "Bash(*wrangler d1 delete*)",
+      "Bash(*wrangler queues delete*)",
+      "Bash(*wrangler r2 bucket delete*)",
+      "Bash(*wrangler d1 time-travel restore*)",
+      "Bash(git reset --hard*)",
+      "Bash(gh repo delete*)",
+      "Bash(gh secret *)",
+      "Bash(gh auth token*)",
+      "Bash(security find-*)",
+      "Bash(printenv*)",
+      "Bash(git push*--force*)",
+      "Bash(git push*-f)",
+      "Bash(git push*-f *)",
+      "Bash(git push*+*)",
+      "Read(eval/cases/pool/**)"
+    ]
+  },
+  "enabledPlugins": {
+    "vercel@claude-plugins-official": false,
+    "aws-core@agent-toolkit-for-aws": false,
+    "aws-agents@agent-toolkit-for-aws": false,
+    "aws-agents-for-devsecops@agent-toolkit-for-aws": false,
+    "frontend-design@claude-plugins-official": false,
+    "superpowers@claude-plugins-official": false
+  },
+  "skillOverrides": {
+    "agents-sdk": "off",
+    "app-store-listing": "off",
+    "career-report": "off",
+    "cloudflare-email-service": "off",
+    "cloudflare-one": "off",
+    "cloudflare-one-migrations": "off",
+    "durable-objects": "off",
+    "google-drive-upload": "off",
+    "sago3-deploy": "off",
+    "sandbox-sdk": "off",
+    "turnstile-spin": "off",
+    "web-perf": "off"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/session-context.sh",
+            "timeout": 20,
+            "statusMessage": "締切と今の条件を読み込み中"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Read|Grep|Glob|Bash|Monitor|Edit|Write|NotebookEdit|WebFetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-secrets.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-prior-work.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-holdout.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Monitor",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-prod.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/format.sh",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/usage-log.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptExpansion": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/usage-log.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": ".+",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/usage-log.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-gate.sh",
+            "timeout": 600,
+            "statusMessage": "変わった側のテストを確認中"
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/pacer.sh",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}

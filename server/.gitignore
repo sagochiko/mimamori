@@ -1,0 +1,7 @@
+# Kept next to the secrets on purpose: a recursive grep started inside server/ reads only this
+# directory's ignore file, so the rule must live here too.
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+node_modules/
+.wrangler/

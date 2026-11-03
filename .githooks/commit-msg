@@ -1,0 +1,36 @@
+#!/bin/bash
+# commit-msg: the commit convention of this repository, checked on every commit.
+#   <type>(<scope>): <日本語の要約>
+#   (空行)
+#   なぜ変えたか。
+#   Refs #12
+# The repository becomes public, so this also refuses personal data in messages.
+export LC_ALL=en_US.UTF-8
+msg_file=$1
+subject=$(grep -v '^#' "$msg_file" | head -1)
+body=$(grep -v '^#' "$msg_file")
+fail() { echo "commit-msg: $1" >&2; echo "  subject: $subject" >&2; exit 1; }
+
+case "$subject" in Merge\ *|Revert\ *|fixup!\ *|squash!\ *) exit 0 ;; esac
+
+types='feat|fix|test|docs|refactor|chore|eval|harness'
+if [[ ! "$subject" =~ ^($types)(\((ios|server|eval|harness|docs|plan|repo)\))?:\ .+ ]]; then
+  fail "the subject must look like 'feat(server): 招待コードで家族に入れるようにする' (types: ${types//|/, }; scopes: ios, server, eval, harness, docs, plan, repo)"
+fi
+summary=${subject#*: }
+((${#summary} > 50)) && fail "keep the summary within 50 characters (${#summary} now); put the reason in the body"
+
+grep -q '^Claude-Session:' <<<"$body" && fail "do not add a Claude-Session line in this repository"
+if grep -Eq '0[789]0-?[0-9]{4}-?[0-9]{4}' <<<"$body"; then fail "the message contains something that looks like a phone number"; fi
+emails=$(grep -Eo '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' <<<"$body" | grep -Ev '^(noreply@anthropic\.com|[0-9]+\+[A-Za-z0-9-]+@users\.noreply\.github\.com)$')
+[[ -n "$emails" ]] && fail "the message contains an email address ($emails)"
+
+list="$(git rev-parse --show-toplevel)/.claude/prior-work.local"
+if [[ -s "$list" ]]; then
+  shopt -s nocasematch
+  while IFS= read -r dir; do
+    [[ -z "$dir" || "$dir" == \#* ]] && continue
+    [[ "$body" == *"${dir##*/}"* ]] && fail "the message names one of the author's earlier projects; this repository keeps them private"
+  done <"$list"
+fi
+exit 0

@@ -1,0 +1,7 @@
+schemaVersion: 1
+enabledWorkflows: ["simulator", "ui-automation", "swift-package"]
+sessionDefaults:
+  projectPath: "./ios/Mimamori.xcodeproj"
+  scheme: "Mimamori"
+  simulatorName: "mimamori iPhone"
+sentryDisabled: true

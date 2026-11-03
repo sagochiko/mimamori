@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "claude-docs": {
+      "type": "http",
+      "url": "https://platform.claude.com/docs/mcp"
+    },
+    "cloudflare-docs": {
+      "type": "http",
+      "url": "https://docs.mcp.cloudflare.com/mcp"
+    },
+    "mobilebuildmcp": {
+      "command": "npx",
+      "args": ["-y", "mobilebuildmcp@2.7.1", "mcp"]
+    }
+  }
+}
