@@ -75,7 +75,9 @@
       "Bash(git push*--force*)",
       "Bash(git push*-f)",
       "Bash(git push*-f *)",
-      "Bash(git push*+*)"
+      "Bash(git push*+*)",
+      "Bash(gh repo edit*visibility*)",
+      "Bash(gh issue delete*)"
     ]
   },
   "enabledPlugins": {
@@ -146,6 +148,12 @@
             "type": "command",
             "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-merge.sh",
             "timeout": 90,
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-private.sh",
+            "timeout": 30,
             "onFailure": "block"
           }
         ]

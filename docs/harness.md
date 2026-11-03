@@ -18,14 +18,28 @@
 |---|---|---|---|
 | `session-context.sh` | セッション開始 | 残り時間、マイルストーン、開いている Issue、作者待ちの件数、最新の精度、`CONDITIONS.md` を渡す。作者待ちは「作者: 」の Issue を gh で数えて5分ためておき、gh に届かなければ0ではなく ? と書く | 締切を前提に判断させるため |
 | `guard-secrets.sh` | ツールの実行前 | `.dev.vars`、APNs の鍵、Google の秘密、wrangler の認証を読ませない。`server/.gitignore` にも `.dev.vars` を書き、`server/` の中から始めた再帰の grep にも拾わせない | permissions の deny では `grep -r` などを取りこぼすため |
-| `guard-prior-work.sh` | ツールの実行前 | 作者が以前に作ったコードのフォルダを開かせない(一覧は公開しない設定に置く) | 期間中に書いたものだけが対象というルールのため |
+| `guard-prior-work.sh` | ツールの実行前 | 作者が以前に作ったコードのフォルダを開かせない。その一覧(`.claude/prior-work.local`)と、公開してはいけない語の一覧(`.claude/private-terms.local`)を読ませない。どちらも git に入らず本体のツリーにしかないので、worktree の中からも `git rev-parse --git-common-dir` で本体を探す。テストだけが使う一覧の差し替えの変数を Claude が設定するのも止める | 期間中に書いたものだけが対象というルールと、公開する前の個人の情報を守るため |
 | `guard-holdout.sh` | ツールの実行前 | 最後に1回だけ測る組(holdout)と、分ける前の例文を読ませない。どちらも最後の測定まで `.gitignore` に入れ、再帰の grep からも外す。最後の測定は作者が鍵のファイルを置いたときだけ通す | 精度の数字を、直すときに見ていない例文で出すため |
 | `guard-prod.sh` | Bash の実行前 | 本番の D1、デプロイ、秘密の登録、App Store Connect への送信は作者に確認させ、削除系は止める | wrangler は非対話のシェルでは自分の確認を飛ばすため |
 | `guard-merge.sh` | Bash の実行前 | `gh pr merge` の前に PR を gh で読み、レビューの結果(「レビュー」を含む見出しと mm-reviewer の名前)が本文かコメントにあるか、閉じる Issue の未チェックの項目すべてに続きの Issue の番号があるか、PR の先頭が今の `origin/main` を含むかを確かめる。gh や git が答えないときは通さない(`onFailure: block`) | レビューを通していない PR と、やり残しの行き先が書かれていない Issue を、注意力に頼らずに止めるため。別の PR が入ったあとは確かめ直させるため |
+| `guard-private.sh` | Bash の実行前 | `gh issue` と `gh pr` で作る、直す、コメントするときに、コマンド(題と本文)と `--body-file` の中身を、git のフックと同じ規則(下の「git のフック」)で調べる。当たったら場所と規則だけを出して止める。`git commit --no-verify` と、フックの置き場を `.githooks` 以外にする操作も止める。落ちたら通さない(`onFailure: block`) | Issue と PR はリポジトリと一緒に公開されるのに、コミットのフックは通らないため |
 | `format.sh` | 編集の後 | Swift は swift-format、TypeScript は Prettier で整える | 整形の差分でレビューを汚さないため |
 | `stop-gate.sh` | 応答の終わり | 変わった側(`ios/Core`、`server`)のテストを流し、落ちていたら続けさせる。Issue のブランチでコミット済みの変更も対象にする。裏でサブエージェントが書いているあいだは待ち、前回通った状態から変わっていなければ何もしない | 「直りました」と言う前に確かめさせるため |
 | `pacer.sh` | 応答の終わり | 締切の節目を越えたら一度だけ切り替えを知らせる。dev の精度が3回伸びない、1つの Issue が4時間を超えた、のどちらかで監査役を呼ぶよう促す | 局所的な直しを続けて時間を失わないため |
 | `usage-log.sh` | サブエージェント、skill、コマンドの後 | 名前と時刻だけを記録する。`make usage` で `docs/claude-usage.md` になる | どの機能をどれだけ使ったかを数字で示すため |
+
+## git のフック
+
+リポジトリは提出のときに公開するので、コミットにも家族の情報を入れない仕組みを `.githooks/` に置いた。`make setup` で `core.hooksPath` を向ける(`make bootstrap` の中でも流れる)。
+
+- `commit-msg` はコミットメッセージの形を確かめる。メッセージに電話番号の形、メールアドレス、非公開の語、作者の以前のプロジェクトの名前が入っていたら止める。マージのメッセージも調べる
+- `pre-commit` はステージした差分の足した行だけを調べ、同じ規則に当たったら止める
+
+規則は [`scripts/scan-private.sh`](../scripts/scan-private.sh) の1か所にあり、`guard-private.sh` と `/mm-endgame` の公開前の調べもこれを使う。電話番号は携帯、固定、+81 の形を、全角の数字も含めて見る。メールアドレスは `noreply@anthropic.com` と `*@users.noreply.github.com` だけを通す。非公開の語は作者だけが書く `.claude/private-terms.local` に1行に1語で置き、大文字と小文字を区別せずに探す。Claude はこの一覧を読まず、当たったときも語そのものは出さず「`docs/x.md:12: private term`」のように場所と規則だけを出す。
+
+試験用の例文とテスト(`server/test/`、`eval/cases/`、`eval/test/`、`ios/Core/Tests/`、`scripts/test-hooks.sh`)では、電話番号とメールの形を調べない。詐欺の SMS の差出人や「サポートセンター 050-…」がテストの中身そのものだからだ。非公開の語はそこでも調べるので、家族の本当の番号やアドレスは一覧のほうに書く。バンドル ID の `com.sagochiko.mimamori` とチームの ID は公開してよいもので、止めない。
+
+自己テスト(`scripts/test-hooks.sh`)は、本物の一覧を読まないよう、テストのときだけ差し替えの変数でダミーの一覧を渡す。worktree から本体のツリーの一覧を見つけられるかも、使い捨てのリポジトリで確かめる。`.worktreeinclude` には2つの一覧を書き、Claude Code が作る worktree にも写させる。
 
 ## サブエージェント
 
@@ -77,5 +91,7 @@
 フックはツールの呼び出しの文字列を見て止めるので、Bash から Python や Node のスクリプトがファイルを開く読み方までは止めきれない。OS のレベルで確実に止めるのは Claude Code のサンドボックスだが、`xcodebuild` やシミュレータとの相性を確かめていないので、ハッカソン中は入れていない。秘密は Workers の秘密の置き場を正にし、手元の `.dev.vars` には開発用の値だけを置く。
 
 試験用の例文の置き場と holdout の守りにも、文字列の判定では止めきれない書き方が残っている。`cd eval/cases && cat */a.jsonl` のように移ってからのワイルドカードと、`{dev,x}` のようなブレース展開だ。2026年11月3日のレビューで見つかった。大文字のパス、`eval/cases` の直下のワイルドカード、例文集めの役が置き場と holdout を1行に並べる形は止めている(`scripts/test-hooks.sh`)。わざと崩した書き方をしないと通らないので、サブエージェントには止められた操作を別の書き方で通さないよう指示して補う。
+
+個人の情報の調べは文字だけを見る。画像、PDF、スクリーンショットの中の文字は調べないので、`docs/screenshots/` に置く画面はデモ用の家族で撮る。`gh api` で書く Issue やコメントも `guard-private.sh` を通らないが、`gh api` は毎回作者に確認する設定にしてある。マージの関門も `gh pr merge` しか見ないので、手元でマージして main に push する道は残っている。
 
 この文書の仕組みは、コミットの前に別のレビュー役のサブエージェント(Opus)に試させた。見つかった10件(書きかけの裏の作業中にテストの関門が走る、`cd server && grep -rn` で秘密がすり抜ける、試験の約束が計画と skill で食い違う、など)を直してからコミットした。

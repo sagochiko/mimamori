@@ -1,0 +1,20 @@
+#!/bin/bash
+# pre-commit: the repository becomes public at submission, so refuse added lines that carry
+# personal data (phone numbers, email addresses, terms of the author's private list). The rules live
+# in scripts/scan-private.sh. Only where and which rule are printed, never the matched text.
+root=$(git rev-parse --show-toplevel) || exit 1
+out=$("$root/scripts/scan-private.sh" staged)
+status=$?
+if ((status == 1)); then
+  {
+    echo "pre-commit: the staged lines below look like personal data (the text itself is not shown):"
+    sed 's/^/  /' <<<"$out"
+    echo "Take it out of those lines. If it is meant to be public (a number from a published scam alert), ask the author."
+  } >&2
+  exit 1
+fi
+if ((status != 0)); then
+  echo "pre-commit: the personal-data scan could not run (scripts/scan-private.sh staged exited $status)" >&2
+  exit 1
+fi
+exit 0
