@@ -1,0 +1,10 @@
+{
+  // Type-checks eval/ with Node's types: cd server && npx tsc --noEmit -p ../eval/tsconfig.json
+  "extends": "../server/tsconfig.json",
+  "compilerOptions": {
+    "lib": ["es2024"],
+    "types": ["node"],
+    "typeRoots": ["../server/node_modules/@types"]
+  },
+  "include": ["./**/*.ts"]
+}

@@ -18,6 +18,10 @@ if [[ -f ios/Core/Package.swift ]]; then run "ios/Core swift test" bash -c "cd i
 if [[ -f server/package.json ]]; then
   run "server typecheck" bash -c "cd server && npm run --silent --if-present typecheck"
   run "server vitest" bash -c "cd server && npx vitest run --reporter=dot"
+  if [[ -f eval/tsconfig.json ]]; then
+    run "eval typecheck" bash -c "cd server && npx tsc --noEmit -p ../eval/tsconfig.json"
+    run "eval node test" bash -c "cd server && npx tsx --test ../eval/test/*.test.ts"
+  fi
 else
   echo "skip server (not created yet)"
 fi

@@ -12,6 +12,7 @@
     "@cloudflare/vitest-plugin": "^1.5.1",
     "@msw/cloudflare": "^0.2.0",
     "msw": "^3.0.3",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0",
     "wrangler": "^4.157.0"
