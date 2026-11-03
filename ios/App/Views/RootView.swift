@@ -24,7 +24,7 @@ struct RootView: View {
   }
 }
 
-extension AppModel.Problem {
+extension Problem {
   var title: String {
     switch self {
     case .badCode: "コードが違います"

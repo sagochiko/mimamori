@@ -162,7 +162,7 @@ struct APIClientTests {
 
   // MARK: 401 で役の選択に戻る
 
-  @Test("401 が返ると deviceKey を消し、役の選択に戻る")
+  @Test("401 が返ると deviceKey を消し、onUnauthorized を1回呼ぶ(画面の切り替えは SessionTests)")
   func unauthorizedClearsKey() async throws {
     let store = InMemoryDeviceKeyStore(.sample)
     let transport = StubTransport(status: 401, body: #"{"error":"unauthorized"}"#)
@@ -170,7 +170,6 @@ struct APIClientTests {
     let client = APIClient(baseURL: testBaseURL, transport: transport, store: store) {
       counter.increment()
     }
-    #expect(AppRoute(store.load()) == .familyHome)
 
     await #expect(throws: APIError.unauthorized) {
       _ = try await client.createInvite()
@@ -178,7 +177,6 @@ struct APIClientTests {
 
     #expect(store.load() == nil)
     #expect(counter.value == 1)
-    #expect(AppRoute(store.load()) == .chooseRole)
   }
 
   @Test("401 以外の失敗では deviceKey を消さない", arguments: [400, 403, 404, 410, 429, 500, 503])
