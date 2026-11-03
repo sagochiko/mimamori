@@ -5,15 +5,25 @@ import Testing
 
 @Suite("データの形")
 struct ModelTests {
-  @Test("危なさは 1、2、3 だけを読む")
-  func levelsAreOneToThree() throws {
+  /// One alert row; only `level` and `source` change between the cases below.
+  private func alertJSON(level: String, source: String = #""sms""#) -> Data {
+    Data(
+      #"{"id":"a-1","source":\#(source),"level":\#(level),"reasons":[],"summary":"","createdAt":"2026-11-03T00:00:00Z"}"#
+        .utf8)
+  }
+
+  @Test("危なさの 1、2、3 は読める", arguments: [(1, Level.doNotOpen), (2, .waitForFamily), (3, .lowConcern)])
+  func readsLevels(raw: Int, level: Level) throws {
     #expect(Level.allCases.map(\.rawValue) == [1, 2, 3])
-    for bad in ["0", "4", "null", #""safe""#] {
-      let json =
-        #"{"id":"a-1","source":"sms","level":\#(bad),"reasons":[],"summary":"","createdAt":"2026-11-03T00:00:00Z"}"#
-      #expect(throws: (any Error).self, "level \(bad)") {
-        _ = try APIClient.decoder.decode(Alert.self, from: Data(json.utf8))
-      }
+    let alert = try APIClient.decoder.decode(Alert.self, from: alertJSON(level: "\(raw)"))
+    #expect(alert.level == level)
+    #expect(alert.source == .sms)
+  }
+
+  @Test("危なさは 1、2、3 のほかを読まない(「安全」に落ちる道を作らない)", arguments: ["0", "4", "null", #""safe""#])
+  func rejectsOtherLevels(bad: String) {
+    #expect(throws: (any Error).self) {
+      _ = try APIClient.decoder.decode(Alert.self, from: alertJSON(level: bad))
     }
   }
 
@@ -30,12 +40,18 @@ struct ModelTests {
     #expect(alert.createdAt == Date(timeIntervalSince1970: 1_793_750_400))
   }
 
+  @Test("決まった経路の知らせは読める", arguments: AlertSource.allCases)
+  func readsKnownSources(source: AlertSource) throws {
+    let alert = try APIClient.decoder.decode(
+      Alert.self, from: alertJSON(level: "2", source: "\"\(source.rawValue)\""))
+    #expect(alert.source == source)
+    #expect(alert.level == .waitForFamily)
+  }
+
   @Test("知らない経路の知らせは読めないことにする")
   func unknownSourceFails() {
-    let json =
-      #"{"id":"a-1","source":"fax","level":2,"reasons":[],"summary":"","createdAt":"2026-11-03T00:00:00Z"}"#
     #expect(throws: (any Error).self) {
-      _ = try APIClient.decoder.decode(Alert.self, from: Data(json.utf8))
+      _ = try APIClient.decoder.decode(Alert.self, from: alertJSON(level: "2", source: #""fax""#))
     }
   }
 
