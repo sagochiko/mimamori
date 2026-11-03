@@ -50,6 +50,8 @@ gh pr merge --merge --delete-branch
 
 The PR body has: what changed and why, the verification commands with their real output (numbers), the reviewer's verdict with each finding and what you did about it, device steps queued, and `Closes #$ARGUMENTS`. Write it in Japanese.
 
+Merge it yourself once the review is in the PR and no finding you accepted is left unfixed; do not ask the author first (the author decided this on 2026-11-03). The same holds for PRs without an issue, such as harness fixes. Never merge a PR that has not been reviewed. Run `gh pr merge` as its own command, not chained with other commands.
+
 ## 8. Record
 
 If anything surprised you, an approach was dropped, or you overruled Claude's suggestion, add an entry with `/mm-devlog`. Then report to the user: the PR link, the verification numbers, and what is queued for them.
