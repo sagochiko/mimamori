@@ -51,3 +51,56 @@ phase_now() {
 condition() {
   sed -n '/^---$/,/^---$/p' "$PROJECT_DIR/CONDITIONS.md" | sed -n "s/^$1: *//p" | head -1
 }
+
+# with_timeout <seconds> <command...>: run a command that may hang on the network (gh, git fetch).
+# macOS 27 and Linux have timeout(1); perl's alarm covers older Macs.
+with_timeout() {
+  if command -v timeout >/dev/null; then timeout "$@"; else perl -e 'alarm shift; exec @ARGV or exit 127' "$@"; fi
+}
+
+# work_tree <hook input json>: the working tree Claude is in. ${CLAUDE_PROJECT_DIR} stays where the
+# session started; the input's cwd follows Claude into a git worktree and after `cd`
+# (https://code.claude.com/docs/en/worktrees, "Hook paths don't follow the worktree").
+work_tree() {
+  local cwd top
+  cwd=$(jq -r '.cwd // empty' <<<"$1" 2>/dev/null)
+  if [[ -n "$cwd" ]] && top=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null); then echo "$top"; else echo "$PROJECT_DIR"; fi
+}
+
+# main_tree [dir]: the main working tree, also from inside a git worktree. Its parent is the common
+# git directory; --show-toplevel would give the worktree itself.
+main_tree() {
+  local common
+  common=$(git -C "${1:-$PROJECT_DIR}" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  dirname "$common"
+}
+
+# private_list prior-work|private-terms: the author's private list. It is gitignored, so only the
+# main working tree has it. scripts/test-hooks.sh points the MM_*_FILE variables at dummy lists;
+# guard-prior-work.sh stops Claude from setting them.
+private_list() {
+  local main
+  case $1 in
+    prior-work) [[ -n "${MM_PRIOR_WORK_FILE:-}" ]] && { echo "$MM_PRIOR_WORK_FILE"; return; } ;;
+    private-terms) [[ -n "${MM_PRIVATE_TERMS_FILE:-}" ]] && { echo "$MM_PRIVATE_TERMS_FILE"; return; } ;;
+  esac
+  main=$(main_tree) || main=$PROJECT_DIR
+  echo "$main/.claude/$1.local"
+}
+
+# author_waiting: how many steps wait for the author, that is, open issues labeled needs-human whose
+# title starts with "作者:". Cached for 5 minutes in .claude/state/author-waiting as "<epoch> <count>",
+# the same file the mm-band mod reads. Prints "?" when gh fails or is offline, never a made-up 0.
+author_waiting() {
+  local cache="$STATE_DIR/author-waiting" now at n
+  now=$(date +%s)
+  { read -r at n <"$cache"; } 2>/dev/null
+  if [[ "$at" =~ ^[0-9]+$ && "$n" =~ ^[0-9]+$ ]] && ((now - at < 300)); then echo "$n"; return; fi
+  if n=$(cd "$PROJECT_DIR" && with_timeout 8 gh issue list --label needs-human --state open --limit 200 \
+    --json title -q '[.[] | select(.title | startswith("作者:"))] | length' 2>/dev/null) && [[ "$n" =~ ^[0-9]+$ ]]; then
+    mkdir -p "$STATE_DIR" && echo "$now $n" >"$cache"
+    echo "$n"
+  else
+    echo "?"
+  fi
+}

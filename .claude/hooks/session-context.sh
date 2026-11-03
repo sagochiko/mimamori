@@ -23,12 +23,11 @@ case $(phase_now) in
   submit_window) ctx+=$'\n'"Phase: submission window. Do not change product code; finish and check the submission." ;;
 esac
 
-if open=$(gh issue list --milestone "$milestone" --state open --limit 20 \
+if open=$(with_timeout 8 gh issue list --milestone "$milestone" --state open --limit 30 \
   --json number,title,labels -q '.[] | "#\(.number) \(.title) [\(.labels | map(.name) | join(","))]"' 2>/dev/null) && [[ -n "$open" ]]; then
   ctx+=$'\n'"Open issues in this milestone:"$'\n'"$open"
 fi
-waiting=$(grep -c '^- \[ \]' docs/human-queue.md 2>/dev/null || true)
-ctx+=$'\n'"Items waiting for the author in docs/human-queue.md: ${waiting:-0}."
+ctx+=$'\n'"Steps waiting for the author (open issues titled \"作者:\", label needs-human; ? means gh could not be reached): $(author_waiting). /mm-human-queue opens and closes them."
 if [[ -s eval/results.jsonl ]]; then
   ctx+=$'\n'"Latest dev eval: $(grep '"set":"dev"' eval/results.jsonl | tail -1)"
 fi
