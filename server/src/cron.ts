@@ -2,19 +2,25 @@
 // 5 Cron Triggers per account. Each job says when it is due; dueJobs() picks them from the tick time.
 // To add a job (case watch in task 10, Gmail polling in task 7), append it to JOBS.
 
-import { purgeExpired } from "./retention";
+import { ExternalBudget } from "./budget";
+import { purgeExpired, purgeExpiredSessions } from "./retention";
 
 const TICK_MINUTES = 5;
 const JST_OFFSET_MS = 9 * 3600_000;
 
+/** Jobs in one tick share one budget of outside calls (see src/budget.ts). */
+type Run = (env: Env, now: number, budget: ExternalBudget) => Promise<void>;
+
 export type Job =
-  | { name: string; everyMinutes: number; run: (env: Env, now: number) => Promise<void> }
+  | { name: string; everyMinutes: number; run: Run }
   // dailyAtJst is "HH:MM" on a 5-minute boundary.
-  | { name: string; dailyAtJst: string; run: (env: Env, now: number) => Promise<void> };
+  | { name: string; dailyAtJst: string; run: Run };
 
 export const JOBS: Job[] = [
   // 04:00 JST, when the family is least likely to be using the app.
   { name: "retention", dailyAtJst: "04:00", run: purgeExpired },
+  // Agent sessions of old cases, a few at a time, so a backlog finishes over the following ticks.
+  { name: "retention-sessions", everyMinutes: 5, run: purgeExpiredSessions },
 ];
 
 /** Minutes since midnight in JST, rounded down to the tick. Ticks can arrive a little late. */
@@ -35,7 +41,8 @@ export function dueJobs<T extends Job>(scheduledTime: number, jobs: readonly T[]
 /** Runs each due job; one job failing does not stop the others. */
 export async function runScheduled(env: Env, scheduledTime: number, jobs: readonly Job[] = JOBS): Promise<void> {
   const due = dueJobs(scheduledTime, jobs);
-  const results = await Promise.allSettled(due.map((job) => job.run(env, scheduledTime)));
+  const budget = new ExternalBudget();
+  const results = await Promise.allSettled(due.map((job) => job.run(env, scheduledTime, budget)));
   results.forEach((result, i) => {
     if (result.status === "rejected") {
       const reason = result.reason instanceof Error ? result.reason.name : typeof result.reason;

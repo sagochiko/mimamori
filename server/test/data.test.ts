@@ -52,6 +52,25 @@ async function seed(family: Created, opts: { at?: number; sessionId?: string; re
   return { alertId, caseId, smileId, r2Key };
 }
 
+/** Many old cases, each with its own agent session. */
+async function seedSessions(family: Created, count: number, at: number): Promise<string[]> {
+  const ids = Array.from({ length: count }, (_, i) => `sesn_bulk_${i}_${crypto.randomUUID().slice(0, 8)}`);
+  await env.DB.batch(
+    ids.map((sessionId) =>
+      env.DB.prepare(
+        "INSERT INTO cases (id, family_id, state, agent_session_id, notified_at) VALUES (?, ?, 'notified', ?, ?)",
+      ).bind(crypto.randomUUID(), family.familyId, sessionId, at),
+    ),
+  );
+  return ids;
+}
+
+async function tick(scheduledTime: number): Promise<void> {
+  const ctx = createExecutionContext();
+  await worker.scheduled(createScheduledController({ scheduledTime, cron: "*/5 * * * *" }), env, ctx);
+  await waitOnExecutionContext(ctx);
+}
+
 async function countFor(familyId: string): Promise<Record<string, number>> {
   const counts: Record<string, number> = {};
   for (const table of FAMILY_TABLES) {
@@ -192,6 +211,62 @@ describe("DELETE /families/me (delete everything)", () => {
   });
 });
 
+describe("DELETE /families/me when outside services fail", () => {
+  it("answers 502 with gmail pending when Google does not revoke the grant", async () => {
+    const family = await createFamily();
+    await seed(family, { refreshToken: "token" });
+    network.use(
+      http.post("https://oauth2.googleapis.com/revoke", () => HttpResponse.json({ error: "server_error" }, { status: 500 })),
+    );
+
+    const res = await call("DELETE", "/families/me", { deviceKey: family.deviceKey });
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "cleanup_failed", pending: ["gmail"] });
+    expect((await countFor(family.familyId)).families).toBe(1);
+  });
+
+  it("answers 502, not 500, when the request to Anthropic itself throws", async () => {
+    const family = await createFamily();
+    await seed(family, { sessionId: "sesn_network_down" });
+    network.use(http.delete("https://api.anthropic.com/v1/sessions/:id", () => HttpResponse.error()));
+
+    const res = await call("DELETE", "/families/me", { deviceKey: family.deviceKey });
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "cleanup_failed", pending: ["agent_sessions"] });
+  });
+
+  it("stays within 40 outside calls per request and finishes on the next call", async () => {
+    const family = await createFamily();
+    await seed(family, { refreshToken: "token" });
+    const sessions = await seedSessions(family, 45, Date.now());
+    let calls = 0;
+    const deleted: string[] = [];
+    network.use(
+      http.post("https://oauth2.googleapis.com/revoke", () => {
+        calls++;
+        return new HttpResponse(null, { status: 200 });
+      }),
+      http.delete("https://api.anthropic.com/v1/sessions/:id", ({ params }) => {
+        calls++;
+        deleted.push(String(params.id));
+        return HttpResponse.json({ id: params.id, type: "session_deleted" });
+      }),
+    );
+
+    const first = await call("DELETE", "/families/me", { deviceKey: family.deviceKey });
+    expect(first.status).toBe(502);
+    expect(await first.json()).toEqual({ error: "cleanup_failed", pending: ["agent_sessions"] });
+    expect(calls).toBeLessThanOrEqual(40);
+
+    calls = 0;
+    const second = await call("DELETE", "/families/me", { deviceKey: family.deviceKey });
+    expect(second.status).toBe(204);
+    expect(calls).toBeLessThanOrEqual(40);
+    expect(deleted.sort()).toEqual([...sessions].sort());
+    expect((await countFor(family.familyId)).families).toBe(0);
+  });
+});
+
 describe("cron", () => {
   // 04:00 JST is 19:00 UTC on the previous day.
   const cleanupTick = Date.UTC(2026, 10, 5, 19, 0, 0);
@@ -268,6 +343,52 @@ describe("cron", () => {
     const cases = await env.DB.prepare("SELECT id FROM cases WHERE family_id = ?").bind(family.familyId).all<{ id: string }>();
     expect(cases.results.map((r) => r.id)).toEqual([stuck.caseId]);
     expect(cases.results.map((r) => r.id)).not.toContain(gone.caseId);
+  });
+
+  it("deletes 60 due sessions over several ticks, at most 40 outside calls per run", async () => {
+    // Storage is shared within this file; start without old cases left by earlier tests.
+    await env.DB.prepare("DELETE FROM cases").run();
+    const family = await createFamily();
+    const sessions = await seedSessions(family, 60, cleanupTick - 31 * DAY);
+    const perRun: number[] = [];
+    const deleted: string[] = [];
+    network.use(
+      http.delete("https://api.anthropic.com/v1/sessions/:id", ({ params }) => {
+        perRun[perRun.length - 1] = (perRun.at(-1) ?? 0) + 1;
+        deleted.push(String(params.id));
+        return HttpResponse.json({ id: params.id, type: "session_deleted" });
+      }),
+    );
+
+    for (const offset of [0, 5, 10]) {
+      perRun.push(0);
+      await tick(cleanupTick + offset * 60_000);
+    }
+    expect(perRun.every((n) => n <= 40)).toBe(true);
+    expect(deleted.sort()).toEqual([...sessions].sort());
+    const left = await env.DB.prepare("SELECT COUNT(*) AS n FROM cases WHERE family_id = ?")
+      .bind(family.familyId)
+      .first<{ n: number }>();
+    expect(left?.n).toBe(0);
+    // Nothing left to do: later ticks make no outside calls.
+    perRun.push(0);
+    await tick(cleanupTick + 15 * 60_000);
+    expect(perRun.at(-1)).toBe(0);
+  });
+
+  it("still deletes old alerts, smiles, and photos when a session delete throws", async () => {
+    const family = await createFamily();
+    const old = await seed(family, { at: cleanupTick - 31 * DAY, sessionId: "sesn_throws" });
+    network.use(http.delete("https://api.anthropic.com/v1/sessions/:id", () => HttpResponse.error()));
+
+    await tick(cleanupTick);
+
+    const counts = await countFor(family.familyId);
+    expect(counts.alerts).toBe(0);
+    expect(counts.smiles).toBe(0);
+    expect(await env.PHOTOS.head(old.r2Key)).toBeNull();
+    // The case waits for its session to be deleted on a later tick.
+    expect(counts.cases).toBe(1);
   });
 
   it("leaves data alone at ticks where the cleanup is not due", async () => {

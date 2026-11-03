@@ -17,12 +17,18 @@ export function agentHeaders(env: Env): Record<string, string> {
 /**
  * Deletes one session with its events and sandbox. Returns true when the session is gone,
  * including when it was already deleted (404). A running session cannot be deleted; that comes back
- * as false and the caller keeps its records so the deletion can be retried.
+ * as false, as does a request that throws, and the caller keeps its records so the deletion can be
+ * retried.
  */
 export async function deleteAgentSession(env: Env, sessionId: string): Promise<boolean> {
-  const res = await fetch(`${API}/sessions/${encodeURIComponent(sessionId)}`, {
-    method: "DELETE",
-    headers: agentHeaders(env),
-  });
-  return res.ok || res.status === 404;
+  try {
+    const res = await fetch(`${API}/sessions/${encodeURIComponent(sessionId)}`, {
+      method: "DELETE",
+      headers: agentHeaders(env),
+    });
+    return res.ok || res.status === 404;
+  } catch {
+    // Network failure: same as "not deleted yet".
+    return false;
+  }
 }

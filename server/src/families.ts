@@ -9,6 +9,7 @@ import {
   type Role,
 } from "./auth";
 import { deleteAgentSession } from "./agents";
+import { ExternalBudget } from "./budget";
 import { revokeGmailGrant } from "./gmail";
 import { errorResponse, HttpError, json, noContent, readJson } from "./http";
 import { sendPush } from "./push";
@@ -208,18 +209,38 @@ export async function deleteEverything(request: Request, env: Env): Promise<Resp
   const familyId = me.familyId;
   const pending: string[] = [];
 
+  // At most 40 outside calls per request (Workers Free allows 50). What is done is recorded at once,
+  // so a family with more sessions than that finishes over a few calls.
+  const budget = new ExternalBudget();
+
   const grant = await env.DB.prepare("SELECT refresh_token_enc FROM gmail_auth WHERE family_id = ?")
     .bind(familyId)
     .first<{ refresh_token_enc: string }>();
-  if (grant && !(await revokeGmailGrant(env, grant.refresh_token_enc))) pending.push("gmail");
+  if (grant) {
+    if (budget.take() && (await revokeGmailGrant(env, grant.refresh_token_enc))) {
+      await env.DB.prepare("DELETE FROM gmail_auth WHERE family_id = ?").bind(familyId).run();
+    } else {
+      pending.push("gmail");
+    }
+  }
 
   const sessions = await env.DB.prepare(
     "SELECT DISTINCT agent_session_id AS id FROM cases WHERE family_id = ? AND agent_session_id IS NOT NULL",
   )
     .bind(familyId)
     .all<{ id: string }>();
-  const deleted = await Promise.all(sessions.results.map((s) => deleteAgentSession(env, s.id)));
-  if (deleted.includes(false)) pending.push("agent_sessions");
+  const outcomes = await Promise.all(
+    sessions.results.map(async (s) => (budget.take() && (await deleteAgentSession(env, s.id)) ? s.id : null)),
+  );
+  const done = outcomes.filter((id): id is string => id !== null);
+  if (done.length > 0) {
+    await env.DB.prepare(
+      "UPDATE cases SET agent_session_id = NULL WHERE family_id = ? AND agent_session_id IN (SELECT value FROM json_each(?))",
+    )
+      .bind(familyId, JSON.stringify(done))
+      .run();
+  }
+  if (done.length < sessions.results.length) pending.push("agent_sessions");
 
   if (pending.length > 0) return errorResponse(502, "cleanup_failed", { pending });
 

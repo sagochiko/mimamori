@@ -13,11 +13,16 @@ const REVOKE_URL = "https://oauth2.googleapis.com/revoke";
  */
 export async function revokeGmailGrant(env: Env, refreshTokenEnc: string): Promise<boolean> {
   const token = await openText(env.TOKEN_ENC_KEY, refreshTokenEnc);
-  const res = await fetch(REVOKE_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ token }).toString(),
-  });
+  let res: Response;
+  try {
+    res = await fetch(REVOKE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ token }).toString(),
+    });
+  } catch {
+    return false;
+  }
   if (res.ok) return true;
   if (res.status === 400) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
