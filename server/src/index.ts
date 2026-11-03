@@ -3,6 +3,7 @@
 import { runScheduled } from "./cron";
 import { createFamily, createInvite, deleteEverything, joinInvite, leaveFamily, registerApns } from "./families";
 import { errorResponse, HttpError } from "./http";
+import { handleJudgeBatch } from "./judge";
 
 type Handler = (request: Request, env: Env, params: string[], ctx: ExecutionContext) => Promise<Response>;
 
@@ -43,9 +44,8 @@ export default {
     await runScheduled(env, controller.scheduledTime);
   },
 
-  // Task 6 adds the judge consumer. Until then nothing is sent to the queue; anything that does
-  // arrive is retried rather than dropped.
-  async queue(batch): Promise<void> {
-    batch.retryAll();
+  // JUDGE_QUEUE: Claude's judgment over the rule result, then the alert and the pushes (src/judge.ts).
+  async queue(batch, env): Promise<void> {
+    await handleJudgeBatch(batch, env);
   },
 } satisfies ExportedHandler<Env>;
