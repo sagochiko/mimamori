@@ -31,8 +31,8 @@
   "triggers": { "crons": ["*/5 * * * *"] },
 
   "vars": {
-    // The app's bundle ID. Fill in once the Xcode project fixes it (task 3).
-    "APNS_TOPIC": "REPLACE_WITH_APP_BUNDLE_ID"
+    // The app's bundle ID (APNs topic).
+    "APNS_TOPIC": "com.sagochiko.mimamori"
   },
 
   // Set by the author with `wrangler secret put`; the shape is in .dev.vars.example.
