@@ -9,9 +9,6 @@
 // A notice that did not get through is retried with the queue message: the message id is the alert
 // id, and a redelivered message whose alert row exists only does what is left (the mother's push,
 // opening the case), without asking Claude again or telling anyone twice.
-//
-// Not wired yet: judgeByRules comes from src/rules/ (#6). Until it merges, defaultJudgeDeps throws
-// for it, so jobs are retried rather than judged half-way.
 
 import { ExternalBudget } from "./budget";
 import { CaseNoticeDeferred, openCase } from "./cases";
@@ -22,10 +19,9 @@ import {
   type AlertSource,
   type ClaudeJudgment,
   type Level,
-  type RuleInput,
-  type RuleResult,
 } from "./claude";
 import { sendPush, type PushPayload } from "./push";
+import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
 
 export interface JudgePayload {
   sender?: string;
@@ -50,9 +46,7 @@ export interface JudgeDeps {
 }
 
 export const defaultJudgeDeps: JudgeDeps = {
-  judgeByRules: () => {
-    throw new Error("judgeByRules is not wired until #6 merges");
-  },
+  judgeByRules,
   askClaude: (env, input, rule) => requestClaudeJudgment(env, input, rule),
   openCase,
   now: () => Date.now(),

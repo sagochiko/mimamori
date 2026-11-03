@@ -10,8 +10,8 @@ import {
   parseClaudeJudgment,
   requestClaudeJudgment,
   type ClaudeJudgment,
-  type RuleResult,
 } from "../src/claude";
+import type { RuleResult } from "../src/rules";
 import { network } from "./network";
 
 const MESSAGES_URL = "https://api.anthropic.com/v1/messages";
@@ -227,6 +227,11 @@ describe("buildClaudeRequest", () => {
     expect(user.match(/<\/untrusted>/g)).toHaveLength(1);
     expect(user.match(/<untrusted>/g)).toHaveLength(1);
     expect(user.trimEnd().endsWith("</untrusted>")).toBe(true);
+  });
+
+  it("names every source the rules take, including a document image", () => {
+    const user = buildClaudeRequest({ source: "document", text: "逮捕状" }, undecided).messages[0]?.content ?? "";
+    expect(user).toMatch(/^経路: 書類の画像/);
   });
 
   it("tells Claude never to call anything safe", () => {

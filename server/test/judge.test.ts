@@ -9,10 +9,11 @@ import { http, HttpResponse } from "msw";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExternalBudget } from "../src/budget";
 import { CaseNoticeDeferred, openCase } from "../src/cases";
-import { parseClaudeJudgment, type ClaudeJudgment, type RuleInput, type RuleResult } from "../src/claude";
+import { parseClaudeJudgment, type ClaudeJudgment } from "../src/claude";
 import worker from "../src/index";
 import {
   DEDUPE_WINDOW_MS,
+  defaultJudgeDeps,
   enqueueJudge,
   handleJudgeBatch,
   JUDGE_TEXT_MAX_CHARS,
@@ -20,10 +21,12 @@ import {
   type JudgeJob,
 } from "../src/judge";
 import { resetApnsJwtCache } from "../src/push";
+import { judgeByRules, type RuleInput, type RuleResult } from "../src/rules";
 import { createFamily, invite, join } from "./helpers";
 import { network } from "./network";
 
 const SANDBOX = "https://api.sandbox.push.apple.com";
+const MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 const T0 = Date.UTC(2026, 10, 3, 3, 0, 0);
 
 let judgeEnv: Env;
@@ -633,15 +636,50 @@ describe("enqueueJudge", () => {
 });
 
 describe("worker.queue", () => {
-  it("hands batches to the judge consumer, which retries while the rules are not wired", async () => {
+  it("uses the real rules by default", () => {
+    expect(defaultJudgeDeps.judgeByRules).toBe(judgeByRules);
+  });
+
+  it("judges a batch with the real rules, Claude over HTTP, and the real openCase", async () => {
     const fam = await setupFamily();
+    let claudeRequests = 0;
+    network.use(
+      http.post(MESSAGES_URL, () => {
+        claudeRequests++;
+        const answer = { ...claudeSays({ level: 2 }), reasons: ["期限で急がせる", "公式に似せたドメイン"] };
+        return HttpResponse.json({
+          id: "msg_test",
+          type: "message",
+          role: "assistant",
+          model: "claude-haiku-5-5",
+          content: [{ type: "text", text: JSON.stringify(answer) }],
+          stop_reason: "end_turn",
+        });
+      }),
+    );
+    // A look-alike domain with a deadline: the rules alone already put this at level 1.
+    const job: JudgeJob = {
+      familyId: fam.familyId,
+      source: "sms",
+      payload: { sender: "+639000000000", text: "【Amazon】本日中に更新しないとアカウントが停止されます https://amazon-pay-update.top/" },
+    };
+    const rule = judgeByRules({ source: job.source, ...job.payload });
+    expect(rule.level).toBe(1);
+
     const batch = createMessageBatch<unknown>("mimamori-judge", [
-      { id: `msg-${crypto.randomUUID()}`, timestamp: new Date(T0), attempts: 1, body: smsJob(fam.familyId) },
+      { id: `msg-${crypto.randomUUID()}`, timestamp: new Date(T0), attempts: 1, body: job },
     ]);
     const ctx = createExecutionContext();
     await worker.queue(batch, judgeEnv);
     const result = await getQueueResult(batch, ctx);
-    expect(result.retryMessages).toHaveLength(1);
-    expect(await alertsOf(fam.familyId)).toHaveLength(0);
+    expect(result.explicitAcks).toHaveLength(1);
+    expect(claudeRequests).toBe(1);
+
+    const [alert] = await alertsOf(fam.familyId);
+    // Claude said 2; a confident rule result keeps it at 1, a non-confident one lets Claude decide.
+    expect(alert).toMatchObject({ rule_level: 1, claude_level: 2, level: rule.confident ? 1 : 2 });
+    expect(pushesTo([fam.tokens.mother])).toHaveLength(1);
+    expect(pushesTo(fam.tokens.family)).toHaveLength(2);
+    expect((await caseOf(alert?.id))?.family_notified_at).not.toBeNull();
   });
 });

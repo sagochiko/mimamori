@@ -1,5 +1,5 @@
 // The Claude judgment that is laid over the rule result ("Claude の判定の形" in docs/plan.md).
-// This file has no imports and touches no binding, so eval/run.ts can use it from Node as well.
+// It imports only types and touches no binding, so eval/run.ts can use it from Node as well.
 //
 // Request shape, checked 2026-11-03 with the claude-docs MCP:
 // - /docs/en/build-with-claude/structured-outputs: POST /v1/messages with
@@ -12,26 +12,13 @@
 //   default and counts toward max_tokens, so the reply can start with a thinking block.
 // - /docs/en/build-with-claude/effort: output_config.effort, default "medium" on Haiku 5.5.
 
+import type { RuleInput, RuleResult, RuleSource } from "./rules/index";
+
 export type Level = 1 | 2 | 3;
 
 /** The sources an alert can come from (the alerts.source column). */
 export type AlertSource = "sms" | "gmail" | "dns" | "page" | "call" | "consult";
 export const ALERT_SOURCES: readonly AlertSource[] = ["sms", "gmail", "dns", "page", "call", "consult"];
-
-// The rule contract ("決まった規則の判定" in docs/plan.md). Task 4 (#6) builds judgeByRules in
-// src/rules/; until it merges these mirror its input and output so both sides meet the same shape.
-export interface RuleInput {
-  source: AlertSource;
-  sender?: string;
-  domain?: string;
-  text?: string;
-  url?: string;
-}
-export interface RuleResult {
-  level: Level | null;
-  reasons: string[];
-  confident: boolean;
-}
 
 /** Exactly what Structured Outputs returns. */
 export interface ClaudeJudgment {
@@ -172,13 +159,14 @@ export function decide(rule: RuleResult, claude: ClaudeJudgment | null): Decisio
   return { level, reasons, ruleLevel: rule.level, claudeLevel: claude.level, checking: false };
 }
 
-const SOURCE_NAMES: Record<AlertSource, string> = {
+const SOURCE_NAMES: Record<RuleSource, string> = {
   sms: "SMS",
   gmail: "メール",
   dns: "DNS の問い合わせ",
   page: "Safari で開いたページ",
   call: "電話のあと",
   consult: "本人の相談",
+  document: "書類の画像",
 };
 
 const SYSTEM_PROMPT = `あなたは、離れて住む家族の iPhone に届いたものが詐欺かどうかを判定する係です。危なさを3段階で答えます。
