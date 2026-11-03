@@ -9,6 +9,9 @@ tool=$(jq -r '.tool_name // ""' <<<"$in")
 agent=$(jq -r '.agent_type // ""' <<<"$in")
 cmd=$(jq -r '.tool_input.command // ""' <<<"$in")
 targets=$(tool_targets "$in")
+# The disk is case-insensitive APFS: HOLDOUT.unlock and EVAL/CASES/POOL open the same files.
+# Set before the first check, so every match below ignores case.
+shopt -s nocasematch
 
 if [[ "$targets" == *holdout.unlock* ]]; then
   block guard-holdout "blocked: only the author creates .claude/state/holdout.unlock."
@@ -20,11 +23,14 @@ if [[ "$cmd" =~ (--set[[:space:]=]+holdout|eval-holdout) ]]; then
   fi
   block guard-holdout "blocked: the holdout set runs once, after the author creates .claude/state/holdout.unlock. Add it to docs/human-queue.md and keep tuning on the dev set."
 fi
-# The disk is case-insensitive APFS, so EVAL/CASES/POOL opens the same files.
-shopt -s nocasematch
 # Nobody reads the holdout, the curator included; checked before the curator's early exit below.
 if [[ "$targets" =~ (cases/holdout|(^|[[:space:]/\"\'])holdout/) ]]; then
   block guard-holdout "blocked: eval/cases/holdout is read once, in the final run. Work with eval/cases/dev."
+fi
+# A glob right under eval/cases/ (eval/cases/*/, eval/cases/p*ol/) can expand into the pool or the holdout.
+# Also checked before the curator's early exit: naming the pool next to such a glob must not open the holdout.
+if [[ "$targets" =~ cases/[^/[:space:]]*[*?[] ]]; then
+  block guard-holdout "blocked: name the eval/cases/dev path explicitly; a glob right under eval/cases can reach the pool or the holdout."
 fi
 # The curator writes only into the pool; `make eval-split` moves whole scam patterns into dev or holdout.
 if [[ "$agent" == "mm-eval-curator" ]]; then
@@ -32,10 +38,6 @@ if [[ "$agent" == "mm-eval-curator" ]]; then
     block guard-holdout "blocked: mm-eval-curator writes only under eval/cases/pool/."
   fi
   [[ "$targets" =~ eval/cases/pool ]] && exit 0
-fi
-# A glob right under eval/cases/ (eval/cases/*/, eval/cases/p*ol/) can expand into the pool or the holdout.
-if [[ "$targets" =~ cases/[^/[:space:]]*[*?[] ]]; then
-  block guard-holdout "blocked: name the eval/cases/dev path explicitly; a glob right under eval/cases can reach the pool or the holdout."
 fi
 if [[ "$targets" =~ (cases/pool|(^|[[:space:]/\"\'])pool/) ]]; then
   block guard-holdout "blocked: eval/cases/holdout and eval/cases/pool are off limits to anyone who tunes rules or prompts. Work with eval/cases/dev."
