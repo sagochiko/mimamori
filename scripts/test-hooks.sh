@@ -2,8 +2,9 @@
 # Feed sample tool calls to the guard hooks and check that each one blocks or passes as intended.
 cd "$(dirname "$0")/.." || exit 1
 export CLAUDE_PROJECT_DIR=$PWD
-export MM_LOG_DIR=$(mktemp -d) # keep test blocks out of the real usage log
-trap 'rm -rf "$MM_LOG_DIR"' EXIT
+T=$(mktemp -d) # everything the tests create: logs, a fake gh, throwaway repositories
+trap '[[ -n "${MM_KEEP_TEST_DIR:-}" ]] && echo "kept $T" || rm -rf "$T"' EXIT
+export MM_LOG_DIR=$T/logs # keep test blocks out of the real usage log
 H=.claude/hooks
 fail=0
 expect() { # <expected exit> <hook> <json> <label>
@@ -40,6 +41,64 @@ expect 2 guard-prod.sh '{"tool_name":"Bash","tool_input":{"command":"npx wrangle
 expect 0 guard-prod.sh '{"tool_name":"Bash","tool_input":{"command":"npx wrangler d1 migrations apply db --local"}}' "local D1 passes"
 out=$(echo '{"tool_name":"Bash","tool_input":{"command":"npx wrangler d1 migrations apply db --remote"}}' | $H/guard-prod.sh)
 [[ "$out" == *'"permissionDecision":"ask"'* ]] || { echo "hook test failed: remote D1 should ask"; fail=1; }
+# guard-merge: a fake gh answers from JSON files in $MM_FAKE_GH, and a throwaway bare repository
+# plays origin, so the gate is tested without GitHub.
+mkdir -p "$T/bin" "$T/gh"
+cat >"$T/bin/gh" <<'EOF'
+#!/bin/bash
+# Stand-in for gh: "gh pr view 41 ..." prints $MM_FAKE_GH/pr-41.json; anything else fails like an outage.
+f="$MM_FAKE_GH/$1-$3.json"
+[[ ("$1 $2" == "pr view" || "$1 $2" == "issue view") && -f "$f" ]] && cat "$f" && exit 0
+exit 1
+EOF
+chmod +x "$T/bin/gh"
+export MM_FAKE_GH=$T/gh
+g() { git -c user.name=test -c user.email=test@localhost -c commit.gpgsign=false -C "$T/work" "$@"; }
+git init -q --bare "$T/origin.git" && git init -q -b main "$T/work" && g remote add origin "$T/origin.git"
+g commit -q --allow-empty -m base && g push -q origin main
+g switch -q -c stale && g commit -q --allow-empty -m stale && stale=$(g rev-parse HEAD)
+g switch -q main && g commit -q --allow-empty -m moved && g push -q origin main
+g switch -q -c fresh && g commit -q --allow-empty -m fresh && fresh=$(g rev-parse HEAD)
+pr() { # <number> <head> <body> [comment]
+  jq -n --arg b "$3" --arg c "${4:-}" --arg h "$2" \
+    '{body:$b, comments:(if $c == "" then [] else [{body:$c}] end), headRefOid:$h, baseRefName:"main"}' >"$MM_FAKE_GH/pr-$1.json"
+}
+issue() { jq -n --arg b "$2" '{body:$b}' >"$MM_FAKE_GH/issue-$1.json"; }
+merge() { # <expected exit> <command> <label>
+  expect "$1" guard-merge.sh "$(jq -nc --arg c "$2" --arg d "$T/work" '{tool_name:"Bash",tool_input:{command:$c},cwd:$d}')" "$3"
+}
+review=$'## レビュー\n\nmm-reviewer は approve、直す指摘は無い。'
+issue 40 $'- [x] 招待コード\n- [ ] 実機の確認 → #45\n```text\n- [ ] 囲みの中の例\n```'
+issue 46 $'- [x] 招待コード\n- [ ] 残りの画面'
+issue 48 $'- [ ] 続きもこの #48 でやる'
+pr 41 "$fresh" "$review"$'\n\nCloses #40'
+pr 42 "$fresh" $'## 変えたこと\n\nCloses #40'
+pr 43 "$fresh" 'Closes #40' "$review"
+pr 44 "$fresh" "$review"$'\n\nCloses #40\nCloses #46'
+pr 47 "$fresh" "$review"$'\n\nfixes #48'
+pr 49 "$stale" "$review"$'\n\nCloses #40'
+pr 50 "$fresh" "$review"$'\n\nCloses #51'
+gh_path=$PATH
+PATH="$T/bin:$PATH"
+merge 0 'gh pr merge 41 --merge --delete-branch' "a reviewed PR whose open items say where they continue merges"
+merge 0 'gh pr merge https://github.com/sagochiko/mimamori/pull/41 --merge' "a PR named by URL is checked the same way"
+merge 2 'gh pr merge 42 --merge --delete-branch' "a PR without review results is blocked"
+merge 0 'gh pr merge 43 --merge' "review results in a comment count"
+merge 2 'gh pr merge 44 --merge' "an unchecked item that names no follow-up issue is blocked"
+merge 2 'gh pr merge 47 --merge' "an unchecked item that names only its own issue is blocked"
+merge 2 'gh pr merge 49 --merge' "a PR whose head lacks the current origin/main is blocked"
+merge 2 'gh pr merge 99 --merge' "a PR gh cannot read is blocked (fail closed)"
+merge 2 'gh pr merge 50 --merge' "an issue gh cannot read is blocked (fail closed)"
+merge 2 'gh pr merge --merge --delete-branch' "a merge without a PR number is blocked"
+merge 2 'gh pr merge 41 --merge && gh pr merge 42 --merge' "two merges in one command are blocked"
+merge 0 'grep -n "gh pr merge" .claude/skills/mm-task/SKILL.md' "searching for the words gh pr merge passes"
+out=$(jq -nc --arg d "$T/work" '{tool_name:"Bash",tool_input:{command:"gh pr merge 44 --merge"},cwd:$d}' | "$H/guard-merge.sh" 2>&1)
+[[ "$out" == *"残りの画面"* && "$out" != *"実機の確認"* ]] || { echo "hook test failed: the merge gate lists exactly the open items without a follow-up"; fail=1; }
+PATH=$gh_path
+# A PreToolUse hook that times out or crashes lets the call through unless onFailure is "block"
+# (https://code.claude.com/docs/en/hooks). The gates that call the network must fail closed.
+jq -e '[.hooks.PreToolUse[].hooks[] | select(.command | endswith("guard-merge.sh")) | select(.onFailure == "block")] | length == 1' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: guard-merge.sh must be registered once with onFailure block"; fail=1; }
 # commit-msg: the convention and the personal-data check
 cm() { # <expected exit> <message> <label>
   local f; f=$(mktemp); printf '%s\n' "$2" >"$f"
