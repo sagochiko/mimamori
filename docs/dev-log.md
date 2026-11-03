@@ -49,3 +49,15 @@ Safari の拡張の `manifest.json` を、`Resources` という名前のフォ�
 `Info.plist` が無いという意味だと思って中身を調べたが、原因は別だった。iOS のバンドルの一番上に `Resources` というフォルダがあると、CFBundle がそれを古い形のバンドルとして読み、`Resources/` の中に `Info.plist` を探しにいく。
 
 フォルダごと入れるのをやめ、ファイルを1つずつバンドルの一番上へ写す書き方にして、ビルドは通った(作り直しから16秒)。フォルダの名前を変える案は、Safari が `manifest.json` をバンドルの一番上で探すので採らなかった。同じ確認の中で、`make simulator` が iOS 27.1 のランタイムに機種を作れない(`Incompatible device`)ことも分かり、今あった iOS 26.5 の iPhone 17 Pro で代わりに確かめた。使ったのは mm-implementer、`xcodebuild`、MobileBuildMCP の画面の操作。
+
+## 2026年11月3日 23:50 判定の形の字数を Claude 側で縛れない (#7)
+
+規則の即答のあとに Claude の判定を重ねるキューの受け手を作っていた。計画では Claude の答えを Structured Outputs で `{ level, reasons(最大3つ、各40字以内), message_to_protected(60字以内), injection_suspected }` の形だけ受け取る。
+
+Claude Code の実装役には「Structured Outputs の形、モデル ID、要るヘッダーは記憶で書かず claude-docs の MCP で確かめて、文書の場所をコメントに残す」と頼んだ。
+
+`/docs/en/build-with-claude/structured-outputs` を読むと、スキーマで使えないものに `minLength`、`maxLength` と、配列の `minItems` の0と1以外が並んでいた。つまり「最大3つ」「40字以内」「60字以内」は API に渡しても効かず、400 で返される。`claude-haiku-5-5` は考える過程(adaptive thinking)が既定で入り、答えの前に thinking のブロックが来ることもある。`stop_reason` が `refusal` か `max_tokens` のときは形が崩れうる、とも書かれていた。
+
+形さえ渡せば字数まで守られると思っていた。
+
+字数と個数の決まりはスキーマの説明文に書くだけにし、受け取ったあとに自前で確かめる(文字数は UTF-16 ではなく文字で数える)。決まりから外れた答えと `end_turn` 以外の答えは捨てて、規則の判定だけで知らせ、母には「確かめ中」と出す。理由や一言に「安全です」「問題ありません」のような言い回しが入った答えも、届いた文面に誘導されたものとみなして同じく捨てる。もう1つ、`alerts` の表には送り主もドメインも無く、「同じ送り主やドメインは1時間に1回」を判定できなかった。表の主な列は変えずに、送り主とドメインのハッシュと、知らせたかどうかの列を `migrations/0002_alert_dedupe.sql` で足した。使ったのは mm-implementer、claude-docs の MCP、`npx vitest run`、わざとコードを壊してテストが落ちるかを見る確認(7通りで各1〜5件が落ちた)。
