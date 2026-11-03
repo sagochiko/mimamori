@@ -37,3 +37,27 @@ Claude Code には、書いた本人とは別のレビュー役のサブエー�
 計画では、確かめるのは音声ファイルに書き出せるかどうかだけで、日本語で作れることは前提にしていた。
 
 Claude Code は、家族が自分の声を録って送る案を勧めた。録音なら言語に関係なく本人の声になり、まず文字の返事を通してから足せば、1〜2時間で済むという見立てだった(推測)。作者はいったん録音を選んだが、そのあと「家族の声は日本語無理そうならやめますか」と聞き直した。Claude Code が、日本語で使えないのは声を合成するパーソナルボイスだけで、録音なら使えると説明した。そのうえで作者は録音もやめ、家族の返事は文字で送り、母の iPhone の普通の読み上げの声で読む形に決めた。デモの「妹の声で返事が届く」は「妹の名前つきで返事が届いて読み上げられる」に変えた。使ったのは調べものと原文の確認のサブエージェント(Sonnet)2つ、AskUserQuestion、`/mm-human-queue`。
+
+## 2026年11月3日 22:00 外向きの通信の差し替えが素通りする (#4)
+
+裏側の土台で、「すべて消す」が Gmail の許可の取り消しと Managed Agents のセッションの削除を呼ぶところのテストを書いていた。どちらも本物の Google と Anthropic を叩かせたくない。
+
+Claude Code の実装役には「テストは Vitest と `@cloudflare/vitest-plugin` で書き、外向きの通信は `@msw/cloudflare` で差し替える」と、`.claude/rules/server.md` の決まりのまま頼んだ。
+
+`@msw/cloudflare` 0.2.0 の `setupNetwork()` は引数を取らず、msw 3.0.3 の既定は `onUnhandledFrame: "warn"` だった。差し替えを書き忘れた呼び出しは警告を出して本物のサーバーへそのまま出ていく。試しに差し替えの無い `fetch("https://example.com/probe-unhandled")` を流すと、警告のあと本物の example.com から 404 が返った。もう1つ、Cloudflare の文書は `readD1Migrations` を `@cloudflare/vitest-plugin/config` から読むと書いているが、1.5.1 のパッケージにはその入口が無く、本体(`@cloudflare/vitest-plugin`)からしか読めなかった。
+
+差し替えを書かなければ通信は止まると思っていた。文書の入口もそのまま使える前提だった。
+
+`test/network.ts` で `network.configure({ onUnhandledFrame: "error" })` を呼び、差し替えの無い通信はテストを落とすようにした。設定ファイルは workers-sdk の D1 の例に合わせて本体から読む。msw を外して `fetch` を手で差し替える案もあったが、決まりと公式の推奨から外れるので採らなかった。使ったのは mm-implementer、cloudflare-docs の MCP、`npx vitest run`。
+
+## 2026年11月3日 22:00 Safari の拡張が入ったアプリがビルドできない (#5)
+
+アプリと4つの拡張(Message Filter、Safari、共有、Call Directory)の土台を、XcodeGen の `ios/project.yml` から生成して、シミュレータ向けにビルドしようとしていた。
+
+Claude Code の実装役には「`ios/project.yml` を正にして、拡張は中身の無いスタブでよいからビルドが通るところまで」と頼んだ。
+
+Safari の拡張の `manifest.json` を、`Resources` という名前のフォルダごとバンドルに入れる書き方(`type: folder`)にしたところ、`xcodebuild` が16秒で `Couldn't load Info dictionary for ... SafariExtension.appex` で止まった。appex の中には `Info.plist` がちゃんと入っていた。
+
+`Info.plist` が無いという意味だと思って中身を調べたが、原因は別だった。iOS のバンドルの一番上に `Resources` というフォルダがあると、CFBundle がそれを古い形のバンドルとして読み、`Resources/` の中に `Info.plist` を探しにいく。
+
+フォルダごと入れるのをやめ、ファイルを1つずつバンドルの一番上へ写す書き方にして、ビルドは通った(作り直しから16秒)。フォルダの名前を変える案は、Safari が `manifest.json` をバンドルの一番上で探すので採らなかった。同じ確認の中で、`make simulator` が iOS 27.1 のランタイムに機種を作れない(`Incompatible device`)ことも分かり、今あった iOS 26.5 の iPhone 17 Pro で代わりに確かめた。使ったのは mm-implementer、`xcodebuild`、MobileBuildMCP の画面の操作。
