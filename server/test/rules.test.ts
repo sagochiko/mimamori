@@ -402,6 +402,16 @@ describe("a code number in a scam does not lower it", () => {
     expect(judge({ source: "sms", sender: "+819000000000", text }).level).toBe(1);
   });
 
+  it.each([
+    ["a code word next to a phone number", "確認番号をお伝えします。この件は誰にも言わないでください。03-0000-0000 へお電話を。"],
+    ["a phone number written with long dashes", "【警視庁】確認番号をお伝えします。この件は誰にも言わないでください。03ー0000ー0000 へお電話を。"],
+    ["a phone number written with brackets", "【警視庁】確認番号をお伝えします。この件は誰にも言わないでください。03(0000)0000 へお電話を。"],
+    ["a code with a transfer", "確認コード 4821。この件は誰にも言わないで、安全な口座に送金してください。"],
+    ["a code next to a phone number", "確認コード 4821。この件は誰にも言わないでください。03-0000-0000 へお電話を。"],
+  ])("counts the secrecy in %s", (_, text) => {
+    expect(judge({ source: "sms", text }).level).toBe(2);
+  });
+
   it("keeps the secrecy reason in a mail with a code", () => {
     const result = judge({
       source: "gmail",
@@ -450,6 +460,23 @@ describe("links to pages anyone can make", () => {
     });
     expect(result.level).toBe(1);
     expect(result.reasons.join(" ")).toContain("amaz0n-redeliver.top");
+    // google.com only passes the reader on here, so it is no official link that would keep this
+    // from being confident.
+    expect(result.confident).toBe(true);
+  });
+});
+
+describe("a link that looks like a redirect", () => {
+  // Only a redirect on an official brand's host (google.com) stops counting as the brand speaking.
+  // Any other host is checked itself, whatever it carries in its query.
+  it.each([
+    ["a look-alike page with a return URL", { source: "page", url: "https://amazon-co-jp.top/signin?return=https://example.org/" }, 1],
+    ["an odd-shaped link with a URL in its query", { source: "sms", text: "ご確認ください https://kakunin-x.top/?u=https://example.org/" }, 2],
+    ["a look-alike SMS link with a URL in its query", { source: "sms", text: "【Amazon】お支払い方法を更新しないとアカウントが停止されます https://amazon-pay-update.top/?r=https://example.org/" }, 1],
+    ["a look-alike page that carries the bank's own URL", { source: "page", url: "https://smbc-login.top/?back=https://www.smbc.co.jp/", text: "三井住友銀行 ログイン" }, 1],
+    ["an IP address link that carries the bank's own URL", { source: "sms", text: "【三井住友】ご利用確認のため至急ログイン http://192.168.10.10/smbc?u=https://www.smbc.co.jp/" }, 1],
+  ] as [string, RuleInput, number][])("checks the host of %s", (_, input, level) => {
+    expect(judge(input).level).toBe(level);
   });
 });
 

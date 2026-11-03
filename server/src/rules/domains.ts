@@ -144,13 +144,16 @@ export type HostTrust = { trust: "official" | "shared" | "other"; brand: string 
 /**
  * asAddress: the host is a mail address's domain. path: the link's path, when it is a link.
  * forceShared: the link only passes the reader on to another URL (a redirect), so anyone can make it.
+ * It applies only to an official brand's host (google.com/url): it takes away "the brand speaks
+ * here". Any other host stays "other", so its own look-alike and odd shape are still checked; a
+ * URL in the query must not hide them.
  */
 export function trustOf(host: string, asAddress: boolean, path = "", forceShared = false): HostTrust {
   const h = normalizeHost(host);
   const brand = officialBrandOf(h);
   const p = path.toLowerCase();
   const shared =
-    forceShared ||
+    (forceShared && brand !== null) ||
     (asAddress && FREE_MAIL_DOMAINS.has(h)) ||
     USER_CONTENT_HOSTS.some((u) => h === u || h.endsWith(`.${u}`)) ||
     (USER_CONTENT_PATHS[h] ?? []).some((prefix) => p.startsWith(prefix));

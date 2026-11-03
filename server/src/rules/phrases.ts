@@ -204,6 +204,9 @@ export function matchSpans(rule: PhraseRule, text: string): Array<[number, numbe
   return spans;
 }
 
-// Something that may be a phone number: starts with 0 (with or without hyphens or spaces), or with
-// +. Broad on purpose: it only stops a message from passing as a bare verification code.
-export const PHONE_NUMBER = /(?<!\d)(0\d{1,4}[-\s]?\d{1,4}[-\s]?\d{3,4}|\+\d[\d\s-]{8,}\d)(?!\d)/;
+// Something that may be a phone number: starts with 0 or +, with or without separators. Japanese
+// text writes them with a long dash or brackets too: 03ー1234ー5678, 03(1234)5678. Text is NFKC
+// normalized first, so full-width brackets arrive as ( ). Broad on purpose: it only stops a message
+// from passing as a bare verification code.
+export const PHONE_NUMBER =
+  /(?<!\d)(\(?0\d{1,4}[-\s‐−ー()]{0,2}\d{1,4}[-\s‐−ー()]{0,2}\d{3,4}|\+\d[\d\s‐−ー()-]{8,}\d)(?!\d)/;
