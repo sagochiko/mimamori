@@ -6,12 +6,15 @@ public struct Credentials: Codable, Hashable, Sendable {
     public let memberId: String
     public let familyId: String
     public let role: Role
+    /// Only `POST /families` returns it. Goes into the SMS and DNS endpoints; never log it.
+    public let familyToken: String?
 
-    public init(deviceKey: String, memberId: String, familyId: String, role: Role) {
+    public init(deviceKey: String, memberId: String, familyId: String, role: Role, familyToken: String? = nil) {
         self.deviceKey = deviceKey
         self.memberId = memberId
         self.familyId = familyId
         self.role = role
+        self.familyToken = familyToken
     }
 }
 

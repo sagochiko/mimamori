@@ -35,8 +35,33 @@ struct APIClientTests {
     #expect(request.url?.path == "/members/me/apns")
     #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer dk_test_0123456789")
     let body = try bodyJSON(request)
-    #expect(body["apns_token"] as? String == "0aff01")
-    #expect(body["apns_env"] as? String == "sandbox")
+    #expect(body["token"] as? String == "0aff01")
+    #expect(body["env"] as? String == "sandbox")
+  }
+
+  @Test("本番の APNs は env を production で送る(省くと裏側も production とみなす)")
+  func registerAPNsProduction() async throws {
+    let transport = StubTransport(status: 204, body: "")
+    let client = APIClient(baseURL: testBaseURL, transport: transport, store: InMemoryDeviceKeyStore(.sample))
+
+    try await client.registerAPNs(token: Data([0x00, 0x10]), environment: .production)
+
+    let body = try bodyJSON(try #require(transport.requests.first))
+    #expect(body["token"] as? String == "0010")
+    #expect(body["env"] as? String == "production")
+  }
+
+  @Test("使い終わった、期限切れ、知らないコードは 404 で、鍵はしまわない")
+  func joinWithBadCode() async throws {
+    let store = InMemoryDeviceKeyStore()
+    let transport = StubTransport(status: 404, body: #"{"error":"not_found"}"#)
+    let client = APIClient(baseURL: testBaseURL, transport: transport, store: store)
+
+    await #expect(throws: APIError.http(status: 404)) {
+      _ = try await client.join(code: InviteCode("999999")!, role: .protected, displayName: "見守られる人")
+    }
+    #expect(store.load() == nil)
+    #expect(AppRoute(store.load()) == .chooseRole)
   }
 
   @Test("鍵が無ければ、鍵の要る呼び出しは送らずに止める")
@@ -57,7 +82,7 @@ struct APIClientTests {
     let transport = StubTransport(
       status: 201,
       body:
-        #"{"deviceKey":"dk_new","member":{"id":"m-2","familyId":"f-1","role":"protected","displayName":"見守られる人"}}"#
+        #"{"familyId":"f-1","memberId":"m-2","deviceKey":"dk_new","role":"protected"}"#
     )
     let client = APIClient(baseURL: testBaseURL, transport: transport, store: store)
 
@@ -80,7 +105,7 @@ struct APIClientTests {
     let transport = StubTransport(
       status: 201,
       body:
-        #"{"deviceKey":"dk_new","member":{"id":"m-2","familyId":"f-1","role":"protected","displayName":"見守られる人"}}"#
+        #"{"familyId":"f-1","memberId":"m-2","deviceKey":"dk_new","role":"protected"}"#
     )
     let client = APIClient(baseURL: testBaseURL, transport: transport, store: store)
 
@@ -90,7 +115,8 @@ struct APIClientTests {
     #expect(member == Member(id: "m-2", familyId: "f-1", role: .protected, displayName: "見守られる人"))
     #expect(
       store.load()
-        == Credentials(deviceKey: "dk_new", memberId: "m-2", familyId: "f-1", role: .protected))
+        == Credentials(
+          deviceKey: "dk_new", memberId: "m-2", familyId: "f-1", role: .protected, familyToken: nil))
     #expect(AppRoute(store.load()) == .protectedHome)
   }
 
@@ -100,7 +126,7 @@ struct APIClientTests {
     let transport = StubTransport(
       status: 201,
       body:
-        #"{"deviceKey":"dk_first","member":{"id":"m-1","familyId":"f-9","role":"family","displayName":"作者"}}"#
+        #"{"familyId":"f-9","memberId":"m-1","deviceKey":"dk_first","familyToken":"ft_0123456789abcdef0123456789ab","role":"family"}"#
     )
     let client = APIClient(baseURL: testBaseURL, transport: transport, store: store)
 
@@ -111,8 +137,10 @@ struct APIClientTests {
     #expect(request.url?.path == "/families")
     #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
     #expect(try bodyJSON(request)["display_name"] as? String == "作者")
-    #expect(member.role == .family)
+    #expect(member == Member(id: "m-1", familyId: "f-9", role: .family, displayName: "作者"))
     #expect(store.load()?.deviceKey == "dk_first")
+    // Kept for the SMS and DNS endpoints (`/sms/<familyToken>`), which later tasks hand to the extensions.
+    #expect(store.load()?.familyToken == "ft_0123456789abcdef0123456789ab")
     #expect(AppRoute(store.load()) == .familyHome)
   }
 
@@ -122,14 +150,13 @@ struct APIClientTests {
     let transport = StubTransport(
       status: 201,
       body:
-        #"{"device_key":"dk_s","member":{"id":"m-3","family_id":"f-1","role":"family","display_name":"妹"}}"#
+        #"{"family_id":"f-1","member_id":"m-3","device_key":"dk_s","role":"family"}"#
     )
     let client = APIClient(baseURL: testBaseURL, transport: transport, store: store)
 
     let member = try await client.join(code: InviteCode("111111")!, role: .family, displayName: "妹")
 
-    #expect(member.familyId == "f-1")
-    #expect(member.displayName == "妹")
+    #expect(member == Member(id: "m-3", familyId: "f-1", role: .family, displayName: "妹"))
     #expect(store.load()?.deviceKey == "dk_s")
   }
 

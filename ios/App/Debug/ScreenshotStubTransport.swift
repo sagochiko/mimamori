@@ -14,13 +14,13 @@
       let (status, body): (Int, String) =
         switch (request.httpMethod ?? "", path) {
         case ("POST", "/families"):
-          (201, Self.joinAnswer(role: "family", name: Self.name(in: request)))
+          (201, Self.joinAnswer(role: "family", familyToken: "ft-stub"))
         case ("POST", "/invites"):
           (201, #"{"code":"482913","expiresAt":"\#(Date.now.addingTimeInterval(86_400).ISO8601Format())"}"#)
         case ("POST", let p) where p.hasPrefix("/invites/") && p.hasSuffix("/join"):
           p.contains("/000000/")
             ? (404, #"{"error":"not_found"}"#)
-            : (201, Self.joinAnswer(role: Self.role(in: request), name: Self.name(in: request)))
+            : (201, Self.joinAnswer(role: Self.role(in: request)))
         case ("PUT", "/members/me/apns"):
           (204, "")
         default:
@@ -37,12 +37,13 @@
       return json[key] as? String
     }
 
-    private static func name(in request: URLRequest) -> String { field("display_name", in: request) ?? "" }
     private static func role(in request: URLRequest) -> String { field("role", in: request) ?? "protected" }
 
-    private static func joinAnswer(role: String, name: String) -> String {
-      let member: [String: String] = ["id": "m-stub", "familyId": "f-stub", "role": role, "displayName": name]
-      let data = try! JSONSerialization.data(withJSONObject: ["deviceKey": "dk-stub", "member": member])
+    /// Same shape as the task 2 server: `{familyId, memberId, deviceKey, role}` plus `familyToken` on create.
+    private static func joinAnswer(role: String, familyToken: String? = nil) -> String {
+      var answer = ["familyId": "f-stub", "memberId": "m-stub", "deviceKey": "dk-stub", "role": role]
+      answer["familyToken"] = familyToken
+      let data = try! JSONSerialization.data(withJSONObject: answer)
       return String(decoding: data, as: UTF8.self)
     }
   }

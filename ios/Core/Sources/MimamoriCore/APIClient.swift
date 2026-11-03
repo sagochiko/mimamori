@@ -13,7 +13,8 @@ public enum APIError: Error, Equatable, Sendable {
 
 /// Calls the Workers API in docs/plan.md ("アプリと裏側の API").
 ///
-/// Request bodies use the column names of the D1 tables (`display_name`, `apns_token`, `apns_env`).
+/// Request bodies use snake_case (`display_name`) as in the plan; the shapes the plan left open
+/// follow the task 2 server (branch issue-4-server-foundation).
 /// Answers are read in camelCase (`deviceKey`, `familyId`) and also accepted in snake_case.
 /// Calls made after joining send `Authorization: Bearer <deviceKey>`. A 401 clears the stored key
 /// and calls `onUnauthorized`, so the app can go back to role selection.
@@ -42,7 +43,7 @@ public final class APIClient: Sendable {
   public func createFamily(displayName: String) async throws -> Member {
     let answer: JoinAnswer = try await send(
       "POST", "families", body: NameBody(displayName: displayName), auth: false)
-    return try keep(answer)
+    return try keep(answer, displayName: displayName)
   }
 
   /// `POST /invites`. A new 6-digit code, valid for 24 hours.
@@ -57,14 +58,14 @@ public final class APIClient: Sendable {
       "POST", "invites/\(code.value)/join", body: JoinBody(role: role, displayName: displayName),
       auth: false
     )
-    return try keep(answer)
+    return try keep(answer, displayName: displayName)
   }
 
   /// `PUT /members/me/apns`. Registers this device's APNs token (sent as lowercase hex).
   public func registerAPNs(token: Data, environment: APNsEnvironment) async throws {
     let hex = token.map { String(format: "%02x", $0) }.joined()
     try await perform(
-      "PUT", "members/me/apns", body: APNsBody(apnsToken: hex, apnsEnv: environment), auth: true)
+      "PUT", "members/me/apns", body: APNsBody(token: hex, env: environment), auth: true)
   }
 
   // MARK: Plumbing
@@ -78,15 +79,17 @@ public final class APIClient: Sendable {
 
   private static let encoder = JSONEncoder()
 
-  private func keep(_ answer: JoinAnswer) throws -> Member {
+  /// The answer does not echo the name back, so the member is built from what was sent.
+  private func keep(_ answer: JoinAnswer, displayName: String) throws -> Member {
     try store.save(
       Credentials(
         deviceKey: answer.deviceKey,
-        memberId: answer.member.id,
-        familyId: answer.member.familyId,
-        role: answer.member.role
+        memberId: answer.memberId,
+        familyId: answer.familyId,
+        role: answer.role,
+        familyToken: answer.familyToken
       ))
-    return answer.member
+    return Member(id: answer.memberId, familyId: answer.familyId, role: answer.role, displayName: displayName)
   }
 
   private func send<Body: Encodable, Answer: Decodable>(
@@ -153,9 +156,14 @@ public final class APIClient: Sendable {
 
 private struct Empty: Codable {}
 
+/// `POST /families` → `{familyId, memberId, deviceKey, familyToken, role}`;
+/// `POST /invites/{code}/join` → `{familyId, memberId, deviceKey, role}`.
 private struct JoinAnswer: Decodable {
+  let familyId: String
+  let memberId: String
   let deviceKey: String
-  let member: Member
+  let role: Role
+  let familyToken: String?
 }
 
 private struct NameBody: Encodable {
@@ -172,11 +180,9 @@ private struct JoinBody: Encodable {
   }
 }
 
+/// `{token, env}`. `env` is always sent: the server treats a missing one as production,
+/// and a Debug build's sandbox token would then be rejected by APNs.
 private struct APNsBody: Encodable {
-  let apnsToken: String
-  let apnsEnv: APNsEnvironment
-  enum CodingKeys: String, CodingKey {
-    case apnsToken = "apns_token"
-    case apnsEnv = "apns_env"
-  }
+  let token: String
+  let env: APNsEnvironment
 }
