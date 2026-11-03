@@ -127,11 +127,18 @@ final class AppModel {
     await loadCases()
   }
 
-  /// True when the reply was sent.
-  func relay(_ item: Case, text: String) async -> Bool {
-    await run(joining: false) { try await $0.relay(caseId: item.id, body: text) }
+  /// Nil when the reply was sent, otherwise why not. The composer sheet shows the failure itself
+  /// (an alert from the root view would land under the sheet), so `problem` is left alone.
+  func relay(_ item: Case, text: String) async -> Problem? {
+    isBusy = true
+    defer { isBusy = false }
+    do {
+      try await session.relay(caseId: item.id, body: text)
+    } catch {
+      return Problem(error, joining: false)
+    }
     await loadCases()
-    return problem == nil
+    return nil
   }
 
   func resolve(_ item: Case) async {

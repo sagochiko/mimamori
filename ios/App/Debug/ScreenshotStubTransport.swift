@@ -7,6 +7,8 @@
   /// before the Workers host exists. Release builds never contain this file's code.
   struct ScreenshotStubTransport: HTTPTransport {
     static var isRequested: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub") }
+    /// With `-mimamori-stub-relay-fails` as well, "送る" answers 500, to see how a failed reply looks.
+    static var relayFails: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-relay-fails") }
     /// The stub keeps the key in memory, so the real marker file is left alone.
     static let marker = FileInstallMarker(url: URL.temporaryDirectory.appending(path: "mimamori-stub-installed"))
 
@@ -122,6 +124,7 @@
           cases[i]["assigneeMemberId"] = "m-stub"
           cases[i]["assignee"] = ["memberId": "m-stub", "displayName": "作者"]
         case "relay":
+          if ScreenshotStubTransport.relayFails { return (500, #"{"error":"stub"}"#) }
           var relays = cases[i]["relays"] as? [[String: Any]] ?? []
           relays.append([
             "id": UUID().uuidString, "fromMemberId": "m-stub", "fromName": "作者", "createdAt": now,

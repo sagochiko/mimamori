@@ -173,6 +173,7 @@ struct RelayComposer: View {
   @Environment(AppModel.self) private var model
   @Environment(\.dismiss) private var dismiss
   @State private var text = ""
+  @State private var failure: Problem?
   @FocusState private var focused: Bool
 
   private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -198,7 +199,9 @@ struct RelayComposer: View {
         }
         Button {
           Task {
-            if await model.relay(item, text: trimmed) { dismiss() }
+            // On failure the sheet stays open with the text, so the reply can be sent again.
+            failure = await model.relay(item, text: trimmed)
+            if failure == nil { dismiss() }
           }
         } label: {
           if model.isBusy { ProgressView().tint(.white) } else { Text("送る") }
@@ -216,6 +219,12 @@ struct RelayComposer: View {
       }
     }
     .onAppear { focused = true }
+    .alert(
+      failure.map(\.title) ?? "",
+      isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })
+    ) {
+      Button("OK", role: .cancel) {}
+    }
   }
 }
 
