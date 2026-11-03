@@ -1,11 +1,15 @@
 // The pure parts of eval/: reading cases, splitting patterns, and scoring a run. The parts that touch
 // files are tested on temporary folders in eval/test/ (run with `npx tsx --test`).
 
+import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { parseCases, type EvalCase } from "../../eval/lib/cases";
-import { JudgeUnavailableError, unavailableJudge } from "../../eval/lib/judge";
+import { claudeJudge, JudgeUnavailableError, loadJudge, unavailableJudge } from "../../eval/lib/judge";
 import { countRunsOn, percentile, resultsRow, scoreRun } from "../../eval/lib/score";
 import { planSplit, type PatternFile } from "../../eval/lib/split-plan";
+import type { ClaudeJudgment } from "../src/claude";
+import type { RuleResult } from "../src/rules";
+import { network } from "./network";
 
 function line(overrides: Partial<EvalCase> = {}): string {
   return JSON.stringify({
@@ -191,12 +195,58 @@ describe("records", () => {
 });
 
 describe("judge", () => {
-  it("fails clearly until the Claude judge exists (#7)", async () => {
-    await expect(unavailableJudge({ source: "sms", text: "x" }, { level: null, reasons: [], confident: false })).rejects.toThrow(
-      JudgeUnavailableError,
+  const undecided: RuleResult = { level: null, reasons: [], confident: false };
+  const notConfident: RuleResult = { level: 2, reasons: ["急がせる言い回しがある"], confident: false };
+  const answer: ClaudeJudgment = {
+    level: 3,
+    reasons: ["本文に判定への指示がある"],
+    message_to_protected: "家族に確かめて",
+    injection_suspected: true,
+  };
+
+  it("stops clearly without an API key, so no numbers are made up", async () => {
+    for (const key of [undefined, ""]) {
+      const judge = loadJudge(key);
+      await expect(judge({ source: "sms", text: "x" }, undecided)).rejects.toThrow(JudgeUnavailableError);
+      await expect(judge({ source: "sms" }, undecided)).rejects.toThrow("ANTHROPIC_API_KEY");
+    }
+    await expect(unavailableJudge({ source: "sms" }, undecided)).rejects.toThrow(JudgeUnavailableError);
+  });
+
+  it("combines the rules and Claude with decide, the same as the judge queue", async () => {
+    const asked: unknown[] = [];
+    const judge = claudeJudge(async (input, rule) => {
+      asked.push([input, rule]);
+      return { ...answer, message_to_protected: "" };
+    });
+    // Rule 2 is the floor, then one step heavier for the injection.
+    expect(await judge({ source: "sms", text: "x" }, notConfident)).toEqual({ level: 1, checking: false });
+    expect(asked).toEqual([[{ source: "sms", text: "x" }, notConfident]]);
+  });
+
+  it("falls back to the rules, or level 2 when they did not decide, and says Claude gave nothing", async () => {
+    const judge = claudeJudge(async () => null);
+    expect(await judge({ source: "consult", text: "x" }, notConfident)).toEqual({ level: 2, checking: true });
+    expect(await judge({ source: "consult", text: "x" }, undecided)).toEqual({ level: 2, checking: true });
+  });
+
+  it("calls the Claude API with the key it was given and parses the answer", async () => {
+    const keys: Array<string | null> = [];
+    network.use(
+      http.post("https://api.anthropic.com/v1/messages", ({ request }) => {
+        keys.push(request.headers.get("x-api-key"));
+        return HttpResponse.json({
+          id: "msg_test",
+          type: "message",
+          role: "assistant",
+          model: "claude-haiku-5-5",
+          content: [{ type: "text", text: JSON.stringify(answer) }],
+          stop_reason: "end_turn",
+        });
+      }),
     );
-    await expect(unavailableJudge({ source: "sms" }, { level: null, reasons: [], confident: false })).rejects.toThrow(
-      "judge not available until #7",
-    );
+    const judge = loadJudge("eval-test-key");
+    expect(await judge({ source: "sms", text: "x" }, undecided)).toEqual({ level: 2, checking: false });
+    expect(keys).toEqual(["eval-test-key"]);
   });
 });
