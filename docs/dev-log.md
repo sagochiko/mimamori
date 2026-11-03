@@ -25,3 +25,15 @@ Claude Code には、書いた本人とは別のレビュー役のサブエー�
 フックはツールの呼び出しの文字列を見れば止められると考えていた。Claude のシェルの grep は、探し始めたディレクトリの `.gitignore` しか見ないことは知らなかった。
 
 テストの関門は、Stop フックに渡る `background_tasks` に動いているサブエージェントがあれば待つようにし、ブランチでコミット済みの変更も見るようにした。秘密は `server/.gitignore` にも書き、holdout と分ける前の例文は最後の測定まで `.gitignore` に入れて、再帰の grep から外した。フックの自己テスト(`scripts/test-hooks.sh`)に再現の4件を足し、`make verify` で毎回流す。Bash から別の言語のスクリプトがファイルを開く読み方は、フックでは止めきれないので、残っている穴として `docs/harness.md` に書いた。使ったのは、レビュー役のサブエージェント、PreToolUse と Stop のフック、`make verify`。
+
+## 2026年11月3日 22:00 Safari の拡張が入ったアプリがビルドできない (#5)
+
+アプリと4つの拡張(Message Filter、Safari、共有、Call Directory)の土台を、XcodeGen の `ios/project.yml` から生成して、シミュレータ向けにビルドしようとしていた。
+
+Claude Code の実装役には「`ios/project.yml` を正にして、拡張は中身の無いスタブでよいからビルドが通るところまで」と頼んだ。
+
+Safari の拡張の `manifest.json` を、`Resources` という名前のフォルダごとバンドルに入れる書き方(`type: folder`)にしたところ、`xcodebuild` が16秒で `Couldn't load Info dictionary for ... SafariExtension.appex` で止まった。appex の中には `Info.plist` がちゃんと入っていた。
+
+`Info.plist` が無いという意味だと思って中身を調べたが、原因は別だった。iOS のバンドルの一番上に `Resources` というフォルダがあると、CFBundle がそれを古い形のバンドルとして読み、`Resources/` の中に `Info.plist` を探しにいく。
+
+フォルダごと入れるのをやめ、ファイルを1つずつバンドルの一番上へ写す書き方にして、ビルドは通った(作り直しから16秒)。フォルダの名前を変える案は、Safari が `manifest.json` をバンドルの一番上で探すので採らなかった。同じ確認の中で、`make simulator` が iOS 27.1 のランタイムに機種を作れない(`Incompatible device`)ことも分かり、今あった iOS 26.5 の iPhone 17 Pro で代わりに確かめた。使ったのは mm-implementer、`xcodebuild`、MobileBuildMCP の画面の操作。
