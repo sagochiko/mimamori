@@ -2,7 +2,7 @@
 // Run: cd server && npx tsx --test ../eval/test/*.test.ts
 
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
@@ -178,7 +178,9 @@ describe("runEval --set holdout", () => {
     await writeFile(path.join(repo, ".claude", "state", "holdout.unlock"), "");
     const { exitCode, lines } = await runEval({ evalDir, set: "holdout", mode: "rules", notes: "final", now: TODAY });
     assert.equal(exitCode, 0);
-    await assert.rejects(read("out/holdout-latest.json"));
+    // Nothing per case under eval/out, whatever the file would be called.
+    const out = await readdir(path.join(evalDir, "out")).catch(() => []);
+    assert.deepEqual(out, []);
     assert.ok(!lines.join("\n").includes("dev-scam"), "printed case ids");
   });
 });
