@@ -4,7 +4,7 @@
 // and share one budget of outside calls, so notices go before the cleanup that takes what is left.
 
 import { ExternalBudget } from "./budget";
-import { watchUnanswered } from "./cases";
+import { sendFirstNotices, watchUnanswered } from "./cases";
 import { purgeExpired, purgeExpiredSessions } from "./retention";
 
 const TICK_MINUTES = 5;
@@ -19,7 +19,10 @@ export type Job =
   | { name: string; dailyAtJst: string; run: Run };
 
 export const JOBS: Job[] = [
-  // Cases nobody accepted within 30 minutes. First, so its notices are never starved by the cleanup.
+  // First notices the family never got (the queue gave up while APNs failed). Before the watch, so a
+  // case's first notice goes out before its reminder.
+  { name: "case-first-notice", everyMinutes: 5, run: sendFirstNotices },
+  // Cases nobody accepted within 30 minutes. Before the cleanup, so notices are never starved by it.
   { name: "case-watch", everyMinutes: 5, run: watchUnanswered },
   // 04:00 JST, when the family is least likely to be using the app.
   { name: "retention", dailyAtJst: "04:00", run: purgeExpired },

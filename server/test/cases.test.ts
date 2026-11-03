@@ -132,6 +132,12 @@ function open(alertId: string, budget = new ExternalBudget()) {
   return openCase(pushEnv, alertId, budget);
 }
 
+async function caseOf(alertId: string) {
+  return env.DB.prepare("SELECT id, state, family_notified_at FROM cases WHERE alert_id = ?")
+    .bind(alertId)
+    .first<{ id: string; state: string; family_notified_at: number | null }>();
+}
+
 async function casesFor(alertId: string): Promise<number> {
   const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM cases WHERE alert_id = ?").bind(alertId).first<{ n: number }>();
   return row?.n ?? 0;
@@ -191,34 +197,68 @@ describe("openCase", () => {
     expect(budget.remaining).toBe(38);
   });
 
-  it("when the budget cannot cover the family, opens nothing and throws, and the retry opens and notifies", async () => {
+  it("when the budget cannot cover the family, keeps the case untold and throws, and the retry tells the family", async () => {
     const f = await family();
     const alertId = await newAlert(f.familyId);
 
     await expect(open(alertId, new ExternalBudget(1))).rejects.toMatchObject({ name: "CaseNoticeDeferred" });
-    expect(await casesFor(alertId)).toBe(0);
+    const kept = await caseOf(alertId);
+    expect(kept).toMatchObject({ state: "notified", family_notified_at: null });
     expect(sent).toHaveLength(0);
 
     const opened = await open(alertId);
-    expect(opened?.state).toBe("notified");
+    expect(opened?.id).toBe(kept?.id);
     expect(to(f.author)).toHaveLength(1);
     expect(to(f.sister)).toHaveLength(1);
+    expect((await caseOf(alertId))?.family_notified_at).not.toBeNull();
   });
 
-  it("when no family device took the notice, keeps no case and throws, and the retry notifies", async () => {
+  it("when no family device took the notice, keeps the case untold and throws, and the retry tells the family", async () => {
     const f = await family();
     const alertId = await newAlert(f.familyId);
     const apns = apnsFailsFor([f.author.token, f.sister.token]);
 
     await expect(open(alertId)).rejects.toMatchObject({ name: "CaseNoticeDeferred" });
-    expect(await casesFor(alertId)).toBe(0);
+    const kept = await caseOf(alertId);
+    expect(kept).toMatchObject({ state: "notified", family_notified_at: null });
+    // The protected person's screen and the family's list still see it.
+    const list = await call("GET", "/cases", { deviceKey: f.mother.deviceKey, env: pushEnv });
+    expect(((await list.json()) as { cases: Array<{ id: string }> }).cases.map((c) => c.id)).toContain(kept?.id);
 
     apns.ok = true;
     const opened = await open(alertId);
+    expect(opened?.id).toBe(kept?.id);
     expect(await casesFor(alertId)).toBe(1);
     expect(to(f.author)).toHaveLength(1);
     expect(to(f.sister)).toHaveLength(1);
-    expect(to(f.author)[0]?.data.caseId).toBe(opened?.id);
+    expect(to(f.author)[0]?.data.caseId).toBe(kept?.id);
+  });
+
+  it("an AI answer recorded while the family was still untold survives the retry", async () => {
+    const f = await family();
+    const alertId = await newAlert(f.familyId);
+    const apns = apnsFailsFor([f.author.token, f.sister.token]);
+    await expect(open(alertId)).rejects.toMatchObject({ name: "CaseNoticeDeferred" });
+    const caseId = (await caseOf(alertId))?.id ?? "";
+
+    expect(await deliverAiReply(pushEnv, caseId, "送金せず、家族に確かめて")).toEqual({ delivered: true });
+    apns.ok = true;
+    const opened = await open(alertId);
+
+    expect(opened?.aiReply).toBe("送金せず、家族に確かめて");
+  });
+
+  it("once the family was told, a second call neither tells them again nor takes tickets", async () => {
+    const f = await family();
+    const alertId = await newAlert(f.familyId);
+    await open(alertId);
+    sent = [];
+    const budget = new ExternalBudget(40);
+
+    await open(alertId, budget);
+
+    expect(sent).toHaveLength(0);
+    expect(budget.remaining).toBe(40);
   });
 
   it("keeps the case when at least one family member was told; the 30-minute watch covers the rest", async () => {
@@ -241,6 +281,8 @@ describe("openCase", () => {
     const opened = await open(await newAlert(f.familyId), new ExternalBudget(0));
 
     expect(opened?.state).toBe("notified");
+    // Nobody to tell is not "untold": the 5-minute tick does not keep retrying it.
+    expect((await caseOf(opened?.alertId ?? ""))?.family_notified_at).not.toBeNull();
   });
 });
 
@@ -648,6 +690,66 @@ describe("the 30-minute watch", () => {
 
     await tick(Date.now() + 21 * 60_000);
     expect(to(f.mother).map((s) => s.body)).toEqual([NO_REPLY_YET]);
+  });
+
+  it("tells the family about a case the queue gave up on, at the next tick, once", async () => {
+    const f = await family();
+    const alertId = await newAlert(f.familyId, { level: 1, summary: "警察を名乗る電話の相談" });
+    const apns = apnsFailsFor([f.author.token, f.sister.token]);
+    // The queue's three tries all fail, then it stops retrying the message.
+    for (let i = 0; i < 3; i++) {
+      await expect(open(alertId)).rejects.toMatchObject({ name: "CaseNoticeDeferred" });
+    }
+    apns.ok = true;
+    sent = [];
+
+    await tick(Date.now());
+
+    expect(to(f.author)).toHaveLength(1);
+    expect(to(f.sister)).toHaveLength(1);
+    expect(to(f.mother)).toHaveLength(0);
+    expect(to(f.author)[0]).toMatchObject({ title: "1段階", body: "警察を名乗る電話の相談" });
+    expect(to(f.author)[0]?.data.caseId).toBe((await caseOf(alertId))?.id);
+    sent = [];
+    await tick(Date.now() + 5 * 60_000);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("an untold case is still watched: after 30 minutes the protected person hears, even while the family's devices fail", async () => {
+    const f = await family();
+    const alertId = await newAlert(f.familyId);
+    apnsFailsFor([f.author.token, f.sister.token]);
+    await expect(open(alertId)).rejects.toMatchObject({ name: "CaseNoticeDeferred" });
+    await backdate((await caseOf(alertId))?.id ?? "", 31);
+    sent = [];
+
+    await tick(Date.now());
+
+    expect(to(f.mother).map((s) => s.body)).toEqual([NO_REPLY_YET]);
+  });
+
+  it("stops retrying a first notice after a day", async () => {
+    const f = await family();
+    const alertId = await newAlert(f.familyId);
+    const apns = apnsFailsFor([f.author.token, f.sister.token]);
+    await expect(open(alertId)).rejects.toMatchObject({ name: "CaseNoticeDeferred" });
+    const caseId = (await caseOf(alertId))?.id ?? "";
+    // Already reminded by the watch, so only the first notice is left.
+    await env.DB.prepare("UPDATE cases SET notified_at = ?, renotified_at = ? WHERE id = ?")
+      .bind(Date.now() - 25 * 3600_000, Date.now() - 24 * 3600_000, caseId)
+      .run();
+    apns.ok = true;
+    sent = [];
+
+    await tick(Date.now());
+
+    expect(sent).toHaveLength(0);
+  });
+
+  it("runs the first-notice retry before the 30-minute watch", () => {
+    const names = JOBS.filter((j) => "everyMinutes" in j && j.everyMinutes === 5).map((j) => j.name);
+    expect(names.indexOf("case-first-notice")).toBeGreaterThanOrEqual(0);
+    expect(names.indexOf("case-first-notice")).toBeLessThan(names.indexOf("case-watch"));
   });
 
   it("leaves a case for the next tick when the budget cannot cover the whole family", async () => {
