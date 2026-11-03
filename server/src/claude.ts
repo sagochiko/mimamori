@@ -78,38 +78,57 @@ const JUDGMENT_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-// Words that would tell the mother the message is fine. No path may say that (CLAUDE.md), so an
-// answer containing them is treated like a broken answer and the rules decide instead.
-const SOUNDS_SAFE = /安全(です|だ|でしょう|と思|な(メッセージ|サイト|ページ|メール|もの|内容))|問題(は)?(ありません|ない)|心配(は)?(ありません|いりません|ない)|\bsafe\b/i;
+// Words that would tell the mother or the family the message is fine. No path may say that
+// (CLAUDE.md). A reason that says it is replaced (decide); the level and injection_suspected are
+// kept, so writing 安全 in a message cannot get the judge's answer thrown away.
+// "問題ないか" is a question ("振込先に問題ないか家族に確かめて"), not a verdict.
+const SOUNDS_SAFE = /安全(です|だ|でしょう|と思|な(メッセージ|サイト|ページ|メール|もの|内容))|問題(は)?(ありません|ない(?!か))|心配(は)?(ありません|いりません|ない(?!か))|\bsafe\b/i;
+// Quoting the message ("「この口座は安全です」と移し替えを求める") explains the scam; it is not a verdict.
+const QUOTED = /「[^」]*」|『[^』]*』|“[^”]*”|"[^"]*"/g;
+/** Used when every reason Claude gave sounded safe and the rules gave none. */
+export const PLACEHOLDER_REASON = "家族に確かめるまで待って";
+
+/** True when the text, outside of quotes, would tell the reader the message is fine. */
+export function soundsSafe(text: string): boolean {
+  const outside = text.replace(QUOTED, "");
+  // A reason that is nothing but a quote is read as it stands: 「安全です」 alone is a verdict.
+  return SOUNDS_SAFE.test(/[\p{L}\p{N}]/u.test(outside) ? outside : text);
+}
 
 function chars(text: string): number {
   return [...text].length;
 }
 
-/** The judgment if the value has exactly the agreed shape and limits, otherwise null. */
+/**
+ * The judgment if the value has the agreed shape and limits, otherwise null.
+ * message_to_protected is neither stored nor sent, so when it is missing or broken it becomes "" and
+ * the rest is kept. The wording of the reasons is not checked here; decide() replaces it.
+ */
 export function parseClaudeJudgment(value: unknown): ClaudeJudgment | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj);
-  if (keys.length !== KEYS.length || !KEYS.every((k) => keys.includes(k))) return null;
+  if (!Object.keys(obj).every((k) => (KEYS as readonly string[]).includes(k))) return null;
 
   const { level, reasons, message_to_protected: message, injection_suspected: injection } = obj;
   if (level !== 1 && level !== 2 && level !== 3) return null;
   if (typeof injection !== "boolean") return null;
-  if (typeof message !== "string" || chars(message) > MESSAGE_MAX_CHARS) return null;
   if (!Array.isArray(reasons) || reasons.length > MAX_REASONS) return null;
   for (const r of reasons) {
     if (typeof r !== "string" || r.trim() === "" || chars(r) > REASON_MAX_CHARS) return null;
   }
-  const texts = [message, ...(reasons as string[])];
-  if (texts.some((t) => SOUNDS_SAFE.test(t))) return null;
+  const usableMessage =
+    typeof message === "string" && chars(message) <= MESSAGE_MAX_CHARS && !soundsSafe(message) ? message : "";
 
-  return { level, reasons: [...(reasons as string[])], message_to_protected: message, injection_suspected: injection };
+  return {
+    level,
+    reasons: [...(reasons as string[])],
+    message_to_protected: usableMessage,
+    injection_suspected: injection,
+  };
 }
 
 export interface Decision {
-  /** null only when neither the rules nor Claude decided. */
-  level: Level | null;
+  level: Level;
   reasons: string[];
   ruleLevel: Level | null;
   /** Claude's own level as answered, before the injection step; null when Claude gave nothing usable. */
@@ -118,6 +137,9 @@ export interface Decision {
   checking: boolean;
 }
 
+/** Neither the rules nor Claude decided: level 2 is "詐欺の疑いがある、または決めきれない". */
+export const UNDECIDED_LEVEL: Level = 2;
+
 function heavier(a: Level, b: Level): Level {
   return Math.min(a, b) as Level;
 }
@@ -125,24 +147,29 @@ function heavier(a: Level, b: Level): Level {
 /**
  * Lays Claude's judgment over the rule result.
  * - Claude may make the rule result lighter, but never lighter than a confident rule result.
- * - injection_suspected makes the result one step heavier. The step is taken after the confident
- *   floor, so a message that tries to steer the judge always ends up heavier than without it.
- * - Without a usable judgment, the rule result stands.
+ * - injection_suspected makes the result one step heavier. Before the step, any rule level is the
+ *   floor, confident or not, so a message that tries to steer the judge always ends up heavier than
+ *   both the rules and Claude would have said.
+ * - Without a usable judgment, the rule result stands; when the rules did not decide either, level 2.
+ * - Reasons that would call the message safe are dropped; the rule reasons or a fixed reason stand
+ *   in when none is left. The level is never changed by the wording.
  */
 export function decide(rule: RuleResult, claude: ClaudeJudgment | null): Decision {
   if (claude === null) {
-    return { level: rule.level, reasons: rule.reasons, ruleLevel: rule.level, claudeLevel: null, checking: true };
+    return {
+      level: rule.level ?? UNDECIDED_LEVEL,
+      reasons: rule.reasons,
+      ruleLevel: rule.level,
+      claudeLevel: null,
+      checking: true,
+    };
   }
   let level: Level = claude.level;
-  if (rule.confident && rule.level !== null) level = heavier(level, rule.level);
+  if (rule.level !== null && (rule.confident || claude.injection_suspected)) level = heavier(level, rule.level);
   if (claude.injection_suspected) level = Math.max(1, level - 1) as Level;
-  return {
-    level,
-    reasons: claude.reasons.length > 0 ? claude.reasons : rule.reasons,
-    ruleLevel: rule.level,
-    claudeLevel: claude.level,
-    checking: false,
-  };
+  const kept = claude.reasons.filter((r) => !soundsSafe(r));
+  const reasons = kept.length > 0 ? kept : rule.reasons.length > 0 ? rule.reasons : [PLACEHOLDER_REASON];
+  return { level, reasons, ruleLevel: rule.level, claudeLevel: claude.level, checking: false };
 }
 
 const SOURCE_NAMES: Record<AlertSource, string> = {

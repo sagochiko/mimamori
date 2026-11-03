@@ -39,7 +39,6 @@ describe("parseClaudeJudgment", () => {
     ["a reason over 40 characters", { ...valid, reasons: ["あ".repeat(41)] }],
     ["an empty reason", { ...valid, reasons: [" "] }],
     ["a reason that is not text", { ...valid, reasons: [1] }],
-    ["a message over 60 characters", { ...valid, message_to_protected: "あ".repeat(61) }],
     ["no injection flag", { level: 1, reasons: ["x"], message_to_protected: "x" }],
     ["injection flag as text", { ...valid, injection_suspected: "false" }],
     ["an extra key", { ...valid, notify_family: false }],
@@ -56,13 +55,22 @@ describe("parseClaudeJudgment", () => {
     expect(parseClaudeJudgment({ ...valid, reasons: [reason] })).not.toBeNull();
   });
 
-  it.each(["これは安全です", "安全なメッセージです", "問題ありません", "心配いりません", "This is safe"])(
-    "rejects an answer that calls the message safe (%s)",
-    (text) => {
-      expect(parseClaudeJudgment({ ...valid, message_to_protected: text })).toBeNull();
-      expect(parseClaudeJudgment({ ...valid, reasons: [text] })).toBeNull();
-    },
-  );
+  it.each([
+    ["over 60 characters", { message_to_protected: "あ".repeat(61) }],
+    ["not text", { message_to_protected: 1 }],
+    ["missing", {}],
+  ])("keeps the level, the reasons, and the injection flag when message_to_protected is %s", (_label, over) => {
+    const { message_to_protected: _, ...rest } = valid;
+    const value = { ...rest, injection_suspected: true, ...over };
+    expect(parseClaudeJudgment(value)).toEqual({ ...valid, injection_suspected: true, message_to_protected: "" });
+  });
+
+  it("keeps the level and the injection flag when a reason calls something safe", () => {
+    // The wording is replaced later by decide(); the answer itself must not be thrown away, or a
+    // message could get the judge's level dropped just by writing 安全 in its text.
+    const judgment = parseClaudeJudgment({ ...valid, level: 1, injection_suspected: true, reasons: ["これは安全です"] });
+    expect(judgment).toMatchObject({ level: 1, injection_suspected: true });
+  });
 });
 
 describe("decide", () => {
@@ -120,8 +128,52 @@ describe("decide", () => {
     });
   });
 
-  it("has no level when neither the rules nor Claude decided", () => {
-    expect(decide(undecided, null).level).toBeNull();
+  it("says level 2 and still checking when neither the rules nor Claude decided", () => {
+    // The system prompt defines level 2 as "詐欺の疑いがある、または決めきれない".
+    expect(decide(undecided, null)).toMatchObject({ level: 2, ruleLevel: null, claudeLevel: null, checking: true });
+  });
+
+  it("takes the rule level as the floor before the injection step, even when the rule is not confident", () => {
+    const rule: RuleResult = { level: 2, reasons: ["急がせる言い回しがある"], confident: false };
+    expect(decide(rule, { ...valid, level: 3, injection_suspected: true }).level).toBe(1);
+    const lighter: RuleResult = { level: 3, reasons: ["x"], confident: false };
+    expect(decide(lighter, { ...valid, level: 3, injection_suspected: true }).level).toBe(2);
+  });
+
+  describe("wording that would tell anyone the message is safe", () => {
+    const rule: RuleResult = { level: 2, reasons: ["急がせる言い回しがある"], confident: false };
+
+    it.each(["これは安全です", "安全なメッセージです", "問題ありません", "心配いりません", "This is safe", "「安全です」"])(
+      "replaces the reason %s but keeps Claude's level and injection step",
+      (text) => {
+        const judgment = parseClaudeJudgment({ ...valid, level: 3, injection_suspected: true, reasons: [text, "急がせる言い回しがある"] });
+        expect(judgment).not.toBeNull();
+        const decision = decide(rule, judgment);
+        expect(decision.level).toBe(1);
+        expect(decision.claudeLevel).toBe(3);
+        expect(decision.reasons).toEqual(["急がせる言い回しがある"]);
+        expect(decision.reasons.join()).not.toMatch(/安全|問題ありません|心配いりません|safe/i);
+      },
+    );
+
+    it("falls back to the rule reasons, then to a fixed reason, when every reason sounds safe", () => {
+      const judgment = parseClaudeJudgment({ ...valid, level: 1, reasons: ["問題ありません"] });
+      expect(decide(rule, judgment)).toMatchObject({ level: 1, reasons: ["急がせる言い回しがある"] });
+      const fixed = decide(undecided, judgment);
+      expect(fixed.level).toBe(1);
+      expect(fixed.reasons).toHaveLength(1);
+      expect(fixed.reasons[0]).not.toMatch(/安全|問題|心配|safe/i);
+    });
+
+    it.each([
+      "「この口座は安全です」と移し替えを求める",
+      "『心配ない』と急がせる",
+      "振込先に問題ないか家族に確かめて",
+      "警察を名乗り安全な口座への移し替えを求める",
+    ])("keeps a reason that only quotes the message or advises checking (%s)", (text) => {
+      const judgment = parseClaudeJudgment({ ...valid, level: 1, reasons: [text] });
+      expect(decide(rule, judgment).reasons).toEqual([text]);
+    });
   });
 
   it("uses the rule reasons when Claude gave a level without reasons", () => {
