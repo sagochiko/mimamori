@@ -137,6 +137,23 @@ struct InstallMarkerTests {
     #expect(session.route == .familyHome)
   }
 
+  @Test("印を書けないとき(空き容量が無いなど)は鍵を消さず、次の機会にまた確かめる")
+  func unwritableMarkerKeepsKey() {
+    let store = InMemoryDeviceKeyStore(.sample)
+    let marker = UnwritableInstallMarker()
+
+    let session = session(store: store, marker: marker)
+
+    #expect(store.load() == .sample)
+    #expect(session.route == .familyHome)
+    #expect(marker.attempts == 1)
+
+    session.refresh()
+
+    #expect(store.load() == .sample)
+    #expect(marker.attempts == 2)
+  }
+
   @Test("再起動のあと、最初の解除の前に裏で起きても、鍵を消さない")
   func lockedLaunchDoesNotClear() {
     let device = Device(locked: true)
@@ -201,8 +218,20 @@ struct FileInstallMarkerTests {
     let marker = FileInstallMarker(url: dir.appending(path: "nested/installed"))
 
     #expect(!marker.isMarked)
-    marker.mark()
+    #expect(marker.mark())
     #expect(marker.isMarked)
     #expect(FileManager.default.fileExists(atPath: dir.appending(path: "nested/installed").path))
+  }
+
+  @Test("書けない場所では失敗を返す")
+  func reportsFailure() throws {
+    let dir = FileManager.default.temporaryDirectory.appending(path: "mimamori-marker-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    // A plain file where the folder should be: the folder cannot be created.
+    FileManager.default.createFile(atPath: dir.path, contents: Data())
+    let marker = FileInstallMarker(url: dir.appending(path: "installed"))
+
+    #expect(!marker.mark())
+    #expect(!marker.isMarked)
   }
 }

@@ -67,5 +67,18 @@ final class InMemoryInstallMarker: InstallMarkerStore, @unchecked Sendable {
   var markedOnDisk: Bool
   init(marked: Bool) { markedOnDisk = marked }
   var isMarked: Bool { markedOnDisk }
-  func mark() { markedOnDisk = true }
+  func mark() -> Bool {
+    markedOnDisk = true
+    return true
+  }
+}
+
+/// A marker that cannot be written, as when the disk is full.
+final class UnwritableInstallMarker: InstallMarkerStore, @unchecked Sendable {
+  private(set) var attempts = 0
+  var isMarked: Bool { false }
+  func mark() -> Bool {
+    attempts += 1
+    return false
+  }
 }

@@ -45,10 +45,15 @@ public final class Session {
 
   private func checkInstallIfPossible() {
     guard installCheckPending, isProtectedDataAvailable() else { return }
+    if marker.isMarked {
+      installCheckPending = false
+      return
+    }
+    // Write the marker first. If it cannot be written (disk full), clearing now would wipe the key
+    // again on every launch, so keep it and try once more next time.
+    guard marker.mark() else { return }
     installCheckPending = false
-    guard !marker.isMarked else { return }
     store.clear()
-    marker.mark()
   }
 
   @discardableResult
@@ -80,7 +85,8 @@ public final class Session {
 /// without this a wrong role choice could not be undone even by reinstalling.
 public protocol InstallMarkerStore: Sendable {
   var isMarked: Bool { get }
-  func mark()
+  /// Writes the marker. Returns false when it could not be written.
+  @discardableResult func mark() -> Bool
 }
 
 /// An empty file (the App puts it in Application Support). Its existence can be checked even while
@@ -94,8 +100,14 @@ public struct FileInstallMarker: InstallMarkerStore {
 
   public var isMarked: Bool { FileManager.default.fileExists(atPath: url.path) }
 
-  public func mark() {
-    try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-    FileManager.default.createFile(atPath: url.path, contents: Data())
+  @discardableResult
+  public func mark() -> Bool {
+    do {
+      try FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    } catch {
+      return false
+    }
+    return FileManager.default.createFile(atPath: url.path, contents: Data())
   }
 }
