@@ -74,6 +74,19 @@ function nameOf(displayName: string | null | undefined): string {
   return displayName && displayName.trim() !== "" ? displayName : UNKNOWN_NAME;
 }
 
+const graphemes = new Intl.Segmenter("ja", { granularity: "grapheme" });
+
+/**
+ * Characters as the iPhone counts them (Swift's String.count: extended grapheme clusters), so a reply
+ * the composer's "n/200" allows is not refused here. `length` counts UTF-16 units and `[...text]`
+ * code points; both count "👨‍👩‍👧" as more than one.
+ */
+function characters(text: string): number {
+  let n = 0;
+  for (const _ of graphemes.segment(text)) n++;
+  return n;
+}
+
 function parseReasons(text: string | null): string[] {
   try {
     const value: unknown = JSON.parse(text ?? "[]");
@@ -309,7 +322,7 @@ export async function relay(
   budget: ExternalBudget = new ExternalBudget(),
 ): Promise<{ id: string; createdAt: string }> {
   const text = typeof body === "string" ? body.trim() : "";
-  if (text === "" || text.length > RELAY_MAX) throw new HttpError(400, "relay_body_invalid");
+  if (text === "" || characters(text) > RELAY_MAX) throw new HttpError(400, "relay_body_invalid");
   const me = await loadMember(env, memberId);
 
   const relayId = crypto.randomUUID();

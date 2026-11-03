@@ -415,6 +415,23 @@ describe("relay", () => {
       expect(res.status).toBe(400);
     }
   });
+
+  it("counts characters as the iPhone does (grapheme clusters), so a reply with emoji the screen allows is taken", async () => {
+    const f = await family();
+    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
+    await acceptCase(pushEnv, caseId, f.author.memberId);
+    // 200 characters on the iPhone's counter (String.count); 370 UTF-16 units and 240 code points.
+    const ok = "👍".repeat(100) + "👨‍👩‍👧".repeat(10) + "あ".repeat(90);
+    const res = await call("POST", `/cases/${caseId}/relay`, { deviceKey: f.author.deviceKey, body: { body: ok }, env: pushEnv });
+    expect(res.status).toBe(201);
+
+    const over = await call("POST", `/cases/${caseId}/relay`, {
+      deviceKey: f.author.deviceKey,
+      body: { body: `${ok}👍` },
+      env: pushEnv,
+    });
+    expect(over.status).toBe(400);
+  });
 });
 
 describe("resolve", () => {
