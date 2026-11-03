@@ -207,6 +207,14 @@ AI が答えきれない相談と、2段階目以上の知らせは、相談1件
 
 残す期間は30日。知らせ、相談、笑顔の写真は30日たったら自動で消す。家族を抜けた人の端末の鍵はその場で無効にし、以後は何も見られない。母か家族の誰かが「すべて消す」を押すと、その家族のデータを裏側からすべて消し、Gmail の許可を取り消し、Managed Agents のセッションも削除する。
 
+「すべて消す」は2026年11月1日の設計で入ったが、そのときの理由は残っていなかった。2026年11月3日に、確かめた次の3つの事実を理由として作者と決め直した。
+
+1. Apple の審査の決まりの 5.1.1(v) に「If your app supports account creation, you must also offer account deletion within the app.」とあり、2.2 で TestFlight のベータ版もこの決まりに従うとしている([App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/))。審査員向けのビルドは外部テストの審査を通る。この決まりだけなら「家族を抜ける」で足りる見込み
+2. 裏の調べものには、母に届いた怪しいメッセージの本文を渡す。Anthropic は「Claude Managed Agents is a stateful resource; session transcripts persist until you delete them.」としている([API and data retention](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention))
+3. 知らせ、相談、笑顔は家族のもので、「家族を抜ける」は抜けた本人の行しか消さない。母が抜けても、家族の誰かが残っていれば母の相談は残る
+
+30日の自動削除と違うのは、すぐに消せることと、Gmail の許可の取り消し、家族と端末の鍵の削除。Anthropic か Google が消す依頼を断ったとき(調べものが動いている最中など)は、家族のデータと鍵を消さずに失敗を返す。押し直すと、外の分の続きから消す。外の分だけを残して自動で試し直す案もあったが、表が1つ増えて M1 に響くので採らなかった。
+
 知らせが多すぎると家族が反応しなくなる。家族に通知を送るのは1段階と2段階の知らせと、引き継ぎの相談だけにする。3段階はアプリの中に並べるだけで、通知は送らない。同じ送り主やドメインの知らせは、1時間に1回にまとめる。
 
 母には使い始めに「家族に伝えることがある。伝えたら必ずあなたにも言う」と一度示す。使うことへの同意と、動画に映すことへの同意は分けてもらい、公開前に映す範囲を母と確かめる。
