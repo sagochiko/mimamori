@@ -1,0 +1,1 @@
+{"id":"s-sc-14","source":"sms","sender":"+81 90-0000-0014","domain":"profile-install.example","text":"セキュリティ更新のため、下記から設定ファイルをインストールして、構成プロファイルを許可してください https://profile-install.example/","url":"https://profile-install.example/","expected_level":1,"is_scam":true,"note":"self-written; configuration profile lure"}

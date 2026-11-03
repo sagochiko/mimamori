@@ -1,0 +1,4 @@
+{"id":"s-gn-12","source":"sms","sender":"+81 3-0000-0100","domain":"","text":"〇〇クリニックです。明日の10時のご予約のご確認です。変更の場合はお電話ください。","url":"","expected_level":null,"is_scam":false,"note":"self-written; clinic reminder"}
+{"id":"s-gn-13","source":"sms","sender":"+81 90-0000-0103","domain":"","text":"〇〇薬局です。お薬の準備ができました。受付時間内にお越しください。","url":"","expected_level":null,"is_scam":false,"note":"self-written; pharmacy reminder"}
+{"id":"s-gn-17","source":"sms","sender":"+81 90-0000-0104","domain":"","text":"お母さん、今日は病院の帰りに寄るね。夕飯はいらないよ。","url":"","expected_level":null,"is_scam":false,"note":"self-written; family message"}
+{"id":"s-gn-20","source":"sms","sender":"+81 90-0000-0105","domain":"","text":"【市役所】健康診断のご案内を郵送しました。お問い合わせは平日の窓口へ。","url":"","expected_level":null,"is_scam":false,"note":"self-written; municipal notice"}

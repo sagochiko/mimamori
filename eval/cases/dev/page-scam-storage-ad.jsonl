@@ -1,0 +1,2 @@
+{"id":"p-sc-03","source":"page","sender":"","domain":"phone-clean.example","text":"お使いのスマホのストレージがいっぱいです! 容量を空けるには、今すぐクリーナーアプリをダウンロード。","url":"https://phone-clean.example/","expected_level":2,"is_scam":true,"note":"self-written; storage-full ad"}
+{"id":"p-sc-04","source":"page","sender":"","domain":"battery-fix.example","text":"バッテリーが損傷しています (87%)。今すぐ最適化するにはアプリをインストールしてください。","url":"https://battery-fix.example/","expected_level":2,"is_scam":true,"note":"self-written; fake alert ad"}

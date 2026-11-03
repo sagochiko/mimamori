@@ -1,0 +1,7 @@
+{"id":"c-gp-01","source":"consult","sender":"","domain":"","text":"地元の交番のおまわりさんが、巡回で家に寄って、最近詐欺の電話が多いから気をつけてくださいって言ってたわ。","url":"","expected_level":null,"is_scam":false,"note":"self-written; genuine police community visit; ref https://www.npa.go.jp/bureau/safetylife/sos47/"}
+{"id":"c-gp-02","source":"consult","sender":"","domain":"","text":"警察署の生活安全課から、振り込め詐欺の注意の電話があったの。お金のことは聞かれなくて、ただ気をつけてって。","url":"","expected_level":3,"is_scam":false,"note":"self-written; genuine-like police warning call, no money request"}
+{"id":"c-gp-03","source":"consult","sender":"","domain":"","text":"運転免許の更新のお知らせのはがきが届いたの。警察署の名前が書いてあるけど、これは本物よね？","url":"","expected_level":null,"is_scam":false,"note":"self-written; genuine mail notice"}
+{"id":"c-gp-04","source":"consult","sender":"","domain":"","text":"財布を落として交番に届けたら、拾った人がいて、受け取りに来てくださいって電話が来たの。お金の話はなかったわ。","url":"","expected_level":3,"is_scam":false,"note":"self-written; genuine lost-property contact"}
+{"id":"c-gp-05","source":"consult","sender":"","domain":"","text":"自転車の防犯登録のことで、交番に行って手続きしてきたの。書類は窓口でその場で書いたわ。","url":"","expected_level":null,"is_scam":false,"note":"self-written; ordinary police-box errand"}
+{"id":"c-gp-06","source":"consult","sender":"","domain":"","text":"警察署から、先日の交通事故の件で確認の電話が来たの。でも、折り返しで署の代表番号にかけ直したら、確かに担当がいるって。","url":"","expected_level":3,"is_scam":false,"note":"self-written; verified via official number"}
+{"id":"c-gp-07","source":"consult","sender":"","domain":"","text":"消防署の人が、火災報知器の点検で来るってお知らせが回覧板で来たの。","url":"","expected_level":null,"is_scam":false,"note":"self-written; community notice"}

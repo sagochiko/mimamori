@@ -1,0 +1,4 @@
+{"id":"s-gn-09","source":"sms","sender":"docomo","domain":"docomo.ne.jp","text":"【ドコモ】5月分のご利用料金のお知らせ。内容は My docomo でご確認ください。https://www.docomo.ne.jp/","url":"https://www.docomo.ne.jp/","expected_level":3,"is_scam":false,"note":"self-written; genuine-style carrier notice; ref https://www.docomo.ne.jp/"}
+{"id":"s-gn-10","source":"sms","sender":"au","domain":"au.com","text":"【au】データ容量のご利用状況のお知らせです。詳細は My au でご確認ください。","url":"","expected_level":null,"is_scam":false,"note":"self-written; carrier notice"}
+{"id":"s-gn-11","source":"sms","sender":"SoftBank","domain":"","text":"【ソフトバンク】ご契約の料金プランの変更を受け付けました。","url":"","expected_level":null,"is_scam":false,"note":"self-written; carrier notice"}
+{"id":"s-gn-18","source":"sms","sender":"Tokyo Gas","domain":"","text":"【東京ガス】ガスの検針票を発行しました。マイページでご確認ください。","url":"","expected_level":null,"is_scam":false,"note":"self-written; utility notice"}

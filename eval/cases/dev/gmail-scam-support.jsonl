@@ -1,0 +1,1 @@
+{"id":"g-sc-12","source":"gmail","sender":"Microsoft <alert@ms-security.example>","domain":"ms-security.example","text":"件名: PCがウイルスに感染しています\n下記の番号にすぐお電話ください: 0120-000-000。サポート担当が遠隔で対応します。","url":"","expected_level":1,"is_scam":true,"note":"self-written; support-scam mail; ref https://www.ipa.go.jp/security/anshin/attention/2022/mgdayori20230228.html"}
