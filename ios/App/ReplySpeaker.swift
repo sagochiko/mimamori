@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import MimamoriCore
+import os
 
 /// Reads family replies aloud on the protected person's iPhone with the normal Japanese system voice.
 /// Personal Voice is not used: it cannot be made in Japanese, and the AI's answers use the same
@@ -13,6 +14,8 @@ import MimamoriCore
 final class ReplySpeaker: NSObject, AVSpeechSynthesizerDelegate {
   private let synthesizer = AVSpeechSynthesizer()
   private var session = SpeechSession<ObjectIdentifier>()
+  private var releasing: Task<Void, Never>?
+  private static let log = Logger(subsystem: "com.sagochiko.mimamori", category: "speech")
 
   override init() {
     super.init()
@@ -21,6 +24,7 @@ final class ReplySpeaker: NSObject, AVSpeechSynthesizerDelegate {
 
   func speak(_ lines: [String]) {
     guard !lines.isEmpty else { return }
+    releasing?.cancel()
     // .playback so a reply is heard even with the ring/silent switch on silent.
     try? AVAudioSession.sharedInstance().setCategory(
       .playback, mode: .spokenAudio, options: [.duckOthers])
@@ -55,8 +59,23 @@ final class ReplySpeaker: NSObject, AVSpeechSynthesizerDelegate {
     if session.ended(id) { release() }
   }
 
+  /// Closing can fail while the synthesizer is still stopping (right after "もう一度" stops it), so a
+  /// failure is logged and tried again a little later, unless a new reply started reading meanwhile.
   private func release() {
-    try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    releasing?.cancel()
+    releasing = Task { [weak self] in
+      // "もう一度" stops and speaks again at once; the new reading cancels this before it runs.
+      guard !Task.isCancelled, self?.session.isIdle == true else { return }
+      await Retry.run(
+        delays: [.milliseconds(300), .seconds(1)],
+        stillWanted: { self?.session.isIdle ?? false },
+        sleep: { try await Task.sleep(for: $0) },
+        failed: { error, attempt in
+          let code = (error as NSError).code
+          Self.log.error("audio session deactivation failed, try \(attempt), code \(code)")
+        },
+        attempt: { try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) })
+    }
   }
 }
 
