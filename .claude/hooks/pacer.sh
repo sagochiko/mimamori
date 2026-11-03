@@ -52,7 +52,7 @@ if [[ "$branch" == issue-* ]]; then
   first=$(git log main..HEAD --reverse --format=%ct 2>/dev/null | head -1)
   if [[ -n "$first" ]] && ((now - first > 4 * 3600)) && ! seen "stall:branch:$branch"; then
     nudge "stall:branch:$branch" \
-      "Branch $branch has been open for more than 4 hours. Consider asking mm-auditor whether to split the issue, cut scope, or queue a human step in docs/human-queue.md."
+      "Branch $branch has been open for more than 4 hours. Consider asking mm-auditor whether to split the issue, cut scope, or hand a step to the author as a \"作者:\" issue (/mm-human-queue)."
   fi
 fi
 exit 0

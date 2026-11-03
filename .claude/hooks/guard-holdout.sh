@@ -21,7 +21,7 @@ if [[ "$cmd" =~ (--set[[:space:]=]+holdout|eval-holdout) ]]; then
     log_event guard guard-holdout "final holdout run allowed by the author's unlock"
     exit 0
   fi
-  block guard-holdout "blocked: the holdout set runs once, after the author creates .claude/state/holdout.unlock. Add it to docs/human-queue.md and keep tuning on the dev set."
+  block guard-holdout "blocked: the holdout set runs once, after the author creates .claude/state/holdout.unlock. Ask the author with a \"作者:\" issue (/mm-human-queue) and keep tuning on the dev set."
 fi
 # Nobody reads the holdout, the curator included; checked before the curator's early exit below.
 if [[ "$targets" =~ (cases/holdout|(^|[[:space:]/\"\'])holdout/) ]]; then

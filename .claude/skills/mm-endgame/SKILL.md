@@ -8,7 +8,7 @@ description: Final checklist for submitting mimamori to Built with Claude Japan 
 The deadline is in `CONDITIONS.md`. After it, nothing can change. Work top to bottom and tick each item in your reply.
 
 1. Scope: dropped features are listed in `docs/design.md` with the reason. No half-built feature is reachable from the demo.
-2. Holdout: add "create `.claude/state/holdout.unlock`" to `docs/human-queue.md`. After the author does it, run `make eval-holdout` once for both modes and copy the numbers into the README. Do not tune afterwards. Then remove the `eval/cases/holdout/*` and `eval/cases/pool/*` lines from `.gitignore` and commit the cases, so judges can see what was measured.
+2. Holdout: open a "作者:" issue with `/mm-human-queue` asking the author to create `.claude/state/holdout.unlock` (the file name goes in the body file, not the title or the command). After the author does it, run `make eval-holdout` once for both modes and copy the numbers into the README. Do not tune afterwards. Then remove the `eval/cases/holdout/*` and `eval/cases/pool/*` lines from `.gitignore` and commit the cases, so judges can see what was measured.
 3. Usage numbers: `make usage` regenerates `docs/claude-usage.md` (subagents, skills, commands, hook blocks).
 4. Judge: run `mm-judge` twice and compare. Fix the cheapest weak point it names, if time allows.
 5. README (English) and README.ja.md, per task 16 of `docs/plan.md`: theme, the scam numbers with direct links to the National Police Agency figures, the story, what we can and cannot see, holdout numbers, what changed after the mother used it, three dev-log entries, how judges can try it (TestFlight link, demo mode), data handling, and how Claude Code was used (link `docs/harness.md` and `docs/claude-usage.md`).

@@ -14,7 +14,7 @@ Use the steps in `.claude/skills/mm-ios-verify/SKILL.md` for anything on the sim
 - `make verify` for the changed side, and read `.verify.log` when something fails.
 - `make eval` only when the parent asks for an accuracy number, and only within the daily budget in `CONDITIONS.md`.
 
-Report numbers and paths, not adjectives: test counts, failures with the first lines of each, build time, screenshot paths, the eval line appended. If a check cannot run in the simulator (Message Filter, DNS settings, Safari extension, Call Directory, real push), say so and write the device step for `docs/human-queue.md` instead of guessing.
+Report numbers and paths, not adjectives: test counts, failures with the first lines of each, build time, screenshot paths, the eval line appended. If a check cannot run in the simulator (Message Filter, DNS settings, Safari extension, Call Directory, real push), say so and write the device step (what to open, what to do, what result to report) for the parent to file as a "作者:" issue, instead of guessing.
 
 Report in this shape:
 - Status: pass / fail / could not run

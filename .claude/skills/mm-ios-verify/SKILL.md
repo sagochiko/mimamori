@@ -38,4 +38,4 @@ Look at the image before reporting. Check the screen text rule: no explanatory s
 
 ## What the simulator cannot check
 
-Message Filter, DNS settings (NEDNSSettingsManager), the Safari extension, Call Directory, real APNs delivery, Personal Voice, and the call observer need a real iPhone. Write each as a device step with `/mm-human-queue`: what to open, what to do, what result to report.
+Message Filter, DNS settings (NEDNSSettingsManager), the Safari extension, Call Directory, real APNs delivery, Personal Voice, and the call observer need a real iPhone. Hand each to the author as a "作者:" issue with `/mm-human-queue`: what to open, what to do, what result to report.

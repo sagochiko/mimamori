@@ -12,7 +12,15 @@ Issue: $ARGUMENTS
 
 - `gh issue view $ARGUMENTS --json title,body,labels,milestone,state`
 - It must be open and in the current milestone of `CONDITIONS.md`. If it has the `peripheral` label while the core path of the current milestone is not done, do not start it; say why and pick the next `core` issue instead.
-- If it has `needs-human` and the human step in `docs/human-queue.md` is not checked off, skip it.
+- If its title starts with "作者:", it is the author's step, not Claude's; do not start it.
+- Look for open author steps that reference it:
+
+  ```sh
+  gh issue list --label needs-human --state open --json number,title,body \
+    -q '.[] | select((.title | startswith("作者:")) and (.body | test("#$ARGUMENTS([^0-9]|$)"))) | "#\(.number) \(.title)"'
+  ```
+
+  Read each one. It blocks this issue when the work cannot be implemented or verified without its result (a key the code needs, a device fact the design depends on). While a blocking one is open, skip this issue, say which step blocks it, and pick another. A step that only checks the merged work on a device does not block (step 6).
 
 ## 2. Branch and board
 
@@ -38,7 +46,7 @@ You decide which findings to accept. When you reject one, write the reason in th
 
 ## 6. Steps that need the author
 
-Anything only a real device or the Apple portal can check goes to `docs/human-queue.md` (see `/mm-human-queue`). Merge what is verified; the device check can follow.
+Anything only a real device or the Apple portal can check becomes a "作者:" issue with `/mm-human-queue`, its body ending with `関連 #$ARGUMENTS`. Merge what is verified; the device check can follow.
 
 ## 7. PR and merge
 

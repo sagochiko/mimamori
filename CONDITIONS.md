@@ -28,4 +28,4 @@ dev の精度の測定は1日10回まで。1回ごとに Claude API を呼ぶの
 
 ## 人が要ること
 
-実機での確認、Apple Developer と App Store Connect の画面、TestFlight の配布、母とのやり取りは作者がやる。その作業に当たったら、止まって待たずに [`docs/human-queue.md`](docs/human-queue.md) に積み、ほかに進められる Issue に移る。
+実機での確認、Apple Developer と App Store Connect の画面、TestFlight の配布、母とのやり取りは作者がやる。その作業に当たったら、止まって待たずに「作者: 」で始まる Issue を立て(`/mm-human-queue`)、ほかに進められる Issue に移る。開いているものは `gh issue list --label needs-human --state open` で見る。
