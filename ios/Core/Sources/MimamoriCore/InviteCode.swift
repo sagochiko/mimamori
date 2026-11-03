@@ -1,3 +1,5 @@
+import Foundation
+
 /// A 6-digit invite code (`invites.code`). Only ASCII digits count: full-width and other
 /// scripts' digits are rejected, because the server compares the code as plain text.
 public struct InviteCode: Hashable, Sendable, CustomStringConvertible {
@@ -10,9 +12,13 @@ public struct InviteCode: Hashable, Sendable, CustomStringConvertible {
         value = raw
     }
 
-    /// Keeps only ASCII digits, up to six, for a text field while the person is typing.
+    /// Keeps only ASCII digits, up to six, for a text field while the person is typing or pasting.
+    /// Full-width digits (as a Japanese keyboard or a pasted message may give) become half-width
+    /// first; digits of other scripts are dropped.
     public static func sanitize(_ typed: String) -> String {
-        String(typed.unicodeScalars.filter { $0.isASCII && isASCIIDigit(UInt8($0.value)) }.prefix(length).map(Character.init))
+        let halfWidth = typed.applyingTransform(.fullwidthToHalfwidth, reverse: false) ?? typed
+        let digits = halfWidth.unicodeScalars.filter { $0.isASCII && isASCIIDigit(UInt8($0.value)) }
+        return String(String.UnicodeScalarView(digits.prefix(length)))
     }
 
     public var description: String { value }

@@ -33,6 +33,18 @@ struct InviteCodeTests {
   func sanitizesTyping() {
     #expect(InviteCode.sanitize("12a3 4") == "1234")
     #expect(InviteCode.sanitize("12345678") == "123456")
-    #expect(InviteCode.sanitize("１２3") == "3")
+  }
+
+  @Test("貼り付けた全角の数字は半角に直して残す")
+  func normalizesFullWidthDigits() {
+    #expect(InviteCode.sanitize("４８２９１３") == "482913")
+    #expect(InviteCode.sanitize("１２3") == "123")
+    #expect(InviteCode.sanitize("４８２　９１３") == "482913")
+    #expect(InviteCode(InviteCode.sanitize("４８２９１３")) != nil)
+  }
+
+  @Test("ほかの文字の数字は数字として扱わない")
+  func dropsOtherScripts() {
+    #expect(InviteCode.sanitize("١٢٣٤٥٦") == "")
   }
 }

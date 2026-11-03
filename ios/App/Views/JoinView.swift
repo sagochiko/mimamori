@@ -19,7 +19,8 @@ struct JoinView: View {
         .font(.system(size: 56, weight: .semibold, design: .monospaced))
         .multilineTextAlignment(.center)
         .keyboardType(.numberPad)
-        .textContentType(.oneTimeCode)
+        // No .oneTimeCode: it would offer one-time codes from bank SMS as suggestions, the very
+        // habit (typing a code someone asked for) that scammers rely on.
         .focused($focused)
         .onChange(of: typed) { _, new in
           let clean = InviteCode.sanitize(new)
