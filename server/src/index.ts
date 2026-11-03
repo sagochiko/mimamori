@@ -4,33 +4,33 @@ import { runScheduled } from "./cron";
 import { createFamily, createInvite, deleteEverything, joinInvite, leaveFamily, registerApns } from "./families";
 import { errorResponse, HttpError } from "./http";
 
-type Handler = (request: Request, env: Env, params: string[]) => Promise<Response>;
+type Handler = (request: Request, env: Env, params: string[], ctx: ExecutionContext) => Promise<Response>;
 
 const routes: Array<[method: string, pattern: RegExp, handler: Handler]> = [
   ["POST", /^\/families$/, (req, env) => createFamily(req, env)],
   ["POST", /^\/invites$/, (req, env) => createInvite(req, env)],
-  ["POST", /^\/invites\/([^/]+)\/join$/, (req, env, [code]) => joinInvite(req, env, code ?? "")],
+  ["POST", /^\/invites\/([^/]+)\/join$/, (req, env, [code], ctx) => joinInvite(req, env, ctx, code ?? "")],
   ["PUT", /^\/members\/me\/apns$/, (req, env) => registerApns(req, env)],
   ["DELETE", /^\/members\/([^/]+)$/, (req, env, [id]) => leaveFamily(req, env, id ?? "")],
   ["DELETE", /^\/families\/me$/, (req, env) => deleteEverything(req, env)],
 ];
 
-export async function route(request: Request, env: Env): Promise<Response> {
+export async function route(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const { pathname } = new URL(request.url);
   let pathMatched = false;
   for (const [method, pattern, handler] of routes) {
     const match = pattern.exec(pathname);
     if (!match) continue;
     pathMatched = true;
-    if (method === request.method) return handler(request, env, match.slice(1));
+    if (method === request.method) return handler(request, env, match.slice(1), ctx);
   }
   return pathMatched ? errorResponse(405, "method_not_allowed") : errorResponse(404, "not_found");
 }
 
 export default {
-  async fetch(request, env, _ctx): Promise<Response> {
+  async fetch(request, env, ctx): Promise<Response> {
     try {
-      return await route(request, env);
+      return await route(request, env, ctx);
     } catch (error) {
       if (error instanceof HttpError) return errorResponse(error.status, error.code);
       // Only the error name: messages could carry request content, which must not reach the logs.

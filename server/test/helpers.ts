@@ -10,9 +10,10 @@ const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 export async function call(
   method: string,
   path: string,
-  options: { deviceKey?: string; body?: unknown; env?: Env } = {},
+  options: { deviceKey?: string; body?: unknown; env?: Env; ip?: string } = {},
 ): Promise<Response> {
   const headers = new Headers();
+  if (options.ip !== undefined) headers.set("CF-Connecting-IP", options.ip);
   if (options.deviceKey !== undefined) headers.set("Authorization", `Bearer ${options.deviceKey}`);
   if (options.body !== undefined) headers.set("Content-Type", "application/json");
   const request = new IncomingRequest(`${HOST}${path}`, {
@@ -46,10 +47,17 @@ export async function invite(deviceKey: string): Promise<{ code: string; expires
   return (await res.json()) as { code: string; expiresAt: string };
 }
 
+/** A different client address per call, so tests do not run into the join rate limit by accident. */
+export function randomIp(): string {
+  const [a, b, c] = crypto.getRandomValues(new Uint8Array(3));
+  return `10.${a}.${b}.${c}`;
+}
+
 export async function join(
   code: string,
   role: "protected" | "family",
   displayName: string,
+  ip: string = randomIp(),
 ): Promise<Response> {
-  return call("POST", `/invites/${code}/join`, { body: { role, display_name: displayName } });
+  return call("POST", `/invites/${code}/join`, { body: { role, display_name: displayName }, ip });
 }

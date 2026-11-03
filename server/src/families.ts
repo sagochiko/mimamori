@@ -11,6 +11,7 @@ import {
 import { deleteAgentSession } from "./agents";
 import { revokeGmailGrant } from "./gmail";
 import { errorResponse, HttpError, json, noContent, readJson } from "./http";
+import { sendPush } from "./push";
 
 export const INVITE_LIFETIME_MS = 24 * 3600_000;
 const DISPLAY_NAME_MAX = 40;
@@ -89,16 +90,29 @@ export async function createInvite(request: Request, env: Env): Promise<Response
 }
 
 /**
- * POST /invites/{code}/join with { role, display_name }. Returns the new device key.
- * Unknown, used, and expired codes all answer 404 so the reply does not tell which codes exist.
+ * POST /invites/{code}/join with { role, display_name }. Returns the new device key and the family
+ * token (the protected person's phone puts it in the SMS and DNS addresses).
+ * Unknown, used, and expired codes all answer 404 so the reply does not tell which codes exist,
+ * and each client address gets only a few tries a minute, so six digits cannot be walked through.
+ * Everyone already in the family is told who joined.
  */
-export async function joinInvite(request: Request, env: Env, code: string): Promise<Response> {
+export async function joinInvite(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  code: string,
+): Promise<Response> {
+  const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  const { success } = await env.JOIN_LIMITER.limit({ key: `join:${ip}` });
+  if (!success) throw new HttpError(429, "too_many_attempts");
+
   const body = await readJson(request);
   const memberRole = role(body.role);
   const name = displayName(body.display_name, true);
   if (!/^\d{6}$/.test(code)) throw new HttpError(404, "invite_unavailable");
 
   const now = Date.now();
+  // One statement claims the code, so of two simultaneous joins only one gets a row back.
   const claimed = await env.DB.prepare(
     "UPDATE invites SET used_at = ? WHERE code = ? AND used_at IS NULL AND expires_at > ? RETURNING family_id",
   )
@@ -106,10 +120,32 @@ export async function joinInvite(request: Request, env: Env, code: string): Prom
     .first<{ family_id: string }>();
   if (!claimed) throw new HttpError(404, "invite_unavailable");
 
+  const family = await env.DB.prepare("SELECT token FROM families WHERE id = ?")
+    .bind(claimed.family_id)
+    .first<{ token: string }>();
+  if (!family) throw new HttpError(404, "invite_unavailable");
+  const others = await env.DB.prepare("SELECT id FROM members WHERE family_id = ?")
+    .bind(claimed.family_id)
+    .all<{ id: string }>();
+
   const member = await insertMember(env, claimed.family_id, memberRole, name);
   await member.statement.run();
+
+  // After the response; a failed push must not undo the join.
+  ctx.waitUntil(
+    sendPush(env, others.results.map((r) => r.id), { body: `${name}が入りました` }).then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
   return json(
-    { familyId: claimed.family_id, memberId: member.memberId, deviceKey: member.deviceKey, role: memberRole },
+    {
+      familyId: claimed.family_id,
+      memberId: member.memberId,
+      deviceKey: member.deviceKey,
+      familyToken: family.token,
+      role: memberRole,
+    },
     201,
   );
 }

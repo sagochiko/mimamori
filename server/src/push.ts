@@ -9,7 +9,7 @@
 import { base64url } from "./auth";
 
 export interface PushPayload {
-  title: string;
+  title?: string;
   body: string;
   /** Extra keys next to "aps", read by the app (for example the case id). */
   data?: Record<string, string | number | boolean>;
@@ -87,7 +87,7 @@ function apnsJwt(env: Env, nowMs: number): Promise<string> {
 
 function apsBody(payload: PushPayload): Record<string, unknown> {
   const aps: Record<string, unknown> = {
-    alert: { title: payload.title, body: payload.body },
+    alert: payload.title === undefined ? { body: payload.body } : { title: payload.title, body: payload.body },
     sound: "default",
   };
   if (payload.threadId) aps["thread-id"] = payload.threadId;

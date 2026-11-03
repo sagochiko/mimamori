@@ -28,9 +28,12 @@ export function newDeviceKey(): string {
   return base64url(randomBytes(32));
 }
 
-/** 24 random bytes, base64url: exactly 32 URL-safe characters. */
+/**
+ * 16 random bytes as 32 lowercase hex digits. It sits in the /sms/ and /dns-query/ paths, and
+ * Cloudflare's log redaction hides runs of 32 or more hex digits, so the token never shows in logs.
+ */
 export function newFamilyToken(): string {
-  return base64url(randomBytes(24));
+  return [...randomBytes(16)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /** Six decimal digits, uniform (rejection sampling avoids modulo bias). */
