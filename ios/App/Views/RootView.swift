@@ -55,8 +55,14 @@ private struct BigButtonBody: View {
       .foregroundStyle(prominent ? Color.white : tint)
       .background(
         RoundedRectangle(cornerRadius: 20)
-          .fill(prominent ? tint : tint.opacity(0.12))
+          .fill(prominent ? tint : tint.opacity(0.18))
       )
+      // The secondary button also gets an outline: in dark mode a faint fill alone is nearly black.
+      .overlay {
+        if !prominent {
+          RoundedRectangle(cornerRadius: 20).strokeBorder(tint, lineWidth: 2)
+        }
+      }
       .opacity(configuration.isPressed ? 0.7 : isEnabled ? 1 : 0.5)
   }
 }
