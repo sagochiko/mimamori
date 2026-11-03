@@ -49,3 +49,15 @@ Safari の拡張の `manifest.json` を、`Resources` という名前のフォ�
 `Info.plist` が無いという意味だと思って中身を調べたが、原因は別だった。iOS のバンドルの一番上に `Resources` というフォルダがあると、CFBundle がそれを古い形のバンドルとして読み、`Resources/` の中に `Info.plist` を探しにいく。
 
 フォルダごと入れるのをやめ、ファイルを1つずつバンドルの一番上へ写す書き方にして、ビルドは通った(作り直しから16秒)。フォルダの名前を変える案は、Safari が `manifest.json` をバンドルの一番上で探すので採らなかった。同じ確認の中で、`make simulator` が iOS 27.1 のランタイムに機種を作れない(`Incompatible device`)ことも分かり、今あった iOS 26.5 の iPhone 17 Pro で代わりに確かめた。使ったのは mm-implementer、`xcodebuild`、MobileBuildMCP の画面の操作。
+
+## 2026年11月4日 08:40 TestFlight の待ちに期間の前のコードを使いかけた (PR #42)
+
+TestFlight に上げる `/mm-release` で、作者が Submit Review を押したことを、Claude が自分で気づいて先へ進む待ち方を作っていた。
+
+Claude Code には、レビュー役の指摘を受けて「終わったかは、ページの状態か App Store Connect の状態を見るループで待つ。何で検知するかは、Claude in Chrome とシェルから安く取れる状態の中から選び、選んだ理由を書く」と頼んだ。
+
+実装役のサブエージェントは、App Store Connect API のビルドの状態をシェルから読む方法を選んだ。そのために作者のグローバルの `app-store-connect` skill(`~/.claude/skills/` の `asc.py`、`asc_client.py`、`asc_auth.py`)の一部を開いて読み、その `build_client` を import するスクリプトを `.claude/skills/mm-release/beta_state.py` に置いてコミットした(`5e871ac`)。読んだ側のコードは写していない。
+
+グローバルの skill は道具であって、ハッカソンの「作者が以前に作ったコード」には当たらないと読んでいた。親のセッションは、触れうるので安全な側に倒すと判断した。
+
+`beta_state.py` を消し、リポジトリからグローバルの skill への参照をすべて外した。待ちは Claude in Chrome で、ビルドの状態の文字だけを5分おきに最大6回読む形にした。トークンは少し使うが、期間の前のコードに頼らずに済む。シェルからトークンを使わずに読める API の案は採らなかった。履歴は書き換えないので、`5e871ac` には消す前のスクリプトが残る。使ったのは、実装役とレビュー役のサブエージェント、Claude in Chrome、guard-prior-work フック(今回の読み込みは止めなかった)。

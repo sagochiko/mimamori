@@ -12,7 +12,6 @@ Stop and say why if any of these fails.
 - The Apple account is in Xcode > Settings > Accounts (signing and upload both use it; `No Accounts` means it is missing).
 - The app record and the two TestFlight groups exist in App Store Connect (issue #34). Internal testers must be App Store Connect users, so the mother is a user of the account (issue #26).
 - `grep MIMAMORI_API_HOST ios/Config/Shared.xcconfig` shows the deployed Workers host and the `/mm-deploy` smoke check passed for it. A build that points at `*.placeholder.invalid` cannot create a family, so beta review would reject it.
-- `python3 .claude/skills/mm-release/beta_state.py 1` prints a state or `NO_BUILD`, not `is not visible to the API key`. Step 5 waits on it (see there). If the app is not visible, say so before archiving; step 5 then falls back to slower checks in Chrome.
 - The tree is clean: `git status --short` prints nothing. Look before step 1 switches branches, so changes carried over from another branch show up here. Step 1 branches from `origin/main` and never switches this tree to `main`, which another worktree may hold.
 
 If a setting differs between the mother's build and the judges' build (planned in task 5 for the SMS network URL), release one build per audience with consecutive build numbers, and keep track of which number goes to which group.
@@ -78,21 +77,11 @@ After a successful upload, push the branch and open a PR so `main` carries the n
 
 The author does one thing here: press Submit Review, because it sends the build to Apple's beta review and cannot be taken back. Claude does everything before it in Chrome and notices the end by itself. Labels are the English ones from Apple's TestFlight help; the Japanese screen shows them translated.
 
-The waits read the App Store Connect API through `beta_state.py`. The build's `externalBuildState` (its `buildBetaDetail`, Apple's ExternalBetaState) moves from `PROCESSING` to `READY_FOR_BETA_SUBMISSION` when processing ends and leaves `READY_FOR_BETA_SUBMISSION` when the review is submitted. It does not depend on the screen language, and a shell loop reads it with two GETs per poll, so waiting costs no tokens. The Chrome page was not chosen: AppleScript gives a shell only the tab URLs and titles, which do not show the build's state, and reading the page text from AppleScript needs Chrome's "Allow JavaScript from Apple Events", which lets local scripts run JavaScript in every tab. Checking the page with Claude in Chrome works but spends tokens on each look, so it is only the fallback. `beta_state.py` signs in through the author's `app-store-connect` skill in `~/.claude/skills`, which finds the API key itself; the script only reads and never names or prints the key.
+The waits look at the build's status in App Store Connect with Claude in Chrome, reading only the status text of build `$N` with `find` or `get_page_text`, never a screenshot. Each look reloads the page. Between looks, run `sleep 300` with `run_in_background` and do nothing until it ends; look at most six times (30 minutes), then ask once whether to wait again. The App Store Connect API would let a shell loop wait without tokens, but signing in to it here would lean on code the author wrote before the event, which the hackathon rules keep out of this repository, so the waits stay in Chrome.
 
 ### 5a. Wait for processing
 
-Run `python3 .claude/skills/mm-release/beta_state.py $N` once; expect `NO_BUILD` or `PROCESSING`. Then wait with `run_in_background`:
-
-```sh
-S=.claude/skills/mm-release/beta_state.py
-for i in $(seq 60); do
-  st=$(python3 "$S" "$N") || exit 2
-  case "$st" in NO_BUILD|PROCESSING) sleep 30 ;; *) echo "$st"; exit 0 ;; esac
-done; exit 1
-```
-
-`READY_FOR_BETA_SUBMISSION` is the expected end. `MISSING_EXPORT_COMPLIANCE` means `ITSAppUsesNonExemptEncryption` did not reach the build, and `PROCESSING_EXCEPTION` means Apple could not process it; show the state and stop. Exit 1 is the 30 minute limit: ask once whether to wait again. Exit 2 means the API call failed; show its stderr line.
+Upload is not the end: Apple processes the build before it can be added to a group. Open the app's TestFlight tab in Chrome as the first two paragraphs of 5b say and read build `$N`'s status. If it is still processing, wait as above. Stop and show the status if Apple reports a processing problem or asks the export compliance question; the latter means `ITSAppUsesNonExemptEncryption` did not reach the build.
 
 ### 5b. Fill in the groups in Chrome
 
@@ -116,19 +105,7 @@ Do not save screenshots of these pages to disk, and do not paste page text that 
 
 ### 5c. Hand over the one press
 
-Run `python3 "$S" "$N"` once; it must print `READY_FOR_BETA_SUBMISSION`. If it prints something else, the build already moved on; report that instead of asking. Then ask in one line ("Submit Review を押してください。終わったら自動で続けます") and wait with `run_in_background`:
-
-```sh
-for i in $(seq 120); do
-  st=$(python3 "$S" "$N") || exit 2
-  [ "$st" != READY_FOR_BETA_SUBMISSION ] && { echo "$st"; exit 0; }
-  sleep 15
-done; exit 1
-```
-
-Expect `WAITING_FOR_BETA_REVIEW` for the first build of a version, or `IN_BETA_TESTING` or `BETA_APPROVED` when Apple lets a later build through without a full review. Report the state and the build number. Exit 1 is the 30 minute limit: ask once whether to wait again.
-
-If step 0 found that the API key cannot see the app, no shell state shows the press. Then look at the build's status in the judges' group with Claude in Chrome after each `sleep 300` run with `run_in_background`, at most six times, and do not look in between.
+Read build `$N`'s status in the judges' group once and keep the text; it is the status before the press. Then ask in one line ("Submit Review を押してください。終わったら自動で続けます") and wait as above. The press is done when the status of build `$N` differs from the text you kept: waiting for review for the first build of a version, or testing when Apple lets a later build through without a full review. Report the status and the build number.
 
 ### What to write
 
