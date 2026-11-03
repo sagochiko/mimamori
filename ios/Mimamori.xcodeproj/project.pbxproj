@@ -27,7 +27,6 @@
 		CDFD1C8B9D9F3A1A276E39B0 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 1F9B0F681A88B43BA14AE240 /* manifest.json */; };
 		D25B0DFFB4B0A2D9778F1F00 /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5CA27DA8F58C1AD1C5641A2 /* SafariWebExtensionHandler.swift */; };
 		F7662858D9EEFCBA1B6DCD99 /* CallDirectory.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FE2AA537BD66CC913767D2DC /* CallDirectory.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		F9E44D49723556A48889D8FD /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 140B8B5CC2F4AD322861B1DA /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -52,13 +51,6 @@
 			remoteGlobalIDString = 5E354127A8026FB58A1395B1;
 			remoteInfo = SafariExtension;
 		};
-		C3FB72C299B25E01E3069B6C /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 46458B7AF268646422C91FA8 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 3CD2D6E4970D28D7D8A7B6F6;
-			remoteInfo = ShareExtension;
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -70,7 +62,6 @@
 			files = (
 				81A7A7A8204D4A2657776DF3 /* MessageFilter.appex in Embed Foundation Extensions */,
 				8E20FA15796EE2391F3A9DC1 /* SafariExtension.appex in Embed Foundation Extensions */,
-				F9E44D49723556A48889D8FD /* ShareExtension.appex in Embed Foundation Extensions */,
 				F7662858D9EEFCBA1B6DCD99 /* CallDirectory.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
@@ -303,7 +294,6 @@
 			dependencies = (
 				CA8D780B01D6000E06CFB39C /* PBXTargetDependency */,
 				54B79832D09AFEC0D29DF2B4 /* PBXTargetDependency */,
-				F911E25C5EE108005FC6F011 /* PBXTargetDependency */,
 				3FDF9BBABF96421D1F11D00E /* PBXTargetDependency */,
 			);
 			name = Mimamori;
@@ -485,11 +475,6 @@
 			isa = PBXTargetDependency;
 			target = 2F05DC9CF8B42A0BF0982DB5 /* MessageFilter */;
 			targetProxy = 41B99FDA0940661FD31E736A /* PBXContainerItemProxy */;
-		};
-		F911E25C5EE108005FC6F011 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 3CD2D6E4970D28D7D8A7B6F6 /* ShareExtension */;
-			targetProxy = C3FB72C299B25E01E3069B6C /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 

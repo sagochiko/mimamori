@@ -42,7 +42,8 @@ targets:
         product: MimamoriCore
       - target: MessageFilter
       - target: SafariExtension
-      - target: ShareExtension
+      # ShareExtension is not embedded until task 12 makes it send something. Embedded as a stub, it
+      # shows up in share sheets and closes without sending, so the person could think the family got it.
       - target: CallDirectory
     settings:
       base:
@@ -186,6 +187,8 @@ schemes:
     build:
       targets:
         Mimamori: all
+        # Built (so it keeps compiling) but not inside the app; see the note in Mimamori's dependencies.
+        ShareExtension: all
     run:
       config: Debug
     archive:
