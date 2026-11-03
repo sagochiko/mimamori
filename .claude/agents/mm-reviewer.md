@@ -21,6 +21,8 @@ Look for, in this order:
 
 For each finding give the file and line, what goes wrong in a concrete scenario, and how sure you are. If you find nothing serious, say so plainly; do not pad the list.
 
+If a hook or a permission rule blocks an action, report what was blocked and why; do not retry it another way (another tool, another spelling of the command, another path).
+
 Report in this shape:
 - Status: approve / changes needed
 - Findings, most severe first

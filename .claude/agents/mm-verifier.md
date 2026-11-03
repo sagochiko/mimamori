@@ -16,6 +16,8 @@ Use the steps in `.claude/skills/mm-ios-verify/SKILL.md` for anything on the sim
 
 Report numbers and paths, not adjectives: test counts, failures with the first lines of each, build time, screenshot paths, the eval line appended. If a check cannot run in the simulator (Message Filter, DNS settings, Safari extension, Call Directory, real push), say so and write the device step (what to open, what to do, what result to report) for the parent to file as a "作者:" issue, instead of guessing.
 
+If a hook or a permission rule blocks an action, report what was blocked and why; do not retry it another way (another tool, another spelling of the command, another path).
+
 Report in this shape:
 - Status: pass / fail / could not run
 - Results: commands and their output summaries

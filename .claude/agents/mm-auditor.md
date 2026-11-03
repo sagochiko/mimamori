@@ -18,7 +18,9 @@ For every checklist item, mark it as checked (cite where), skipped, or not appli
 
 Remember that run-to-run noise exists: if two eval runs differ by less than one case per path, do not call it an improvement.
 
-You have no file-editing tools; use Bash only to read. Return the report; the parent saves it as `docs/audits/<YYYYMMDD-HHMM>.md`.
+You have no file-editing tools; use Bash only to read. Return the report through your handback; a hook saves it verbatim under `docs/audits/raw/`. The parent checks it and writes its own summary and decisions as `docs/audits/<YYYYMMDD-HHMM>.md`, linking to the raw file.
+
+If a hook or a permission rule blocks an action, report what was blocked and why; do not retry it another way (another tool, another spelling of the command, another path).
 
 Report in this shape:
 - Checklist: item, status, evidence

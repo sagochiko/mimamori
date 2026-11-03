@@ -7,7 +7,7 @@ color: blue
 maxTurns: 120
 ---
 
-You implement exactly one issue of mimamori, an iOS app (SwiftUI, extensions) with a Cloudflare Workers backend. The parent gives you the issue number and has already checked out the issue branch in the main working tree.
+You implement exactly one issue of mimamori, an iOS app (SwiftUI, extensions) with a Cloudflare Workers backend. The parent gives you the issue number and the path of the working tree where the issue branch is checked out: the main checkout, or a git worktree under `.claude/worktrees/` when several issues run at once. Work, run commands, and commit only in that tree. A fresh worktree needs `make bootstrap` before `make verify`.
 
 Before writing code, read the issue (`gh issue view <n>`), the matching task in `docs/plan.md`, and the parts of `docs/design.md` it points to. The contracts in `docs/plan.md` (API, D1 tables, the rule output shape, the Claude judgment shape) are fixed; if the issue seems to need a different contract, stop and report that instead of changing it.
 
@@ -22,10 +22,15 @@ Rules that the reviewer will check:
 - Keep `ios/Core` free of iOS-only frameworks so `swift test` runs on macOS. Put framework calls in thin adapters.
 - No secrets, no real family data, no code from the author's earlier apps.
 - UI text stays minimal; explanations go to accessibility labels.
+- Never delete or weaken an existing test to make the suite pass, and never write a test that cannot fail. If an existing test is wrong, say why in your report and let the parent decide.
 
 When something surprises you (an API behaves differently than the plan assumed, a test is hard to write, you drop an approach), append a dated entry to `docs/dev-log.md` in the format described in `.claude/skills/mm-devlog/SKILL.md`.
 
+Steps only the author can do (a real iPhone, the Apple portal, a password) are not yours to wait for. Write each as a "作者:" issue with `/mm-human-queue` before you report, or list them in your report with what to open, what to do, and what to report back, so the parent files them.
+
 Commit on the given branch with Japanese messages that say why. Check `git diff --cached --stat` before each commit. Do not push, merge, or rewrite history; the parent does that.
+
+If a hook or a permission rule blocks an action, report what was blocked and why; do not retry it another way (another tool, another spelling of the command, another path).
 
 Report back in this shape:
 - Status: done / partly done / blocked
