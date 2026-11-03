@@ -1,6 +1,7 @@
 // Routing. Each route lives in its own module; this file only matches method and path.
 
-import { createFamily, createInvite, joinInvite, registerApns } from "./families";
+import { runScheduled } from "./cron";
+import { createFamily, createInvite, deleteEverything, joinInvite, leaveFamily, registerApns } from "./families";
 import { errorResponse, HttpError } from "./http";
 
 type Handler = (request: Request, env: Env, params: string[]) => Promise<Response>;
@@ -10,6 +11,8 @@ const routes: Array<[method: string, pattern: RegExp, handler: Handler]> = [
   ["POST", /^\/invites$/, (req, env) => createInvite(req, env)],
   ["POST", /^\/invites\/([^/]+)\/join$/, (req, env, [code]) => joinInvite(req, env, code ?? "")],
   ["PUT", /^\/members\/me\/apns$/, (req, env) => registerApns(req, env)],
+  ["DELETE", /^\/members\/([^/]+)$/, (req, env, [id]) => leaveFamily(req, env, id ?? "")],
+  ["DELETE", /^\/families\/me$/, (req, env) => deleteEverything(req, env)],
 ];
 
 export async function route(request: Request, env: Env): Promise<Response> {
@@ -34,5 +37,15 @@ export default {
       console.error("unhandled", error instanceof Error ? error.name : typeof error);
       return errorResponse(500, "internal_error");
     }
+  },
+
+  async scheduled(controller, env, _ctx): Promise<void> {
+    await runScheduled(env, controller.scheduledTime);
+  },
+
+  // Task 6 adds the judge consumer. Until then nothing is sent to the queue; anything that does
+  // arrive is retried rather than dropped.
+  async queue(batch): Promise<void> {
+    batch.retryAll();
   },
 } satisfies ExportedHandler<Env>;

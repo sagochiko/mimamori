@@ -8,7 +8,9 @@ import {
   requireMember,
   type Role,
 } from "./auth";
-import { HttpError, json, noContent, readJson } from "./http";
+import { deleteAgentSession } from "./agents";
+import { revokeGmailGrant } from "./gmail";
+import { errorResponse, HttpError, json, noContent, readJson } from "./http";
 
 export const INVITE_LIFETIME_MS = 24 * 3600_000;
 const DISPLAY_NAME_MAX = 40;
@@ -125,5 +127,73 @@ export async function registerApns(request: Request, env: Env): Promise<Response
   await env.DB.prepare("UPDATE members SET apns_token = ?, apns_env = ? WHERE id = ?")
     .bind(token.toLowerCase(), apnsEnv, me.id)
     .run();
+  return noContent();
+}
+
+/**
+ * DELETE /members/{id}: leave the family. Only the member themself (or "me").
+ * The row goes away, so the device key answers 401 from the next call.
+ */
+export async function leaveFamily(request: Request, env: Env, memberId: string): Promise<Response> {
+  const me = await requireMember(request, env);
+  if (memberId !== "me" && memberId !== me.id) throw new HttpError(403, "only_self");
+  await env.DB.prepare("DELETE FROM members WHERE id = ?").bind(me.id).run();
+  return noContent();
+}
+
+/** R2 keys of a family's objects start with this, so a prefix listing finds every photo. */
+export function familyR2Prefix(familyId: string): string {
+  return `${familyId}/`;
+}
+
+async function deleteFamilyPhotos(env: Env, familyId: string): Promise<void> {
+  const rows = await env.DB.prepare("SELECT r2_key FROM smiles WHERE family_id = ?")
+    .bind(familyId)
+    .all<{ r2_key: string }>();
+  const keys = new Set(rows.results.map((r) => r.r2_key));
+  let cursor: string | undefined;
+  do {
+    const page = await env.PHOTOS.list({ prefix: familyR2Prefix(familyId), cursor });
+    for (const object of page.objects) keys.add(object.key);
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  const all = [...keys];
+  for (let i = 0; i < all.length; i += 1000) await env.PHOTOS.delete(all.slice(i, i + 1000));
+}
+
+/**
+ * DELETE /families/me: "すべて消す". Any member may call it.
+ * Outside services go first (Gmail grant, Managed Agents sessions). If one of them fails, nothing in
+ * D1 is deleted and the answer is 502 with what is pending, so calling again finishes the job; both
+ * outside steps treat "already gone" as done. Then photos in R2, then every row of the family.
+ */
+export async function deleteEverything(request: Request, env: Env): Promise<Response> {
+  const me = await requireMember(request, env);
+  const familyId = me.familyId;
+  const pending: string[] = [];
+
+  const grant = await env.DB.prepare("SELECT refresh_token_enc FROM gmail_auth WHERE family_id = ?")
+    .bind(familyId)
+    .first<{ refresh_token_enc: string }>();
+  if (grant && !(await revokeGmailGrant(env, grant.refresh_token_enc))) pending.push("gmail");
+
+  const sessions = await env.DB.prepare(
+    "SELECT DISTINCT agent_session_id AS id FROM cases WHERE family_id = ? AND agent_session_id IS NOT NULL",
+  )
+    .bind(familyId)
+    .all<{ id: string }>();
+  const deleted = await Promise.all(sessions.results.map((s) => deleteAgentSession(env, s.id)));
+  if (deleted.includes(false)) pending.push("agent_sessions");
+
+  if (pending.length > 0) return errorResponse(502, "cleanup_failed", { pending });
+
+  await deleteFamilyPhotos(env, familyId);
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM relays WHERE case_id IN (SELECT id FROM cases WHERE family_id = ?)").bind(familyId),
+    ...["cases", "alerts", "smiles", "invites", "gmail_auth", "members"].map((table) =>
+      env.DB.prepare(`DELETE FROM ${table} WHERE family_id = ?`).bind(familyId),
+    ),
+    env.DB.prepare("DELETE FROM families WHERE id = ?").bind(familyId),
+  ]);
   return noContent();
 }
