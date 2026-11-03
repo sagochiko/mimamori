@@ -201,6 +201,8 @@ printf '%s\n' '機種を確かめる。' '連絡は TANUKIYAMA さんへ' >"$T/t
 priv 0 "gh issue create --title \"作者: 機種\" --label needs-human --body-file $T/clean.md" "a clean issue body passes"
 priv 2 "gh issue create --title \"作者: 機種\" --body-file $T/term.md" "a body file with a private term is blocked, whatever its case"
 priv 2 "gh issue edit 3 -F term.md" "a relative body file is read from the command's directory"
+mkdir -p "$T/Tanukiyama" && cp "$T/clean.md" "$T/Tanukiyama/clean.md"
+priv 0 "cd $T/Tanukiyama && gh issue create --title ok --body-file $T/Tanukiyama/clean.md" "paths of the body file and of cd are not published, so they are not scanned"
 priv 2 "gh pr comment 3 --body \"電話は $ph\"" "a phone number in --body is blocked"
 priv 2 "gh issue comment 3 --body-file $T/missing.md" "a body file that cannot be read is blocked"
 priv 0 "gh issue list --label needs-human --state open" "reading issues passes"

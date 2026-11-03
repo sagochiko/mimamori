@@ -27,21 +27,29 @@ at='(^|[;&|(]|'"$nl"')[[:space:]]*([^[:space:];&|()]*/)?gh[[:space:]]+(issue|pr)
 [[ "$cmd" =~ $at ]] || exit 0
 
 scan="$PROJECT_DIR/scripts/scan-private.sh"
+cwd=$(jq -r '.cwd // empty' <<<"$in")
+q="'"
+arg='("[^"]*"|'"$q"'[^'"$q"']*'"$q"'|[^[:space:];&|]+)'
+file_re='(^|[[:space:]])(--body-file|-F)[=[:space:]]+'"$arg"
+cd_re='(^|[;&|(]|'"$nl"')[[:space:]]*cd[[:space:]]+'"$arg"
 found=""
-check() { # <label> [file]: add the scan's hits to $found; block when the scan cannot run
+check() { # <label> <file or -> [text]: add the scan's hits to $found; block when the scan cannot run
   local out status
-  if [[ -n "${2:-}" ]]; then out=$("$scan" text "$1" "$2" 2>/dev/null); else out=$(printf '%s\n' "$cmd" | "$scan" text "$1" 2>/dev/null); fi
+  if [[ "$2" == "-" ]]; then out=$(printf '%s\n' "$3" | "$scan" text "$1" 2>/dev/null); else out=$("$scan" text "$1" "$2" 2>/dev/null); fi
   status=$?
   ((status == 1)) && found+="$out$nl"
   ((status > 1)) && block guard-private "blocked: the personal-data scan could not run on $1."
   return 0
 }
-check "the command (title and body)"
+
+# The command holds --title and --body. The paths of body files and of a leading cd are not published
+# (and hold the user name of this Mac), so they are taken out before the scan; the files are read below.
+text=$cmd
+while [[ "$text" =~ $file_re ]]; do text=${text/"${BASH_REMATCH[0]}"/ }; done
+while [[ "$text" =~ $cd_re ]]; do text=${text/"${BASH_REMATCH[0]}"/"${BASH_REMATCH[1]}"}; done
+check "the command (title and body)" - "$text"
 
 # Every --body-file / -F, relative to the directory the command runs in.
-cwd=$(jq -r '.cwd // empty' <<<"$in")
-q="'"
-file_re='(^|[[:space:]])(--body-file|-F)[=[:space:]]+("[^"]*"|'"$q"'[^'"$q"']*'"$q"'|[^[:space:];&|]+)'
 rest=$cmd
 while [[ "$rest" =~ $file_re ]]; do
   rest=${rest#*"${BASH_REMATCH[0]}"}
