@@ -126,7 +126,7 @@ cd .claude/worktrees/issue-<n>-<slug> && make bootstrap && make verify
 - A fresh worktree has no `server/node_modules`; `make bootstrap` runs `npm ci` in `server/` before `make verify`.
 - Tell each subagent the worktree path. It works and commits only there, and checks `git diff --cached --stat` before each commit.
 - Before the PR: `git fetch origin && git merge origin/main` in the worktree, then `make verify` again.
-- Merge with `gh pr merge <pr> --merge` and without `--delete-branch`: gh would try to switch the worktree to `main`, which another checkout holds. Then, from the main checkout, `git worktree remove .claude/worktrees/<branch>` (this also deletes its `node_modules`), `git branch -D <branch>` once `gh pr view <pr> --json state` says `MERGED`, and `git push origin --delete <branch>`.
+- Merge with `gh pr merge <pr> --merge` and without `--delete-branch`, so gh does not try to move the worktree's checkout off the branch it deletes; clean up by hand instead. From the main checkout, `git worktree remove .claude/worktrees/<branch>` (this also deletes its `node_modules`), `git branch -D <branch>` once `gh pr view <pr> --json state` says `MERGED`, and `git push origin --delete <branch>`.
 
 ## At the end of a milestone
 
