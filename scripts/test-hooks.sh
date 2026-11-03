@@ -145,6 +145,20 @@ transcript "$T/t10.jsonl" 100000
 echo '{"session_id":"s2","trigger":"auto"}' | "$H/compact-flag.sh"
 [[ "$(pace s2 "$T/t10.jsonl")" == *"自動の要約が走った"* ]] || { echo "hook test failed: pacer reports an automatic compaction"; fail=1; }
 [[ "$(pace s2 "$T/t10.jsonl")" != *"自動の要約"* ]] || { echo "hook test failed: pacer reports a compaction only once"; fail=1; }
+# The 4-hour stall counts the issue branch's own commits from origin/main, in the input's cwd.
+g switch -q -c issue-9-old origin/main && GIT_COMMITTER_DATE="$(($(date +%s) - 5 * 3600)) +0900" g commit -q --allow-empty -m old
+[[ "$(pace s3 "$T/t10.jsonl")" == *"Branch issue-9-old has been open for more than 4 hours"* ]] ||
+  { echo "hook test failed: pacer finds a long issue branch in the cwd's tree"; fail=1; }
+g switch -q docs-only
+# A local main that was never pulled must not make a new branch look old: the 5-hour-old commit landed
+# on origin/main through someone else's PR.
+p() { git -c user.name=test -c user.email=test@localhost -c commit.gpgsign=false -C "$T/p" "$@"; }
+git init -q --bare "$T/p.git" && git init -q -b main "$T/p" && p remote add origin "$T/p.git"
+p commit -q --allow-empty -m base && p push -q origin main
+p switch -q -c landed && GIT_COMMITTER_DATE="$(($(date +%s) - 5 * 3600)) +0900" p commit -q --allow-empty -m landed && p push -q origin landed:main
+p fetch -q origin && p switch -q -c issue-10-new origin/main && p commit -q --allow-empty -m new
+out=$(jq -nc --arg t "$T/t10.jsonl" --arg d "$T/p" '{hook_event_name:"Stop",stop_hook_active:false,session_id:"s4",transcript_path:$t,cwd:$d}' | "$H/pacer.sh" 2>&1)
+[[ "$out" != *"issue-10-new has been open"* ]] || { echo "hook test failed: pacer counts commits already on origin/main against a new branch"; fail=1; }
 jq -e '.hooks.PreCompact[] | select(.matcher == "auto") | .hooks[] | select(.command | endswith("compact-flag.sh"))' .claude/settings.json >/dev/null ||
   { echo "settings test failed: compact-flag.sh runs on automatic compaction"; fail=1; }
 jq -e '.idleCompaction == false' .claude/settings.json >/dev/null || { echo "settings test failed: idleCompaction is off"; fail=1; }
