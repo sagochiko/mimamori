@@ -1,0 +1,15 @@
+# Shape of the local secrets file. Copy it next to this file without ".example" and fill in values.
+# In production each name is set with `npx wrangler secret put <NAME>` (the author does this).
+
+# APNs token signing key: the whole .p8 file, PEM, with "\n" for line breaks.
+APNS_KEY_P8="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+# 10-character Key ID of that key, and the 10-character Team ID.
+APNS_KEY_ID="XXXXXXXXXX"
+APNS_TEAM_ID="XXXXXXXXXX"
+
+# Claude API key (Managed Agents session deletion now; judgments from task 6).
+ANTHROPIC_API_KEY="sk-ant-..."
+
+# 32 random bytes, base64. Seals Gmail refresh tokens in D1 (src/secretbox.ts).
+# Make one with: openssl rand -base64 32
+TOKEN_ENC_KEY="..."

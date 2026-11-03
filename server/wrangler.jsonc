@@ -1,0 +1,46 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "mimamori",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-03",
+  "observability": { "enabled": true },
+  "upload_source_maps": true,
+
+  // database_id is left out on purpose: Wrangler provisions the database on the first deploy
+  // and links it (automatic provisioning). The author runs that deploy.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mimamori",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // Smile photos. Keys start with "<familyId>/" so that "delete everything" can clear a family by prefix.
+  // bucket_name is left out so the first deploy provisions it; R2 must be enabled in the dashboard first.
+  "r2_buckets": [{ "binding": "PHOTOS" }],
+
+  // Claude judgments run here instead of inside the request (task 6 adds the consumer logic).
+  "queues": {
+    "producers": [{ "binding": "JUDGE_QUEUE", "queue": "mimamori-judge" }],
+    "consumers": [{ "queue": "mimamori-judge", "max_batch_size": 10, "max_retries": 3 }]
+  },
+
+  // The Free plan allows 5 Cron Triggers per account, so there is one tick every 5 minutes and
+  // src/cron.ts decides which jobs are due from scheduledTime.
+  "triggers": { "crons": ["*/5 * * * *"] },
+
+  // Joining with an invite code: a few tries per client address per minute, so the 1,000,000 codes
+  // cannot be walked through. namespace_id is any integer unique within the account.
+  "ratelimits": [{ "name": "JOIN_LIMITER", "namespace_id": "4001", "simple": { "limit": 5, "period": 60 } }],
+
+  "vars": {
+    // The app's bundle ID (APNs topic).
+    "APNS_TOPIC": "com.sagochiko.mimamori"
+  },
+
+  // Set by the author with `wrangler secret put`; the shape is in .dev.vars.example.
+  "secrets": {
+    "required": ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID", "ANTHROPIC_API_KEY", "TOKEN_ENC_KEY"]
+  }
+}
