@@ -28,6 +28,8 @@ extension Problem {
   var title: String {
     switch self {
     case .badCode: "コードが違います"
+    case .taken(let name): "\(name)が対応中"
+    case .resolved: "解決"
     case .unreachable: "つながりません"
     }
   }

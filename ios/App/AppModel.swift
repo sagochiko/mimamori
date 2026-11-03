@@ -13,8 +13,15 @@ final class AppModel {
   private(set) var invite: Invite?
   private(set) var isBusy = false
   var problem: Problem?
+  /// The family's recent cases (`GET /cases`), newest first.
+  private(set) var cases: [Case] = []
+  /// Bumped once a minute while a home screen is showing, so time-based text (the 30-minute
+  /// "家族から返事がまだ") changes without a new answer from the server.
+  private(set) var now = Date.now
 
   @ObservationIgnored private let session: Session
+  @ObservationIgnored private let announcer = ReplyAnnouncer(store: UserDefaultsSpokenStore())
+  @ObservationIgnored private lazy var speaker = ReplySpeaker()
 
   init(
     store: any DeviceKeyStore = KeychainDeviceKeyStore(),
@@ -29,7 +36,10 @@ final class AppModel {
     self.route = session.route
     session.onRouteChange = { [weak self] route in
       self?.route = route
-      if route == .chooseRole { self?.invite = nil }
+      if route == .chooseRole {
+        self?.invite = nil
+        self?.cases = []
+      }
     }
   }
 
@@ -69,6 +79,77 @@ final class AppModel {
       let invite = try await session.createInvite()
       self?.invite = invite
     }
+  }
+
+  // MARK: Cases
+
+  var familyCards: [FamilyCard] {
+    let me = session.memberId
+    return cases.map { FamilyCard($0, me: me) }
+  }
+
+  var protectedNotices: [ProtectedNotice] {
+    ProtectedNotice.notices(from: cases, now: now)
+  }
+
+  /// Reloads the cases. Quiet on failure: the screen keeps what it had and the next refresh tries again.
+  /// On the protected person's phone, replies not read aloud yet are spoken.
+  func loadCases() async {
+    guard route != .chooseRole else { return }
+    now = .now
+    guard let fresh = try? await session.cases() else { return }
+    cases = fresh
+    if route == .protectedHome {
+      speaker.speak(announcer.toSpeak(protectedNotices))
+    }
+  }
+
+  /// Every minute while the screen is showing. Cancelled with the view's task.
+  func keepCasesFresh() async {
+    while !Task.isCancelled {
+      await loadCases()
+      try? await Task.sleep(for: .seconds(60))
+    }
+  }
+
+  /// Reads a reply again when the protected person taps it.
+  func speakAgain(_ reply: ProtectedNotice.Reply) {
+    speaker.stop()
+    speaker.speak(["\(reply.from)。\(reply.body)"])
+  }
+
+  func accept(_ item: Case) async {
+    await run(joining: false) { [weak self] session in
+      let updated = try await session.accept(caseId: item.id)
+      self?.replace(updated)
+    }
+    // Someone else may have been first; show who.
+    await loadCases()
+  }
+
+  /// Nil when the reply was sent, otherwise why not. The composer sheet shows the failure itself
+  /// (an alert from the root view would land under the sheet), so `problem` is left alone.
+  func relay(_ item: Case, text: String) async -> Problem? {
+    isBusy = true
+    defer { isBusy = false }
+    do {
+      try await session.relay(caseId: item.id, body: text)
+    } catch {
+      return Problem(error, joining: false)
+    }
+    await loadCases()
+    return nil
+  }
+
+  func resolve(_ item: Case) async {
+    await run(joining: false) { [weak self] session in
+      let updated = try await session.resolve(caseId: item.id)
+      self?.replace(updated)
+    }
+  }
+
+  private func replace(_ item: Case) {
+    if let i = cases.firstIndex(where: { $0.id == item.id }) { cases[i] = item }
   }
 
   /// Asks for notification permission once the person has joined, then registers with APNs.

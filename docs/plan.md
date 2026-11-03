@@ -105,7 +105,7 @@ mimamori/
 | `members` | `id`、`family_id`、`role`(`protected` か `family`)、`display_name`、`device_key_hash`、`apns_token`、`apns_env` |
 | `invites` | `code`(6桁)、`family_id`、`expires_at`、`used_at` |
 | `alerts` | `id`、`family_id`、`source`(`sms`、`gmail`、`dns`、`page`、`call`、`consult`)、`level`(1、2、3)、`reasons`(JSON)、`summary`、`rule_level`、`claude_level`、`created_at` |
-| `cases` | `id`、`family_id`、`alert_id`、`state`(`notified`、`accepted`、`resolved`)、`assignee_member_id`、`agent_session_id`、`notified_at`、`accepted_at`、`resolved_at`、`renotified_at` |
+| `cases` | `id`、`family_id`、`alert_id`、`state`(`notified`、`accepted`、`resolved`)、`assignee_member_id`、`agent_session_id`、`notified_at`、`accepted_at`、`resolved_at`、`renotified_at`、`ai_reply`(引き受けより前に AI が母に答えたこと)、`family_notified_at`(家族に最初の知らせが届いた時刻。届くまでは空) |
 | `relays` | `id`、`case_id`、`from_member_id`、`body`、`created_at` |
 | `smiles` | `id`、`family_id`、`member_id`、`r2_key`、`score`、`created_at` |
 | `gmail_auth` | `family_id`、`refresh_token_enc`、`granted_at`、`last_history_id`、`expired_notified_at` |
@@ -288,13 +288,15 @@ Safari の拡張機能、背面タップ、DNS のサーバーが止まったと
 **つなぎ目**
 
 - 使うもの `judgeByRules`、`sendPush`
-- 渡すもの `enqueueJudge(env, job: { familyId, source, payload })`、`alerts` の行、2段階以上でタスク10の `openCase(env, alertId)` を呼ぶ
+- 渡すもの `enqueueJudge(env, job: { familyId, source, payload })`、`alerts` の行、2段階以上でタスク10の `openCase(env, alertId, budget)` を呼ぶ
+- 家族への知らせは、相談の ID を持つ `openCase` からだけ送る。受け手は母にだけ送る。枠を前もって確かめるときは、母の端末の数に家族の届く端末の数を足す
+- `openCase` が `CaseNoticeDeferred` を投げたら、メッセージをやり直す。受け手はメッセージの ID を知らせの ID にしているので、やり直しで届いた同じメッセージは、家族に知らせる知らせの行(`notified = 1`。3段階と、1時間に1回にまとめて知らせなかった行は除く)があり、相談が無いか家族に届いていない(`family_notified_at` が空)ときは `openCase(env, alertId, budget)` だけを呼び、Claude の判定も母への通知も飛ばす。キューがやり直しをあきらめても相談の行は残り、5分ごとの Cron が1日のあいだ家族への最初の知らせを送り直す
 
 **手順**
 
 - [ ] テストを書く(Claude は差し替えて試す)。3段階の知らせは家族に通知を送らない。同じ送り主やドメインの知らせは1時間に1回にまとめる。Claude の答えが決まった形でなければ規則の判定だけで知らせる。`injection_suspected` が `true` なら1段階重くする。Claude の呼び出しが失敗しても、規則で2段階以上なら母と家族に知らせ、母には「確かめ中」と出す。Claude が `level` を規則より軽くしても、`confident` の規則の判定より軽くはしない
 - [ ] 実装してテストを通す。プロンプトでは、届いた文面を `<untrusted>` で囲み、中の指示に従わないよう書く
-- [ ] 母への通知は「開かないで」と理由1つ。家族への通知はカードに要約と理由を載せる
+- [ ] 母への通知は「開かないで」と理由1つ。家族への通知は `openCase` が送り、カードに要約と理由を載せる
 - [ ] `eval/run.ts` で「規則と Claude」の数字を出す
 - [ ] 母の iPhone に TestFlight で配り、FaceTime で SMS のフィルタの有効化と拡張の選択を案内する。使うことと動画に映すことの同意を別々にもらう
 - [ ] 体験モードの画面を作る。審査員の1台で、家族に届くカードを並べて見せる。最初は電話の相談(通話のあとの声かけから)で、家族が引き受ける場合と誰も応じない場合を選べる。そのあとに SMS の判定を試せる
@@ -371,14 +373,14 @@ Safari の拡張機能、背面タップ、DNS のサーバーが止まったと
 
 **作るもの**
 
-- `server/src/cases.ts`(Cron Trigger で5分ごとに30分の見張り)
+- `server/src/cases.ts`(Cron Trigger で5分ごとに、家族に届いていない最初の知らせの送り直しと、30分の見張り)
 - `ios/App/` の家族の画面(カード、「引き受ける」「母に返事する」「電話する」「解決」)と、母の画面の「家族に伝えました」「(名前)から」。家族の返事は母の iPhone の普通の読み上げの声で読む
 - `server/test/cases.test.ts`
 
 **つなぎ目**
 
 - 使うもの `alerts`、`sendPush`
-- 渡すもの `openCase(env, alertId)`、`acceptCase(env, caseId, memberId)`、`relay(env, caseId, memberId, body)`、`resolveCase(env, caseId, memberId)`
+- 渡すもの `openCase(env, alertId, budget)`(`budget` は呼び出し1回で共有する外への通信の枠。相談の行は最初に入れて残す。家族の端末の数だけ枠が取れないときと、家族の誰にも知らせが届かなかったときは、`family_notified_at` を空のまま `CaseNoticeDeferred` を投げる。同じ `alertId` でもう一度呼ぶと家族に知らせ、知らせ済みなら知らせも枠の消費もせずに相談を返す)、`acceptCase(env, caseId, memberId)`、`relay(env, caseId, memberId, body)`、`resolveCase(env, caseId, memberId)`
 
 **手順**
 

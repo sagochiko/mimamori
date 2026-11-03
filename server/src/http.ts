@@ -4,6 +4,8 @@ export class HttpError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
+    /** More fields for the error body, such as who already took a case. */
+    readonly extra: Record<string, unknown> = {},
   ) {
     super(code);
   }

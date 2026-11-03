@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 @main
 struct MimamoriApp: App {
@@ -16,13 +17,36 @@ struct MimamoriApp: App {
         }
     }
     .onChange(of: scenePhase) { _, phase in
-      if phase == .active { delegate.model.refresh() }
+      if phase == .active {
+        delegate.model.refresh()
+        Task { await delegate.model.loadCases() }
+      }
     }
   }
 }
 
-final class AppDelegate: NSObject, UIApplicationDelegate {
+final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
   let model = AppModel.live()
+
+  func application(
+    _ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+  ) -> Bool {
+    UNUserNotificationCenter.current().delegate = self
+    return true
+  }
+
+  /// A case notice or a family reply arrived while the app is open: show it and reload the cases,
+  /// so the card or the mother's screen changes at once (and a reply is read aloud).
+  nonisolated func userNotificationCenter(
+    _ center: UNUserNotificationCenter, willPresent notification: UNNotification
+  ) async -> UNNotificationPresentationOptions {
+    await model.loadCases()
+    return [.banner, .list, .sound]
+  }
+
+  nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+    await model.loadCases()
+  }
 
   func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
     Task { await model.didReceiveAPNs(token: deviceToken) }
