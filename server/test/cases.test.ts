@@ -443,6 +443,35 @@ describe("resolve", () => {
   });
 });
 
+describe("when the assignee leaves the family", () => {
+  it("their accepted case goes back to nobody's, so another family member can take it", async () => {
+    const f = await family();
+    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
+    await acceptCase(pushEnv, caseId, f.sister.memberId);
+
+    const left = await call("DELETE", "/members/me", { deviceKey: f.sister.deviceKey, env: pushEnv });
+    expect(left.status).toBe(204);
+
+    const row = await caseRow(caseId);
+    expect(row).toMatchObject({ state: "notified", assignee_member_id: null, accepted_at: null });
+    expect((await acceptCase(pushEnv, caseId, f.author.memberId)).assignee?.displayName).toBe("作者");
+  });
+
+  it("leaves resolved cases and other people's cases as they are", async () => {
+    const f = await family();
+    const done = (await open(await newAlert(f.familyId)))?.id ?? "";
+    await acceptCase(pushEnv, done, f.sister.memberId);
+    await resolveCase(pushEnv, done, f.sister.memberId);
+    const authors = (await open(await newAlert(f.familyId)))?.id ?? "";
+    await acceptCase(pushEnv, authors, f.author.memberId);
+
+    await call("DELETE", "/members/me", { deviceKey: f.sister.deviceKey, env: pushEnv });
+
+    expect((await caseRow(done))?.state).toBe("resolved");
+    expect(await caseRow(authors)).toMatchObject({ state: "accepted", assignee_member_id: f.author.memberId });
+  });
+});
+
 describe("GET /cases", () => {
   it("lists the family's cases with the alert, the assignee's name, and nothing from other families", async () => {
     const f = await family();
@@ -567,6 +596,41 @@ describe("the 30-minute watch", () => {
     expect(sent).toHaveLength(3);
     expect(sent.length + deletes).toBeLessThanOrEqual(40);
     expect(deletes).toBe(37);
+  });
+
+  it("a case released by an assignee who left is watched again: the rest of the family and the protected person hear once", async () => {
+    const f = await family();
+    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
+    // The watch already fired once before the sister accepted.
+    await backdate(caseId, 40);
+    await tick(Date.now());
+    await acceptCase(pushEnv, caseId, f.sister.memberId);
+    await call("DELETE", "/members/me", { deviceKey: f.sister.deviceKey, env: pushEnv });
+    sent = [];
+
+    await tick(Date.now());
+
+    expect(to(f.mother).map((s) => s.body)).toEqual([NO_REPLY_YET]);
+    expect(to(f.author)).toHaveLength(1);
+    expect(to(f.sister)).toHaveLength(0);
+    sent = [];
+    await tick(Date.now() + 5 * 60_000);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("a released case younger than 30 minutes waits for the 30 minutes from the first notice", async () => {
+    const f = await family();
+    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
+    await acceptCase(pushEnv, caseId, f.sister.memberId);
+    await call("DELETE", "/members/me", { deviceKey: f.sister.deviceKey, env: pushEnv });
+    await backdate(caseId, 10);
+    sent = [];
+
+    await tick(Date.now());
+    expect(sent).toHaveLength(0);
+
+    await tick(Date.now() + 21 * 60_000);
+    expect(to(f.mother).map((s) => s.body)).toEqual([NO_REPLY_YET]);
   });
 
   it("leaves a case for the next tick when the budget cannot cover the whole family", async () => {
