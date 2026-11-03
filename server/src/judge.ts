@@ -1,14 +1,20 @@
 // The judge queue (task 6 in docs/plan.md). Routes that answer at once with the rules (SMS, pages,
 // consultations) put a job here with enqueueJudge; this consumer lays Claude's judgment over the
-// rule result, writes the alerts row, tells the mother and the family, and opens a case.
+// rule result, writes the alerts row, tells the mother, and opens a case. The family is told only by
+// openCase (src/cases.ts), so every notice they get carries the case they can accept.
 //
 // Who gets told depends only on the level and the family's members, never on Claude's answer or the
 // received text (.claude/rules/server.md).
 //
-// Not wired yet: judgeByRules comes from src/rules/ (#6) and openCase from src/cases.ts (#8). Until
-// they merge, defaultJudgeDeps throws for both, so jobs are retried rather than judged half-way.
+// A notice that did not get through is retried with the queue message: the message id is the alert
+// id, and a redelivered message whose alert row exists only does what is left (the mother's push,
+// opening the case), without asking Claude again or telling anyone twice.
+//
+// Not wired yet: judgeByRules comes from src/rules/ (#6). Until it merges, defaultJudgeDeps throws
+// for it, so jobs are retried rather than judged half-way.
 
 import { ExternalBudget } from "./budget";
+import { CaseNoticeDeferred, openCase } from "./cases";
 import {
   ALERT_SOURCES,
   decide,
@@ -38,7 +44,8 @@ export interface JudgeDeps {
   judgeByRules(input: RuleInput): RuleResult;
   /** Returns null for any failure; a throw is treated the same way. */
   askClaude(env: Env, input: RuleInput, rule: RuleResult): Promise<ClaudeJudgment | null>;
-  openCase(env: Env, alertId: string): Promise<unknown>;
+  /** Opens the case and tells the family; throws CaseNoticeDeferred when the family was not told yet. */
+  openCase(env: Env, alertId: string, budget: ExternalBudget): Promise<unknown>;
   now(): number;
 }
 
@@ -47,9 +54,7 @@ export const defaultJudgeDeps: JudgeDeps = {
     throw new Error("judgeByRules is not wired until #6 merges");
   },
   askClaude: (env, input, rule) => requestClaudeJudgment(env, input, rule),
-  openCase: async () => {
-    throw new Error("openCase is not wired until #8 merges");
-  },
+  openCase,
   now: () => Date.now(),
 };
 
@@ -58,11 +63,6 @@ export const JUDGE_TEXT_MAX_CHARS = 5000;
 const FIELD_MAX_CHARS = 500;
 export const DEDUPE_WINDOW_MS = 3600_000;
 const RETRY_DELAY_SECONDS = 30;
-// wrangler.jsonc sets max_retries to 3 and attempts counts from 1. A job that cannot be decided is
-// settled on the third attempt, so it is never lost to running out of retries.
-const LAST_ATTEMPT = 3;
-/** When neither the rules nor Claude decided: kept in the app's list, no push, never called safe. */
-const UNDECIDED_LEVEL: Level = 3;
 
 const MOTHER_TITLE = "開かないで";
 const CHECKING = "確かめ中";
@@ -157,6 +157,120 @@ interface Recipient {
 
 type Outcome = "done" | "retry";
 
+async function reachableMembers(env: Env, familyId: string): Promise<Recipient[]> {
+  const rows = await env.DB.prepare("SELECT id, role FROM members WHERE family_id = ? AND apns_token IS NOT NULL")
+    .bind(familyId)
+    .all<Recipient>();
+  return rows.results;
+}
+
+interface Notice {
+  level: Level;
+  reasons: string[];
+  checking: boolean;
+}
+
+function toMother(alertId: string, notice: Notice): PushPayload {
+  const reason = notice.reasons[0] ?? FALLBACK_REASON;
+  return {
+    title: MOTHER_TITLE,
+    body: notice.checking ? `${reason}\n${CHECKING}` : reason,
+    data: { alertId, level: notice.level, checking: notice.checking },
+    threadId: alertId,
+  };
+}
+
+/**
+ * The mother's push, at most once per alert. protected_notified_at is the claim, set before sending so
+ * two deliveries of the same message never both send, and cleared again when none of her devices took
+ * the push, so the retry sends it. A mother with no device counts as told.
+ */
+async function tellMother(
+  env: Env,
+  alertId: string,
+  motherIds: string[],
+  notice: Notice,
+  budget: ExternalBudget,
+  now: number,
+): Promise<boolean> {
+  const claimed = await env.DB.prepare(
+    "UPDATE alerts SET protected_notified_at = ? WHERE id = ? AND protected_notified_at IS NULL",
+  )
+    .bind(now, alertId)
+    .run();
+  if (claimed.meta.changes !== 1) return true;
+  if (motherIds.length === 0) return true;
+
+  let told = false;
+  try {
+    const results = await sendPush(env, motherIds, toMother(alertId, notice), budget);
+    told = results.some((r) => r.status === "sent");
+  } catch (error) {
+    // Only the error name: a message could carry the received text.
+    console.error("mother notification failed", error instanceof Error ? error.name : typeof error);
+  }
+  if (told) return true;
+  await env.DB.prepare("UPDATE alerts SET protected_notified_at = NULL WHERE id = ? AND protected_notified_at = ?")
+    .bind(alertId, now)
+    .run();
+  return false;
+}
+
+/**
+ * What is left of telling people about an alert that notifies: the mother's push and opening the case,
+ * each only when it has not got through yet. Both are tried even when the first fails, and the message
+ * is retried when either did not get through. The outside calls are checked up front: the mother's
+ * devices plus the family's devices that openCase will send to.
+ */
+async function finishNotices(
+  env: Env,
+  alertId: string,
+  notice: Notice,
+  pending: { mother: boolean; family: boolean },
+  members: Recipient[],
+  budget: ExternalBudget,
+  deps: JudgeDeps,
+): Promise<Outcome> {
+  const motherIds = members.filter((m) => m.role === "protected").map((m) => m.id);
+  const familyCount = members.filter((m) => m.role === "family").length;
+  const needed = (pending.mother ? motherIds.length : 0) + (pending.family ? familyCount : 0);
+  if (budget.remaining < needed) return "retry";
+
+  let allThrough = true;
+  if (pending.mother && !(await tellMother(env, alertId, motherIds, notice, budget, deps.now()))) {
+    allThrough = false;
+  }
+  if (pending.family) {
+    try {
+      await deps.openCase(env, alertId, budget);
+    } catch (error) {
+      // Any other failure is thrown on and retried by handleJudgeBatch as well.
+      if (!(error instanceof CaseNoticeDeferred)) throw error;
+      allThrough = false;
+    }
+  }
+  return allThrough ? "done" : "retry";
+}
+
+interface StoredAlert {
+  level: Level;
+  reasons: string;
+  claude_level: Level | null;
+  notified: number;
+  protected_notified_at: number | null;
+  case_id: string | null;
+  family_notified_at: number | null;
+}
+
+function storedReasons(text: string): string[] {
+  try {
+    const value: unknown = JSON.parse(text);
+    return Array.isArray(value) ? value.filter((r): r is string => typeof r === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 async function judgeOne(
   env: Env,
   message: Message<unknown>,
@@ -167,17 +281,31 @@ async function judgeOne(
   if (!job) return "done";
   // The queue message id doubles as the alert id, so a redelivered message writes nothing twice.
   const alertId = message.id;
-  if (await env.DB.prepare("SELECT 1 FROM alerts WHERE id = ?").bind(alertId).first()) return "done";
+  const stored = await env.DB.prepare(
+    `SELECT a.level, a.reasons, a.claude_level, a.notified, a.protected_notified_at,
+            c.id AS case_id, c.family_notified_at
+       FROM alerts a LEFT JOIN cases c ON c.alert_id = a.id WHERE a.id = ?`,
+  )
+    .bind(alertId)
+    .first<StoredAlert>();
+  if (stored) {
+    // A redelivery: Claude is not asked again, and what already got through is not sent again.
+    if (stored.notified !== 1) return "done";
+    const pending = {
+      mother: stored.protected_notified_at === null,
+      family: stored.case_id === null || stored.family_notified_at === null,
+    };
+    if (!pending.mother && !pending.family) return "done";
+    const notice = { level: stored.level, reasons: storedReasons(stored.reasons), checking: stored.claude_level === null };
+    return finishNotices(env, alertId, notice, pending, await reachableMembers(env, job.familyId), budget, deps);
+  }
   // "Delete everything" may have run since the job was queued.
   if (!(await env.DB.prepare("SELECT 1 FROM families WHERE id = ?").bind(job.familyId).first())) return "done";
 
-  const members = await env.DB.prepare(
-    "SELECT id, role FROM members WHERE family_id = ? AND apns_token IS NOT NULL",
-  )
-    .bind(job.familyId)
-    .all<Recipient>();
-  // One Claude call and one push per member. A job starts only when all of it fits.
-  if (budget.remaining < 1 + members.results.length) return "retry";
+  const members = await reachableMembers(env, job.familyId);
+  // One Claude call, then one push per device: the mother's from here, the family's from openCase.
+  // A job starts only when all of it fits.
+  if (budget.remaining < 1 + members.length) return "retry";
 
   const input: RuleInput = { source: job.source, ...job.payload };
   const rule = deps.judgeByRules(input);
@@ -188,9 +316,10 @@ async function judgeOne(
   } catch {
     claude = null;
   }
+  // When neither the rules nor Claude decided, this is level 2 with 確かめ中 at once, like any other
+  // time Claude gives nothing: a consultation from the mother must not wait on Claude coming back.
   const decision = decide(rule, claude);
-  if (decision.level === null && message.attempts < LAST_ATTEMPT) return "retry";
-  const level: Level = decision.level ?? UNDECIDED_LEVEL;
+  const level = decision.level;
 
   const now = deps.now();
   const domain = normalizeDomain(job);
@@ -209,7 +338,6 @@ async function judgeOne(
     if (recent) notify = false;
   }
 
-  const summary = summarize(job, domain);
   const inserted = await env.DB.prepare(
     `INSERT INTO alerts (id, family_id, source, level, reasons, summary, rule_level, claude_level, created_at,
        sender_key, domain_key, notified)
@@ -221,7 +349,7 @@ async function judgeOne(
       job.source,
       level,
       JSON.stringify(decision.reasons),
-      summary,
+      summarize(job, domain),
       decision.ruleLevel,
       decision.claudeLevel,
       now,
@@ -230,33 +358,11 @@ async function judgeOne(
       notify ? 1 : 0,
     )
     .run();
+  // A concurrent delivery of the same message wrote the row first; it does the telling.
   if (inserted.meta.changes === 0 || !notify) return "done";
 
-  const reasons = decision.reasons;
-  const data = { alertId, level, checking: decision.checking };
-  const toMother: PushPayload = {
-    title: MOTHER_TITLE,
-    body: decision.checking ? `${reasons[0] ?? FALLBACK_REASON}\n${CHECKING}` : (reasons[0] ?? FALLBACK_REASON),
-    data,
-    threadId: alertId,
-  };
-  const toFamily: PushPayload = {
-    title: summary,
-    body: `${reasons.length > 0 ? reasons.join("、") : FALLBACK_REASON}${decision.checking ? `(${CHECKING})` : ""}`,
-    data,
-    threadId: alertId,
-  };
-  const ids = (role: Recipient["role"]) =>
-    members.results.filter((m) => m.role === role && budget.take()).map((m) => m.id);
-  await Promise.all([sendPush(env, ids("protected"), toMother), sendPush(env, ids("family"), toFamily)]);
-
-  try {
-    await deps.openCase(env, alertId);
-  } catch (error) {
-    // Only the error name: a message could carry the received text.
-    console.error("openCase failed", error instanceof Error ? error.name : typeof error);
-  }
-  return "done";
+  const notice = { level, reasons: decision.reasons, checking: decision.checking };
+  return finishNotices(env, alertId, notice, { mother: true, family: true }, members, budget, deps);
 }
 
 /**
