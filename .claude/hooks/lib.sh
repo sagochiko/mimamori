@@ -3,7 +3,7 @@
 # get a warning from session-context.sh.
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 LOG_DIR="${MM_LOG_DIR:-$PROJECT_DIR/.claude/logs}" # scripts/test-hooks.sh points this elsewhere
-STATE_DIR="$PROJECT_DIR/.claude/state"
+STATE_DIR="${MM_STATE_DIR:-$PROJECT_DIR/.claude/state}" # tests point this elsewhere; the holdout lock never moves
 
 # log_event <kind> <name> [detail]
 # One JSON line per event. scripts/usage-report.sh turns these into docs/claude-usage.md.

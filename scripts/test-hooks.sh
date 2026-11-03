@@ -10,6 +10,7 @@ export MM_LOG_DIR=$T/logs # keep test blocks out of the real usage log
 printf '%s\n' '# dummy terms for the tests' 'Tanukiyama' 'たぬき山ぽん太' >"$T/private-terms"
 printf '%s\n' '/tmp/mm-test/old-dummy-app' >"$T/prior-work"
 export MM_PRIVATE_TERMS_FILE=$T/private-terms MM_PRIOR_WORK_FILE=$T/prior-work
+export MM_STATE_DIR=$T/state # pacer and the session hooks keep their state here, not in the real one
 H=.claude/hooks
 fail=0
 expect() { # <expected exit> <hook> <json> <label>
@@ -94,6 +95,8 @@ merge 0 'gh pr merge 41 --merge --delete-branch' "a reviewed PR whose open items
 merge 0 'gh pr merge https://github.com/sagochiko/mimamori/pull/41 --merge' "a PR named by URL is checked the same way"
 merge 2 'gh pr merge 42 --merge --delete-branch' "a PR without review results is blocked"
 merge 0 'gh pr merge 43 --merge' "review results in a comment count"
+pr 52 "$fresh" 'Closes #40' $'## mm-reviewer の報告(原文)\n\nサブエージェントの報告の原文。親のセッションが確かめる前のもの。\n\n- Status: approve'
+merge 0 'gh pr merge 52 --merge' "the reviewer's saved report posted as a comment counts"
 merge 2 'gh pr merge 44 --merge' "an unchecked item that names no follow-up issue is blocked"
 merge 2 'gh pr merge 47 --merge' "an unchecked item that names only its own issue is blocked"
 merge 2 'gh pr merge 49 --merge' "a PR whose head lacks the current origin/main is blocked"
@@ -109,6 +112,70 @@ PATH=$gh_path
 # (https://code.claude.com/docs/en/hooks). The gates that call the network must fail closed.
 jq -e '[.hooks.PreToolUse[].hooks[] | select(.command | endswith("guard-merge.sh")) | select(.onFailure == "block")] | length == 1' .claude/settings.json >/dev/null ||
   { echo "settings test failed: guard-merge.sh must be registered once with onFailure block"; fail=1; }
+# stop-gate: judged in the tree of the input's cwd, against origin/main, and never passing untested.
+# $T/work is the throwaway repository of the merge tests. Its local main stays behind origin/main.
+g switch -q -c gate origin/main 2>/dev/null
+mkdir -p "$T/work/server" && printf '{"name":"x","private":true}\n' >"$T/work/server/package.json"
+g add server/package.json && g commit -q -m "server" && g push -q origin gate:main
+g switch -q -c docs-only origin/main && printf 'x\n' >"$T/work/notes.md" && g add notes.md && g commit -q -m docs
+gate_in() { jq -nc --arg d "$1" '{hook_event_name:"Stop",stop_hook_active:false,cwd:$d}'; }
+out=$(gate_in "$T/work" | "$H/stop-gate.sh" 2>&1)
+[[ -z "$out" ]] || { echo "hook test failed: stop-gate counts commits already on origin/main as this branch's change"; fail=1; }
+printf 'export const x = 1\n' >"$T/work/server/x.ts"
+out=$(gate_in "$T/work" | "$H/stop-gate.sh" 2>&1)
+[[ "$out" == *'"decision":"block"'* && "$out" == *"npm ci in server/"* ]] ||
+  { echo "hook test failed: stop-gate must block, not pass, when server/ changed and node_modules is missing"; fail=1; }
+[[ ! -f "$T/work/.claude/state/stop-gate.pass" ]] || { echo "hook test failed: stop-gate recorded a pass it did not test"; fail=1; }
+rm -f "$T/work/server/x.ts"
+
+# pacer: the context reminders fire once per session at 60% and 80%; compaction leaves a flag for it.
+transcript() { # <file> <tokens of the last main-chain turn>
+  jq -nc --argjson n "$2" '{type:"assistant",isSidechain:false,message:{usage:{input_tokens:10,cache_read_input_tokens:($n - 110),cache_creation_input_tokens:100}}}' >"$1"
+  jq -nc '{type:"assistant",isSidechain:true,message:{usage:{input_tokens:990000}}}' >>"$1" # a subagent's turn does not count
+  echo 'not json' >>"$1"
+}
+pace() { jq -nc --arg s "$1" --arg t "$2" --arg d "$T/work" '{hook_event_name:"Stop",stop_hook_active:false,session_id:$s,transcript_path:$t,cwd:$d}' | "$H/pacer.sh" 2>&1; }
+transcript "$T/t60.jsonl" 643415
+transcript "$T/t85.jsonl" 850000
+[[ "$(pace s1 "$T/t60.jsonl")" == *"コンテキストが60%を超えた(643415"* ]] || { echo "hook test failed: pacer reminds at 60%"; fail=1; }
+[[ "$(pace s1 "$T/t60.jsonl")" != *"コンテキスト"* ]] || { echo "hook test failed: pacer reminds at 60% only once"; fail=1; }
+[[ "$(pace s1 "$T/t85.jsonl")" == *"コンテキストが80%を超えた"* ]] || { echo "hook test failed: pacer reminds at 80%"; fail=1; }
+[[ "$(pace s1 "$T/t85.jsonl")" != *"コンテキスト"* ]] || { echo "hook test failed: pacer reminds at 80% only once"; fail=1; }
+transcript "$T/t10.jsonl" 100000
+echo '{"session_id":"s2","trigger":"auto"}' | "$H/compact-flag.sh"
+[[ "$(pace s2 "$T/t10.jsonl")" == *"自動の要約が走った"* ]] || { echo "hook test failed: pacer reports an automatic compaction"; fail=1; }
+[[ "$(pace s2 "$T/t10.jsonl")" != *"自動の要約"* ]] || { echo "hook test failed: pacer reports a compaction only once"; fail=1; }
+jq -e '.hooks.PreCompact[] | select(.matcher == "auto") | .hooks[] | select(.command | endswith("compact-flag.sh"))' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: compact-flag.sh runs on automatic compaction"; fail=1; }
+jq -e '.idleCompaction == false' .claude/settings.json >/dev/null || { echo "settings test failed: idleCompaction is off"; fail=1; }
+
+# save-report: a subagent's handback is kept verbatim, marked as unchecked, and never blocked.
+export MM_RAW_REPORT_DIR=$T/raw
+report=$'- Status: changes needed\n- server/src/a.ts:12 の判定が逆\n\n`code` と "引用" もそのまま'
+hand() { jq -nc --arg t "$1" --arg m "$2" '{hook_event_name:"PostToolUse",tool_name:"SubagentHandback",agent_type:$t,agent_id:"a4d2c8f1e0b3a297",tool_input:{message:$m}}'; }
+hand mm-reviewer "$report" | "$H/save-report.sh" || { echo "hook test failed: save-report must not block"; fail=1; }
+saved=$(ls "$T/raw"/*-mm-reviewer-a4d2c8f1.md 2>/dev/null | head -1)
+[[ -n "$saved" && "$(head -1 "$saved")" == "サブエージェントの報告の原文。親のセッションが確かめる前のもの。" && "$(tail -n +3 "$saved")" == "$report" ]] ||
+  { echo "hook test failed: a reviewer's report is saved verbatim under docs/audits/raw with the unchecked line first"; fail=1; }
+hand mm-implementer "done" | "$H/save-report.sh"
+ls "$MM_LOG_DIR/reports"/*-mm-implementer-a4d2c8f1.md >/dev/null 2>&1 || { echo "hook test failed: other reports go to .claude/logs/reports"; fail=1; }
+hand mm-reviewer "$report" | MM_RAW_REPORT_DIR=/dev/null/nowhere "$H/save-report.sh" ||
+  { echo "hook test failed: save-report must not block when it cannot write"; fail=1; }
+grep -q '"kind":"report-not-saved"' "$MM_LOG_DIR/usage.jsonl" || { echo "hook test failed: a failed save is logged"; fail=1; }
+jq -e '.hooks.PostToolUse[] | select(.matcher == "SubagentHandback") | .hooks[] | select(.command | endswith("save-report.sh"))' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: save-report.sh runs after SubagentHandback"; fail=1; }
+
+# usage-log: a SendMessage to a subagent counts as a resume of its type; a report to main does not.
+ul() { "$H/usage-log.sh" <<<"$1"; }
+ul '{"hook_event_name":"PostToolUse","tool_name":"Agent","tool_input":{"subagent_type":"mm-reviewer","name":"rev1"},"tool_response":{"agentId":"a77f00d1"}}'
+ul '{"hook_event_name":"PostToolUse","tool_name":"SendMessage","tool_input":{"to":"a77f00d1","message":"2回目"}}'
+ul '{"hook_event_name":"PostToolUse","tool_name":"SendMessage","tool_input":{"to":"rev1 [3fa9c1]","message":"3回目"}}'
+ul '{"hook_event_name":"PostToolUse","tool_name":"SendMessage","tool_input":{"to":"main","message":"報告"}}'
+[[ "$(jq -c 'select(.kind == "resume") | .name' "$MM_LOG_DIR/usage.jsonl" | tr '\n' ' ')" == '"mm-reviewer" "mm-reviewer" ' ]] ||
+  { echo "hook test failed: usage-log counts resumes by the target's type and skips reports to main"; fail=1; }
+jq -e '.hooks.PostToolUse[] | select(.matcher | split("|") | index("SendMessage"))' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: usage-log.sh runs after SendMessage"; fail=1; }
+
 # Personal data. Shapes are built in pieces so this file holds no whole phone number.
 ph="090-1234"
 ph+="-5678"

@@ -1,7 +1,8 @@
 #!/bin/bash
 # PreToolUse (Bash|Monitor): a PR merges only when
 #   1. its body or one of its comments carries the review results: a heading with レビュー and the
-#      word mm-reviewer in the same text,
+#      word mm-reviewer in the same text, or the reviewer's saved report posted under a heading
+#      "mm-reviewer の報告(原文)" (/mm-task step 6),
 #   2. every unchecked "- [ ]" line of each issue it closes names where the work continues (#30),
 #   3. its head contains the current origin/<base>, so a PR is verified again after another lands.
 # It reads GitHub with gh and fails closed: when gh or git cannot answer, the merge is blocked.
@@ -59,12 +60,13 @@ problems=""
 review=0
 while IFS= read -r text64; do
   text=$(base64 --decode <<<"$text64" 2>/dev/null)
-  if LC_ALL=C grep -Eq '^#{1,6}[[:space:]].*レビュー' <<<"$text" && LC_ALL=C grep -q 'mm-reviewer' <<<"$text"; then
+  if { LC_ALL=C grep -Eq '^#{1,6}[[:space:]].*レビュー' <<<"$text" && LC_ALL=C grep -q 'mm-reviewer' <<<"$text"; } ||
+    LC_ALL=C grep -Eq '^#{1,6}[[:space:]]+mm-reviewer の報告' <<<"$text"; then
     review=1
     break
   fi
 done < <(jq -r '([.body] + [.comments[]?.body]) | map(. // "" | @base64)[]' <<<"$pr")
-((review)) || problems+="- PR #$n has no review results: neither its body nor a comment has a heading with レビュー together with the word mm-reviewer. Run mm-reviewer and write its verdict into the PR body (/mm-task step 5).$nl"
+((review)) || problems+="- PR #$n has no review results: neither its body nor a comment has a heading with レビュー together with the word mm-reviewer, or the heading \"mm-reviewer の報告(原文)\". Run mm-reviewer and post its saved report (/mm-task step 6).$nl"
 
 # 2. Unfinished checkboxes of the closed issues say where they continue.
 body=$(jq -r '.body // ""' <<<"$pr")
