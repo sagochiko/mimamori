@@ -1,5 +1,6 @@
 #!/bin/bash
-# Shared helpers for the hooks in this directory.
+# Shared helpers for the hooks in this directory. They need bash and jq; cloud sessions without jq
+# get a warning from session-context.sh.
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 LOG_DIR="${MM_LOG_DIR:-$PROJECT_DIR/.claude/logs}" # scripts/test-hooks.sh points this elsewhere
 STATE_DIR="$PROJECT_DIR/.claude/state"
@@ -28,10 +29,11 @@ tool_targets() {
          | map(select(. != null and . != "")) | join(" ")' <<<"$1"
 }
 
-# epoch_of <ISO-8601 with offset>: seconds since the epoch, using macOS date.
+# epoch_of <ISO-8601 with offset>: seconds since the epoch. BSD date on macOS, GNU date on Linux
+# (cloud sessions run on Linux).
 epoch_of() {
   local s=${1/%:[0-9][0-9]/}${1: -2}
-  date -j -f "%Y-%m-%dT%H:%M:%S%z" "$s" +%s 2>/dev/null
+  date -j -f "%Y-%m-%dT%H:%M:%S%z" "$s" +%s 2>/dev/null || date -d "$1" +%s 2>/dev/null
 }
 
 # phase_now: which checkpoint of CONDITIONS.md applies right now.

@@ -6,6 +6,7 @@ f=$(jq -r '.tool_input.file_path // empty' <<<"$in")
 [[ -n "$f" && -f "$f" ]] || exit 0
 case "$f" in
   *.swift)
+    command -v xcrun >/dev/null || exit 0 # no Xcode here (cloud sessions run on Linux)
     xcrun swift-format format --in-place "$f" 2>/dev/null
     out=$(xcrun swift-format lint "$f" 2>&1)
     if [[ -n "$out" ]]; then

@@ -2,12 +2,19 @@
 # SessionStart: hand Claude the clock and the current conditions, written as facts.
 source "$(dirname "$0")/lib.sh"
 cd "$PROJECT_DIR" || exit 0
+if ! command -v jq >/dev/null; then
+  echo "Warning: jq is not installed, so this repository's guard hooks cannot read tool calls and let everything through. Install jq before working (for example: sudo apt-get install -y jq)."
+  exit 0
+fi
+if [[ "$(uname)" != Darwin ]]; then
+  note_env="This session is not on the author's Mac ($(uname)). iOS builds, the simulator, and swift-format need Xcode, so work only on server/ and eval/ issues here."
+fi
 now=$(date +%s)
 deadline=$(condition deadline)
 left=$(($(epoch_of "$deadline") - now))
 milestone=$(condition milestone)
 
-ctx="Now: $(date '+%Y-%m-%d %H:%M %Z'). Submission deadline: $deadline ($((left / 3600)) hours $((left % 3600 / 60)) minutes left)."
+ctx="${note_env:+$note_env$'\n'}Now: $(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M %Z'). Submission deadline: $deadline ($((left / 3600)) hours $((left % 3600 / 60)) minutes left)."
 ctx+=$'\n'"Current milestone: $milestone (due $(condition milestone_due))."
 case $(phase_now) in
   build) ctx+=$'\n'"Phase: building. Core path first, peripheral issues only after it works on a real device." ;;
