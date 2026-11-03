@@ -1,7 +1,8 @@
 // APNs. Token-based auth: a JWT signed with ES256 over the .p8 key
 // (developer.apple.com, "Establishing a token-based connection to APNs", checked 2026-11-03).
-// APNs rejects a token older than one hour and refuses refreshes more often than every 20 minutes,
-// so one token is kept for 50 minutes per isolate and rebuilt after that.
+// APNs rejects a token older than one hour and refuses refreshes more often than every 20 minutes
+// (TooManyProviderTokenUpdates), so one token is kept for 50 minutes per isolate and rebuilt after
+// that. When APNs rejects a token early, it is rebuilt no sooner than 20 minutes after the last build.
 //
 // Workers' fetch does not speak HTTP/2 itself; in production Cloudflare upgrades the connection.
 // Local `wrangler dev` may fail here, so the real send is checked from a deployed Worker.
@@ -23,6 +24,7 @@ export type PushResult =
   | { memberId: string; status: "failed"; httpStatus?: number; reason: string };
 
 export const JWT_REUSE_MS = 50 * 60_000;
+export const JWT_MIN_REBUILD_MS = 20 * 60_000;
 
 const HOSTS = {
   sandbox: "https://api.sandbox.push.apple.com",
@@ -35,6 +37,8 @@ interface CachedJwt {
   // A promise, so concurrent sends share one token instead of each signing their own
   // (several new tokens at once would trip APNs' refresh limit).
   jwt: Promise<string>;
+  /** APNs said ExpiredProviderToken or InvalidProviderToken for this token. */
+  rejected: boolean;
 }
 let cached: CachedJwt | null = null;
 
@@ -73,11 +77,19 @@ async function signJwt(env: Env, iat: number): Promise<string> {
   return `${signingInput}.${base64url(new Uint8Array(signature))}`;
 }
 
+function keyIdentity(env: Env): string {
+  // Kept only in memory; a new key, key id, or team starts a new token at once.
+  return `${env.APNS_TEAM_ID}:${env.APNS_KEY_ID}:${env.APNS_KEY_P8}`;
+}
+
 function apnsJwt(env: Env, nowMs: number): Promise<string> {
-  const identity = `${env.APNS_TEAM_ID}:${env.APNS_KEY_ID}:${env.APNS_KEY_P8.length}:${env.APNS_KEY_P8.slice(-16)}`;
-  if (cached && cached.identity === identity && nowMs - cached.issuedAtMs < JWT_REUSE_MS) return cached.jwt;
+  const identity = keyIdentity(env);
+  if (cached && cached.identity === identity) {
+    const age = nowMs - cached.issuedAtMs;
+    if (age < JWT_MIN_REBUILD_MS || (!cached.rejected && age < JWT_REUSE_MS)) return cached.jwt;
+  }
   const iat = Math.floor(nowMs / 1000);
-  const entry: CachedJwt = { identity, issuedAtMs: iat * 1000, jwt: signJwt(env, iat) };
+  const entry: CachedJwt = { identity, issuedAtMs: iat * 1000, jwt: signJwt(env, iat), rejected: false };
   entry.jwt.catch(() => {
     if (cached === entry) cached = null;
   });
@@ -102,10 +114,11 @@ interface Target {
 
 async function sendOne(env: Env, target: Target & { apns_token: string }, payload: PushPayload): Promise<PushResult> {
   const host = HOSTS[target.apns_env ?? "production"];
+  const jwt = apnsJwt(env, Date.now());
   const res = await fetch(`${host}/3/device/${target.apns_token}`, {
     method: "POST",
     headers: {
-      authorization: `bearer ${await apnsJwt(env, Date.now())}`,
+      authorization: `bearer ${await jwt}`,
       "apns-topic": env.APNS_TOPIC,
       "apns-push-type": "alert",
       "apns-priority": "10",
@@ -122,7 +135,9 @@ async function sendOne(env: Env, target: Target & { apns_token: string }, payloa
       .bind(target.id, target.apns_token)
       .run();
   }
-  if (reason === "ExpiredProviderToken" || reason === "InvalidProviderToken") resetApnsJwtCache();
+  if ((reason === "ExpiredProviderToken" || reason === "InvalidProviderToken") && cached?.jwt === jwt) {
+    cached.rejected = true;
+  }
   return { memberId: target.id, status: "failed", httpStatus: res.status, reason };
 }
 

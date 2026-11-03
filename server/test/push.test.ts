@@ -31,6 +31,11 @@ function decodeJwt(jwt: string) {
   };
 }
 
+async function newP8(): Promise<string> {
+  const pair = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign"])) as CryptoKeyPair;
+  return toPem((await crypto.subtle.exportKey("pkcs8", pair.privateKey)) as ArrayBuffer);
+}
+
 beforeAll(async () => {
   // A throwaway P-256 key stands in for the .p8 from Apple.
   const pair = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
@@ -111,6 +116,38 @@ describe("sendPush", () => {
     expect(Number(decodeJwt((rebuilt ?? "").slice(7)).claims.iat)).toBe(Math.floor((start + 50 * 60_000 + 1000) / 1000));
     // The new token is reused in turn.
     expect(await tokenAt(60 * 60_000)).toBe(rebuilt);
+  });
+
+  it("does not rebuild the token within 20 minutes after APNs rejects it, unless the key changed", async () => {
+    const memberId = await memberWithToken("9a".repeat(32));
+    const auths: string[] = [];
+    network.use(
+      http.post(`${SANDBOX}/3/device/:token`, ({ request }) => {
+        auths.push(request.headers.get("authorization") ?? "");
+        return HttpResponse.json({ reason: "ExpiredProviderToken" }, { status: 403 });
+      }),
+    );
+    const start = Date.now();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const sendAt = async (offsetMs: number, e: Env = pushEnv) => {
+      vi.setSystemTime(start + offsetMs);
+      await sendPush(e, [memberId], { title: "t", body: "b" });
+      return auths.at(-1);
+    };
+
+    const first = await sendAt(0);
+    // Rejected, but rebuilding now would count as a refresh within 20 minutes.
+    expect(await sendAt(60_000)).toBe(first);
+    expect(await sendAt(19 * 60_000)).toBe(first);
+    const second = await sendAt(20 * 60_000 + 1000);
+    expect(second).not.toBe(first);
+    expect(await sendAt(21 * 60_000)).toBe(second);
+
+    // A different key is a different token stream, so it signs at once.
+    const otherKey = await newP8();
+    const third = await sendAt(22 * 60_000, { ...pushEnv, APNS_KEY_P8: otherKey, APNS_KEY_ID: "OTHERKEY12" });
+    expect(third).not.toBe(second);
+    expect(decodeJwt((third ?? "").slice(7)).header.kid).toBe("OTHERKEY12");
   });
 
   it("skips members without a device token and sends to the rest", async () => {
