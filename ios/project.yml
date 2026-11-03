@@ -1,0 +1,192 @@
+# Source of truth for ios/Mimamori.xcodeproj. Regenerate with `xcodegen generate --spec ios/project.yml`
+# and commit both. Never hand-edit the .pbxproj.
+name: Mimamori
+
+options:
+  bundleIdPrefix: com.sagochiko
+  developmentLanguage: ja
+  # The one place that sets the iOS version. 26.0 because AlarmKit needs it; lower it here once the
+  # mother's iPhone model is known (docs/human-queue.md).
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+configFiles:
+  Debug: Config/Shared.xcconfig
+  Release: Config/Shared.xcconfig
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: CTK4XXPWH9
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # The screens are written in Japanese; without this, dates and system text fall back to English.
+    DEVELOPMENT_LANGUAGE: ja
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+packages:
+  Core:
+    path: Core
+
+targets:
+  Mimamori:
+    type: application
+    platform: iOS
+    sources:
+      - App
+    dependencies:
+      - package: Core
+        product: MimamoriCore
+      - target: MessageFilter
+      - target: SafariExtension
+      - target: ShareExtension
+      - target: CallDirectory
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1"
+        PRODUCT_BUNDLE_IDENTIFIER: com.sagochiko.mimamori
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: mimamori
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleLocalizations: [ja]
+        MimamoriAPIBaseURL: https://$(MIMAMORI_API_HOST)
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIBackgroundModes: [remote-notification]
+        ITSAppUsesNonExemptEncryption: false
+    entitlements:
+      path: App/Mimamori.entitlements
+      properties:
+        aps-environment: development
+        com.apple.security.application-groups:
+          - group.com.sagochiko.mimamori
+        com.apple.developer.associated-domains:
+          - messagefilter:$(MIMAMORI_API_HOST)
+
+  MessageFilter:
+    type: app-extension
+    platform: iOS
+    sources:
+      - MessageFilter
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1"
+        PRODUCT_BUNDLE_IDENTIFIER: com.sagochiko.mimamori.MessageFilter
+    info:
+      path: MessageFilter/Info.plist
+      properties:
+        CFBundleDisplayName: mimamori
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.identitylookup.message-filter
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).MessageFilterExtension
+          # Task 5 adds NSExtensionAttributes / ILMessageFilterExtensionNetworkURL:
+          # https://$(MIMAMORI_API_HOST)/sms/<familyToken>
+    entitlements:
+      path: MessageFilter/MessageFilter.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.sagochiko.mimamori
+        com.apple.developer.associated-domains:
+          - messagefilter:$(MIMAMORI_API_HOST)
+
+  SafariExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: SafariExtension
+        excludes:
+          - Resources
+      # Copied file by file into the bundle root, where Safari looks for manifest.json. A folder named
+      # "Resources" at the top of an iOS bundle makes CFBundle read it as an old-style bundle and the
+      # build fails with "Couldn't load Info dictionary".
+      - path: SafariExtension/Resources
+        buildPhase: resources
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1"
+        PRODUCT_BUNDLE_IDENTIFIER: com.sagochiko.mimamori.SafariExtension
+    info:
+      path: SafariExtension/Info.plist
+      properties:
+        CFBundleDisplayName: mimamori
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.Safari.web-extension
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).SafariWebExtensionHandler
+    entitlements:
+      path: SafariExtension/SafariExtension.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.sagochiko.mimamori
+
+  ShareExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - ShareExtension
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1"
+        PRODUCT_BUNDLE_IDENTIFIER: com.sagochiko.mimamori.ShareExtension
+    info:
+      path: ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: mimamori
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsImageWithMaxCount: 1
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+    entitlements:
+      path: ShareExtension/ShareExtension.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.sagochiko.mimamori
+
+  CallDirectory:
+    type: app-extension
+    platform: iOS
+    sources:
+      - CallDirectory
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1"
+        PRODUCT_BUNDLE_IDENTIFIER: com.sagochiko.mimamori.CallDirectory
+    info:
+      path: CallDirectory/Info.plist
+      properties:
+        CFBundleDisplayName: mimamori
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.callkit.call-directory
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).CallDirectoryHandler
+    entitlements:
+      path: CallDirectory/CallDirectory.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.sagochiko.mimamori
+
+schemes:
+  Mimamori:
+    build:
+      targets:
+        Mimamori: all
+    run:
+      config: Debug
+    archive:
+      config: Release
