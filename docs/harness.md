@@ -51,10 +51,12 @@
 | `/mm-eval` | dev の精度を予算の範囲で測り、記録する |
 | `/mm-ios-verify` | シミュレータで画面を確かめる。実機でしか確かめられないものを分ける |
 | `/mm-device` | 作者の iPhone 向けに自動の署名でビルドし、入れて起動する。人が画面を見る確認は作者の Issue に回す |
-| `/mm-release` | ビルド番号を上げてアーカイブし、中身を確かめ、作者の承認のあと App Store Connect に送る。母と審査員のグループに入れる手順と審査用のメモを作者に渡す |
+| `/mm-release` | ビルド番号を上げてアーカイブし、中身を確かめ、作者の承認のあと App Store Connect に送る。母と審査員のグループへの登録と審査用のメモは Claude in Chrome で入れ、作者には Submit Review を押すことだけを頼む |
 | `/mm-deploy` | 裏側を、遠隔の操作のたびに作者の確認を取りながら出す。出したあとの確かめ、ログ、アプリの宛先の切り替えまで |
 | `/mm-human-queue` | 作者にしかできない作業を積み、待たずに次へ進む |
 | `/mm-endgame` | コードを止めてから提出までの確認 |
+
+Apple Developer の登録(bundle ID、App Group、capability、端末)は、`/mm-device` と `/mm-release` の `xcodebuild -allowProvisioningUpdates` が確認なしで書き換え、何を登録したかをあとで報告する。作者が一度 `/mm-device` を通して受け入れた運用で、作者の承認が要るのは App Store Connect への送信(`-exportArchive`)と、TestFlight の Submit Review から先だ。`/mm-release` が待つあいだに読む App Store Connect の状態は、作者のグローバルの `app-store-connect` skill を通して取る。鍵は Python の中で読まれるのでフックからは見えないが、[`beta_state.py`](../.claude/skills/mm-release/beta_state.py) は GET しかしない。
 
 ## MCP
 
