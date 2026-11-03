@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
+import { planSplit } from "../lib/split-plan";
 import { splitPool } from "../split";
 
 let tmp: string;
@@ -85,10 +86,20 @@ describe("splitPool", () => {
   it("adds a later batch to the recorded counts", async () => {
     await pattern("sms-scam-a", "sms", true, 2);
     await splitPool(dirs);
-    await pattern("sms-scam-b", "sms", true, 2);
+    await pattern("sms-scam-c", "sms", true, 2);
     await splitPool(dirs);
     const counts = JSON.parse(await readFile(dirs.countsFile, "utf8"));
-    assert.deepEqual(counts["sms/scam"], { dev: 0, holdout: 4 });
+    // Each batch holds one file of the group, so each name decides its side (a to dev, c to holdout).
+    assert.deepEqual(counts["sms/scam"], { dev: 2, holdout: 2 });
+  });
+
+  it("sends a group of one file to dev or holdout by its name, not always to the holdout", () => {
+    const sideOf = (name: string) =>
+      planSplit([{ name, source: "sms", isScam: true, count: 3 }]).assignments[0]!.set;
+    const names = ["sms-scam-a.jsonl", "sms-scam-b.jsonl", "sms-scam-c.jsonl", "sms-scam-d.jsonl"];
+    assert.deepEqual(names.map(sideOf), ["dev", "dev", "holdout", "holdout"]);
+    // The same name always lands on the same side.
+    assert.deepEqual(names.map(sideOf), ["dev", "dev", "holdout", "holdout"]);
   });
 
   it("says so and moves nothing when the pool is empty", async () => {

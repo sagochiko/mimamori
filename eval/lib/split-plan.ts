@@ -3,6 +3,8 @@
 // - each group (path x scam or genuine) is split into two halves as equal as possible by case count
 // - on a tie, the holdout gets the larger half, then injection cases are spread across both sides,
 //   then the lowest combination in a fixed hash order of the file names wins
+// - a group of one file cannot be halved; the top bit of its name's hash picks the side, so files
+//   added one at a time land on both sides instead of always in the holdout
 // It looks only at names and counts, so it is the same on every machine and in every file order.
 // No Node APIs here, so the server's Vitest (in workerd) can import this file.
 
@@ -66,6 +68,7 @@ function injectionCount(file: PatternFile): number {
 /** For files in hash order, which go to the holdout. */
 function chooseHoldout(files: PatternFile[]): boolean[] {
   const n = files.length;
+  if (n === 1) return [hashName(files[0]!.name) >>> 31 === 1];
   const total = files.reduce((sum, f) => sum + f.count, 0);
   const totalInjection = files.reduce((sum, f) => sum + injectionCount(f), 0);
 
