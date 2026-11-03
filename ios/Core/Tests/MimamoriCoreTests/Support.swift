@@ -61,3 +61,11 @@ func bodyJSON(_ request: URLRequest) throws -> [String: Any] {
   let data = try #require(request.httpBody)
   return try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
 }
+
+/// An install marker that lives in memory. `markedOnDisk` is what a later read would find.
+final class InMemoryInstallMarker: InstallMarkerStore, @unchecked Sendable {
+  var markedOnDisk: Bool
+  init(marked: Bool) { markedOnDisk = marked }
+  var isMarked: Bool { markedOnDisk }
+  func mark() { markedOnDisk = true }
+}

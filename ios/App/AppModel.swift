@@ -20,9 +20,11 @@ final class AppModel {
     store: any DeviceKeyStore = KeychainDeviceKeyStore(),
     transport: any HTTPTransport = URLSessionTransport(),
     baseURL: URL = AppConfig.apiBaseURL,
-    defaults: UserDefaults = .standard
+    marker: any InstallMarkerStore = AppModel.installMarker
   ) {
-    let session = Session(baseURL: baseURL, transport: transport, store: store, defaults: defaults)
+    let session = Session(
+      baseURL: baseURL, transport: transport, store: store, marker: marker,
+      isProtectedDataAvailable: { UIApplication.shared.isProtectedDataAvailable })
     self.session = session
     self.route = session.route
     session.onRouteChange = { [weak self] route in
@@ -31,11 +33,22 @@ final class AppModel {
     }
   }
 
+  /// An empty file in Application Support: deleted with the app, and checkable while locked.
+  nonisolated static let installMarker = FileInstallMarker(
+    url: URL.applicationSupportDirectory.appending(path: "mimamori-installed"))
+
+  /// Re-reads the stored key: after the first unlock following a reboot, and whenever the app
+  /// comes to the front.
+  func refresh() {
+    session.refresh()
+  }
+
   /// The model the app runs with. Debug builds launched with `-mimamori-stub` use canned answers.
   static func live() -> AppModel {
     #if DEBUG
       if ScreenshotStubTransport.isRequested {
-        return AppModel(store: InMemoryDeviceKeyStore(), transport: ScreenshotStubTransport())
+        return AppModel(
+          store: InMemoryDeviceKeyStore(), transport: ScreenshotStubTransport(), marker: ScreenshotStubTransport.marker)
       }
     #endif
     return AppModel()

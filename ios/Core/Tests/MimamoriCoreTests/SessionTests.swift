@@ -3,13 +3,6 @@ import Testing
 
 @testable import MimamoriCore
 
-/// A fresh UserDefaults per test, standing in for the app's own (deleted with the app).
-func freshDefaults(installed: Bool) -> UserDefaults {
-  let defaults = UserDefaults(suiteName: "mimamori-test-\(UUID().uuidString)")!
-  if installed { InstallMarker.mark(defaults) }
-  return defaults
-}
-
 @MainActor
 @Suite("Session: 画面の行き先")
 struct SessionTests {
@@ -18,7 +11,7 @@ struct SessionTests {
   ) -> (Session, RouteLog) {
     let log = RouteLog()
     let session = Session(
-      baseURL: testBaseURL, transport: transport, store: store, defaults: freshDefaults(installed: true))
+      baseURL: testBaseURL, transport: transport, store: store, marker: InMemoryInstallMarker(marked: true))
     session.onRouteChange = { log.routes.append($0) }
     return (session, log)
   }
@@ -91,32 +84,125 @@ final class RouteLog {
   var routes: [AppRoute] = []
 }
 
+/// Before the first unlock after a reboot, the Keychain item (AfterFirstUnlockThisDeviceOnly) reads
+/// as nothing. This store hides its content while `device.locked` is true, like that.
+final class LockableStore: DeviceKeyStore, @unchecked Sendable {
+  let inner: InMemoryDeviceKeyStore
+  let device: Device
+  init(_ credentials: Credentials?, device: Device) {
+    inner = InMemoryDeviceKeyStore(credentials)
+    self.device = device
+  }
+  func load() -> Credentials? { device.locked ? nil : inner.load() }
+  func save(_ credentials: Credentials) throws { try inner.save(credentials) }
+  func clear() { inner.clear() }
+}
+
+final class Device: @unchecked Sendable {
+  var locked: Bool
+  init(locked: Bool) { self.locked = locked }
+}
+
+@MainActor
 @Suite("入れ直したときの鍵")
 struct InstallMarkerTests {
+  private func session(store: any DeviceKeyStore, marker: any InstallMarkerStore, device: Device = Device(locked: false))
+    -> Session
+  {
+    Session(
+      baseURL: testBaseURL, transport: StubTransport(status: 200), store: store, marker: marker,
+      isProtectedDataAvailable: { !device.locked })
+  }
+
   @Test("入れ直した直後(印が無い)は、キーチェーンに残った鍵を消して役の選択から始める")
-  @MainActor
   func reinstallClearsKeychain() {
     let store = InMemoryDeviceKeyStore(.sample)
-    let defaults = freshDefaults(installed: false)
+    let marker = InMemoryInstallMarker(marked: false)
 
-    let session = Session(baseURL: testBaseURL, transport: StubTransport(status: 200), store: store, defaults: defaults)
+    let session = session(store: store, marker: marker)
 
     #expect(store.load() == nil)
     #expect(session.route == .chooseRole)
-    #expect(InstallMarker.isMarked(defaults))
+    #expect(marker.isMarked)
   }
 
   @Test("2回目からの起動では、鍵を残す")
-  @MainActor
   func laterLaunchKeepsKey() {
     let store = InMemoryDeviceKeyStore(.sample)
-    let defaults = freshDefaults(installed: false)
-    _ = Session(baseURL: testBaseURL, transport: StubTransport(status: 200), store: store, defaults: defaults)
-    try? store.save(.sample)
+    let marker = InMemoryInstallMarker(marked: true)
 
-    let session = Session(baseURL: testBaseURL, transport: StubTransport(status: 200), store: store, defaults: defaults)
+    let session = session(store: store, marker: marker)
 
     #expect(store.load() == .sample)
     #expect(session.route == .familyHome)
+  }
+
+  @Test("再起動のあと、最初の解除の前に裏で起きても、鍵を消さない")
+  func lockedLaunchDoesNotClear() {
+    let device = Device(locked: true)
+    let store = LockableStore(.sample, device: device)
+    // While locked, a marker kept in protected storage would read as missing too.
+    let marker = InMemoryInstallMarker(marked: false)
+
+    let session = session(store: store, marker: marker, device: device)
+
+    #expect(store.inner.load() == .sample)
+    #expect(!marker.isMarked)
+    #expect(session.route == .chooseRole)  // nothing readable yet
+
+    device.locked = false
+    marker.markedOnDisk = true  // the real marker was there all along
+    session.refresh()
+
+    #expect(store.inner.load() == .sample)
+    #expect(session.route == .familyHome)
+  }
+
+  @Test("解除の前に起きた入れ直しは、解除したあとの refresh で鍵を消す")
+  func lockedReinstallClearsAfterUnlock() {
+    let device = Device(locked: true)
+    let store = LockableStore(.sample, device: device)
+    let marker = InMemoryInstallMarker(marked: false)
+    let session = session(store: store, marker: marker, device: device)
+    #expect(store.inner.load() == .sample)
+
+    device.locked = false
+    session.refresh()
+
+    #expect(store.inner.load() == nil)
+    #expect(marker.isMarked)
+    #expect(session.route == .chooseRole)
+  }
+
+  @Test("refresh は鍵を読み直し、変わったときだけ知らせる")
+  func refreshRereadsRoute() {
+    let device = Device(locked: true)
+    let store = LockableStore(.sample, device: device)
+    let session = session(store: store, marker: InMemoryInstallMarker(marked: true), device: device)
+    let log = RouteLog()
+    session.onRouteChange = { log.routes.append($0) }
+    #expect(session.route == .chooseRole)
+
+    device.locked = false
+    session.refresh()
+    session.refresh()
+
+    #expect(session.route == .familyHome)
+    #expect(log.routes == [.familyHome])
+  }
+}
+
+@Suite("印のファイル")
+struct FileInstallMarkerTests {
+  @Test("ファイルが無ければ印は無く、付けるとフォルダごと作る")
+  func createsFile() throws {
+    let dir = FileManager.default.temporaryDirectory.appending(path: "mimamori-marker-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let marker = FileInstallMarker(url: dir.appending(path: "nested/installed"))
+
+    #expect(!marker.isMarked)
+    marker.mark()
+    #expect(marker.isMarked)
+    #expect(FileManager.default.fileExists(atPath: dir.appending(path: "nested/installed").path))
   }
 }

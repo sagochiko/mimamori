@@ -7,6 +7,8 @@
   /// before the Workers host exists. Release builds never contain this file's code.
   struct ScreenshotStubTransport: HTTPTransport {
     static var isRequested: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub") }
+    /// The stub keeps the key in memory, so the real marker file is left alone.
+    static let marker = FileInstallMarker(url: URL.temporaryDirectory.appending(path: "mimamori-stub-installed"))
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
       try await Task.sleep(for: .milliseconds(300))
