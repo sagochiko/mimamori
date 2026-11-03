@@ -1,8 +1,10 @@
 // One Cron Trigger ("*/5 * * * *") drives every scheduled job, because the Free plan allows only
 // 5 Cron Triggers per account. Each job says when it is due; dueJobs() picks them from the tick time.
-// To add a job (case watch in task 10, Gmail polling in task 7), append it to JOBS.
+// To add a job (Gmail polling in task 7), put it in JOBS. Jobs run one after another in JOBS order
+// and share one budget of outside calls, so notices go before the cleanup that takes what is left.
 
 import { ExternalBudget } from "./budget";
+import { watchUnanswered } from "./cases";
 import { purgeExpired, purgeExpiredSessions } from "./retention";
 
 const TICK_MINUTES = 5;
@@ -17,6 +19,8 @@ export type Job =
   | { name: string; dailyAtJst: string; run: Run };
 
 export const JOBS: Job[] = [
+  // Cases nobody accepted within 30 minutes. First, so its notices are never starved by the cleanup.
+  { name: "case-watch", everyMinutes: 5, run: watchUnanswered },
   // 04:00 JST, when the family is least likely to be using the app.
   { name: "retention", dailyAtJst: "04:00", run: purgeExpired },
   // Agent sessions of old cases, a few at a time, so a backlog finishes over the following ticks.
@@ -38,15 +42,18 @@ export function dueJobs<T extends Job>(scheduledTime: number, jobs: readonly T[]
   });
 }
 
-/** Runs each due job; one job failing does not stop the others. */
+/**
+ * Runs each due job in JOBS order, one after another, so an earlier job gets the shared budget first.
+ * One job failing does not stop the others.
+ */
 export async function runScheduled(env: Env, scheduledTime: number, jobs: readonly Job[] = JOBS): Promise<void> {
-  const due = dueJobs(scheduledTime, jobs);
   const budget = new ExternalBudget();
-  const results = await Promise.allSettled(due.map((job) => job.run(env, scheduledTime, budget)));
-  results.forEach((result, i) => {
-    if (result.status === "rejected") {
-      const reason = result.reason instanceof Error ? result.reason.name : typeof result.reason;
-      console.error("cron job failed", due[i]?.name, reason);
+  for (const job of dueJobs(scheduledTime, jobs)) {
+    try {
+      await job.run(env, scheduledTime, budget);
+    } catch (error) {
+      const reason = error instanceof Error ? error.name : typeof error;
+      console.error("cron job failed", job.name, reason);
     }
-  });
+  }
 }

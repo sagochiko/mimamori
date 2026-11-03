@@ -134,7 +134,7 @@ export async function joinInvite(
 
   // After the response; a failed push must not undo the join.
   ctx.waitUntil(
-    sendPush(env, others.results.map((r) => r.id), { body: `${name}が入りました` }).then(
+    sendPush(env, others.results.map((r) => r.id), { body: `${name}が入りました` }, new ExternalBudget()).then(
       () => undefined,
       () => undefined,
     ),
