@@ -12,6 +12,7 @@
 		31980380ADC3240C7EE281BC /* MimamoriApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E45414D046D363FD33D0A71A /* MimamoriApp.swift */; };
 		3792C21DC96CFB08E303BF69 /* ProtectedHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC84E1DC90613B9EB0164B49 /* ProtectedHomeView.swift */; };
 		38A272F7AE944C9DF6A7E596 /* FamilyHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 516788DAB13E4B039651659A /* FamilyHomeView.swift */; };
+		43B9311E811375C7729B1D8E /* CaseCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9CA9B42DD3FC3299CFAB648 /* CaseCardView.swift */; };
 		4B33968B0F409367195FDDED /* RoleSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06074B0D983CF3372440534D /* RoleSelectionView.swift */; };
 		506A9F65B0840324B1E52A9E /* ScreenshotStubTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C21EE2A82C9D0DAFA79176F /* ScreenshotStubTransport.swift */; };
 		56FEB594CFB85A1BCA209BE5 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BDA3D10727E119E0680CB3C /* AppModel.swift */; };
@@ -21,6 +22,7 @@
 		81A7A7A8204D4A2657776DF3 /* MessageFilter.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B2BE94A81A0443A61F439C2E /* MessageFilter.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8E20FA15796EE2391F3A9DC1 /* SafariExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 09B99954C58F5BB6B8E7061C /* SafariExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8FD99978F33E656FE68E8612 /* MessageFilterExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = B441389511B639CF9457DFD2 /* MessageFilterExtension.swift */; };
+		A47056C1598ECDB8501B26E2 /* ReplySpeaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84BA38ED727FD076C6B3DDD6 /* ReplySpeaker.swift */; };
 		A6C56C492741A879A53F09EC /* KeychainDeviceKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B78E521DD07930F33B780261 /* KeychainDeviceKeyStore.swift */; };
 		B30588DA403943E16C24E603 /* FamilyStartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EB3212F121AF5A1BC7F588E /* FamilyStartView.swift */; };
 		CA60F854809C86C96B2A956E /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04CE476A28DC68FEBBCCD33 /* AppConfig.swift */; };
@@ -85,11 +87,13 @@
 		6636D20FA1E1AADEB45C6CB1 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
 		6857C3950869A3E22C6DC8CE /* Mimamori.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Mimamori.entitlements; sourceTree = "<group>"; };
 		7C21EE2A82C9D0DAFA79176F /* ScreenshotStubTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotStubTransport.swift; sourceTree = "<group>"; };
+		84BA38ED727FD076C6B3DDD6 /* ReplySpeaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplySpeaker.swift; sourceTree = "<group>"; };
 		95CDB77E0372A19FBBE234F4 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		9CC66F62DBB65E534422C6B7 /* Mimamori.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Mimamori.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A04CE476A28DC68FEBBCCD33 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
 		A5A6A6699D77BEFE19DAB2D5 /* CallDirectory.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CallDirectory.entitlements; sourceTree = "<group>"; };
 		A661F91A9FD78D7FF973B911 /* SafariExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SafariExtension.entitlements; sourceTree = "<group>"; };
+		A9CA9B42DD3FC3299CFAB648 /* CaseCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaseCardView.swift; sourceTree = "<group>"; };
 		B2BE94A81A0443A61F439C2E /* MessageFilter.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = MessageFilter.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B441389511B639CF9457DFD2 /* MessageFilterExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageFilterExtension.swift; sourceTree = "<group>"; };
 		B4E2407A22C382C75C4FAAA0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -138,6 +142,7 @@
 		3C25AF4BBF2EBFEA8CE0308F /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				A9CA9B42DD3FC3299CFAB648 /* CaseCardView.swift */,
 				516788DAB13E4B039651659A /* FamilyHomeView.swift */,
 				3EB3212F121AF5A1BC7F588E /* FamilyStartView.swift */,
 				3D71E050B6AB7E4A2CC31D69 /* JoinView.swift */,
@@ -210,6 +215,7 @@
 				B78E521DD07930F33B780261 /* KeychainDeviceKeyStore.swift */,
 				6857C3950869A3E22C6DC8CE /* Mimamori.entitlements */,
 				E45414D046D363FD33D0A71A /* MimamoriApp.swift */,
+				84BA38ED727FD076C6B3DDD6 /* ReplySpeaker.swift */,
 				4623E0F92491831EF284BE09 /* Debug */,
 				3C25AF4BBF2EBFEA8CE0308F /* Views */,
 			);
@@ -430,12 +436,14 @@
 			files = (
 				CA60F854809C86C96B2A956E /* AppConfig.swift in Sources */,
 				56FEB594CFB85A1BCA209BE5 /* AppModel.swift in Sources */,
+				43B9311E811375C7729B1D8E /* CaseCardView.swift in Sources */,
 				38A272F7AE944C9DF6A7E596 /* FamilyHomeView.swift in Sources */,
 				B30588DA403943E16C24E603 /* FamilyStartView.swift in Sources */,
 				3108313EAA90F72D86124356 /* JoinView.swift in Sources */,
 				A6C56C492741A879A53F09EC /* KeychainDeviceKeyStore.swift in Sources */,
 				31980380ADC3240C7EE281BC /* MimamoriApp.swift in Sources */,
 				3792C21DC96CFB08E303BF69 /* ProtectedHomeView.swift in Sources */,
+				A47056C1598ECDB8501B26E2 /* ReplySpeaker.swift in Sources */,
 				4B33968B0F409367195FDDED /* RoleSelectionView.swift in Sources */,
 				0EF3336DAE22D85DA0D64FE7 /* RootView.swift in Sources */,
 				506A9F65B0840324B1E52A9E /* ScreenshotStubTransport.swift in Sources */,

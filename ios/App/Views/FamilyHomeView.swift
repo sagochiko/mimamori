@@ -1,13 +1,31 @@
 import MimamoriCore
 import SwiftUI
 
-/// For now only the invite. Cards for alerts and smiles come in later tasks.
+/// The family's screen: a card per case, newest first, then the invite.
 struct FamilyHomeView: View {
   @Environment(AppModel.self) private var model
 
   var body: some View {
+    ScrollView {
+      VStack(spacing: 20) {
+        ForEach(model.familyCards, id: \.item.id) { card in
+          CaseCardView(card: card)
+        }
+        if model.familyCards.isEmpty { Spacer(minLength: 80) }
+        InviteSection()
+      }
+      .padding(24)
+    }
+    .refreshable { await model.loadCases() }
+    .task { await model.keepCasesFresh() }
+  }
+}
+
+private struct InviteSection: View {
+  @Environment(AppModel.self) private var model
+
+  var body: some View {
     VStack(spacing: 24) {
-      Spacer()
       if let invite = model.invite {
         InviteCodeView(invite: invite)
       }
@@ -16,13 +34,11 @@ struct FamilyHomeView: View {
       } label: {
         if model.isBusy { ProgressView().tint(.white) } else { Text("招待") }
       }
-      .buttonStyle(BigButtonStyle(prominent: model.invite == nil))
+      .buttonStyle(BigButtonStyle(prominent: model.invite == nil && model.familyCards.isEmpty))
       .disabled(model.isBusy)
       .accessibilityLabel(model.invite == nil ? "招待のコードを出す" : "新しい招待のコードを出す")
       .accessibilityHint("見守られる人やほかの家族が、この6桁のコードで入ります。24時間使えます")
-      Spacer()
     }
-    .padding(24)
   }
 }
 
