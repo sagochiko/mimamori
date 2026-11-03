@@ -49,3 +49,15 @@ Safari の拡張の `manifest.json` を、`Resources` という名前のフォ�
 `Info.plist` が無いという意味だと思って中身を調べたが、原因は別だった。iOS のバンドルの一番上に `Resources` というフォルダがあると、CFBundle がそれを古い形のバンドルとして読み、`Resources/` の中に `Info.plist` を探しにいく。
 
 フォルダごと入れるのをやめ、ファイルを1つずつバンドルの一番上へ写す書き方にして、ビルドは通った(作り直しから16秒)。フォルダの名前を変える案は、Safari が `manifest.json` をバンドルの一番上で探すので採らなかった。同じ確認の中で、`make simulator` が iOS 27.1 のランタイムに機種を作れない(`Incompatible device`)ことも分かり、今あった iOS 26.5 の iPhone 17 Pro で代わりに確かめた。使ったのは mm-implementer、`xcodebuild`、MobileBuildMCP の画面の操作。
+
+## 2026年11月3日 23:45 例文を見ずに分け方と測り方を作る (#6)
+
+決まった規則(`server/src/rules/`)と、例文を dev と holdout に分ける `eval/split.ts`、精度を測る `eval/run.ts` を作っていた。
+
+Claude Code の実装役には「pool と holdout は読まずに、手口のファイルを丸ごと半々に分ける split.ts を一時フォルダの見本で試して書いて。rules+claude は #7 までは数字を作らずに止めて」と頼んだ。
+
+`Makefile` は `cd server && npx tsx ../eval/run.ts` で動かす前提だったが、`server/` に tsx が入っておらず、`npx tsx --version` は `npx canceled due to missing packages` で止まった。もう1つ、`make verify` が流す Vitest は workerd の中で動き、`nodejs_compat` も無いので、一時フォルダにファイルを置いて移す試験ができなかった。集める役の報告では SMS が詐欺24件と本物20件で、半々にすると holdout は12件と10件になる。
+
+計画では holdout は経路ごとに15件と15件で、メールとページだけが足りないと思っていた。SMS も届かない。
+
+tsx 4.23.15 を `server` の開発用の依存に足し、分け方と数え方は Node の API を使わない `eval/lib/` に分けて Vitest で試し、ファイルを移すところは `npx tsx --test ../eval/test/*.test.ts` で一時フォルダに対して試す形にした。Node の型を通すため `eval/tsconfig.json` を置いた。holdout を15件にそろえるために dev を削る案は、直すときの手がかりが無くなるので採らず、実際の件数を分母にすると `eval/README.md` に書いた。規則だけの数字は、分けたあとに親が `make eval` で出す。使ったのは mm-implementer、guard-holdout フック、`npx vitest run`、`node:test`。
