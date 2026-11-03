@@ -17,8 +17,13 @@ export class ExternalBudget {
 
   /** True and one ticket fewer, or false when the invocation has used its share. */
   take(): boolean {
-    if (this.left <= 0) return false;
-    this.left--;
+    return this.takeMany(1);
+  }
+
+  /** All n tickets or none, for work that must not be done halfway (one notice to a whole family). */
+  takeMany(n: number): boolean {
+    if (n > this.left) return false;
+    this.left -= n;
     return true;
   }
 }

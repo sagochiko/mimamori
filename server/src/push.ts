@@ -8,6 +8,7 @@
 // Local `wrangler dev` may fail here, so the real send is checked from a deployed Worker.
 
 import { base64url } from "./auth";
+import type { ExternalBudget } from "./budget";
 
 export interface PushPayload {
   title?: string;
@@ -20,7 +21,7 @@ export interface PushPayload {
 
 export type PushResult =
   | { memberId: string; status: "sent"; httpStatus: number }
-  | { memberId: string; status: "skipped"; reason: "no_device_token" | "unknown_member" }
+  | { memberId: string; status: "skipped"; reason: "no_device_token" | "unknown_member" | "no_budget" }
   | { memberId: string; status: "failed"; httpStatus?: number; reason: string };
 
 export const JWT_REUSE_MS = 50 * 60_000;
@@ -144,8 +145,16 @@ async function sendOne(env: Env, target: Target & { apns_token: string }, payloa
 /**
  * Sends one alert to each member. Members without a device token are skipped, not failed.
  * Results come back in the order of memberIds. A 200 from APNs means accepted, not seen.
+ * Each device sent to takes one ticket of the invocation's shared budget (Workers Free allows 50
+ * outside calls per invocation). When the budget cannot cover every device, nobody is sent to and
+ * each comes back "no_budget", so the caller can try the whole notice again later.
  */
-export async function sendPush(env: Env, memberIds: string[], payload: PushPayload): Promise<PushResult[]> {
+export async function sendPush(
+  env: Env,
+  memberIds: string[],
+  payload: PushPayload,
+  budget: ExternalBudget,
+): Promise<PushResult[]> {
   if (memberIds.length === 0) return [];
   const placeholders = memberIds.map(() => "?").join(", ");
   const rows = await env.DB.prepare(
@@ -154,12 +163,15 @@ export async function sendPush(env: Env, memberIds: string[], payload: PushPaylo
     .bind(...memberIds)
     .all<Target>();
   const byId = new Map(rows.results.map((r) => [r.id, r]));
+  const reachable = memberIds.filter((id) => byId.get(id)?.apns_token).length;
+  const funded = budget.takeMany(reachable);
 
   return Promise.all(
     memberIds.map(async (memberId): Promise<PushResult> => {
       const target = byId.get(memberId);
       if (!target) return { memberId, status: "skipped", reason: "unknown_member" };
       if (!target.apns_token) return { memberId, status: "skipped", reason: "no_device_token" };
+      if (!funded) return { memberId, status: "skipped", reason: "no_budget" };
       try {
         return await sendOne(env, { ...target, apns_token: target.apns_token }, payload);
       } catch (error) {

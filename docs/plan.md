@@ -28,7 +28,7 @@
 - メール、SMS、ページ、スクショの中の文字は調べる対象として扱い、命令として扱わない。通知先と共有の範囲は、Claude の答えや届いた文面では変わらない
 - スクショはその場で処理して残さない。笑顔の写真は家族の間だけで共有し、Claude にも Managed Agents にも渡さない
 - Managed Agents は、怪しいものの裏の調べもの、家族への引き継ぎ、週ごとのふり返りの3つだけ。即答と母との会話の1往復には使わない
-- Workers は無料プラン(1日10万リクエスト、1回の CPU 時間10ミリ秒)。超えそうなら家族に知らせる
+- Workers は無料プラン(1日10万リクエスト、1回の CPU 時間10ミリ秒)。超えそうなら家族に知らせる。Cron Triggers はアカウント全体で5つまでなので、1つ(5分ごと)にまとめて中で振り分ける。Queues は1日1万オペレーションまで。R2 は作者がダッシュボードで購読を有効にしてから使う(2026年11月3日に [Workers の制限](https://developers.cloudflare.com/workers/platform/limits/)、[Queues の料金](https://developers.cloudflare.com/queues/platform/pricing/)、[R2 の始め方](https://developers.cloudflare.com/r2/get-started/)で確認)
 - 画面の文言は最小限。説明文、補足文、選択肢の上の見出しを置かず、VoiceOver の読み上げには残す
 - README は英語をメインにし、日本語版を付ける。デモ動画は日本語で3分以内
 - iOS のテストできる中身は Swift Package(`Core`)に分け、Swift Testing で書く。Workers のテストは Vitest と `@cloudflare/vitest-plugin` で書く(旧名の `@cloudflare/vitest-pool-workers` は非推奨になっている)
@@ -105,7 +105,7 @@ mimamori/
 | `members` | `id`、`family_id`、`role`(`protected` か `family`)、`display_name`、`device_key_hash`、`apns_token`、`apns_env` |
 | `invites` | `code`(6桁)、`family_id`、`expires_at`、`used_at` |
 | `alerts` | `id`、`family_id`、`source`(`sms`、`gmail`、`dns`、`page`、`call`、`consult`)、`level`(1、2、3)、`reasons`(JSON)、`summary`、`rule_level`、`claude_level`、`created_at` |
-| `cases` | `id`、`family_id`、`alert_id`、`state`(`notified`、`accepted`、`resolved`)、`assignee_member_id`、`agent_session_id`、`notified_at`、`accepted_at`、`resolved_at`、`renotified_at` |
+| `cases` | `id`、`family_id`、`alert_id`、`state`(`notified`、`accepted`、`resolved`)、`assignee_member_id`、`agent_session_id`、`notified_at`、`accepted_at`、`resolved_at`、`renotified_at`、`ai_reply`(引き受けより前に AI が母に答えたこと)、`family_notified_at`(家族に最初の知らせが届いた時刻。届くまでは空) |
 | `relays` | `id`、`case_id`、`from_member_id`、`body`、`created_at` |
 | `smiles` | `id`、`family_id`、`member_id`、`r2_key`、`score`、`created_at` |
 | `gmail_auth` | `family_id`、`refresh_token_enc`、`granted_at`、`last_history_id`、`expired_notified_at` |
@@ -138,7 +138,7 @@ Structured Outputs で次の形だけを受け取る。
 |---|---|
 | `POST /families` | 家族を作り、呼んだ端末を最初の家族にする |
 | `POST /invites` | 招待のコードを出す(24時間有効) |
-| `POST /invites/{code}/join` | `role` と `display_name` を送って入る。`deviceKey` が返る |
+| `POST /invites/{code}/join` | `role` と `display_name` を送って入る。`deviceKey` が返る。接続元ごとに60秒に5回までで、超えると429。入ると先にいる家族全員に「(名前)が入りました」と知らせる |
 | `PUT /members/me/apns` | APNs の端末トークンを登録する |
 | `POST /sms/{familyToken}` | Apple から届く問い合わせ。Apple の形で答える |
 | `GET`、`POST /dns-query/{familyToken}` | DoH。`application/dns-message` |
@@ -174,16 +174,13 @@ Structured Outputs で次の形だけを受け取る。
 **確かめること**
 
 - [ ] 母の iPhone の正確な機種と iOS を確かめる。2026年11月1日の時点で分かっているのは「Face ID の機種」ということだけ。AlarmKit は iOS 26 以降で、iOS 26 は iPhone 11 以降(第2世代 SE 以降を含む)が対象。X、XS、XR は外れる([iPhone Mania](https://iphone-mania.jp/?p=595545))ので、機種名まで確かめる。ARKit の顔トラッキングは TrueDepth カメラ(Face ID の機種)が要る
-- [ ] Safari の拡張機能を全サイトで許可し、コンテンツスクリプトからページの URL と本文を読み、自前のサーバーに fetch できるか。できなければ、サイトは DNS だけにする
-- [ ] 背面タップに割り当てたショートカットで「スクリーンショットを撮る」から「URL の内容を取得」(POST、ファイル)まで一続きで動くか。動かなければ、共有の受け口だけにする
-- [ ] NEDNSSettingsManager で設定した DoH のサーバーが止まったとき、iPhone が普通の DNS に戻るか、ネットにつながらなくなるか。つながらなくなるなら、有料プランにするか DNS を外すかを作者に聞く
-- [ ] SMS の拡張がサーバーに問い合わせたとき、Apple がどれだけ返事を待つか。サーバーで 1秒、3秒、5秒と遅らせて、迷惑フォルダに回る境目を見る
-- [ ] `SFSpeechRecognizer`(`ja-JP`)で `requiresOnDeviceRecognition` が使えるか
-- [ ] `CXCallObserver` で、アプリが閉じているときやバックグラウンドのときにも通話の終わりが分かるか。分からなければ、アプリを開いたときに直近の通話について聞く形にする
-- [ ] パーソナルボイスを使う許可をもらい、`AVSpeechSynthesizer` の書き出しで家族の返事を音声ファイルにできるか
-- [ ] Managed Agents で最小のエージェントとセッションを作り、最初のイベントから `session.status_idle` までの時間を測る
-- [ ] 母を App Store Connect の内部テスターに入れられるか(内部テストなら Apple の審査なしで配れる)
+- [x] `SFSpeechRecognizer`(`ja-JP`)で `requiresOnDeviceRecognition` が使えるか。iOS 26 の `SpeechTranscriber` で ja_JP を端末の中で文字にできるか。2026年11月3日に作者の iPhone 16(iOS 27.2)で、機内モードでも3つの方式とも文字にできた(0.04〜0.22秒)。母の相談には `SFSpeechRecognizer` を使う。母の iPhone での確認は機種が分かってから
+- [ ] `CXCallObserver` で、アプリが前面にあるとき、バックグラウンドのとき、強制終了したときに、通話の終わりが分かるか。Apple の DTS は止まっているあいだは分からないと答えている([Apple Developer Forums](https://developer.apple.com/forums/thread/849682))ので、代わりのきっかけ(ショートカットの「電話を閉じたとき」のオートメーションなど)も試し、声かけの作り方を作者と決める
+- [x] パーソナルボイスを使う許可をもらい、`AVSpeechSynthesizer` の書き出しで家族の返事を音声ファイルにできるか。パーソナルボイスは日本語で作れない([Apple の iOS 27 の提供状況](https://www.apple.com/ios/feature-availability/))ので使わず、家族の返事は普通の読み上げの声にした(2026年11月3日、作者が決めた)
+- [ ] 母を App Store Connect の内部テスターに入れられるか(内部テストなら Apple の審査なしで配れる)。内部テスターは App Store Connect のユーザーに限られる([ヘルプ](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers))ので、母を役割つきのユーザーとして招待できるかを作者が確かめる
 - [ ] 結果を設計のファイルの「初日に実機で確かめること」に書き、直す節があれば直す
+
+Safari の拡張機能、背面タップ、DNS のサーバーが止まったとき、SMS の待ち時間、Managed Agents の応答の速さは、2026年11月3日に作者と決めて、それぞれタスク9、12、8、5、11に移した。裏側のデプロイが要るものが多く、M1 の主役には要らないため。
 
 ### タスク2 裏側の土台
 
@@ -274,6 +271,7 @@ Structured Outputs で次の形だけを受け取る。
 
 **手順**
 
+- [ ] タスク1から移した確認。SMS の拡張がサーバーに問い合わせたとき、Apple がどれだけ返事を待つか。サーバーで 1秒、3秒、5秒と遅らせて、迷惑フォルダに回る境目を見る
 - [ ] テストを書く。はっきり危ない SMS(`confident: true` かつ1段階)は `junk`。迷う SMS は `none` で返し、判定の仕事をキューに積む。認証コードや本物の宅配の通知は `none` で、キューにも積まない。知らない `familyToken` なら `none` を返し、何も記録しない。`demo` なら本当の家族には知らせず、体験モードの端末に「家族に届くカード」を返す
 - [ ] 実装してテストを通す。返事は規則だけで作り、Claude を待たない(タスク1で測った待ち時間より十分短く)
 - [ ] Info.plist の `ILMessageFilterExtensionNetworkURL` に、母のビルドでは母の家族の URL を、審査員のビルドでは `demo` を入れる。ビルド設定で切り替える
@@ -290,13 +288,15 @@ Structured Outputs で次の形だけを受け取る。
 **つなぎ目**
 
 - 使うもの `judgeByRules`、`sendPush`
-- 渡すもの `enqueueJudge(env, job: { familyId, source, payload })`、`alerts` の行、2段階以上でタスク10の `openCase(env, alertId)` を呼ぶ
+- 渡すもの `enqueueJudge(env, job: { familyId, source, payload })`、`alerts` の行、2段階以上でタスク10の `openCase(env, alertId, budget)` を呼ぶ
+- 家族への知らせは、相談の ID を持つ `openCase` からだけ送る。受け手は母にだけ送る。枠を前もって確かめるときは、母の端末の数に家族の届く端末の数を足す
+- `openCase` が `CaseNoticeDeferred` を投げたら、メッセージをやり直す。受け手はメッセージの ID を知らせの ID にしているので、やり直しで届いた同じメッセージは、家族に知らせる知らせの行(`notified = 1`。3段階と、1時間に1回にまとめて知らせなかった行は除く)があり、相談が無いか家族に届いていない(`family_notified_at` が空)ときは `openCase(env, alertId, budget)` だけを呼び、Claude の判定も母への通知も飛ばす。キューがやり直しをあきらめても相談の行は残り、5分ごとの Cron が1日のあいだ家族への最初の知らせを送り直す
 
 **手順**
 
 - [ ] テストを書く(Claude は差し替えて試す)。3段階の知らせは家族に通知を送らない。同じ送り主やドメインの知らせは1時間に1回にまとめる。Claude の答えが決まった形でなければ規則の判定だけで知らせる。`injection_suspected` が `true` なら1段階重くする。Claude の呼び出しが失敗しても、規則で2段階以上なら母と家族に知らせ、母には「確かめ中」と出す。Claude が `level` を規則より軽くしても、`confident` の規則の判定より軽くはしない
 - [ ] 実装してテストを通す。プロンプトでは、届いた文面を `<untrusted>` で囲み、中の指示に従わないよう書く
-- [ ] 母への通知は「開かないで」と理由1つ。家族への通知はカードに要約と理由を載せる
+- [ ] 母への通知は「開かないで」と理由1つ。家族への通知は `openCase` が送り、カードに要約と理由を載せる
 - [ ] `eval/run.ts` で「規則と Claude」の数字を出す
 - [ ] 母の iPhone に TestFlight で配り、FaceTime で SMS のフィルタの有効化と拡張の選択を案内する。使うことと動画に映すことの同意を別々にもらう
 - [ ] 体験モードの画面を作る。審査員の1台で、家族に届くカードを並べて見せる。最初は電話の相談(通話のあとの声かけから)で、家族が引き受ける場合と誰も応じない場合を選べる。そのあとに SMS の判定を試せる
@@ -339,6 +339,7 @@ Structured Outputs で次の形だけを受け取る。
 
 **手順**
 
+- [ ] タスク1から移した確認。NEDNSSettingsManager で設定した DoH のサーバーが止まったとき、iPhone が普通の DNS に戻るか、ネットにつながらなくなるか。つながらなくなるなら、有料プランにするか DNS を外すかを作者に聞く。DNS を設定するアプリが TestFlight の外部テストの審査で何を問われるかも、外部テストに出すときに記録する
 - [ ] 銀行への接続の知らせのテストを書く。1段階の知らせから60分のうちに、銀行やネット銀行の公式ドメインが引かれたら、家族に「銀行関連の通信がありました」と1回だけ知らせる(止めない。開いたことや送金したことは言わない)。60分を過ぎたら知らせない。1段階の知らせが無いときに銀行を開いても知らせない。銀行のドメインの一覧は `rules/banks.ts` に公式のものを集め、出典を書く
 - [ ] テストを書く。普通のドメインは上流の答えをそのまま返す。`confident` で1段階のドメインは `0.0.0.0` を返し、記録して母と家族に知らせる(同じドメインは1時間に1回だけ知らせる)。形式がおかしい問い合わせには400を返す。その日の件数が8万件を超えたら家族に1回知らせる
 - [ ] 実装してテストを通す。1回の CPU 時間が10ミリ秒に収まるよう、Claude は呼ばない
@@ -348,7 +349,7 @@ Structured Outputs で次の形だけを受け取る。
 
 ### タスク9 Safari の拡張機能とページの判定
 
-タスク1で Safari の拡張機能がページを読めなかったら、このタスクは飛ばし、設計のファイルに理由を書く。
+最初に、タスク1から移した確認をする。Safari の拡張機能を全サイトで許可し、コンテンツスクリプトからページの URL と本文を読み、自前のサーバーに fetch できるか。ページを読めなかったら、このタスクは飛ばし、設計のファイルに理由を書く。
 
 **作るもの**
 
@@ -372,14 +373,14 @@ Structured Outputs で次の形だけを受け取る。
 
 **作るもの**
 
-- `server/src/cases.ts`(Cron Trigger で5分ごとに30分の見張り)
-- `ios/App/` の家族の画面(カード、「引き受ける」「母に返事する」「電話する」「解決」)と、母の画面の「家族に伝えました」「(名前)から」
+- `server/src/cases.ts`(Cron Trigger で5分ごとに、家族に届いていない最初の知らせの送り直しと、30分の見張り)
+- `ios/App/` の家族の画面(カード、「引き受ける」「母に返事する」「電話する」「解決」)と、母の画面の「家族に伝えました」「(名前)から」。家族の返事は母の iPhone の普通の読み上げの声で読む
 - `server/test/cases.test.ts`
 
 **つなぎ目**
 
 - 使うもの `alerts`、`sendPush`
-- 渡すもの `openCase(env, alertId)`、`acceptCase(env, caseId, memberId)`、`relay(env, caseId, memberId, body)`、`resolveCase(env, caseId, memberId)`
+- 渡すもの `openCase(env, alertId, budget)`(`budget` は呼び出し1回で共有する外への通信の枠。相談の行は最初に入れて残す。家族の端末の数だけ枠が取れないときと、家族の誰にも知らせが届かなかったときは、`family_notified_at` を空のまま `CaseNoticeDeferred` を投げる。同じ `alertId` でもう一度呼ぶと家族に知らせ、知らせ済みなら知らせも枠の消費もせずに相談を返す)、`acceptCase(env, caseId, memberId)`、`relay(env, caseId, memberId, body)`、`resolveCase(env, caseId, memberId)`
 
 **手順**
 
@@ -404,6 +405,7 @@ Structured Outputs で次の形だけを受け取る。
 
 **手順**
 
+- [ ] タスク1から移した確認。最小のエージェントとセッションを作り、最初のイベントから `session.status_idle` までの時間を測る
 - [ ] 調べもののエージェントを作る。Managed Agents のエンドポイントには `anthropic-beta: managed-agents-2026-04-01` が要る(2026年11月3日に公式ドキュメントで確認。SDK は自動で付ける)。道具は `web_search` と `web_fetch` だけ。入力は怪しいメッセージの送り主、ドメイン、本文だけで、母との会話は渡さない。出力は根拠の箇条(出典の URL つき)
 - [ ] テストを書く(API は差し替えて試す)。Webhook は種類と ID しか来ないので、受けたらイベントを取りに行く。同じ Webhook が2回来ても根拠を2回足さない。Webhook が来なくても、5分ごとの見張りで `idle` になったセッションを拾う。調べものが失敗しても、知らせそのものは消さない
 - [ ] 実装してテストを通す。根拠は家族のカードに足す
@@ -435,7 +437,7 @@ Structured Outputs で次の形だけを受け取る。
 - [ ] `consult.ts` のテストを書く(Claude は差し替える)。スクショは記録に残さない。送金、認証コード、構成プロファイル、データの削除に関わる相談は、案内せず `handoff: true` にして相談を開く。その相談を家族が引き受けていたら、AI は案内せず「(名前)が見ています」と返す
 - [ ] 実装してテストを通す。押す場所は絶対ピクセルの `[x, y]` で返させる(0から1000の正規化は使わない)
 - [ ] 母の画面を作る。声は iPhone の中で文字にする。タスク1で使えなければ、サーバー側で文字にする方法を作者に聞く。答えは `AVSpeechSynthesizer` で読み上げる。丸を付けたら「押せたらもう一度見せて」で次のスクショを待つ
-- [ ] 背面タップのショートカットを用意する(タスク1で動いた場合だけ)
+- [ ] タスク1から移した確認。背面タップに割り当てたショートカットで「スクリーンショットを撮る」から「URL の内容を取得」(POST、ファイル)まで一続きで動くかを確かめ、動けばショートカットを用意する。動かなければ、共有の受け口だけにする
 - [ ] 実機で、設定アプリの画面のスクショを10枚試し、丸が正しい場所に付いた数を記録する
 - [ ] スマホの困りごとの相談のテストを書く(Claude は差し替える)。「ストレージがいっぱいと出た」には設定の「iPhone ストレージ」への案内を返し、広告の掃除アプリは入れなくてよいと伝える。「広告のアプリを入れていいか」「画面に出た番号に電話したら、アプリを入れてと言われた」は詐欺の手口との一致を根拠つきで返し、後者は1段階にして家族に知らせる
 - [ ] コミットする

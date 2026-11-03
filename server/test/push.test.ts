@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { ExternalBudget } from "../src/budget";
 import { resetApnsJwtCache, sendPush } from "../src/push";
 import { createFamily } from "./helpers";
 import { network } from "./network";
@@ -80,7 +81,7 @@ describe("sendPush", () => {
     const memberId = await memberWithToken("aa".repeat(32));
     const now = Date.now();
 
-    const results = await sendPush(pushEnv, [memberId], { title: "見守り", body: "確かめてください" });
+    const results = await sendPush(pushEnv, [memberId], { title: "見守り", body: "確かめてください" }, new ExternalBudget());
     expect(results).toEqual([{ memberId, status: "sent", httpStatus: 200 }]);
 
     const auth = seen[0]?.headers.get("authorization") ?? "";
@@ -105,7 +106,7 @@ describe("sendPush", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const tokenAt = async (offsetMs: number) => {
       vi.setSystemTime(start + offsetMs);
-      await sendPush(pushEnv, [memberId], { title: "t", body: "b" });
+      await sendPush(pushEnv, [memberId], { title: "t", body: "b" }, new ExternalBudget());
       return seen.at(-1)?.headers.get("authorization");
     };
 
@@ -131,7 +132,7 @@ describe("sendPush", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const sendAt = async (offsetMs: number, e: Env = pushEnv) => {
       vi.setSystemTime(start + offsetMs);
-      await sendPush(e, [memberId], { title: "t", body: "b" });
+      await sendPush(e, [memberId], { title: "t", body: "b" }, new ExternalBudget());
       return auths.at(-1);
     };
 
@@ -155,7 +156,7 @@ describe("sendPush", () => {
     const withToken = await memberWithToken("cc".repeat(32));
     const without = await memberWithToken(null);
 
-    const results = await sendPush(pushEnv, [without, withToken], { title: "t", body: "b" });
+    const results = await sendPush(pushEnv, [without, withToken], { title: "t", body: "b" }, new ExternalBudget());
     expect(results).toEqual([
       { memberId: without, status: "skipped", reason: "no_device_token" },
       { memberId: withToken, status: "sent", httpStatus: 200 },
@@ -168,7 +169,7 @@ describe("sendPush", () => {
     const dev = await memberWithToken("dd".repeat(32), "sandbox");
     const prod = await memberWithToken("ee".repeat(32), "production");
 
-    await sendPush(pushEnv, [dev, prod], { title: "t", body: "b" });
+    await sendPush(pushEnv, [dev, prod], { title: "t", body: "b" }, new ExternalBudget());
     expect(seen.map((s) => s.url).sort()).toEqual([
       `${PRODUCTION}/3/device/${"ee".repeat(32)}`,
       `${SANDBOX}/3/device/${"dd".repeat(32)}`,
@@ -181,7 +182,7 @@ describe("sendPush", () => {
     const seen = captureApns();
     const memberId = await memberWithToken("ff".repeat(32));
 
-    await sendPush(pushEnv, [memberId], { title: "見守り", body: "本文", data: { caseId: "c1" }, threadId: "case-c1" });
+    await sendPush(pushEnv, [memberId], { title: "見守り", body: "本文", data: { caseId: "c1" }, threadId: "case-c1" }, new ExternalBudget());
     const request = seen[0];
     expect(request?.headers.get("apns-topic")).toBe(env.APNS_TOPIC);
     expect(request?.headers.get("apns-push-type")).toBe("alert");
@@ -197,14 +198,41 @@ describe("sendPush", () => {
       http.post(`${SANDBOX}/3/device/:token`, () => HttpResponse.json({ reason: "Unregistered" }, { status: 410 })),
     );
 
-    const results = await sendPush(pushEnv, [memberId], { title: "t", body: "b" });
+    const results = await sendPush(pushEnv, [memberId], { title: "t", body: "b" }, new ExternalBudget());
     expect(results).toEqual([{ memberId, status: "failed", httpStatus: 410, reason: "Unregistered" }]);
     const row = await env.DB.prepare("SELECT apns_token FROM members WHERE id = ?").bind(memberId).first();
     expect(row).toEqual({ apns_token: null });
   });
 
+  it("takes one ticket of the shared budget per device it sends to", async () => {
+    const seen = captureApns();
+    const a = await memberWithToken("a1".repeat(32));
+    const b = await memberWithToken("b1".repeat(32));
+    const none = await memberWithToken(null);
+    const budget = new ExternalBudget(5);
+
+    await sendPush(pushEnv, [a, none, b], { title: "t", body: "b" }, budget);
+    expect(seen).toHaveLength(2);
+    expect(budget.remaining).toBe(3);
+  });
+
+  it("sends to nobody when the budget cannot cover every device, so a notice is not split", async () => {
+    const seen = captureApns();
+    const a = await memberWithToken("a2".repeat(32));
+    const b = await memberWithToken("b2".repeat(32));
+    const budget = new ExternalBudget(1);
+
+    const results = await sendPush(pushEnv, [a, b], { title: "t", body: "b" }, budget);
+    expect(results).toEqual([
+      { memberId: a, status: "skipped", reason: "no_budget" },
+      { memberId: b, status: "skipped", reason: "no_budget" },
+    ]);
+    expect(seen).toHaveLength(0);
+    expect(budget.remaining).toBe(1);
+  });
+
   it("reports a member that does not exist instead of throwing", async () => {
-    const results = await sendPush(pushEnv, ["no-such-member"], { title: "t", body: "b" });
+    const results = await sendPush(pushEnv, ["no-such-member"], { title: "t", body: "b" }, new ExternalBudget());
     expect(results).toEqual([{ memberId: "no-such-member", status: "skipped", reason: "unknown_member" }]);
   });
 });
