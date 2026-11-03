@@ -187,19 +187,38 @@ async function notify(
 }
 
 /**
+ * openCase could not tell the family, so it kept no case. The caller (the queue consumer) retries the
+ * same alert later, and the retry opens the case and notifies.
+ */
+export class CaseNoticeDeferred extends Error {
+  override name = "CaseNoticeDeferred";
+  constructor(readonly reason: "no_budget" | "not_delivered") {
+    super(reason);
+  }
+}
+
+/**
  * Opens the case for an alert and tells every family member (not the protected person, whose screen
  * shows "家族に伝えました"). One case per alert: a second call, such as a retried queue message,
  * returns the same case without notifying again. Returns null when the alert does not exist.
+ *
+ * The tickets for every family device come out of the caller's shared budget before the row exists.
+ * When they cannot, or when no family device took the notice, no case is kept and CaseNoticeDeferred
+ * is thrown: a 'notified' row nobody was told about would make a retry skip the notice and leave the
+ * family in the dark until the 30-minute watch. When at least one family member was told, the case
+ * stays and the watch covers the others.
  */
-export async function openCase(
-  env: Env,
-  alertId: string,
-  budget: ExternalBudget = new ExternalBudget(),
-): Promise<CaseView | null> {
+export async function openCase(env: Env, alertId: string, budget: ExternalBudget): Promise<CaseView | null> {
   const alert = await env.DB.prepare("SELECT id, family_id, level, summary FROM alerts WHERE id = ?")
     .bind(alertId)
     .first<{ id: string; family_id: string; level: number; summary: string }>();
   if (!alert) return null;
+  const [existing] = await loadViews(env, alert.family_id, { alertId });
+  if (existing) return existing;
+
+  const family = (await membersOf(env, alert.family_id)).filter((m) => m.role === "family");
+  const reachable = family.filter((m) => m.reachable).length;
+  if (!budget.takeMany(reachable)) throw new CaseNoticeDeferred("no_budget");
 
   const caseId = crypto.randomUUID();
   const inserted = await env.DB.prepare(
@@ -209,19 +228,30 @@ export async function openCase(
     .bind(caseId, alert.family_id, alertId, Date.now(), alertId)
     .run();
 
-  if (inserted.meta.changes === 1) {
-    const family = (await membersOf(env, alert.family_id)).filter((m) => m.role === "family").map((m) => m.id);
-    await notify(
-      env,
-      family,
-      {
-        title: `${alert.level}段階`,
-        body: alert.summary.trim() === "" ? "相談が届きました" : alert.summary,
-        data: { caseId },
-        threadId: `case-${caseId}`,
-      },
-      budget,
-    );
+  if (inserted.meta.changes === 1 && reachable > 0) {
+    let told = false;
+    try {
+      const results = await sendPush(
+        env,
+        family.map((m) => m.id),
+        {
+          title: `${alert.level}段階`,
+          body: alert.summary.trim() === "" ? "相談が届きました" : alert.summary,
+          data: { caseId },
+          threadId: `case-${caseId}`,
+        },
+        // The tickets were taken above; sendPush spends exactly those.
+        new ExternalBudget(reachable),
+      );
+      told = results.some((r) => r.status === "sent");
+    } catch (error) {
+      console.error("case notification failed", error instanceof Error ? error.name : typeof error);
+    }
+    if (!told) {
+      // Only while nobody has accepted it (a family member may have seen it in the list meanwhile).
+      const undone = await env.DB.prepare("DELETE FROM cases WHERE id = ? AND state = 'notified'").bind(caseId).run();
+      if (undone.meta.changes === 1) throw new CaseNoticeDeferred("not_delivered");
+    }
   }
   const [view] = await loadViews(env, alert.family_id, { alertId });
   return view ?? null;

@@ -105,7 +105,7 @@ mimamori/
 | `members` | `id`、`family_id`、`role`(`protected` か `family`)、`display_name`、`device_key_hash`、`apns_token`、`apns_env` |
 | `invites` | `code`(6桁)、`family_id`、`expires_at`、`used_at` |
 | `alerts` | `id`、`family_id`、`source`(`sms`、`gmail`、`dns`、`page`、`call`、`consult`)、`level`(1、2、3)、`reasons`(JSON)、`summary`、`rule_level`、`claude_level`、`created_at` |
-| `cases` | `id`、`family_id`、`alert_id`、`state`(`notified`、`accepted`、`resolved`)、`assignee_member_id`、`agent_session_id`、`notified_at`、`accepted_at`、`resolved_at`、`renotified_at` |
+| `cases` | `id`、`family_id`、`alert_id`、`state`(`notified`、`accepted`、`resolved`)、`assignee_member_id`、`agent_session_id`、`notified_at`、`accepted_at`、`resolved_at`、`renotified_at`、`ai_reply`(引き受けより前に AI が母に答えたこと) |
 | `relays` | `id`、`case_id`、`from_member_id`、`body`、`created_at` |
 | `smiles` | `id`、`family_id`、`member_id`、`r2_key`、`score`、`created_at` |
 | `gmail_auth` | `family_id`、`refresh_token_enc`、`granted_at`、`last_history_id`、`expired_notified_at` |
@@ -290,7 +290,7 @@ Structured Outputs で次の形だけを受け取る。
 **つなぎ目**
 
 - 使うもの `judgeByRules`、`sendPush`
-- 渡すもの `enqueueJudge(env, job: { familyId, source, payload })`、`alerts` の行、2段階以上でタスク10の `openCase(env, alertId)` を呼ぶ
+- 渡すもの `enqueueJudge(env, job: { familyId, source, payload })`、`alerts` の行、2段階以上でタスク10の `openCase(env, alertId, budget)` を呼ぶ(`CaseNoticeDeferred` ならメッセージをやり直す)
 
 **手順**
 
@@ -379,7 +379,7 @@ Structured Outputs で次の形だけを受け取る。
 **つなぎ目**
 
 - 使うもの `alerts`、`sendPush`
-- 渡すもの `openCase(env, alertId)`、`acceptCase(env, caseId, memberId)`、`relay(env, caseId, memberId, body)`、`resolveCase(env, caseId, memberId)`
+- 渡すもの `openCase(env, alertId, budget)`(`budget` は呼び出し1回で共有する外への通信の枠。家族の端末の数だけ枠が取れないときと、家族の誰にも知らせが届かなかったときは、相談を残さず `CaseNoticeDeferred` を投げるので、呼び手は同じ `alertId` でやり直す)、`acceptCase(env, caseId, memberId)`、`relay(env, caseId, memberId, body)`、`resolveCase(env, caseId, memberId)`
 
 **手順**
 
