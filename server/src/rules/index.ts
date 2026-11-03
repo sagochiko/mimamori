@@ -5,9 +5,10 @@
 // level 1, 2, 3 as in CLAUDE.md, or null when the rules cannot decide. null never means "fine".
 // An official domain only means no domain sign is added for it; the text is always checked, since a
 // sender can be forged and anyone can write an official domain into a message.
-// confident is true only for level 1 with a strong sign that genuine messages do not give and at
-// least two independent signs that are not weak; only then does an SMS go to the junk folder or a
-// domain get blocked. Two rules that match one phrase are one sign.
+// confident is true only for level 1 with a strong sign that genuine messages do not give, at least
+// two independent signs that are not weak, and no official sender or link; only then does an SMS go
+// to the junk folder or a domain get blocked. Two rules written for the same thing that match one
+// phrase are one sign.
 
 import { BRAND_WORDS, type HostTrust, imitatedBrandOf, normalizeHost, trustOf } from "./domains";
 import {
@@ -55,6 +56,8 @@ interface NamedHost extends HostTrust {
   host: string;
   /** Named as a mail address (the sender, or an address in the text), not as a link or a domain. */
   address: boolean;
+  /** Only written in the text without https://, as in "【Amazon.co.jp】". A name more than a link. */
+  bare: boolean;
 }
 
 const SUSPICIOUS_TLDS = new Set([
@@ -73,38 +76,55 @@ function normalizeText(text: string): string {
   return text.normalize("NFKC").toLowerCase();
 }
 
-function hostOf(value: string): string | null {
+function parseUrl(value: string): URL | null {
   const v = normalizeText(value.trim());
   if (!v) return null;
   try {
-    return normalizeHost(new URL(v.includes("://") ? v : `https://${v}`).hostname);
+    return new URL(v.includes("://") ? v : `https://${v}`);
   } catch {
     return null;
   }
 }
 
+/** URLs carried inside a link's query, as in https://www.google.com/url?q=https://... */
+function nestedUrls(url: URL): string[] {
+  return [...url.searchParams.values()].filter((value) => /^https?:\/\//i.test(value.trim()));
+}
+
 /** Every host the input names: the domain, the URL, the sender's mail domain, and links in the text. */
 function hostsOf(input: RuleInput, text: string): NamedHost[] {
   const hosts = new Map<string, NamedHost>();
-  const add = (value: string | undefined, address: boolean) => {
-    if (!value) return;
-    const host = hostOf(value);
-    if (host && host.includes(".")) hosts.set(`${address}:${host}`, { host, address, ...trustOf(host, address) });
+  const put = (host: string, address: boolean, trust: HostTrust, bare = false) => {
+    const key = `${address}:${host}:${trust.trust}`;
+    // The same host named both bare and as a link counts as a link.
+    if (host.includes(".") && !(bare && hosts.has(key))) hosts.set(key, { host, address, bare, ...trust });
   };
-  add(input.domain, false);
-  add(input.url, false);
+  const addAddress = (domain: string | undefined) => {
+    const url = domain ? parseUrl(domain) : null;
+    if (url) put(normalizeHost(url.hostname), true, trustOf(url.hostname, true));
+  };
+  const addLink = (value: string | undefined, depth = 0, bare = false) => {
+    const url = value ? parseUrl(value) : null;
+    if (!url) return;
+    const inner = depth < 2 ? nestedUrls(url) : [];
+    // A link that only passes the reader on is not the brand speaking, whoever runs the redirect.
+    put(normalizeHost(url.hostname), false, trustOf(url.hostname, false, url.pathname, inner.length > 0), bare);
+    for (const next of inner) addLink(next, depth + 1);
+  };
+  addLink(input.domain);
+  addLink(input.url);
   const sender = normalizeText(input.sender ?? "");
-  if (sender.includes("@")) add(sender.split("@").pop(), true);
-  else if (/^[a-z0-9.-]+\.[a-z]{2,}$/.test(sender)) add(sender, false);
+  if (sender.includes("@")) addAddress(sender.split("@").pop());
+  else if (/^[a-z0-9.-]+\.[a-z]{2,}$/.test(sender)) addLink(sender);
 
   let rest = text;
   for (const match of text.matchAll(URL_IN_TEXT)) {
-    add(match[0], false);
+    addLink(match[0]);
     rest = rest.replace(match[0], " ");
   }
-  for (const match of rest.matchAll(EMAIL_IN_TEXT)) add(match[1], true);
+  for (const match of rest.matchAll(EMAIL_IN_TEXT)) addAddress(match[1]);
   rest = rest.replace(EMAIL_IN_TEXT, " ");
-  for (const match of rest.matchAll(BARE_DOMAIN)) add(match[1], false);
+  for (const match of rest.matchAll(BARE_DOMAIN)) addLink(match[1], 0, true);
   return [...hosts.values()];
 }
 
@@ -126,12 +146,15 @@ interface Sign {
 
 const RANK: Record<Strength, number> = { strong: 0, medium: 1, weak: 2 };
 
-/**
- * Two phrase rules matched one phrase: their matches cover mostly the same text (at least half of
- * the longer one). A short phrase inside a long sentence rule ("ウイルスに感染" inside the support
- * scam's "感染 ... 050-..." ) is a separate sign.
- */
+// Rules written for the same thing, so one phrase can match both: "家族に言わないで" is both the
+// injection rule's "keep the family out" and the fake-police secrecy. Only these pairs are merged;
+// other rules that happen to overlap ("口座番号を入力" inside "口座 ... 悪用") stay separate signs, and
+// a weak sign never joins two others into one.
+const SAME_THING: ReadonlyArray<readonly [string, string]> = [[INJECTION.kind, "police_secrecy"]];
+
+/** Two rules matched one phrase: a pair in SAME_THING whose matches cover mostly the same text. */
 function samePhrase(a: Signal, b: Signal): boolean {
+  if (!SAME_THING.some(([x, y]) => (a.kind === x && b.kind === y) || (a.kind === y && b.kind === x))) return false;
   return a.spans.some(([s1, e1]) =>
     b.spans.some(([s2, e2]) => 2 * (Math.min(e1, e2) - Math.max(s1, s2)) >= Math.max(e1 - s1, e2 - s2)),
   );
@@ -204,16 +227,24 @@ export function judgeByRules(input: RuleInput): RuleResult {
     add("foreign_sender", "weak", "海外の番号からの SMS");
   }
 
-  // A message that is only a verification code: typing it in is what it is for, and "don't tell
-  // anyone" protects the code. A link elsewhere makes it more than a code.
+  // A message that is only a verification code: typing the code in is what it is for, and "don't
+  // tell anyone" protects the code. Anything a scam would add makes it more than a code: a link that
+  // is not official, a phone number, another part of the fake-police script, or moving money. The
+  // digits are looked for after phone numbers are taken out, so "03-1234-5678" is no code.
+  const hasPhone = PHONE_NUMBER.test(text);
   const codeOnly =
     (input.source === "sms" || input.source === "gmail") &&
     unofficialLinks.length === 0 &&
+    !hasPhone &&
+    !POLICE_SCRIPT.some((rule) => rule.kind !== "police_secrecy" && matchSpans(rule, text).length > 0) &&
+    matchSpans(MONEY_MOVE, text).length === 0 &&
     OTP_ONLY.test(text) &&
-    OTP_DIGITS.test(text);
+    OTP_DIGITS.test(text.replace(new RegExp(PHONE_NUMBER.source, "g"), " "));
 
   check(INJECTION);
-  if (unofficialLinks.length > 0 || PHONE_NUMBER.test(text)) check(NOTICE_IGNORE);
+  // "このメッセージは無視して" counts only with a link that is not official. Genuine code messages
+  // say it with a number to call, so a phone number alone does not make it count.
+  if (unofficialLinks.length > 0) check(NOTICE_IGNORE);
   for (const rule of POLICE_SCRIPT) if (!(codeOnly && rule.kind === "police_secrecy")) check(rule);
   for (const rule of CONTENT_RULES) check(codeOnly && rule.kind === CREDENTIAL_FROM_CODE.kind ? CREDENTIAL_FROM_CODE : rule);
   check(URGENCY);
@@ -227,7 +258,14 @@ export function judgeByRules(input: RuleInput): RuleResult {
   const signs = signsOf([...signals.values()]);
   const level = levelOf(signs);
   const independent = signs.filter((s) => s.strength !== "weak").length;
-  const confident = level === 1 && signs.some((s) => s.strength === "strong") && independent >= 2;
+  // An official sender or link (not a free mail address or a user page) means it may be the brand or
+  // a public body warning about the scam it quotes. Never confident then, so a genuine warning does
+  // not go to the junk folder; the level stays and Claude may lower it. Accepted trade-off: a scam
+  // that adds an official link also stays out of the junk folder (eval/README.md). A domain written
+  // without https://, as in "【Amazon.co.jp】", is a name that scams copy, so it does not count.
+  const official = hosts.some((h) => h.trust === "official" && !h.bare);
+  const confident =
+    level === 1 && !official && signs.some((s) => s.strength === "strong") && independent >= 2;
   const reasons = [...signals.values()].sort((a, b) => RANK[a.strength] - RANK[b.strength]).map((s) => s.reason);
   return { level, reasons, confident };
 }

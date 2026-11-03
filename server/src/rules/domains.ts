@@ -124,9 +124,16 @@ export const FREE_MAIL_DOMAINS: ReadonlySet<string> = new Set([
 // Hosts (and their subdomains) on a brand's domain where anyone can put up a page, a form, or a
 // LINE account. A link there is not the brand speaking.
 export const USER_CONTENT_HOSTS: readonly string[] = [
-  "sites.google.com", "docs.google.com", "drive.google.com", "groups.google.com",
+  "sites.google.com", "docs.google.com", "drive.google.com", "groups.google.com", "script.google.com",
   "line.me", "chiebukuro.yahoo.co.jp",
 ];
+
+// Paths on an official host where anyone can share a file, an album, or a note.
+export const USER_CONTENT_PATHS: Readonly<Record<string, readonly string[]>> = {
+  "www.icloud.com": [
+    "/iclouddrive/", "/sharedalbum/", "/photos/", "/notes/", "/pages/", "/numbers/", "/keynote/", "/attachment/",
+  ],
+};
 
 /**
  * official: the brand speaks from this host. shared: the brand runs it, but anyone can get an
@@ -134,11 +141,19 @@ export const USER_CONTENT_HOSTS: readonly string[] = [
  */
 export type HostTrust = { trust: "official" | "shared" | "other"; brand: string | null };
 
-export function trustOf(host: string, asAddress: boolean): HostTrust {
+/**
+ * asAddress: the host is a mail address's domain. path: the link's path, when it is a link.
+ * forceShared: the link only passes the reader on to another URL (a redirect), so anyone can make it.
+ */
+export function trustOf(host: string, asAddress: boolean, path = "", forceShared = false): HostTrust {
   const h = normalizeHost(host);
   const brand = officialBrandOf(h);
+  const p = path.toLowerCase();
   const shared =
-    (asAddress && FREE_MAIL_DOMAINS.has(h)) || USER_CONTENT_HOSTS.some((u) => h === u || h.endsWith(`.${u}`));
+    forceShared ||
+    (asAddress && FREE_MAIL_DOMAINS.has(h)) ||
+    USER_CONTENT_HOSTS.some((u) => h === u || h.endsWith(`.${u}`)) ||
+    (USER_CONTENT_PATHS[h] ?? []).some((prefix) => p.startsWith(prefix));
   if (shared) return { trust: "shared", brand };
   return brand ? { trust: "official", brand } : { trust: "other", brand: null };
 }

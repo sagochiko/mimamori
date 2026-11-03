@@ -18,24 +18,29 @@ export const INJECTION: PhraseRule = {
   strength: "strong",
   reason: "警告を止めさせようとする文がある",
   patterns: [
-    // "この通知は無視して" is in NOTICE_IGNORE: genuine code messages say it too.
+    // "この通知は無視して" and "この通知をオフに" are in NOTICE_IGNORE: genuine messages say them too.
+    // Saying this notice is wrong is not something a genuine message does.
     /(警告|判定|アラート).{0,6}(は誤り|は間違い|は誤検知|を無視|は無視|を止め|を消し|をオフに|は気にしな)/,
+    /(この|本)通知.{0,6}(は誤り|は間違い|は誤検知)/,
     // "Don't tell your family" in particular: the family is who this app tells. Only the forms that
-    // tell someone not to tell, so "家族には内緒のごほうび" or "子どもの秘密基地" do not match.
+    // tell someone not to tell, so "家族には内緒のごほうび" or "子どもの秘密基地" do not match. Up to
+    // 8 characters may sit between, for "ご家族や銀行の方には" or "家族を含め誰にも". "教えないで" is
+    // left out: banks and code messages say "ご家族にも教えないで" about a PIN or a code.
     // "誰にも言わないで" is the scam's general secrecy and lives in POLICE_SCRIPT.
-    /(家族|息子|娘|子ども|子供|家の人|身内)(さん)?(に|には|にも|へ)?.{0,4}?((知らせ|言わ|話さ|伝え|相談し|教え)ない(で|よう)|(知らせる|言う|話す|伝える|相談する)な(?![らどのかんしり])|(内緒|秘密)に(して|しと|しておい))/,
+    /(家族|息子|娘|子ども|子供|家の人|身内)[^。、!?「」\n]{0,8}?((知らせ|言わ|話さ|伝え|相談し)ない(で|よう)|(知らせる|言う|話す|伝える|相談する)な(?![らどのかんしり])|(内緒|秘密)に(して|しと|しておい))/,
     /ignore (all |any )?(the )?(previous|prior|above) instructions/,
     /system prompt|システムプロンプト/,
   ],
 };
 
-// "心当たりがない場合、この通知は無視してください" is in genuine code messages. It counts only when
-// the message also leads to a link or a number to call (judgeByRules checks that).
+// "心当たりがない場合、このメッセージは無視してください" is in genuine code messages, some with a
+// number to call. It counts only when the message also leads to a link that is not official
+// (judgeByRules checks that).
 export const NOTICE_IGNORE: PhraseRule = {
   kind: "notice_ignore",
   strength: "medium",
   reason: "この知らせを無視させようとしている",
-  patterns: [/(この|本)(通知|メッセージ|メール|sms).{0,6}(は誤り|は間違い|を無視|は無視|は気にしな)/],
+  patterns: [/(この|本)(通知|メッセージ|メール|sms).{0,6}(は誤り|は間違い|を無視|は無視|は気にしな|を止め|を消し|をオフに)/],
 };
 
 // Parts of the fake-police script (警察庁「ニセ警察詐欺」の注意喚起). Two or more parts are level 1.
@@ -145,14 +150,16 @@ export const CONTENT_RULES: readonly PhraseRule[] = [
   },
 ];
 
-// CREDENTIAL in a message that is only a verification code: typing the code in is what it is for,
-// so only handing it to someone counts.
+// CREDENTIAL in a message that is only a verification code: typing a one-time code in is what it
+// is for, so only that is left out. A PIN, a card or account number, or a password typed in or sent,
+// and a code handed to someone, still count.
 export const CREDENTIAL_FROM_CODE: PhraseRule = {
   kind: "credential",
   strength: "medium",
   reason: "暗証番号やパスワードを求めている",
   patterns: [
-    /(暗証番号|パスワード|カード番号|セキュリティコード|認証コード|確認コード|ワンタイムパスワード|口座番号|コード|番号).{0,20}?(教え|伝え|送信|返信)(?!しない|ない|ません|させ|しま|され|した|不要|専用|元)/,
+    /(暗証番号|(?<!ワンタイム)パスワード|カード番号|セキュリティコード|口座番号).{0,15}?(入力|教え|伝え|送信|送っ|返信|記入)(?!しない|ない|ません|させ)/,
+    /(認証コード|確認コード|ワンタイムパスワード|コード|番号).{0,20}?(教え|伝え|送信|送っ|返信)(?!しない|ない|ません|させ|しま|され|した|不要|専用|元)/,
   ],
 };
 
@@ -197,5 +204,6 @@ export function matchSpans(rule: PhraseRule, text: string): Array<[number, numbe
   return spans;
 }
 
-// A phone number to call: hyphenated, or 10 to 11 digits starting with 0. Codes are 4 to 8 digits.
-export const PHONE_NUMBER = /(?<!\d)0\d{1,4}-\d{1,4}-\d{3,4}(?!\d)|(?<!\d)0\d{9,10}(?!\d)/;
+// Something that may be a phone number: starts with 0 (with or without hyphens or spaces), or with
+// +. Broad on purpose: it only stops a message from passing as a bare verification code.
+export const PHONE_NUMBER = /(?<!\d)(0\d{1,4}[-\s]?\d{1,4}[-\s]?\d{3,4}|\+\d[\d\s-]{8,}\d)(?!\d)/;
