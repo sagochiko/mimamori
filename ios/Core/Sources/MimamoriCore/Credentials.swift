@@ -6,7 +6,8 @@ public struct Credentials: Codable, Hashable, Sendable {
     public let memberId: String
     public let familyId: String
     public let role: Role
-    /// Only `POST /families` returns it. Goes into the SMS and DNS endpoints; never log it.
+    /// Returned by both `POST /families` and `POST /invites/{code}/join` (32 lowercase hex characters).
+    /// Goes into the SMS and DNS endpoints the protected person's extensions call; never log it.
     public let familyToken: String?
 
     public init(deviceKey: String, memberId: String, familyId: String, role: Role, familyToken: String? = nil) {

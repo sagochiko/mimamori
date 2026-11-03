@@ -99,13 +99,13 @@ struct APIClientTests {
 
   // MARK: 返ってきた鍵をしまう
 
-  @Test("招待のコードで入ると、返ってきた deviceKey と役をしまう")
+  @Test("招待のコードで入ると、返ってきた deviceKey と役と familyToken をしまう")
   func joinStoresCredentials() async throws {
     let store = InMemoryDeviceKeyStore()
     let transport = StubTransport(
       status: 201,
       body:
-        #"{"familyId":"f-1","memberId":"m-2","deviceKey":"dk_new","role":"protected"}"#
+        #"{"familyId":"f-1","memberId":"m-2","deviceKey":"dk_new","familyToken":"0123456789abcdef0123456789abcdef","role":"protected"}"#
     )
     let client = APIClient(baseURL: testBaseURL, transport: transport, store: store)
 
@@ -116,7 +116,8 @@ struct APIClientTests {
     #expect(
       store.load()
         == Credentials(
-          deviceKey: "dk_new", memberId: "m-2", familyId: "f-1", role: .protected, familyToken: nil))
+          deviceKey: "dk_new", memberId: "m-2", familyId: "f-1", role: .protected,
+          familyToken: "0123456789abcdef0123456789abcdef"))
     #expect(AppRoute(store.load()) == .protectedHome)
   }
 

@@ -156,8 +156,9 @@ public final class APIClient: Sendable {
 
 private struct Empty: Codable {}
 
-/// `POST /families` → `{familyId, memberId, deviceKey, familyToken, role}`;
-/// `POST /invites/{code}/join` → `{familyId, memberId, deviceKey, role}`.
+/// `POST /families` and `POST /invites/{code}/join` both answer
+/// `{familyId, memberId, deviceKey, familyToken, role}`; `familyToken` is 32 lowercase hex characters.
+/// It stays optional here so an older server without it still lets the person join.
 private struct JoinAnswer: Decodable {
   let familyId: String
   let memberId: String
