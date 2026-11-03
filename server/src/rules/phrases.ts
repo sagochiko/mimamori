@@ -18,13 +18,24 @@ export const INJECTION: PhraseRule = {
   strength: "strong",
   reason: "警告を止めさせようとする文がある",
   patterns: [
-    /(警告|判定|アラート|この通知).{0,6}(は誤り|は間違い|は誤検知|を無視|は無視|を止め|を消し|をオフに|は気にしな)/,
-    // "Don't tell your family" in particular: the family is who this app tells. "誰にも言わないで"
-    // is the scam's general secrecy and lives in POLICE_SCRIPT.
-    /(家族|息子|娘|子ども|子供).{0,4}(に|には|にも)?.{0,3}(知らせないで|言わないで|話さないで|伝えないで|相談しないで|内緒|秘密)/,
+    // "この通知は無視して" is in NOTICE_IGNORE: genuine code messages say it too.
+    /(警告|判定|アラート).{0,6}(は誤り|は間違い|は誤検知|を無視|は無視|を止め|を消し|をオフに|は気にしな)/,
+    // "Don't tell your family" in particular: the family is who this app tells. Only the forms that
+    // tell someone not to tell, so "家族には内緒のごほうび" or "子どもの秘密基地" do not match.
+    // "誰にも言わないで" is the scam's general secrecy and lives in POLICE_SCRIPT.
+    /(家族|息子|娘|子ども|子供|家の人|身内)(さん)?(に|には|にも|へ)?.{0,4}?((知らせ|言わ|話さ|伝え|相談し|教え)ない(で|よう)|(知らせる|言う|話す|伝える|相談する)な(?![らどのかんしり])|(内緒|秘密)に(して|しと|しておい))/,
     /ignore (all |any )?(the )?(previous|prior|above) instructions/,
     /system prompt|システムプロンプト/,
   ],
+};
+
+// "心当たりがない場合、この通知は無視してください" is in genuine code messages. It counts only when
+// the message also leads to a link or a number to call (judgeByRules checks that).
+export const NOTICE_IGNORE: PhraseRule = {
+  kind: "notice_ignore",
+  strength: "medium",
+  reason: "この知らせを無視させようとしている",
+  patterns: [/(この|本)(通知|メッセージ|メール|sms).{0,6}(は誤り|は間違い|を無視|は無視|は気にしな)/],
 };
 
 // Parts of the fake-police script (警察庁「ニセ警察詐欺」の注意喚起). Two or more parts are level 1.
@@ -56,7 +67,7 @@ export const POLICE_SCRIPT: readonly PhraseRule[] = [
     strength: "medium",
     reason: "ほかの人に話さないよう言われている",
     patterns: [
-      /(誰|だれ|家族|ほかの人|他の人|他人|銀行|周り).{0,8}(言わない|話さない|話しては|言っては|口外|相談しない|相談しては|内緒|秘密)/,
+      /(誰|だれ|家族|ほかの人|他の人|他人|銀行|周り).{0,8}(言わない|話さない|話しては|言っては|口外|相談しない|相談しては|内緒に|秘密に)/,
       /口外(しない|禁止)|守秘義務/,
     ],
   },
@@ -134,6 +145,17 @@ export const CONTENT_RULES: readonly PhraseRule[] = [
   },
 ];
 
+// CREDENTIAL in a message that is only a verification code: typing the code in is what it is for,
+// so only handing it to someone counts.
+export const CREDENTIAL_FROM_CODE: PhraseRule = {
+  kind: "credential",
+  strength: "medium",
+  reason: "暗証番号やパスワードを求めている",
+  patterns: [
+    /(暗証番号|パスワード|カード番号|セキュリティコード|認証コード|確認コード|ワンタイムパスワード|口座番号|コード|番号).{0,20}?(教え|伝え|送信|返信)(?!しない|ない|ません|させ|しま|され|した|不要|専用|元)/,
+  ],
+};
+
 // Phrases that need a link to a host that is not official before they count.
 export const LINK_BAIT: readonly PhraseRule[] = [
   {
@@ -165,6 +187,15 @@ export const URGENCY: PhraseRule = {
 export const OTP_ONLY = /(認証|確認|ワンタイム|セキュリティ)(コード|番号|パスワード)|verification code|\bcode\b/;
 export const OTP_DIGITS = /(^|\D)\d{4,8}(\D|$)/;
 
-export function matches(rule: PhraseRule, text: string): boolean {
-  return rule.patterns.some((pattern) => pattern.test(text));
+/** Where the rule matches in the text, as [start, end). Two rules over one phrase are one sign. */
+export function matchSpans(rule: PhraseRule, text: string): Array<[number, number]> {
+  const spans: Array<[number, number]> = [];
+  for (const pattern of rule.patterns) {
+    const global = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`);
+    for (const m of text.matchAll(global)) spans.push([m.index, m.index + m[0].length]);
+  }
+  return spans;
 }
+
+// A phone number to call: hyphenated, or 10 to 11 digits starting with 0. Codes are 4 to 8 digits.
+export const PHONE_NUMBER = /(?<!\d)0\d{1,4}-\d{1,4}-\d{3,4}(?!\d)|(?<!\d)0\d{9,10}(?!\d)/;

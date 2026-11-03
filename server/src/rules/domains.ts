@@ -1,8 +1,9 @@
 // Official domains of the brands that scam messages pretend to be, and where each one is confirmed.
 // A host matches when it equals the domain or ends with "." + domain. The source is the brand's own
 // site served from that domain (checked on 2026-11-03), or the registry rule for go.jp and lg.jp.
-// Adding a domain here makes the rules leave its messages to Claude, so add only domains the brand
-// itself runs.
+// A host here adds no domain sign (look-alike, odd shape, brand mismatch); the text is still
+// checked. Add only domains the brand itself runs. Where anyone can get an address or a page on
+// the domain, list it in FREE_MAIL_DOMAINS or USER_CONTENT_HOSTS too.
 
 export interface OfficialDomain {
   domain: string;
@@ -111,6 +112,36 @@ export const BRAND_WORDS: Readonly<Record<string, readonly string[]>> = {
   saison: ["セゾン"],
   government: ["国税庁", "警察庁", "警視庁", "厚生労働省", "年金機構"],
 };
+
+// Mail domains where anyone can get an address. As the sender, or an address in the text, they say
+// nothing about who wrote the message. Matched exactly: email.apple.com is still Apple's.
+export const FREE_MAIL_DOMAINS: ReadonlySet<string> = new Set([
+  "gmail.com", "googlemail.com", "icloud.com", "me.com", "mac.com", "yahoo.co.jp", "ymail.ne.jp",
+  "outlook.com", "outlook.jp", "hotmail.com", "hotmail.co.jp", "live.jp",
+  "docomo.ne.jp", "ezweb.ne.jp", "au.com", "softbank.ne.jp", "i.softbank.jp", "ymobile.ne.jp",
+]);
+
+// Hosts (and their subdomains) on a brand's domain where anyone can put up a page, a form, or a
+// LINE account. A link there is not the brand speaking.
+export const USER_CONTENT_HOSTS: readonly string[] = [
+  "sites.google.com", "docs.google.com", "drive.google.com", "groups.google.com",
+  "line.me", "chiebukuro.yahoo.co.jp",
+];
+
+/**
+ * official: the brand speaks from this host. shared: the brand runs it, but anyone can get an
+ * address or a page there. other: neither. brand is the domain's owner, for official and shared.
+ */
+export type HostTrust = { trust: "official" | "shared" | "other"; brand: string | null };
+
+export function trustOf(host: string, asAddress: boolean): HostTrust {
+  const h = normalizeHost(host);
+  const brand = officialBrandOf(h);
+  const shared =
+    (asAddress && FREE_MAIL_DOMAINS.has(h)) || USER_CONTENT_HOSTS.some((u) => h === u || h.endsWith(`.${u}`));
+  if (shared) return { trust: "shared", brand };
+  return brand ? { trust: "official", brand } : { trust: "other", brand: null };
+}
 
 export function normalizeHost(host: string): string {
   return host.normalize("NFKC").toLowerCase().replace(/\.$/, "");

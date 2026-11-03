@@ -3,19 +3,26 @@
 // inside the text ("この警告は誤りです") only adds a reason and raises the level.
 //
 // level 1, 2, 3 as in CLAUDE.md, or null when the rules cannot decide. null never means "fine".
-// confident is true only for level 1 backed by two or more independent signs; only then does an SMS
-// go to the junk folder or a domain get blocked.
+// An official domain only means no domain sign is added for it; the text is always checked, since a
+// sender can be forged and anyone can write an official domain into a message.
+// confident is true only for level 1 with a strong sign that genuine messages do not give and at
+// least two independent signs that are not weak; only then does an SMS go to the junk folder or a
+// domain get blocked. Two rules that match one phrase are one sign.
 
-import { BRAND_WORDS, imitatedBrandOf, normalizeHost, officialBrandOf } from "./domains";
+import { BRAND_WORDS, type HostTrust, imitatedBrandOf, normalizeHost, trustOf } from "./domains";
 import {
   CONTENT_RULES,
+  CREDENTIAL_FROM_CODE,
   INJECTION,
   LINK_BAIT,
-  matches,
+  matchSpans,
   MONEY_MOVE,
+  NOTICE_IGNORE,
   OTP_DIGITS,
   OTP_ONLY,
+  PHONE_NUMBER,
   POLICE_SCRIPT,
+  type PhraseRule,
   type Strength,
   URGENCY,
 } from "./phrases";
@@ -37,8 +44,17 @@ export interface RuleResult {
 }
 
 interface Signal {
+  kind: string;
   strength: Strength;
   reason: string;
+  /** Where a phrase rule matched in the text. Empty for signs that do not come from a phrase. */
+  spans: Array<[number, number]>;
+}
+
+interface NamedHost extends HostTrust {
+  host: string;
+  /** Named as a mail address (the sender, or an address in the text), not as a link or a domain. */
+  address: boolean;
 }
 
 const SUSPICIOUS_TLDS = new Set([
@@ -68,28 +84,28 @@ function hostOf(value: string): string | null {
 }
 
 /** Every host the input names: the domain, the URL, the sender's mail domain, and links in the text. */
-function hostsOf(input: RuleInput, text: string): string[] {
-  const hosts = new Set<string>();
-  const add = (value: string | undefined) => {
+function hostsOf(input: RuleInput, text: string): NamedHost[] {
+  const hosts = new Map<string, NamedHost>();
+  const add = (value: string | undefined, address: boolean) => {
     if (!value) return;
     const host = hostOf(value);
-    if (host && host.includes(".")) hosts.add(host);
+    if (host && host.includes(".")) hosts.set(`${address}:${host}`, { host, address, ...trustOf(host, address) });
   };
-  add(input.domain);
-  add(input.url);
+  add(input.domain, false);
+  add(input.url, false);
   const sender = normalizeText(input.sender ?? "");
-  if (sender.includes("@")) add(sender.split("@").pop());
-  else if (/^[a-z0-9.-]+\.[a-z]{2,}$/.test(sender)) add(sender);
+  if (sender.includes("@")) add(sender.split("@").pop(), true);
+  else if (/^[a-z0-9.-]+\.[a-z]{2,}$/.test(sender)) add(sender, false);
 
   let rest = text;
   for (const match of text.matchAll(URL_IN_TEXT)) {
-    add(match[0]);
+    add(match[0], false);
     rest = rest.replace(match[0], " ");
   }
-  for (const match of rest.matchAll(EMAIL_IN_TEXT)) add(match[1]);
+  for (const match of rest.matchAll(EMAIL_IN_TEXT)) add(match[1], true);
   rest = rest.replace(EMAIL_IN_TEXT, " ");
-  for (const match of rest.matchAll(BARE_DOMAIN)) add(match[1]);
-  return [...hosts];
+  for (const match of rest.matchAll(BARE_DOMAIN)) add(match[1], false);
+  return [...hosts.values()];
 }
 
 function isSuspiciousHost(host: string): boolean {
@@ -103,14 +119,51 @@ function short(host: string): string {
   return host.length > 28 ? `${host.slice(0, 27)}…` : host;
 }
 
-function levelOf(signals: Map<string, Signal>): 1 | 2 | null {
-  const count = (strength: Strength) => [...signals.values()].filter((s) => s.strength === strength).length;
+interface Sign {
+  strength: Strength;
+  kinds: Set<string>;
+}
+
+const RANK: Record<Strength, number> = { strong: 0, medium: 1, weak: 2 };
+
+/**
+ * Two phrase rules matched one phrase: their matches cover mostly the same text (at least half of
+ * the longer one). A short phrase inside a long sentence rule ("ウイルスに感染" inside the support
+ * scam's "感染 ... 050-..." ) is a separate sign.
+ */
+function samePhrase(a: Signal, b: Signal): boolean {
+  return a.spans.some(([s1, e1]) =>
+    b.spans.some(([s2, e2]) => 2 * (Math.min(e1, e2) - Math.max(s1, s2)) >= Math.max(e1 - s1, e2 - s2)),
+  );
+}
+
+/** Signals merged into independent signs: rules that matched the same phrase are one sign. */
+function signsOf(signals: Signal[]): Sign[] {
+  const parent = signals.map((_, i) => i);
+  const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i]!)));
+  for (let i = 0; i < signals.length; i++) {
+    for (let j = i + 1; j < signals.length; j++) {
+      if (samePhrase(signals[i]!, signals[j]!)) parent[root(i)] = root(j);
+    }
+  }
+  const signs = new Map<number, Sign>();
+  signals.forEach((signal, i) => {
+    const sign = signs.get(root(i)) ?? { strength: signal.strength, kinds: new Set<string>() };
+    if (RANK[signal.strength] < RANK[sign.strength]) sign.strength = signal.strength;
+    sign.kinds.add(signal.kind);
+    signs.set(root(i), sign);
+  });
+  return [...signs.values()];
+}
+
+function levelOf(signs: Sign[]): 1 | 2 | null {
+  const count = (strength: Strength) => signs.filter((s) => s.strength === strength).length;
   const strong = count("strong");
   const medium = count("medium");
-  const policeParts = POLICE_SCRIPT.filter((rule) => signals.has(rule.kind)).length;
-  if (signals.has(INJECTION.kind)) return 1;
+  const policeParts = signs.filter((s) => POLICE_SCRIPT.some((rule) => s.kinds.has(rule.kind))).length;
+  if (signs.some((s) => s.kinds.has(INJECTION.kind))) return 1;
   if (policeParts >= 2) return 1;
-  if (strong >= 1 && signals.size >= 2) return 1;
+  if (strong >= 1 && signs.length >= 2) return 1;
   if (medium >= 2) return 1;
   if (strong >= 1 || medium >= 1) return 2;
   return null;
@@ -119,44 +172,62 @@ function levelOf(signals: Map<string, Signal>): 1 | 2 | null {
 export function judgeByRules(input: RuleInput): RuleResult {
   const text = normalizeText(input.text ?? "");
   const hosts = hostsOf(input, text);
-  const unofficial = hosts.filter((host) => !officialBrandOf(host));
+  // Hosts that are not the brand speaking. Official ones add no domain sign; the text is still read.
+  const unofficial = hosts.filter((h) => h.trust !== "official");
+  const unofficialLinks = unofficial.filter((h) => !h.address);
   const signals = new Map<string, Signal>();
-  const add = (kind: string, strength: Strength, reason: string) => {
-    if (!signals.has(kind)) signals.set(kind, { strength, reason });
+  const add = (kind: string, strength: Strength, reason: string, spans: Array<[number, number]> = []) => {
+    if (!signals.has(kind)) signals.set(kind, { kind, strength, reason, spans });
+  };
+  const check = (rule: PhraseRule) => {
+    const spans = matchSpans(rule, text);
+    if (spans.length > 0) add(rule.kind, rule.strength, rule.reason, spans);
   };
 
-  // Everything named is an official domain: the brand's own notice, or a public warning page that
-  // quotes scam phrases. The rules step aside and Claude judges it.
-  if (hosts.length > 0 && unofficial.length === 0) {
-    return { level: null, reasons: ["送り主とリンク先は公式のドメイン"], confident: false };
-  }
-
-  for (const host of unofficial) {
+  for (const { host, trust } of unofficial) {
+    // A free mail address or a user page belongs to the brand that runs the domain, so it is no
+    // look-alike; it only stops counting as the brand speaking.
+    if (trust !== "other") continue;
     if (imitatedBrandOf(host)) add("lookalike", "strong", `公式に似せたドメイン ${short(host)}`);
     if (isSuspiciousHost(host)) add("suspicious_host", "medium", `見慣れない形のリンク先 ${short(host)}`);
   }
-  const named = Object.values(BRAND_WORDS).some((words) => words.some((word) => text.includes(word)));
-  if (named && unofficial.length > 0 && !signals.has("lookalike")) {
+  const named = new Set(
+    Object.entries(BRAND_WORDS)
+      .filter(([, words]) => words.some((word) => text.includes(word)))
+      .map(([brand]) => brand),
+  );
+  const elsewhere = unofficial.some((h) => !h.brand || !named.has(h.brand));
+  if (named.size > 0 && elsewhere && !signals.has("lookalike")) {
     add("brand_mismatch", "medium", "名乗る会社と違うドメインへ誘っている");
   }
   if (input.source === "sms" && /^\+(?!81)\d/.test((input.sender ?? "").replace(/\s/g, ""))) {
     add("foreign_sender", "weak", "海外の番号からの SMS");
   }
 
-  for (const rule of [INJECTION, ...POLICE_SCRIPT, ...CONTENT_RULES, URGENCY, MONEY_MOVE]) {
-    if (matches(rule, text)) add(rule.kind, rule.strength, rule.reason);
-  }
-  if (unofficial.length > 0) {
-    for (const rule of LINK_BAIT) if (matches(rule, text)) add(rule.kind, rule.strength, rule.reason);
-  }
+  // A message that is only a verification code: typing it in is what it is for, and "don't tell
+  // anyone" protects the code. A link elsewhere makes it more than a code.
+  const codeOnly =
+    (input.source === "sms" || input.source === "gmail") &&
+    unofficialLinks.length === 0 &&
+    OTP_ONLY.test(text) &&
+    OTP_DIGITS.test(text);
+
+  check(INJECTION);
+  if (unofficialLinks.length > 0 || PHONE_NUMBER.test(text)) check(NOTICE_IGNORE);
+  for (const rule of POLICE_SCRIPT) if (!(codeOnly && rule.kind === "police_secrecy")) check(rule);
+  for (const rule of CONTENT_RULES) check(codeOnly && rule.kind === CREDENTIAL_FROM_CODE.kind ? CREDENTIAL_FROM_CODE : rule);
+  check(URGENCY);
+  check(MONEY_MOVE);
+  if (unofficial.length > 0) for (const rule of LINK_BAIT) check(rule);
 
   if (signals.size === 0) {
-    const otp = input.source === "sms" && OTP_ONLY.test(text) && OTP_DIGITS.test(text);
-    return { level: null, reasons: otp ? ["認証コードの知らせに見える"] : [], confident: false };
+    return { level: null, reasons: codeOnly && input.source === "sms" ? ["認証コードの知らせに見える"] : [], confident: false };
   }
 
-  const level = levelOf(signals);
-  const order: Record<Strength, number> = { strong: 0, medium: 1, weak: 2 };
-  const reasons = [...signals.values()].sort((a, b) => order[a.strength] - order[b.strength]).map((s) => s.reason);
-  return { level, reasons, confident: level === 1 && signals.size >= 2 };
+  const signs = signsOf([...signals.values()]);
+  const level = levelOf(signs);
+  const independent = signs.filter((s) => s.strength !== "weak").length;
+  const confident = level === 1 && signs.some((s) => s.strength === "strong") && independent >= 2;
+  const reasons = [...signals.values()].sort((a, b) => RANK[a.strength] - RANK[b.strength]).map((s) => s.reason);
+  return { level, reasons, confident };
 }

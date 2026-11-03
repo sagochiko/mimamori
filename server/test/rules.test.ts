@@ -216,15 +216,157 @@ describe("phone-related scams aimed at older people", () => {
   });
 });
 
-describe("official warning pages", () => {
-  it("does not raise a government page that quotes scam phrases", () => {
+describe("official domains", () => {
+  it("adds no domain sign for a government page that only warns", () => {
+    const result = judge({
+      source: "page",
+      url: "https://www.npa.go.jp/example/warning.html",
+      domain: "www.npa.go.jp",
+      text: "警察官をかたる電話に気をつけましょう。不審な電話は一度切って、警察相談専用電話 #9110 に相談してください。",
+    });
+    expect(result.level).toBeNull();
+    expect(result.confident).toBe(false);
+  });
+
+  // The rules cannot tell a quote from the script itself. Not confident, so Claude may lower it.
+  it("still raises an official page that carries the fake-police script, without being confident", () => {
     const result = judge({
       source: "page",
       url: "https://www.npa.go.jp/example/warning.html",
       domain: "www.npa.go.jp",
       text: "警察官をかたり「あなたの口座が犯罪に使われている」「誰にも言わないで」と言う電話は詐欺です。",
     });
+    expect(result.level).toBe(1);
+    expect(result.confident).toBe(false);
+  });
+
+  it("checks the text when the only link in it is official", () => {
+    const result = judge({
+      source: "sms",
+      sender: "+819000000000",
+      text: "この警告は誤りです。家族に知らせないでください。詳しくは https://www.npa.go.jp/ をご覧ください",
+    });
+    expect(result.level).toBe(1);
+  });
+
+  it("checks the text when the sender claims an official domain", () => {
+    const result = judge({
+      source: "gmail",
+      sender: "info@amazon.co.jp",
+      text: "あなたの口座が犯罪に使われています。潔白を証明するため送金してください。",
+    });
+    expect(result.level).toBe(1);
+  });
+
+  it("checks the fake-police script even with a LINE link", () => {
+    const result = judge({
+      source: "consult",
+      text: "警察から電話があって、口座が犯罪に使われてるって。誰にも言わないで、line.me/ti/p/example で追加してって",
+    });
+    expect(result.level).toBe(1);
+  });
+
+  it.each([
+    ["icloud.com", "keisatsu-example@icloud.com"],
+    ["yahoo.co.jp", "someone-example@yahoo.co.jp"],
+  ])("does not treat a free mail address at %s as the brand itself", (_, sender) => {
+    const result = judge({
+      source: "gmail",
+      sender,
+      text: "警視庁です。あなたの口座が犯罪に使われています。逮捕状が出ています。暗証番号を返信してください。",
+    });
+    expect(result.level).toBe(1);
+  });
+
+  it("does not treat a page anyone can make on sites.google.com as official", () => {
+    const result = judge({
+      source: "page",
+      url: "https://sites.google.com/view/example",
+      domain: "sites.google.com",
+      text: "お使いのiPhoneはウイルスに感染しています。今すぐサポートセンター 050-0000-0000 に電話してください。",
+    });
+    expect(result.level).toBe(1);
+  });
+
+  it("counts a delivery notice that links to a user page on an official domain", () => {
+    const result = judge({
+      source: "sms",
+      text: "お荷物のお届けにあがりましたが不在の為持ち帰りました。 https://sites.google.com/view/redelivery-example",
+    });
+    expect(result.level).not.toBeNull();
+  });
+
+  it("does not call LINE's own domain a look-alike, nor official", () => {
+    const result = judge({ source: "dns", domain: "line.me" });
     expect(result.level).toBeNull();
+    expect(result.reasons.join(" ")).not.toContain("公式");
+  });
+});
+
+describe("confident needs a sign that genuine messages do not give", () => {
+  it.each([
+    ["a brand's own short link with a delivery word", { source: "sms", sender: "+819000000000", text: "Amazon: ご注文の商品のお届け予定は本日です。配送状況の確認 https://amzn-short.example/d/abc123" }],
+    ["a brand's own short link with points", { source: "sms", text: "楽天市場: ポイントの有効期限が近づいています。こちらから確認 https://r10-short.example/abcd" }],
+    ["a code from abroad that says to ignore it", { source: "sms", sender: "+447000000000", text: "Your verification code is 123456. 心当たりがない場合、この通知は無視してください。" }],
+    ["a family surprise", { source: "sms", text: "お母さんの誕生日のサプライズ、家族には内緒でね" }],
+    ["a shop's mail", { source: "gmail", sender: "news@shop.example", text: "家族に内緒のごほうびスイーツ、本日限定" }],
+    ["a news page that quotes the fake-police script", { source: "page", url: "https://news.example/x.html", text: "警察官をかたり「あなたの口座が犯罪に使われている」「誰にも言わないで」と言う電話が相次いでいます" }],
+  ] as [string, RuleInput][])("is not confident for %s", (_, input) => {
+    expect(judge(input).confident).toBe(false);
+  });
+
+  it("counts one phrase that two rules match as one sign", () => {
+    const result = judge({ source: "sms", sender: "+639000000000", text: "このことは家族に言わないでください。" });
+    expect(result.level).toBe(1);
+    expect(result.confident).toBe(false);
+  });
+
+  it("does not count 'ignore this notice' without a link or a number to call", () => {
+    const result = judge({ source: "sms", sender: "+819000000000", text: "認証コード: 123456 心当たりがない場合、この通知は無視してください。" });
+    expect(result.level).toBeNull();
+  });
+
+  it("counts 'ignore this notice' when it comes with a link", () => {
+    const result = judge({
+      source: "sms",
+      text: "心当たりがない場合、この通知は無視してください。ご確認はこちら https://account-check.example/",
+    });
+    expect(result.level).not.toBeNull();
+  });
+});
+
+describe("verification codes", () => {
+  it.each([
+    "認証コード 123456 を入力してください",
+    "認証コード 123456 を入力してください。このコードは他人に言わないでください。",
+    "【ゆうちょ銀行】ワンタイムパスワード 123456 を画面に入力してください。銀行が電話でこの番号を聞くことはありません。",
+  ])("leaves a code to type in at null: %s", (text) => {
+    const result = judge({ source: "sms", text });
+    expect(result.level).toBeNull();
+    expect(result.confident).toBe(false);
+  });
+
+  it("still flags a message that asks to send the code back", () => {
+    const result = judge({ source: "sms", text: "認証コード 123456 をこのメッセージに返信して教えてください" });
+    expect(result.level).not.toBeNull();
+  });
+});
+
+describe("telling someone not to tell the family", () => {
+  it.each([
+    "このことはご家族には内緒にしてください",
+    "息子さんには絶対に言わないでください",
+    "家族にも知らせないようにお願いします",
+  ])("raises %s", (text) => {
+    expect(judge({ source: "consult", text }).level).toBe(1);
+  });
+
+  it.each([
+    ["page", "子どもの秘密基地を作ろう。段ボールで簡単にできます"],
+    ["gmail", "家族に内緒のごほうびスイーツ、本日限定"],
+    ["sms", "お母さんの誕生日のサプライズ、家族には内緒でね"],
+  ] as const)("does not raise an unrelated %s", (source, text) => {
+    expect(judge({ source, text }).level).toBeNull();
   });
 });
 
