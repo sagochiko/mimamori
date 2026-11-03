@@ -17,7 +17,8 @@ if [[ "$targets" == *holdout.unlock* ]]; then
   block guard-holdout "blocked: only the author creates .claude/state/holdout.unlock.$MENTION_HINT"
 fi
 if [[ "$cmd" =~ (--set[[:space:]=]+holdout|eval-holdout) ]]; then
-  if [[ -f "$PROJECT_DIR/.claude/state/holdout.unlock" ]]; then
+  # The author's unlock is in the main tree; `make eval-holdout` looks there too, also from a worktree.
+  if [[ -f "$(main_tree || echo "$PROJECT_DIR")/.claude/state/holdout.unlock" ]]; then
     log_event guard guard-holdout "final holdout run allowed by the author's unlock"
     exit 0
   fi

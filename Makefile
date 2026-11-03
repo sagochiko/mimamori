@@ -28,8 +28,10 @@ eval-split:
 	@cd server && npx tsx ../eval/split.ts
 
 # The one final measurement. A hook blocks it until the author creates .claude/state/holdout.unlock.
+# The unlock is looked up in the main tree, as guard-holdout.sh does, also from a git worktree.
 eval-holdout:
-	@test -f .claude/state/holdout.unlock || { echo "holdout is locked: the author creates .claude/state/holdout.unlock"; exit 1; }
+	@main=$$(dirname "$$(git rev-parse --path-format=absolute --git-common-dir)") && test -f "$$main/.claude/state/holdout.unlock" || \
+	  { echo "holdout is locked: the author creates .claude/state/holdout.unlock in the main tree"; exit 1; }
 	@cd server && npx tsx ../eval/run.ts --set holdout --mode rules && npx tsx ../eval/run.ts --set holdout --mode rules+claude
 
 # Which subagents, skills, commands, and hook blocks Claude Code used. Writes docs/claude-usage.md.
