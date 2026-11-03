@@ -20,6 +20,12 @@ if [[ "$cmd" =~ (--set[[:space:]=]+holdout|eval-holdout) ]]; then
   fi
   block guard-holdout "blocked: the holdout set runs once, after the author creates .claude/state/holdout.unlock. Add it to docs/human-queue.md and keep tuning on the dev set."
 fi
+# The disk is case-insensitive APFS, so EVAL/CASES/POOL opens the same files.
+shopt -s nocasematch
+# Nobody reads the holdout, the curator included; checked before the curator's early exit below.
+if [[ "$targets" =~ (cases/holdout|(^|[[:space:]/\"\'])holdout/) ]]; then
+  block guard-holdout "blocked: eval/cases/holdout is read once, in the final run. Work with eval/cases/dev."
+fi
 # The curator writes only into the pool; `make eval-split` moves whole scam patterns into dev or holdout.
 if [[ "$agent" == "mm-eval-curator" ]]; then
   if [[ "$tool" =~ ^(Write|Edit)$ && ! "$targets" =~ eval/cases/pool/ ]]; then
@@ -27,7 +33,11 @@ if [[ "$agent" == "mm-eval-curator" ]]; then
   fi
   [[ "$targets" =~ eval/cases/pool ]] && exit 0
 fi
-if [[ "$targets" =~ (cases/holdout|cases/pool|(^|[[:space:]/\"\'])holdout/|(^|[[:space:]/\"\'])pool/) ]]; then
+# A glob right under eval/cases/ (eval/cases/*/, eval/cases/p*ol/) can expand into the pool or the holdout.
+if [[ "$targets" =~ cases/[^/[:space:]]*[*?[] ]]; then
+  block guard-holdout "blocked: name the eval/cases/dev path explicitly; a glob right under eval/cases can reach the pool or the holdout."
+fi
+if [[ "$targets" =~ (cases/pool|(^|[[:space:]/\"\'])pool/) ]]; then
   block guard-holdout "blocked: eval/cases/holdout and eval/cases/pool are off limits to anyone who tunes rules or prompts. Work with eval/cases/dev."
 fi
 exit 0
