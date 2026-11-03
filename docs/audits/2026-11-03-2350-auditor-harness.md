@@ -58,7 +58,7 @@ worktree の `issue-8-handoff` と `harness-plumbing` が、ローカルの古�
 
 | 文書 | 推奨(短い引用) | 状態 | 足すもの |
 |---|---|---|---|
-| hooks-guide | 「read `cwd`, not `${CLAUDE_PROJECT_DIR}`」 | 足りない | Stop の関門と pacer が作業中のツリーを `cwd` で決める |
+| worktrees | フックは作業中のファイルの道筋を入力の `cwd` から読む(監査役の言い換え) | 足りない | Stop の関門と pacer が作業中のツリーを `cwd` で決める |
 | best-practices、worktrees | 「list the gitignored files you need in a `.worktreeinclude`」 | 足りない | 2つの非公開の一覧を `.worktreeinclude` に書く |
 | best-practices | 「add `onFailure: "block"`」 | 足りない | ガードに付ける(#36) |
 | best-practices | 「keep the install command in `CLAUDE.md`」 | 足りない | `make bootstrap` と CLAUDE.md の1行 |

@@ -32,7 +32,7 @@ Claude Code には、書いた本人とは別のレビュー役のサブエー�
 
 作者は「実機でしか確かめられない項目は `/mm-human-queue` で `docs/human-queue.md` に積み、待たずに #4 と #5 へ進む」と指示していた。Claude Code は、実機が無くても調べられる項目を、調べものの役のサブエージェント(Sonnet)に先に調べさせた。
 
-サブエージェントは約30の URL を読み、パーソナルボイスを作れる言語は3つだけだと返した。Claude Code が別のサブエージェントで原文を読み直すと、Apple の iOS 27 の提供状況のページの「Accessibility: Personal Voice」の欄にあるのは English (United States)、Mandarin Chinese (China mainland)、Spanish (Mexico) だけだった。日本語は VoiceOver などほかの欄にはあるが、この欄には無い。パーソナルボイスの音声をバッファに書き出そうとするとスピーカー再生に落ちる、という2023年のフォーラムの報告も見つかった。
+サブエージェントは約30の URL を読み、パーソナルボイスを作れる言語は3つだけだと返した。Claude Code が別のサブエージェントで原文を読み直すと、Apple の iOS 27 の提供状況のページの「Accessibility: Personal Voice」の欄にあるのは English (United States)、Mandarin Chinese (China mainland)、Spanish (Mexico) だけだった。日本語は VoiceOver などほかの欄にはあるが、この欄には無い。パーソナルボイスの音声をバッファに書き出そうとするとスピーカー再生に落ちる、という2023年のフォーラムの報告も見つかった(その URL は記録しておらず、確かめていない)。
 
 計画では、確かめるのは音声ファイルに書き出せるかどうかだけで、日本語で作れることは前提にしていた。
 

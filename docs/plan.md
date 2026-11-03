@@ -138,7 +138,7 @@ Structured Outputs で次の形だけを受け取る。
 |---|---|
 | `POST /families` | 家族を作り、呼んだ端末を最初の家族にする |
 | `POST /invites` | 招待のコードを出す(24時間有効) |
-| `POST /invites/{code}/join` | `role` と `display_name` を送って入る。`deviceKey` が返る |
+| `POST /invites/{code}/join` | `role` と `display_name` を送って入る。`deviceKey` が返る。接続元ごとに60秒に5回までで、超えると429。入ると先にいる家族全員に「(名前)が入りました」と知らせる |
 | `PUT /members/me/apns` | APNs の端末トークンを登録する |
 | `POST /sms/{familyToken}` | Apple から届く問い合わせ。Apple の形で答える |
 | `GET`、`POST /dns-query/{familyToken}` | DoH。`application/dns-message` |
