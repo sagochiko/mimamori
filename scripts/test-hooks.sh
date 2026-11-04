@@ -48,10 +48,126 @@ expect 0 guard-prior-work.sh '{"tool_name":"Read","tool_input":{"file_path":"ser
 if [[ ! -f "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.claude/state/holdout.unlock" ]]; then
   expect 2 guard-holdout.sh '{"tool_name":"Bash","tool_input":{"command":"make eval-holdout"}}' "holdout run is blocked while locked"
 fi
-expect 2 guard-prod.sh '{"tool_name":"Bash","tool_input":{"command":"npx wrangler delete"}}' "wrangler delete is blocked"
-expect 0 guard-prod.sh '{"tool_name":"Bash","tool_input":{"command":"npx wrangler d1 migrations apply db --local"}}' "local D1 passes"
-out=$(echo '{"tool_name":"Bash","tool_input":{"command":"npx wrangler d1 migrations apply db --remote"}}' | $H/guard-prod.sh)
-[[ "$out" == *'"permissionDecision":"ask"'* ]] || { echo "hook test failed: remote D1 should ask"; fail=1; }
+# guard-prod: since 2026-11-04 deploys, secrets, remote D1, and uploads run without asking. Deleting
+# asks or is blocked. prod <quiet|ask|block> <command> <label> [cwd]
+prod() {
+  local out got
+  out=$(jq -nc --arg c "$2" --arg d "${4:-$PWD}" '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' | "$H/guard-prod.sh" 2>/dev/null)
+  got=$?
+  case $1 in
+    quiet) [[ $got -eq 0 && -z "$out" ]] ;;
+    ask) [[ $got -eq 0 && "$out" == *'"permissionDecision":"ask"'* ]] ;;
+    block) [[ $got -eq 2 ]] ;;
+  esac || { echo "hook test failed: guard-prod: $3 (expected $1, got exit $got${out:+ and an answer})"; fail=1; }
+}
+prod block 'npx wrangler delete' "wrangler delete is blocked"
+prod block 'npx wrangler d1 delete mimamori' "deleting the database is blocked"
+prod block 'npx wrangler queues delete mimamori-judge' "deleting the queue is blocked"
+prod block 'npx wrangler r2 bucket delete photos' "deleting the bucket is blocked"
+prod block 'npx wrangler d1 time-travel restore mimamori --timestamp=1' "time-travel restore is blocked"
+prod quiet 'npx wrangler d1 migrations apply db --local' "local D1 passes"
+prod quiet 'npx wrangler deploy' "deploy runs without asking"
+prod quiet 'cd server && npx wrangler deploy' "deploy from server/ runs without asking"
+prod quiet 'npx wrangler rollback' "rollback runs without asking"
+prod quiet 'npx wrangler versions deploy' "versions deploy runs without asking"
+prod quiet 'openssl rand -base64 32 | npx wrangler secret put TOKEN_ENC_KEY' "secret put runs without asking"
+prod quiet 'npx wrangler secret list' "secret list runs without asking"
+prod quiet 'npx wrangler d1 migrations list mimamori --remote' "remote migrations list runs without asking"
+prod quiet 'npx wrangler d1 migrations apply mimamori --remote' "remote migrations apply runs without asking"
+prod quiet 'npx wrangler d1 execute mimamori --remote --command "SELECT count(*) FROM members"' "a remote SELECT runs without asking"
+prod quiet 'npx wrangler d1 execute mimamori --remote --command "SELECT deleted_at FROM cases"' "a column named deleted_at is not a DELETE"
+prod quiet 'npx wrangler d1 execute mimamori --local --command "DROP TABLE cases"' "local D1 may drop tables"
+prod quiet 'xcodebuild -exportArchive -archivePath a.xcarchive -exportOptionsPlist ios/ExportOptions.plist -exportPath out' "export and upload run without asking"
+prod quiet 'xcrun altool --validate-app -f a.ipa -t ios' "altool runs without asking"
+prod quiet 'xcrun notarytool history' "notarytool runs without asking"
+prod quiet 'gh api -X PATCH repos/o/r/issues/1 -f state=closed' "gh api writes run without asking"
+prod quiet 'gh api repos/o/r/issues -f title="delete the old flag"' "the word delete in a gh api body is not a DELETE"
+prod ask 'npx wrangler secret delete TOKEN_ENC_KEY' "secret delete asks"
+prod ask 'npx wrangler versions secret delete TOKEN_ENC_KEY' "versions secret delete asks"
+prod ask 'npx wrangler d1 execute mimamori --remote --command "DROP TABLE cases"' "a remote DROP asks"
+prod ask "npx wrangler d1 execute mimamori --remote --command='delete from members'" "a remote delete asks, whatever its case"
+prod ask 'npx wrangler d1 execute mimamori --command "Truncate cases" --remote' "a remote TRUNCATE asks"
+prod ask 'npx wrangler d1 execute mimamori --preview --command "DROP TABLE cases"' "a DROP on the preview database asks"
+prod ask 'npx wrangler d1 execute mimamori --remote --command "$SQL"' "SQL the hook cannot read asks"
+prod ask 'npx wrangler d1 execute mimamori --remote --command "$(cat x.sql)"' "SQL built by a command substitution asks"
+mkdir -p "$T/sql/server"
+printf '%s\n' 'SELECT 1;' >"$T/sql/ok.sql"
+printf '%s\n' '-- clean up' 'DELETE FROM cases WHERE 1;' >"$T/sql/bad.sql"
+printf '%s\n' 'drop table members;' >"$T/sql/server/rel.sql"
+prod quiet "npx wrangler d1 execute mimamori --remote --file=$T/sql/ok.sql" "a remote SQL file without deletes runs without asking"
+prod ask "npx wrangler d1 execute mimamori --remote --file=$T/sql/bad.sql" "a remote SQL file with DELETE asks"
+prod ask "npx wrangler d1 execute mimamori --remote --file '$T/sql/bad.sql'" "a quoted SQL file after a space is read too"
+prod ask 'npx wrangler d1 execute mimamori --remote --file=bad.sql' "a relative SQL file is read from the cwd" "$T/sql"
+prod ask 'cd server && npx wrangler d1 execute mimamori --remote --file rel.sql' "a relative SQL file after cd is read from there" "$T/sql"
+prod ask 'npx wrangler d1 execute mimamori --remote --file=missing.sql' "a SQL file the hook cannot read asks" "$T/sql"
+prod ask 'gh api -X DELETE repos/o/r/git/refs/heads/x' "gh api -X DELETE asks"
+prod ask 'gh api repos/o/r/git/refs/heads/x -XDELETE' "gh api -XDELETE asks"
+prod ask 'gh api --method DELETE repos/o/r/x' "gh api --method DELETE asks"
+prod ask 'gh api --method=DELETE repos/o/r/x' "gh api --method=DELETE asks"
+prod ask "gh api -X 'delete' repos/o/r/x" "gh api DELETE asks, whatever its case and quoting"
+# The permission rules, matched the way the permissions page describes: deny, then ask, then allow,
+# the first match wins; * is any text, and a trailing " *" also matches the bare command.
+perm() {
+  local kind r p
+  for kind in deny ask allow; do
+    while IFS= read -r r; do
+      p=${r#Bash(} && p=${p%)}
+      # shellcheck disable=SC2053 # $p is a glob on purpose
+      if [[ "$1" == $p ]] || [[ "$p" == *' *' && "${p%' *'}" != *'*'* && "$1" == "${p%' *'}" ]]; then
+        echo "$kind" && return
+      fi
+    done < <(jq -r --arg k "$kind" '.permissions[$k][] | select(startswith("Bash("))' .claude/settings.json)
+  done
+  echo none
+}
+rule() { # <deny|ask|allow|none> <command>
+  local got
+  got=$(perm "$2")
+  [[ "$got" == "$1" ]] || { echo "settings test failed: '$2' should be $1, got $got"; fail=1; }
+}
+rule allow 'gh api repos/o/r/issues/1/comments -f body=x'
+rule allow 'gh api -X PATCH repos/o/r/issues/1 -f state=closed'
+rule ask 'gh api -X DELETE repos/o/r/git/refs/heads/x'
+rule ask 'gh api repos/o/r/git/refs/heads/x -XDELETE'
+rule ask 'gh api --method DELETE repos/o/r/x'
+rule ask 'gh api --method=DELETE repos/o/r/x'
+rule allow 'git push -u origin HEAD'
+rule allow 'git -c credential.helper= -c credential.helper=x push -u origin HEAD'
+rule deny 'git push --force origin x'
+rule deny 'git push -f origin x'
+rule deny 'git push origin +x'
+rule deny 'git -c credential.helper= -c credential.helper=x push --force-with-lease origin x'
+rule deny 'git -c credential.helper= -c credential.helper=x push -f origin x'
+rule deny 'git -c credential.helper= -c credential.helper=x push origin +HEAD:x'
+rule allow 'npx wrangler deploy'
+rule allow 'npx wrangler deploy --dry-run'
+rule allow 'npx wrangler rollback'
+rule allow 'npx wrangler versions deploy'
+rule allow 'npx wrangler secret put TOKEN_ENC_KEY'
+rule allow 'openssl rand -base64 32'
+rule allow 'npx wrangler secret list'
+rule allow 'npx wrangler d1 migrations list mimamori --remote'
+rule allow 'npx wrangler d1 migrations apply mimamori --remote'
+rule allow 'npx wrangler d1 execute mimamori --remote --command "SELECT 1"'
+rule allow 'npx wrangler whoami'
+rule allow 'npx wrangler deployments list'
+rule allow 'npx wrangler tail mimamori --format pretty'
+rule allow 'xcodebuild -exportArchive -archivePath a -exportOptionsPlist ios/ExportOptions.plist -exportPath b -allowProvisioningUpdates'
+rule allow 'xcrun altool --upload-app -f a.ipa -t ios'
+rule allow 'xcrun notarytool history'
+rule ask 'npx wrangler secret delete TOKEN_ENC_KEY'
+rule ask 'npx wrangler versions secret delete TOKEN_ENC_KEY'
+rule ask 'xcrun simctl erase all'
+rule ask 'xcrun simctl delete unavailable'
+rule ask 'gh pr merge 3 --merge --admin'
+rule deny 'npx wrangler delete'
+rule deny 'npx wrangler d1 delete mimamori'
+rule deny 'npx wrangler d1 time-travel restore mimamori --timestamp=1'
+rule deny 'git reset --hard origin/main'
+rule deny 'gh repo delete sagochiko/x'
+rule deny 'gh issue delete 3'
+rule deny 'gh secret set X'
+rule deny 'gh repo edit --visibility public'
 # guard-merge: a fake gh answers from JSON files in $MM_FAKE_GH, and a throwaway bare repository
 # plays origin, so the gate is tested without GitHub.
 mkdir -p "$T/bin" "$T/gh"
