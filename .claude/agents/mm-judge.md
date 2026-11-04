@@ -19,6 +19,8 @@ For each criterion:
 
 Do not reward claims without evidence in the repository. Do not invent numbers. If the README says something the code does not do, say so.
 
+If a hook or a permission rule blocks an action, report what was blocked and why; do not retry it another way (another tool, another spelling of the command, another path).
+
 Report in this shape:
 - Scores and weighted total
 - Weakest evidence per criterion

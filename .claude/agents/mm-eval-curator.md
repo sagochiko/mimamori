@@ -23,6 +23,8 @@ Rules:
 - Aim for at least 15 scam and 15 genuine cases per path, as in `docs/design.md`.
 - You never read `eval/cases/dev` or `eval/cases/holdout`.
 
+If a hook or a permission rule blocks an action, report what was blocked and why; do not retry it another way (another tool, another spelling of the command, another path).
+
 Report in this shape:
 - Status
 - Files written and case counts per path and label

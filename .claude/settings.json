@@ -75,7 +75,9 @@
       "Bash(git push*--force*)",
       "Bash(git push*-f)",
       "Bash(git push*-f *)",
-      "Bash(git push*+*)"
+      "Bash(git push*+*)",
+      "Bash(gh repo edit*visibility*)",
+      "Bash(gh issue delete*)"
     ]
   },
   "enabledPlugins": {
@@ -141,6 +143,18 @@
             "type": "command",
             "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-prod.sh",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-merge.sh",
+            "timeout": 90,
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-private.sh",
+            "timeout": 30,
+            "onFailure": "block"
           }
         ]
       }
@@ -157,11 +171,21 @@
         ]
       },
       {
-        "matcher": "Agent|Skill",
+        "matcher": "Agent|Skill|SendMessage",
         "hooks": [
           {
             "type": "command",
             "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/usage-log.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "SubagentHandback",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/save-report.sh",
             "timeout": 10
           }
         ]
@@ -206,6 +230,19 @@
           }
         ]
       }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/compact-flag.sh",
+            "timeout": 10
+          }
+        ]
+      }
     ]
-  }
+  },
+  "idleCompaction": false
 }

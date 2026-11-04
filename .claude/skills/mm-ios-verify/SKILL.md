@@ -10,10 +10,11 @@ This Mac has Xcode 27.1 at `/Applications/Xcode-27.1.0.app`. There is no Simulat
 ## Simulator
 
 ```sh
-xcrun simctl list devices available | grep "mimamori" || \
-  xcrun simctl create "mimamori iPhone" com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro com.apple.CoreSimulator.SimRuntime.iOS-27-1
+make simulator
 xcrun simctl boot "mimamori iPhone" 2>/dev/null || true
 ```
+
+`make simulator` creates "mimamori iPhone" once, as an iPhone 17 Pro on iOS 26.5. On this Mac the iOS 27.1 runtime supports only iPhone Duo, whose folding outer display does not look like the mother's iPhone; the app targets iOS 26.0, so 26.5 runs it. The author chose this on 2026-11-04. Anything that only iOS 27 changes goes to the real-iPhone check. If `make simulator` stops because a "mimamori iPhone" of another device type exists, delete the udid it prints with `xcrun simctl delete <udid>` and run it again.
 
 ## Build, install, launch
 
@@ -38,4 +39,4 @@ Look at the image before reporting. Check the screen text rule: no explanatory s
 
 ## What the simulator cannot check
 
-Message Filter, DNS settings (NEDNSSettingsManager), the Safari extension, Call Directory, real APNs delivery, Personal Voice, and the call observer need a real iPhone. Write each as a device step with `/mm-human-queue`: what to open, what to do, what result to report.
+Message Filter, DNS settings (NEDNSSettingsManager), the Safari extension, Call Directory, real APNs delivery, Personal Voice, and the call observer need a real iPhone. Hand each to the author as a "作者:" issue with `/mm-human-queue`: what to open, what to do, what result to report.

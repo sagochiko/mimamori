@@ -12,6 +12,8 @@ client_secret*.json
 # Claude Code: per-machine settings and runtime state
 .claude/settings.local.json
 .claude/prior-work.local
+.claude/private-terms.local
+.claude/worktrees/
 .claude/state/
 .claude/logs/
 CLAUDE.local.md

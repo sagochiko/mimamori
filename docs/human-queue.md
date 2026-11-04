@@ -1,9 +1,11 @@
 # 作者を待っている作業
 
-実機、Apple Developer と App Store Connect の画面、TestFlight、母とのやり取り、holdout の鍵のように、作者にしかできない作業を積む。書き方は [`.claude/skills/mm-human-queue/SKILL.md`](../.claude/skills/mm-human-queue/SKILL.md) にある。終わったら `[x]` にして、結果を一言書く。
+作者にしかできない作業は、2026年11月3日から GitHub の Issue で受け渡している。1つの作業が1件の Issue で、題は「作者: 」で始まり、`needs-human` のラベルが付く。この文書はリンクが切れないように残してある。
 
-## 待っているもの
+開いているものは次のコマンドで見る。
 
-- [ ] 2026年11月3日 #3 設定 > 一般 > 情報 で母の iPhone の機種名と iOS のバージョンを確かめる。AlarmKit と顔トラッキングが使えるかが決まる
+```sh
+gh issue list --label needs-human --state open
+```
 
-## 終わったもの
+書き方と、終わったときの閉じ方は [`.claude/skills/mm-human-queue/SKILL.md`](../.claude/skills/mm-human-queue/SKILL.md) にある。この文書に積んでいた1件(母の iPhone の機種と iOS を確かめる)は #24 に移した。

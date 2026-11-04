@@ -14,18 +14,19 @@ targets=$(tool_targets "$in")
 shopt -s nocasematch
 
 if [[ "$targets" == *holdout.unlock* ]]; then
-  block guard-holdout "blocked: only the author creates .claude/state/holdout.unlock."
+  block guard-holdout "blocked: only the author creates .claude/state/holdout.unlock.$MENTION_HINT"
 fi
 if [[ "$cmd" =~ (--set[[:space:]=]+holdout|eval-holdout) ]]; then
-  if [[ -f "$STATE_DIR/holdout.unlock" ]]; then
+  # The author's unlock is in the main tree; `make eval-holdout` looks there too, also from a worktree.
+  if [[ -f "$(main_tree || echo "$PROJECT_DIR")/.claude/state/holdout.unlock" ]]; then
     log_event guard guard-holdout "final holdout run allowed by the author's unlock"
     exit 0
   fi
-  block guard-holdout "blocked: the holdout set runs once, after the author creates .claude/state/holdout.unlock. Add it to docs/human-queue.md and keep tuning on the dev set."
+  block guard-holdout "blocked: the holdout set runs once, after the author creates .claude/state/holdout.unlock. Ask the author with a \"作者:\" issue (/mm-human-queue) and keep tuning on the dev set.$MENTION_HINT"
 fi
 # Nobody reads the holdout, the curator included; checked before the curator's early exit below.
 if [[ "$targets" =~ (cases/holdout|(^|[[:space:]/\"\'])holdout/) ]]; then
-  block guard-holdout "blocked: eval/cases/holdout is read once, in the final run. Work with eval/cases/dev."
+  block guard-holdout "blocked: eval/cases/holdout is read once, in the final run. Work with eval/cases/dev.$MENTION_HINT"
 fi
 # A glob right under eval/cases/ (eval/cases/*/, eval/cases/p*ol/) can expand into the pool or the holdout.
 # Also checked before the curator's early exit: naming the pool next to such a glob must not open the holdout.
@@ -40,6 +41,6 @@ if [[ "$agent" == "mm-eval-curator" ]]; then
   [[ "$targets" =~ eval/cases/pool ]] && exit 0
 fi
 if [[ "$targets" =~ (cases/pool|(^|[[:space:]/\"\'])pool/) ]]; then
-  block guard-holdout "blocked: eval/cases/holdout and eval/cases/pool are off limits to anyone who tunes rules or prompts. Work with eval/cases/dev."
+  block guard-holdout "blocked: eval/cases/holdout and eval/cases/pool are off limits to anyone who tunes rules or prompts. Work with eval/cases/dev.$MENTION_HINT"
 fi
 exit 0

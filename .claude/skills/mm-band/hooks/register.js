@@ -1,9 +1,39 @@
 // mm-band: one line above the prompt that keeps the race in view.
 //   残り 5日8時間 · M1 主役が通り母に届く(あと1日12時間) · dev 見逃し 13% 誤判定 0% · 作者待ち 2
-// It reads CONDITIONS.md, eval/results.jsonl, and docs/human-queue.md from the repository,
-// the same files the session hook hands to Claude, so the author and Claude see the same state.
+// It reads CONDITIONS.md and eval/results.jsonl from the repository, and counts the open "作者:"
+// issues with gh, the same things the session hook hands to Claude, so the author and Claude see the
+// same state.
 
-let state = { deadline: '', milestone: '', due: '', evalLine: '', waiting: 0 }
+let state = { deadline: '', milestone: '', due: '', evalLine: '', waiting: '?' }
+
+// The count of steps waiting for the author is cached for 5 minutes in the file session-context.sh
+// also uses (.claude/hooks/lib.sh, author_waiting), as "<epoch seconds> <count>". When gh fails or
+// is offline the band shows "?", never a made-up 0.
+const WAITING_CACHE = '.claude/state/author-waiting'
+const WAITING_TTL_S = 300
+
+async function authorWaiting($) {
+  const now = Math.floor(Date.now() / 1000)
+  const [at, n] = (await readText($, WAITING_CACHE)).trim().split(/\s+/)
+  if (/^\d+$/.test(at) && /^\d+$/.test(n) && now - Number(at) < WAITING_TTL_S) return n
+  try {
+    const { exitCode, stdout } = await $.process.run(
+      ['gh', 'issue', 'list', '--label', 'needs-human', '--state', 'open', '--limit', '200',
+        '--json', 'title', '-q', '[.[] | select(.title | startswith("作者:"))] | length'],
+      { timeoutMs: 8000 },
+    )
+    const count = stdout.trim()
+    if (exitCode !== 0 || !/^\d+$/.test(count)) return '?'
+    try {
+      await $.fs.write(WAITING_CACHE, now + ' ' + count + '\n')
+    } catch {
+      // The count still shows; the next refresh asks gh again.
+    }
+    return count
+  } catch {
+    return '?'
+  }
+}
 
 function frontMatter(text, key) {
   const block = text.split(/^---$/m)[1] || ''
@@ -45,8 +75,7 @@ async function refresh($) {
     }
   }
 
-  const queue = await readText($, 'docs/human-queue.md')
-  state.waiting = (queue.match(/^- \[ \]/gm) || []).length
+  state.waiting = await authorWaiting($)
   $.ui.invalidate('ui.render')
 }
 
