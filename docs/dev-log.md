@@ -443,7 +443,7 @@ TestFlight の配布は作者の持ち分なので、夜のうちには触らず
 
 親のセッションから実装役へ「判定の中身を `consult.ts` から関数として切り出し、eval と本番が同じものを呼ぶようにする」「consult の見逃しの数の変化(前の rules の行は consult の見逃し 15/25)を `eval/RESULTS.md` に残す」と頼んだ。
 
-`consult.ts` から判定を切り出して eval から呼ぶと、eval の型検査(`npx tsc --noEmit -p ../eval/tsconfig.json`)が「Cannot find name 'Env'」で落ちた。eval は Node の型で検査していて、`consult.ts` は家族への知らせと D1 を持っている。判定だけを `server/src/consult-judge.ts` に移して通した。測り直した dev の `rules` では、consult の見逃しは 15/25 のまま、誤判定も 0/20 のままだった。変わったのは、筋書きに当たった4件が2段階から1段階に上がったことだけだった。
+`consult.ts` から判定を切り出して eval から呼ぶと、eval の型検査(`npx tsc --noEmit -p ../eval/tsconfig.json`)が「Cannot find name 'Env'」で落ちた。eval は Node の型で検査していて、`consult.ts` は家族への知らせと D1 を持っている。判定だけを `server/src/consult-judge.ts` に移して通した。測り直した dev の `rules` では、consult の見逃しは 15/25 のまま、誤判定も 0/20 のままだった。変わったのは、筋書きに当たった5件のうち4件が2段階から1段階に上がったことだけだった(残りの1件はもともと1段階)。
 
 #72 で筋書きの部品を足した効果が eval に出ないのは、測る道が違うからだと Issue に書いていた。測る道を直せば見逃しも減ると思っていたが、筋書きは警察の部品を1つ以上要し、警察の部品はどれも `judgeByRules` で中くらいの印なので、それだけで2段階になる。筋書きの規則は2を1に上げるだけで、規則が見逃した相談を拾うことは作りの上でない。
 
