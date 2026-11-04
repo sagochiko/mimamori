@@ -29,7 +29,7 @@ import {
 } from "./claude";
 import { sendPush, type PushPayload } from "./push";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
-import { quotes } from "./summary";
+import { ownLines, quotes } from "./summary";
 
 export interface JudgePayload {
   sender?: string;
@@ -164,8 +164,22 @@ async function keyFor(familyId: string, kind: "sender" | "domain", value: string
  * repeats it is skipped, while the rules' fixed reasons are used as they are. The sender's number is
  * left out.
  */
+function receivedOf(job: JudgeJob): string[] {
+  return [job.payload.text ?? "", job.payload.url ?? "", job.payload.sender ?? ""];
+}
+
+/**
+ * The reasons kept for the family's card and the mother's notice: a reason Claude wrote that quotes
+ * the received text is dropped (src/summary.ts). When none is left, the rules' reasons, or the
+ * placeholder.
+ */
+function cardReasons(job: JudgeJob, rule: RuleResult, reasons: string[]): string[] {
+  const fallback = rule.reasons.length > 0 ? rule.reasons : [PLACEHOLDER_REASON];
+  return ownLines(reasons, [...rule.reasons, PLACEHOLDER_REASON], receivedOf(job), fallback);
+}
+
 function summarize(job: JudgeJob, domain: string | null, rule: RuleResult, reasons: string[]): string {
-  const received = [job.payload.text ?? "", job.payload.url ?? "", job.payload.sender ?? ""];
+  const received = receivedOf(job);
   const own = (r: string) => r !== PLACEHOLDER_REASON && (rule.reasons.includes(r) || !quotes(r, received));
   const reason = [...reasons, ...rule.reasons].map((r) => r.trim()).find((r) => r !== "" && own(r));
   return [SOURCE_LABELS[job.source], reason ?? "", domain ?? ""].filter((s) => s !== "").join(" ");
@@ -344,6 +358,7 @@ async function judgeOne(
   // time Claude gives nothing: a consultation from the mother must not wait on Claude coming back.
   const decision = decide(rule, claude);
   const level = decision.level;
+  const reasons = cardReasons(job, rule, decision.reasons);
 
   const now = deps.now();
   const domain = normalizeDomain(job);
@@ -372,8 +387,8 @@ async function judgeOne(
       job.familyId,
       job.source,
       level,
-      JSON.stringify(decision.reasons),
-      summarize(job, domain, rule, decision.reasons),
+      JSON.stringify(reasons),
+      summarize(job, domain, rule, reasons),
       decision.ruleLevel,
       decision.claudeLevel,
       now,
@@ -385,7 +400,7 @@ async function judgeOne(
   // A concurrent delivery of the same message wrote the row first; it does the telling.
   if (inserted.meta.changes === 0 || !notify) return "done";
 
-  const notice = { level, reasons: decision.reasons, checking: decision.checking };
+  const notice = { level, reasons, checking: decision.checking };
   return finishNotices(env, alertId, notice, { mother: true, family: true }, members, budget, deps);
 }
 

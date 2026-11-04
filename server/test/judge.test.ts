@@ -361,14 +361,16 @@ describe("judge consumer", () => {
     expect(JSON.stringify(pushes.map((p) => [p.title, p.body]).filter(([t]) => t === "開かないで"))).not.toMatch(/安全/);
   });
 
-  it("keeps a reason that quotes the message in 「」", async () => {
+  // A reason that quotes the message in 「」 is not read as a verdict ("safe"), so the level stands.
+  // It still does not go on the family's card: the quote is the received text cut out (#55).
+  it("keeps the level for a reason that quotes the message in 「」, and puts the rules' reason on the card instead", async () => {
     const fam = await setupFamily();
     const reason = "「この口座は安全です」と移し替えを求める";
     const deps = fakes({ claudeRaw: { ...claudeSays(), reasons: [reason] } });
     await run([smsJob(fam.familyId)], deps);
     const [alert] = await alertsOf(fam.familyId);
     expect(alert).toMatchObject({ level: 1, claude_level: 1 });
-    expect(JSON.parse(alert?.reasons ?? "")).toEqual([reason]);
+    expect(JSON.parse(alert?.reasons ?? "")).toEqual(["急がせる言い回しがある"]);
   });
 
   // The family's one line names the route, the first reason, and the domain; the received text is
@@ -398,6 +400,9 @@ describe("judge consumer", () => {
       await run([smsJob(fam.familyId)], deps);
       const [alert] = await alertsOf(fam.familyId);
       expect(alert?.summary).toBe("SMS 急がせる言い回しがある bank-check.example");
+      // Not in the card's reasons either, nor in the mother's notice.
+      expect(JSON.parse(alert?.reasons ?? "")).toEqual(["急がせる言い回しがある"]);
+      expect(alert?.reasons).not.toMatch(/[「」]/);
     });
 
     it("skips a reason that repeats the message without brackets", async () => {
@@ -407,6 +412,18 @@ describe("judge consumer", () => {
       await run([smsJob(fam.familyId, { text, url: undefined })], deps);
       const [alert] = await alertsOf(fam.familyId);
       expect(alert?.summary).toBe("SMS 急がせる言い回しがある");
+      expect(JSON.parse(alert?.reasons ?? "")).toEqual(["急がせる言い回しがある"]);
+      for (const piece of runsOf(text)) expect(alert?.reasons).not.toContain(piece);
+    });
+
+    it("keeps Claude's reasons of its own and drops only the quoting one", async () => {
+      const fam = await setupFamily();
+      const text = "未払いの料金があります。至急ご連絡ください 03-0000-0000";
+      const deps = fakes({ claude: claudeSays({ reasons: ["未払いの料金がありますと急がせる", "知らない番号に電話させようとしている"] }) });
+      await run([smsJob(fam.familyId, { text, url: undefined })], deps);
+      const [alert] = await alertsOf(fam.familyId);
+      expect(JSON.parse(alert?.reasons ?? "")).toEqual(["知らない番号に電話させようとしている"]);
+      expect(pushesTo([fam.tokens.mother])[0]?.body).toBe("知らない番号に電話させようとしている");
     });
 
     it("leaves out the reason when only the placeholder is left, and the domain when there is none", async () => {

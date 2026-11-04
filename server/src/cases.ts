@@ -181,8 +181,9 @@ export class CaseNoticeDeferred extends Error {
   }
 }
 
-/** A day after the case opened, a first notice is no longer worth retrying. */
+/** A day after the case opened, a first notice is no longer worth retrying, nor a reminder worth sending. */
 const FIRST_NOTICE_RETRY_MS = 24 * 3600_000;
+const WATCH_MAX_AGE_MS = FIRST_NOTICE_RETRY_MS;
 const FIRST_NOTICE_BATCH = 20;
 
 /**
@@ -370,15 +371,16 @@ export async function recordAiReply(env: Env, caseId: string, text: string): Pro
  * Every 5 minutes (src/cron.ts). A case not resolved within 30 minutes: the protected person is told
  * "家族から返事がまだ。急ぐなら電話して" and every family member is notified again, once. The state
  * stays as it is, so nothing tells the protected person it is solved. A case whose whole family the
- * budget cannot cover is left for a later tick, unclaimed.
+ * budget cannot cover is left for a later tick, unclaimed. A case more than a day old is not
+ * reminded about any more, so rows that never got a reminder do not all come back at once.
  */
 export async function watchUnanswered(env: Env, now: number, budget: ExternalBudget): Promise<void> {
   const due = await env.DB.prepare(
     `SELECT c.id, c.family_id, a.summary FROM cases c LEFT JOIN alerts a ON a.id = c.alert_id
-      WHERE c.state != 'resolved' AND c.renotified_at IS NULL AND c.notified_at <= ?
+      WHERE c.state != 'resolved' AND c.renotified_at IS NULL AND c.notified_at <= ? AND c.notified_at > ?
       ORDER BY c.notified_at LIMIT ${WATCH_BATCH}`,
   )
-    .bind(now - UNANSWERED_AFTER_MS)
+    .bind(now - UNANSWERED_AFTER_MS, now - WATCH_MAX_AGE_MS)
     .all<{ id: string; family_id: string; summary: string | null }>();
 
   for (const row of due.results) {

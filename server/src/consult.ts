@@ -31,11 +31,11 @@
 import { requireMember, type Member } from "./auth";
 import { ExternalBudget } from "./budget";
 import { CaseNoticeDeferred, openCase, recordAiReply, tellFamilyHeavier } from "./cases";
-import { CLAUDE_TIMEOUT_MS, decide, soundsSafe, type Level } from "./claude";
+import { CLAUDE_TIMEOUT_MS, decide, PLACEHOLDER_REASON, soundsSafe, type Level } from "./claude";
 import { HttpError, json, readJson } from "./http";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
 import { INJECTION, matchSpans, MONEY_MOVE, POLICE_SCRIPT } from "./rules/phrases";
-import { quotes } from "./summary";
+import { ownLines, quotes, repeats } from "./summary";
 
 export const CONSULT_MODEL = "claude-sonnet-5-5";
 const MESSAGES_URL = "https://api.anthropic.com/v1/messages";
@@ -89,6 +89,8 @@ export const UNANSWERED_REPLY = "うまく答えられませんでした。家�
 export const POLICE_TOPIC = "警察を名乗る電話の相談";
 /** The family's one line when no topic or reason of its own is left. */
 export const FALLBACK_TOPIC = "スマホの相談";
+/** On the family's card in place of an AI answer that repeats her words; she still hears the answer. */
+export const AI_REPLY_ON_CARD = "答えました";
 
 // Topics the AI does not guide, whoever asks and however it is put ("スマホ相談と声" in docs/design.md).
 // Matched on her words after NFKC and lowercasing, like the rules.
@@ -412,19 +414,38 @@ function policePlan(text: string, rule: RuleResult): Plan {
  */
 function plan(text: string, rule: RuleResult, claude: ClaudeConsult | null): Plan {
   const p = decidePlan(text, rule, claude);
-  return { ...p, summary: summaryOf(text, rule, claude, p.reasons) };
+  const reasons = cardReasons(text, rule, p.reasons);
+  return { ...p, reasons, summary: summaryOf(text, rule, claude, reasons) };
+}
+
+/** The rules' own wording, which may share words with hers ("口座が犯罪に使われ…") and is still not hers. */
+function fixedLines(text: string, rule: RuleResult): string[] {
+  return [...rule.reasons, ...SENSITIVE.map((s) => s.reason), ...policeReasons(text), UNANSWERED_REASON, PLACEHOLDER_REASON];
+}
+
+/**
+ * The reasons kept for the family's card, which VoiceOver reads out: a reason Claude wrote that
+ * quotes her words is dropped. When none is left, the rules' reasons, or the fixed placeholder.
+ */
+function cardReasons(text: string, rule: RuleResult, reasons: string[]): string[] {
+  const fallback = rule.reasons.length > 0 ? rule.reasons : [PLACEHOLDER_REASON];
+  return ownLines(reasons, fixedLines(text, rule), [text], fallback);
 }
 
 /**
  * The family's one line for a consultation that is not the script: Claude's topic, else the first
  * reason, else FALLBACK_TOPIC. A line Claude wrote is skipped when it repeats her words or would tell
- * the family it is fine; the fixed lines of the rules are used as they are.
+ * the family it is fine; the fixed lines of the rules are used as they are. When her words carry
+ * text aimed at the AI or at keeping the family out, Claude's topic is not used at all: it is the
+ * line such text would try to steer.
  */
 function summaryOf(text: string, rule: RuleResult, claude: ClaudeConsult | null, reasons: string[]): string {
-  const fixed = new Set([...rule.reasons, ...SENSITIVE.map((s) => s.reason), ...policeReasons(text), UNANSWERED_REASON]);
+  const fixed = new Set(fixedLines(text, rule));
   // Not even "安全な…" as a name for the case: the family must not read it as a verdict.
   const own = (line: string) => fixed.has(line) || (usable(line) && !/安全/.test(line) && !quotes(line, [text]));
-  const candidates = [...(claude?.topic ? [claude.topic] : []), ...reasons, ...rule.reasons];
+  const steered = rule.reasons.includes(INJECTION.reason) || (claude?.injection_suspected ?? false);
+  const topic = claude?.topic && !steered ? [claude.topic] : [];
+  const candidates = [...topic, ...reasons.filter((r) => r !== PLACEHOLDER_REASON), ...rule.reasons];
   return candidates.map((l) => l.trim()).find((l) => l !== "" && own(l)) ?? FALLBACK_TOPIC;
 }
 
@@ -568,7 +589,8 @@ export async function consult(
     const alertId = await insertAlert(env, member.familyId, p, now);
     if (p.toFamily) caseId = await openFor(env, alertId, budget, deps);
   }
-  if (caseId !== null) await recordAiReply(env, caseId, p.reply);
+  // She hears the whole answer; the card gets a fixed line instead when the answer repeats her words.
+  if (caseId !== null) await recordAiReply(env, caseId, repeats(p.reply, [text]) ? AI_REPLY_ON_CARD : p.reply);
   return answer(p.reply, p.toFamily);
 }
 

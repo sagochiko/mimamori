@@ -600,6 +600,18 @@ describe("the 30-minute watch", () => {
     expect(to(f.mother).map((s) => s.body)).toEqual([NO_REPLY_YET]);
   });
 
+  it("does not remind about a case older than a day", async () => {
+    const f = await family();
+    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
+    await backdate(caseId, 25 * 60);
+    sent = [];
+
+    await tick(Date.now());
+
+    expect(sent).toHaveLength(0);
+    expect((await caseRow(caseId))?.renotified_at).toBeNull();
+  });
+
   it("stops retrying a first notice after a day", async () => {
     const f = await family();
     const alertId = await newAlert(f.familyId);
