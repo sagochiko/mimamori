@@ -1,22 +1,22 @@
 import MimamoriCore
 import SwiftUI
 
-/// The protected person's screen: what the family was told and their replies, then one big
-/// microphone. Replies are read aloud once when they arrive; tapping one reads it again. Pressing the
-/// microphone and talking gets an answer, shown right above the microphone and read aloud.
-/// Explanations live in VoiceOver only.
+/// The protected person's screen: what the family was told, then one big microphone. Pressing the
+/// microphone and talking gets an answer, shown right above the microphone and read aloud. The AI
+/// always answers; the family calls her when they want to talk. Explanations live in VoiceOver only.
 struct ProtectedHomeView: View {
   @Environment(AppModel.self) private var model
   @Environment(\.scenePhase) private var scenePhase
 
   private static let consultID = "consult"
-  /// Keeps what the microphone brought in view until she scrolls herself.
+  /// Keeps what the microphone brought in view: while she talks and waits, and for the one reload of
+  /// her notices that a handoff brings. Scrolling herself stops it.
   @State private var followsConsult = false
 
   var body: some View {
     let notices = model.protectedNotices
     VStack(spacing: 20) {
-      // Scrolls instead of shortening a line: every word of a reply must be readable.
+      // Scrolls instead of shortening a line: every word of an answer must be readable.
       ScrollViewReader { proxy in
         ScrollView {
           VStack(spacing: 16) {
@@ -42,13 +42,16 @@ struct ProtectedHomeView: View {
         .defaultScrollAnchor(.bottom, for: .alignment)
         // Whatever the microphone brought (words heard, thinking, the answer, a failure), she sees it
         // without scrolling, at any text size. A handoff reloads her cases and adds a notice above the
-        // answer, so that moves it back into view too, until she scrolls herself.
+        // answer, so that one change moves it back into view too. Later changes (the 30-minute line, a
+        // case resolved) leave the scroll where it is, so an old answer is not pulled back up.
         .onChange(of: model.voice.phase) { _, phase in
-          followsConsult = phase != .idle
+          followsConsult = phase.followsNotices
           reveal(phase, with: proxy)
         }
         .onChange(of: notices) {
-          if followsConsult { reveal(model.voice.phase, with: proxy) }
+          guard followsConsult else { return }
+          reveal(model.voice.phase, with: proxy)
+          if case .answered = model.voice.phase { followsConsult = false }
         }
         .onScrollPhaseChange { _, phase in
           if phase == .interacting { followsConsult = false }
@@ -164,16 +167,13 @@ private struct ConsultView: View {
 
 private struct NoticeView: View {
   let notice: ProtectedNotice
-  @Environment(AppModel.self) private var model
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      if let status = notice.status {
-        Text(status)
-          .font(.title2.bold())
-          .fixedSize(horizontal: false, vertical: true)
-          .accessibilityHint(hint(for: status))
-      }
+      Text(notice.status)
+        .font(.title2.bold())
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityHint(hint)
       if let summary = notice.summary {
         Text(summary)
           .font(.title3)
@@ -181,33 +181,15 @@ private struct NoticeView: View {
           .fixedSize(horizontal: false, vertical: true)
           .accessibilityLabel("家族に伝えたこと、\(summary)")
       }
-      if let reply = notice.reply {
-        Button {
-          model.speakAgain(reply)
-        } label: {
-          VStack(alignment: .leading, spacing: 6) {
-            Text(reply.from).font(.title3.bold())
-            Text(reply.body).font(.title2).fixedSize(horizontal: false, vertical: true)
-          }
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(16)
-          .background(RoundedRectangle(cornerRadius: 18).fill(Color.accentColor.opacity(0.15)))
-        }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityHint("家族が書いた返事です。押すともう一度読み上げます")
-      }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(18)
     .background(RoundedRectangle(cornerRadius: 22).fill(Color(.secondarySystemBackground)))
   }
 
-  private func hint(for status: String) -> String {
-    switch status {
-    case ProtectedNotice.toldFamily: "さっきの相談を家族に知らせました。家族が見たら、ここに名前が出ます"
-    case ProtectedNotice.noReplyYet: "30分たっても家族が引き受けていません。急ぐときは家族に電話してください"
-    default: "家族がこの相談を引き受けました。返事を待ってください"
-    }
+  private var hint: String {
+    notice.status == ProtectedNotice.noReplyYet
+      ? "30分たっても、家族が解決にしていません。急ぐときは家族に電話してください"
+      : "さっきの相談を家族に知らせました。家族から電話が来るかもしれません"
   }
 }

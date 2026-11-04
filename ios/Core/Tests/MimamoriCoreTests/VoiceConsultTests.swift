@@ -225,6 +225,29 @@ struct VoiceConsultTests {
   }
 }
 
+@Suite("答えを画面に出しておく")
+struct FollowsNoticesTests {
+  static let storage = ConsultAnswer(reply: "設定の「一般」から", speak: "設定の一般から", tap: nil, handoff: false)
+
+  @Test("話しているあいだと考えているあいだは、知らせが増えても答えの場所を見せる")
+  func whileTalking() {
+    #expect(ConsultPhase.listening(heard: "警察から").followsNotices)
+    #expect(ConsultPhase.thinking(said: "警察から").followsNotices)
+  }
+
+  @Test("家族に回した答えだけ、そのあとの知らせの読み直しについていく")
+  func afterAnswer() {
+    #expect(ConsultPhase.answered(said: "警察から", answer: VoiceConsultTests.police).followsNotices)
+    #expect(!ConsultPhase.answered(said: "ストレージ", answer: Self.storage).followsNotices)
+  }
+
+  @Test("何もしていないときと失敗のあとは、知らせが変わっても動かさない")
+  func otherwise() {
+    #expect(!ConsultPhase.idle.followsNotices)
+    #expect(!ConsultPhase.failed(.offline).followsNotices)
+  }
+}
+
 extension Date {
   static let t0 = Date(timeIntervalSince1970: 1_793_000_000)
 }

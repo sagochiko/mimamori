@@ -78,14 +78,6 @@ public final class Session {
     try await call { try await $0.cases() }
   }
 
-  public func accept(caseId: String) async throws -> Case {
-    try await call { try await $0.accept(caseId: caseId) }
-  }
-
-  public func relay(caseId: String, body: String) async throws {
-    try await call { try await $0.relay(caseId: caseId, body: body) }
-  }
-
   public func resolve(caseId: String) async throws -> Case {
     try await call { try await $0.resolve(caseId: caseId) }
   }
@@ -93,9 +85,6 @@ public final class Session {
   public func consult(text: String) async throws -> ConsultAnswer {
     try await call { try await $0.consult(text: text) }
   }
-
-  /// This device's member id, to tell "my" cases from the others' on the family cards.
-  public var memberId: String? { store.load()?.memberId }
 
   /// Runs one call and then follows the Keychain: joining stores a key, a 401 clears it.
   private func call<T>(_ body: (APIClient) async throws -> T) async throws -> T {

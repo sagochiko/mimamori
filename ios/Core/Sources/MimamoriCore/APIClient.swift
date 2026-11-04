@@ -5,9 +5,6 @@ public enum APIError: Error, Equatable, Sendable {
   case notJoined
   /// The server answered 401. The stored device key has already been cleared.
   case unauthorized
-  /// 409: the case moved on before this call, for example someone else accepted it first.
-  /// `assigneeName` is who has it, when the server said.
-  case conflict(code: String, assigneeName: String?)
   /// Any other non-2xx answer.
   case http(status: Int)
   /// The answer was not in the expected shape.
@@ -77,17 +74,7 @@ public final class APIClient: Sendable {
     return answer.cases
   }
 
-  /// `POST /cases/{id}/accept`. Throws `.conflict` with the assignee's name when someone was first.
-  public func accept(caseId: String) async throws -> Case {
-    try await send("POST", "cases/\(caseId)/accept", body: Empty?.none, auth: true)
-  }
-
-  /// `POST /cases/{id}/relay`. Text only; the protected person's iPhone reads it aloud.
-  public func relay(caseId: String, body: String) async throws {
-    try await perform("POST", "cases/\(caseId)/relay", body: RelayBody(body: body), auth: true)
-  }
-
-  /// `POST /cases/{id}/resolve`. Only the assignee.
+  /// `POST /cases/{id}/resolve`. Any family member; pressing it again returns the case as it is.
   public func resolve(caseId: String) async throws -> Case {
     try await send("POST", "cases/\(caseId)/resolve", body: Empty?.none, auth: true)
   }
@@ -158,9 +145,6 @@ public final class APIClient: Sendable {
       store.clear()
       onUnauthorized()
       throw APIError.unauthorized
-    case 409:
-      let answer = try? Self.decoder.decode(ConflictAnswer.self, from: data)
-      throw APIError.conflict(code: answer?.error ?? "conflict", assigneeName: answer?.assignee?.displayName)
     default:
       throw APIError.http(status: response.statusCode)
     }
@@ -203,18 +187,8 @@ private struct CaseList: Decodable {
   let cases: [Case]
 }
 
-/// `{error, assignee?: {memberId, displayName}}` from the case routes.
-private struct ConflictAnswer: Decodable {
-  let error: String
-  let assignee: CaseMember?
-}
-
 private struct ConsultBody: Encodable {
   let text: String
-}
-
-private struct RelayBody: Encodable {
-  let body: String
 }
 
 private struct NameBody: Encodable {

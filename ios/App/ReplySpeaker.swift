@@ -3,9 +3,9 @@ import Foundation
 import MimamoriCore
 import os
 
-/// Reads family replies aloud on the protected person's iPhone with the normal Japanese system voice.
-/// Personal Voice is not used: it cannot be made in Japanese, and the AI's answers use the same
-/// normal voice, so "it sounds like family" never becomes a reason to trust a voice.
+/// Reads the AI's answer to a voice consultation aloud on the protected person's iPhone, with the
+/// normal Japanese system voice. Family members do not send her messages through the app; when they
+/// want to talk to her, they call.
 ///
 /// Other apps' sound (the radio, a video) is lowered while the session is active and stays lowered
 /// until the session is deactivated (AVAudioSession.h, AVAudioSessionCategoryOptionDuckOthers), so the
@@ -25,7 +25,7 @@ final class ReplySpeaker: NSObject, AVSpeechSynthesizerDelegate {
   func speak(_ lines: [String]) {
     guard !lines.isEmpty else { return }
     releasing?.cancel()
-    // .playback so a reply is heard even with the ring/silent switch on silent.
+    // .playback so the answer is heard even with the ring/silent switch on silent.
     try? AVAudioSession.sharedInstance().setCategory(
       .playback, mode: .spokenAudio, options: [.duckOthers])
     try? AVAudioSession.sharedInstance().setActive(true)
@@ -38,11 +38,6 @@ final class ReplySpeaker: NSObject, AVSpeechSynthesizerDelegate {
     }
     session.queued(utterances.map(ObjectIdentifier.init))
     for utterance in utterances { synthesizer.speak(utterance) }
-  }
-
-  func stop() {
-    synthesizer.stopSpeaking(at: .immediate)
-    if session.stopped() { release() }
   }
 
   /// Stops reading and leaves the audio session to the microphone, which sets it up itself. A release
@@ -68,12 +63,12 @@ final class ReplySpeaker: NSObject, AVSpeechSynthesizerDelegate {
     if session.ended(id) { release() }
   }
 
-  /// Closing can fail while the synthesizer is still stopping (right after "もう一度" stops it), so a
-  /// failure is logged and tried again a little later, unless a new reply started reading meanwhile.
+  /// Closing can fail while the synthesizer is still stopping (right after a reading was cut short), so a
+  /// failure is logged and tried again a little later, unless a new answer started reading meanwhile.
   private func release() {
     releasing?.cancel()
     releasing = Task { [weak self] in
-      // "もう一度" stops and speaks again at once; the new reading cancels this before it runs.
+      // A new answer that starts reading at once cancels this before it runs.
       guard !Task.isCancelled, self?.session.isIdle == true else { return }
       await Retry.run(
         delays: [.milliseconds(300), .seconds(1)],
@@ -85,32 +80,5 @@ final class ReplySpeaker: NSObject, AVSpeechSynthesizerDelegate {
         },
         attempt: { try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) })
     }
-  }
-}
-
-/// Which replies were already read aloud, kept on this device.
-struct UserDefaultsSpokenStore: SpokenStore {
-  private let key = "mimamori.spokenRelayIds"
-
-  func load() -> Set<String> {
-    Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
-  }
-
-  func save(_ ids: Set<String>) {
-    UserDefaults.standard.set(Array(ids), forKey: key)
-  }
-}
-
-/// The protected person's phone number for "電話する", entered on a family member's iPhone.
-/// Kept only on this device; never sent to the server.
-enum ProtectedPhoneStore {
-  private static let key = "mimamori.protectedPhone"
-
-  static func load() -> PhoneNumber? {
-    UserDefaults.standard.string(forKey: key).flatMap(PhoneNumber.init)
-  }
-
-  static func save(_ number: PhoneNumber) {
-    UserDefaults.standard.set(number.digits, forKey: key)
   }
 }
