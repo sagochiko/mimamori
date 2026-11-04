@@ -1,15 +1,21 @@
 // The mother's voice consultation (task 12 in docs/plan.md, "スマホ相談と声" in docs/design.md).
 // POST /consult takes what her iPhone transcribed and answers { reply, speak, tap?, handoff }.
 //
-// She is waiting with the phone in her hand, so this answers in the request: the fixed rules first,
-// then one Claude Sonnet call. Waiting on fetch is not CPU time, so the 10 ms CPU limit of the free
-// plan is not what bounds it; the Claude timeout is. When Claude fails or the shared budget has no
-// ticket left, the rules alone decide and the answer is one of the fixed lines below.
+// She is waiting with the phone in her hand. When her words tell the fake-police script (two or more
+// of its parts, tellsPoliceScript), the rules alone answer at once: level 1 and the fixed line, the
+// case is opened and the family told, then the answer goes back. Claude is not asked and no budget
+// ticket is taken, so she does not wait, and closing the app cannot cut the request before the family
+// is told. Every other consultation waits for one Claude Sonnet call in the request (the exception to
+// "Queues, not the request" in .claude/rules/server.md, decided by the author on 2026-11-04). Waiting
+// on fetch is not CPU time, so the 10 ms CPU limit of the free plan is not what bounds it; the 15 s
+// Claude timeout is. When Claude fails or the shared budget has no ticket left, the rules alone decide
+// and the answer is one of the fixed lines below.
 //
 // What she said is data. It goes to Claude inside <untrusted>, and nothing in it changes who is told:
-// the family is told only through openCase (src/cases.ts), and only by the level and the topic.
-// Once a family member has accepted her case, the AI stops guiding her and says who is looking
-// (deliverAiReply), so she never has two voices to choose from.
+// the family is told only through openCase (src/cases.ts). The notice carries the level and the first
+// 30 characters of her first consultation in the case (summarize, 相談「…」); the card shows those and
+// the reasons, and until someone accepts, also the last answer the AI gave her (cases.ai_reply). Once a family member has accepted her case, the AI stops guiding her and
+// says who is looking (deliverAiReply), so she never has two voices to choose from.
 //
 // Request shape, checked 2026-11-04 with the claude-docs MCP:
 // - /docs/en/models/sonnet-5-5/overview: model ID claude-sonnet-5-5. Adaptive thinking is on by
@@ -269,6 +275,12 @@ function tellsPoliceScript(text: string): boolean {
   return police >= 1 && police + money >= 2;
 }
 
+/** The parts of the script she told, as reasons for the family's card. */
+function policeReasons(text: string): string[] {
+  const t = normalize(text);
+  return [...POLICE_SCRIPT, MONEY_MOVE].filter((rule) => matchSpans(rule, t).length > 0).map((rule) => rule.reason);
+}
+
 function usable(line: string): boolean {
   return line.trim() !== "" && !soundsSafe(line) && !BROAD_CLAIM.test(line);
 }
@@ -325,13 +337,30 @@ interface Plan {
   claudeLevel: Level | null;
 }
 
-/** Decides level, reply, and whether the family takes it. Pure, so every path can be tested. */
+/**
+ * The fake-police script in her own words: level 1 and the fixed answer from the rules alone. Claude
+ * is not asked, so nothing it might say (level 3, "safe") can change this answer.
+ */
+function policePlan(text: string, rule: RuleResult): Plan {
+  const reasons = rule.reasons.length > 0 ? rule.reasons : policeReasons(text);
+  return {
+    level: 1,
+    reasons,
+    reply: `${MATCH_BASIS}${POLICE_ACTION}`,
+    toFamily: true,
+    record: true,
+    ruleLevel: rule.level,
+    claudeLevel: null,
+  };
+}
+
+/**
+ * Decides level, reply, and whether the family takes it for everything but the script (policePlan).
+ * Pure, so every path can be tested.
+ */
 function plan(text: string, rule: RuleResult, claude: ClaudeConsult | null): Plan {
-  const police = tellsPoliceScript(text);
-  // Her own account of the script is enough for level 1: Claude may not talk it down.
-  const floor: RuleResult = police ? { ...rule, level: 1, confident: true } : rule;
   const decision = decide(
-    floor,
+    rule,
     claude && {
       level: claude.level,
       reasons: claude.reasons,
@@ -348,8 +377,8 @@ function plan(text: string, rule: RuleResult, claude: ClaudeConsult | null): Pla
 
   if (!unanswered && level <= 2) {
     // A warning, not guidance: what was seen, then what to do.
-    const basis = claude && claude.kind === "scam" && usable(claude.basis) ? claude.basis : police ? MATCH_BASIS : LIKE_SCAM_BASIS;
-    const action = claude && claude.kind === "scam" && usable(claude.action) ? claude.action : police ? POLICE_ACTION : SCAM_ACTION;
+    const basis = claude && claude.kind === "scam" && usable(claude.basis) ? claude.basis : LIKE_SCAM_BASIS;
+    const action = claude && claude.kind === "scam" && usable(claude.action) ? claude.action : SCAM_ACTION;
     return { level, reasons, reply: `${basis}${action}`, toFamily: true, record: true, ...base };
   }
   if (sensitive.length > 0 || (claude?.handoff ?? false)) {
@@ -422,15 +451,22 @@ export async function consult(
   if (open?.state === "accepted") return watching(open.assignee_name);
 
   const rule = deps.judgeByRules({ source: "consult", text });
-  let claude: ClaudeConsult | null = null;
-  if (budget.take()) {
-    try {
-      claude = await deps.askClaude(env, text, rule);
-    } catch {
-      claude = null;
+  let p: Plan;
+  if (tellsPoliceScript(text)) {
+    // The main scene answers at once: she does not wait, and the family is told before she can close
+    // the app and cut the request. No ticket is taken for Claude.
+    p = policePlan(text, rule);
+  } else {
+    let claude: ClaudeConsult | null = null;
+    if (budget.take()) {
+      try {
+        claude = await deps.askClaude(env, text, rule);
+      } catch {
+        claude = null;
+      }
     }
+    p = plan(text, rule, claude);
   }
-  const p = plan(text, rule, claude);
   if (!p.record) return answer(p.reply, false);
 
   let caseId: string | null = null;
