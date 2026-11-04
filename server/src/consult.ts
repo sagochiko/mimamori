@@ -37,7 +37,7 @@ import { CaseNoticeDeferred, NOT_REACHED, openCase, recordAiReply, tellFamilyHea
 import { CLAUDE_TIMEOUT_MS, decide, PLACEHOLDER_REASON, soundsSafe, type Level } from "./claude";
 import { HttpError, json, readJson } from "./http";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
-import { INJECTION, matchSpans, MONEY_MOVE, POLICE_SCRIPT } from "./rules/phrases";
+import { INJECTION, matchSpans, MONEY_MOVE, POLICE_CALLER, POLICE_SCRIPT } from "./rules/phrases";
 import { ownLines, quotes, repeats } from "./summary";
 
 export const CONSULT_MODEL = "claude-sonnet-5-5";
@@ -331,19 +331,23 @@ function normalize(text: string): string {
 /**
  * Two or more parts of the fake-police script in her own words. Moving money is a part of the script
  * as docs/design.md lists it ("送金や口座の移し替え"), but banks talk about transfers too, so it counts
- * only next to one of the police parts.
+ * only next to one of the police parts. So does a caller who says he is the police ("警察から電話",
+ * #72): a genuine call from the police is not the script until the script's own words come.
  */
 function tellsPoliceScript(text: string): boolean {
   const t = normalize(text);
   const police = POLICE_SCRIPT.filter((rule) => matchSpans(rule, t).length > 0).length;
+  const caller = matchSpans(POLICE_CALLER, t).length > 0 ? 1 : 0;
   const money = matchSpans(MONEY_MOVE, t).length > 0 ? 1 : 0;
-  return police >= 1 && police + money >= 2;
+  return police >= 1 && police + caller + money >= 2;
 }
 
 /** The parts of the script she told, as reasons for the family's card. */
 function policeReasons(text: string): string[] {
   const t = normalize(text);
-  return [...POLICE_SCRIPT, MONEY_MOVE].filter((rule) => matchSpans(rule, t).length > 0).map((rule) => rule.reason);
+  return [POLICE_CALLER, ...POLICE_SCRIPT, MONEY_MOVE]
+    .filter((rule) => matchSpans(rule, t).length > 0)
+    .map((rule) => rule.reason);
 }
 
 /** A line from Claude that may be read out to her. */
