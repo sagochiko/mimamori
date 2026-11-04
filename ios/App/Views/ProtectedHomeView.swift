@@ -188,8 +188,13 @@ private struct NoticeView: View {
   }
 
   private var hint: String {
-    notice.status == ProtectedNotice.noReplyYet
-      ? "30分たっても、家族が解決にしていません。急ぐときは家族に電話してください"
-      : "さっきの相談を家族に知らせました。家族から電話が来るかもしれません"
+    switch notice.status {
+    case ProtectedNotice.notReached:
+      "さっきの相談の知らせが、まだ家族のiPhoneに届いていません。送り直しています。急ぐときは家族に電話してください"
+    case ProtectedNotice.noReplyYet:
+      "30分たっても、家族が解決にしていません。急ぐときは家族に電話してください"
+    default:
+      "さっきの相談を家族に知らせました。家族から電話が来るかもしれません"
+    }
   }
 }

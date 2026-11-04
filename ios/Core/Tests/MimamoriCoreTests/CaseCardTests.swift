@@ -3,6 +3,14 @@ import Testing
 
 @testable import MimamoriCore
 
+/// `familyNotifiedAt` as the server sends it: a time, null while no family device took the notice,
+/// or no key at all (a server from before #60).
+enum FamilyNotified {
+  case at(String)
+  case null
+  case missing
+}
+
 /// The shape `GET /cases` answers with (server/src/cases.ts, CaseView).
 func caseJSON(
   id: String = "c-1",
@@ -10,15 +18,22 @@ func caseJSON(
   resolvedBy: (id: String, name: String)? = nil,
   notifiedAt: String = "2026-11-03T10:00:00.000Z",
   renotifiedAt: String? = nil,
-  aiReply: String? = nil
+  aiReply: String? = nil,
+  family: FamilyNotified = .at("2026-11-03T10:00:01.000Z")
 ) -> String {
   let resolvedByJSON =
     resolvedBy.map { #"{"memberId":"\#($0.id)","displayName":"\#($0.name)"}"# } ?? "null"
+  let familyJSON: String =
+    switch family {
+    case .at(let time): #""familyNotifiedAt":"\#(time)","#
+    case .null: #""familyNotifiedAt":null,"#
+    case .missing: ""
+    }
   return #"""
     {"id":"\#(id)","alertId":"a-1","state":"\#(state)","notifiedAt":"\#(notifiedAt)",
      "resolvedAt":\#(state == "resolved" ? "\"2026-11-03T11:00:00.000Z\"" : "null"),
      "resolvedBy":\#(resolvedByJSON),
-     "renotifiedAt":\#(renotifiedAt.map { "\"\($0)\"" } ?? "null"),
+     "renotifiedAt":\#(renotifiedAt.map { "\"\($0)\"" } ?? "null"),\#(familyJSON)
      "alert":{"level":1,"source":"call","summary":"警察を名乗る電話の相談","reasons":["口座の移し替えを求めた"]},
      "aiReply":\#(aiReply.map { "\"\($0)\"" } ?? "null")}
     """#
@@ -53,6 +68,20 @@ struct CaseShapeTests {
     let item = try decodeCase(json)
     #expect(item.alert == nil)
     #expect(item.resolvedBy == nil)
+  }
+
+  @Test("家族に届いた時刻を読む。null なら届いていない")
+  func decodesFamilyNotifiedAt() throws {
+    let told = try decodeCase(caseJSON(family: .at("2026-11-03T10:00:01.000Z")))
+    #expect(told.familyNotifiedAt == (try Date("2026-11-03T10:00:01Z", strategy: .iso8601)))
+    #expect(try decodeCase(caseJSON(family: .null)).familyNotifiedAt == nil)
+  }
+
+  @Test("届いた時刻の欄が無い古い形は、届いた相談として読む")
+  func missingFamilyNotifiedAtReadsAsTold() throws {
+    let item = try decodeCase(caseJSON(family: .missing))
+    #expect(item.familyNotifiedAt != nil)
+    #expect(item.familyWasTold)
   }
 
   @Test("前の版の裏側が返す accepted は、解決していない相談として読む")
@@ -231,6 +260,58 @@ struct ProtectedNoticeTests {
       #expect([ProtectedNotice.toldFamily, ProtectedNotice.noReplyYet].contains(notice.status))
       #expect(!text.contains("安全"))
     }
+  }
+
+  // #60: while no family device took the notice, she must not think the family knows.
+  @Test("家族に届いていなければ「家族に届いていません。急ぐなら電話して」", arguments: [0, 10, 29, 30, 31, 120])
+  func notReached(minutes: Int) throws {
+    let notices = ProtectedNotice.notices(
+      from: [try decodeCase(caseJSON(family: .null))], now: tenOClock.addingTimeInterval(Double(minutes) * 60))
+    #expect(notices.map(\.status) == ["家族に届いていません。急ぐなら電話して"])
+    #expect(ProtectedNotice.notReached == "家族に届いていません。急ぐなら電話して")
+  }
+
+  @Test("届いていない相談は、裏側の30分の見張りが走ったあとも「家族に届いていません」")
+  func notReachedOverWatch() throws {
+    let notices = ProtectedNotice.notices(
+      from: [try decodeCase(caseJSON(renotifiedAt: "2026-11-03T10:31:00.000Z", family: .null))],
+      now: tenOClock.addingTimeInterval(40 * 60))
+    #expect(notices.map(\.status) == [ProtectedNotice.notReached])
+  }
+
+  @Test("送り直しが届けば「家族に伝えました」に、30分たっていれば「家族から返事がまだ」に戻る")
+  func backToToldOnceDelivered() throws {
+    let now = tenOClock.addingTimeInterval(10 * 60)
+    let before = ProtectedNotice.notices(from: [try decodeCase(caseJSON(family: .null))], now: now)
+    let after = ProtectedNotice.notices(
+      from: [try decodeCase(caseJSON(family: .at("2026-11-03T10:05:00.000Z")))], now: now)
+    #expect(before.map(\.status) == [ProtectedNotice.notReached])
+    #expect(after.map(\.status) == [ProtectedNotice.toldFamily])
+    let late = ProtectedNotice.notices(
+      from: [try decodeCase(caseJSON(family: .at("2026-11-03T10:05:00.000Z")))],
+      now: tenOClock.addingTimeInterval(31 * 60))
+    #expect(late.map(\.status) == [ProtectedNotice.noReplyYet])
+  }
+
+  @Test("届いていない相談も、解決したら母の画面から消える")
+  func resolvedUntoldLeaves() throws {
+    let resolved = try decodeCase(caseJSON(state: "resolved", resolvedBy: ("m-2", "妹"), family: .null))
+    #expect(ProtectedNotice.notices(from: [resolved], now: tenOClock.addingTimeInterval(60)).isEmpty)
+  }
+
+  @Test("届いた相談と届いていない相談は、それぞれの文言で並ぶ")
+  func mixed() throws {
+    let told = try decodeCase(caseJSON(id: "c-1", notifiedAt: "2026-11-03T09:59:00.000Z"))
+    let untold = try decodeCase(caseJSON(id: "c-2", family: .null))
+    let notices = ProtectedNotice.notices(from: [told, untold], now: tenOClock.addingTimeInterval(60))
+    #expect(notices.map(\.status) == [ProtectedNotice.notReached, ProtectedNotice.toldFamily])
+  }
+
+  @Test("届いた欄が無い古い形は、今までどおり「家族に伝えました」")
+  func missingKeyIsTold() throws {
+    let notices = ProtectedNotice.notices(
+      from: [try decodeCase(caseJSON(family: .missing))], now: tenOClock.addingTimeInterval(60))
+    #expect(notices.map(\.status) == [ProtectedNotice.toldFamily])
   }
 
   @Test("解決した相談は母の画面から消える")

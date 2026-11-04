@@ -77,7 +77,8 @@ public struct ResolveConfirmation: Equatable, Sendable {
 ///
 /// While the case is open, it says "家族に伝えました", and after 30 minutes "家族から返事がまだ。急ぐなら
 /// 電話して": never "解決" or a family member's name, so she does not stop calling for help when nobody
-/// has answered. A resolved case leaves her screen.
+/// has answered. While no family device took the notice, it says "家族に届いていません。急ぐなら電話して"
+/// instead of either, until a retry gets through (#60). A resolved case leaves her screen.
 public struct ProtectedNotice: Equatable, Sendable, Identifiable {
   /// The case id.
   public let id: String
@@ -93,6 +94,8 @@ public struct ProtectedNotice: Equatable, Sendable, Identifiable {
 
   public static let toldFamily = "家族に伝えました"
   public static let noReplyYet = "家族から返事がまだ。急ぐなら電話して"
+  /// Same as the server's NOT_REACHED (server/src/cases.ts): no family device took the notice yet.
+  public static let notReached = "家族に届いていません。急ぐなら電話して"
   /// Same as the server's watch (server/src/cases.ts, UNANSWERED_AFTER_MS).
   public static let unansweredAfter: TimeInterval = 30 * 60
   /// Open cases older than this leave the screen, so a case the family forgot does not stay forever.
@@ -115,8 +118,8 @@ public struct ProtectedNotice: Equatable, Sendable, Identifiable {
     let summary = item.alert.map(\.summary).flatMap { $0.isEmpty ? nil : $0 }
     let waitedTooLong =
       item.renotifiedAt != nil || now.timeIntervalSince(item.notifiedAt) >= unansweredAfter
-    return ProtectedNotice(
-      id: item.id, status: waitedTooLong ? noReplyYet : toldFamily, summary: summary)
+    let status = !item.familyWasTold ? notReached : waitedTooLong ? noReplyYet : toldFamily
+    return ProtectedNotice(id: item.id, status: status, summary: summary)
   }
 }
 

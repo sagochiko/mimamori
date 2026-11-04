@@ -184,7 +184,7 @@ final class AppModel {
     do {
       let answer = try await session.consult(text: text)
       apply(voice.answered(answer))
-      // The family was told: "家族に伝えました" shows up with the case.
+      // The case shows up: "家族に伝えました", or "家族に届いていません" while no family device took it.
       if answer.handoff { await loadCases() }
     } catch {
       voice.sendFailed()

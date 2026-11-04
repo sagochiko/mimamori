@@ -80,8 +80,9 @@
     }
   }
 
-  /// Made-up cases for the screenshots: one just sent to the family, one the sister resolved, and one
-  /// not resolved for 40 minutes. "解決" resolves one as 作者.
+  /// Made-up cases for the screenshots: one just sent to the family, one that did not reach any family
+  /// device yet (#60), one the sister resolved, and one not resolved for 40 minutes. "解決" resolves
+  /// one as 作者.
   final class StubCases: @unchecked Sendable {
     static let shared = StubCases()
     private let lock = NSLock()
@@ -95,17 +96,24 @@
       }
       cases = [
         [
-          "id": "c-police", "alertId": "a-1", "state": "notified", "notifiedAt": at(3),
+          "id": "c-police", "alertId": "a-1", "state": "notified", "notifiedAt": at(3), "familyNotifiedAt": at(3),
           "alert": alert(1, "consult", "警察を名乗る電話の相談", "口座が犯罪に使われたという話がある"),
           "aiReply": "詐欺で使われる説明と一致しています。送金せず、いったん電話を切って家族に確かめて",
         ],
         [
+          "id": "c-unreached", "alertId": "a-4", "state": "notified", "notifiedAt": at(2), "familyNotifiedAt": NSNull(),
+          "alert": alert(2, "consult", "スマホの相談", "AI が答えきれなかった相談"),
+          "aiReply": "うまく答えられませんでした。家族に届いていません。急ぐなら電話して",
+        ],
+        [
           "id": "c-sister", "alertId": "a-2", "state": "resolved", "notifiedAt": at(20), "resolvedAt": at(12),
+          "familyNotifiedAt": at(20),
           "resolvedBy": ["memberId": "m-sister", "displayName": "妹"],
           "alert": alert(1, "sms", "SMS 暗証番号やパスワードを求めている bank-check.example", "暗証番号やパスワードを求めている"),
         ],
         [
           "id": "c-old", "alertId": "a-3", "state": "notified", "notifiedAt": at(40), "renotifiedAt": at(5),
+          "familyNotifiedAt": at(40),
           "alert": alert(2, "sms", "SMS 宅配の不在の知らせをかたっている parcel-notice.example", "宅配の不在の知らせをかたっている"),
         ],
       ]
