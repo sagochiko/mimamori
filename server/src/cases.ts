@@ -46,6 +46,11 @@ export interface CaseView {
   resolvedBy: { memberId: string; displayName: string } | null;
   /** Set when the 30-minute watch told the protected person "家族から返事がまだ". */
   renotifiedAt: string | null;
+  /**
+   * When a family device first took the case's notice, or null while none did. Her screen says
+   * NOT_REACHED instead of "家族に伝えました" while it is null (#60).
+   */
+  familyNotifiedAt: string | null;
   /** The summary is one line made by the rules or Claude, never her words or the received text cut out. */
   alert: { level: 1 | 2 | 3; source: string; summary: string; reasons: string[] } | null;
   /** The last answer the AI gave the protected person in this case. */
@@ -61,6 +66,7 @@ interface CaseRow {
   notified_at: number;
   resolved_at: number | null;
   renotified_at: number | null;
+  family_notified_at: number | null;
   ai_reply: string | null;
   level: 1 | 2 | 3 | null;
   source: string | null;
@@ -110,7 +116,7 @@ async function loadViews(
   }
   const rows = await env.DB.prepare(
     `SELECT c.id, c.alert_id, c.state, c.assignee_member_id, m.display_name AS resolver_name,
-            c.notified_at, c.resolved_at, c.renotified_at, c.ai_reply,
+            c.notified_at, c.resolved_at, c.renotified_at, c.family_notified_at, c.ai_reply,
             a.level, a.source, a.summary, a.reasons
        FROM cases c
        LEFT JOIN alerts a ON a.id = c.alert_id
@@ -135,6 +141,7 @@ async function loadViews(
           ? { memberId: r.assignee_member_id, displayName: nameOf(r.resolver_name) }
           : null,
       renotifiedAt: iso(r.renotified_at),
+      familyNotifiedAt: iso(r.family_notified_at),
       alert:
         r.level === null
           ? null
