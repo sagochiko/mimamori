@@ -35,17 +35,24 @@ NO_LINE_START = "」』）)、。，．！？!?・ー"
 
 def wrap(draw, text, f, width):
     """Lines of text that each fit in width, broken between characters (Japanese has no spaces).
-    A closing bracket or punctuation stays at the end of the line before, which is why the caller
-    leaves a margin of one character."""
+    No line starts with a closing bracket or punctuation: when one would, the character before it
+    (and any closers already after that character) moves to the next line with it."""
     lines, line = [], ""
     for ch in text:
-        if ch in NO_LINE_START and line.strip():
+        if draw.textlength(line + ch, font=f) <= width or not line.strip():
             line += ch
-        elif draw.textlength(line + ch, font=f) > width and line:
-            lines.append(line)
-            line = "  " + ch if ch != " " else "  "
-        else:
-            line += ch
+            continue
+        if ch in NO_LINE_START:
+            k = len(line)
+            while k > 0 and line[k - 1] in NO_LINE_START:
+                k -= 1
+            k = max(k - 1, 0)
+            if line[:k].strip():
+                lines.append(line[:k])
+                line = "  " + line[k:] + ch
+                continue
+        lines.append(line)
+        line = "  " + ch if ch != " " else "  "
     if line:
         lines.append(line)
     return lines
@@ -71,9 +78,13 @@ def build(spec, base, out):
         img = Image.open(os.path.join(base, step["image"])).convert("RGB")
         d = ImageDraw.Draw(img)
         for x, y, label in step.get("marks", []):
-            mark(d, x * scale, y * scale, str(label), scale)
+            px, py = x * scale, y * scale
+            if not (0 <= px < img.width and 0 <= py < img.height):
+                raise ValueError(f"{step['image']}: mark {label} at ({x}, {y}) x{scale} = ({px:.0f}, {py:.0f}) is outside the "
+                                 f"{img.width}x{img.height} screenshot; marks are points from the tap result, not pixels")
+            mark(d, px, py, str(label), scale)
         small = img.resize((W, int(img.height * W / img.width)), Image.LANCZOS)
-        lines = [l for c in step.get("caption", []) for l in wrap(probe, c, cap_f, W - 32 - 26)]
+        lines = [l for c in step.get("caption", []) for l in wrap(probe, c, cap_f, W - 32)]
         tile = Image.new("RGB", (W, small.height + 30 + 36 * len(lines)), "white")
         tile.paste(small, (0, 0))
         td = ImageDraw.Draw(tile)
@@ -82,15 +93,18 @@ def build(spec, base, out):
         tiles.append(tile)
 
     sheet_w = COLS * W + (COLS + 1) * GAP
-    notes = [l for n in spec.get("notes", []) for l in wrap(probe, n, note_f, sheet_w - 2 * GAP - 22)]
-    head = 78 + 34 * len(notes) + 16
+    titles = wrap(probe, spec.get("title", ""), title_f, sheet_w - 2 * GAP)
+    notes = [l for n in spec.get("notes", []) for l in wrap(probe, n, note_f, sheet_w - 2 * GAP)]
+    notes_y = 24 + 46 * len(titles) + 8
+    head = notes_y + 34 * len(notes) + 16
     rows = (len(tiles) + COLS - 1) // COLS
     row_h = max(t.height for t in tiles)
     sheet = Image.new("RGB", (sheet_w, head + rows * (row_h + GAP) + GAP), (242, 242, 247))
     sd = ImageDraw.Draw(sheet)
-    sd.text((GAP, 24), spec.get("title", ""), font=title_f, fill=(20, 20, 20))
+    for j, line in enumerate(titles):
+        sd.text((GAP, 24 + 46 * j), line, font=title_f, fill=(20, 20, 20))
     for j, line in enumerate(notes):
-        sd.text((GAP, 78 + 34 * j), line, font=note_f, fill=(90, 90, 90))
+        sd.text((GAP, notes_y + 34 * j), line, font=note_f, fill=(90, 90, 90))
     for k, t in enumerate(tiles):
         r, c = divmod(k, COLS)
         sheet.paste(t, (GAP + c * (W + GAP), head + r * (row_h + GAP)))
@@ -103,17 +117,26 @@ def self_test():
         for n in ("a.png", "b.png", "c.png"):
             Image.new("RGB", (1206, 2622), (200, 200, 200)).save(os.path.join(d, n))
         long = "とても長い説明の行が一枚の幅を超えても、はみ出さずに次の行へ折り返されることを確かめる「電話」と打ち、出た「電話」を押す"
-        spec = {"title": "試し", "notes": [long], "scale": 3,
+        spec = {"title": long, "notes": [long], "scale": 3,
                 "steps": [{"image": "a.png", "marks": [[100, 100, "1"], [300, 800, "12"]], "caption": [long]},
                           {"image": "b.png", "marks": [], "caption": ["短い"]},
                           {"image": "c.png", "marks": [[200, 400, "3"]], "caption": []}]}
         out = os.path.join(d, "out.png")
         w, h = build(spec, d, out)
         probe = ImageDraw.Draw(Image.new("RGB", (10, 10)))
-        lines = wrap(probe, long, font(26), W - 32 - 26)
+        lines = wrap(probe, long, font(26), W - 32)
         assert len(lines) >= 2, "a long caption wraps"
-        assert all(probe.textlength(l, font=font(26)) <= W - 32 for l in lines), "every wrapped line fits"
-        assert not any(l.lstrip()[:1] in NO_LINE_START for l in lines[1:]), "no line starts with a closing bracket"
+        # A run of closers at every position across the break: still inside the width, never at a line start.
+        for n in range(10, 30):
+            for closers in ("」", "」。", "」）。"):
+                ls = wrap(probe, "あ" * n + closers + "い" * 6, font(26), W - 32)
+                assert all(probe.textlength(l, font=font(26)) <= W - 32 for l in ls), f"fits: {n} {closers}"
+                assert not any(l.lstrip()[:1] in NO_LINE_START for l in ls[1:]), f"no closer starts a line: {n} {closers}"
+        try:
+            build({"steps": [{"image": "a.png", "marks": [[600, 1200, "1"]]}], "scale": 3}, d, out)
+            raise AssertionError("a mark given in pixels instead of points is refused")
+        except ValueError:
+            pass
         assert w == COLS * W + (COLS + 1) * GAP and h > 2 * 1200, f"two rows of two columns: {w}x{h}"
         colors = Image.open(out).convert("RGB").getcolors(maxcolors=1 << 24) or []
         reds = sum(n for n, (r, g, b) in colors if r > 200 and g < 80 and b < 80)

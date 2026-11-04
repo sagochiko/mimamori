@@ -18,13 +18,15 @@ Read the phone's iOS version first (`xcrun devicectl list devices`, then `xcrun 
 
 Never use "mimamori iPhone": it is the family role, joined to the production family (`docs/harness.md`, "設定の範囲"). The screens of iOS 26 and 27 differ: on 2026-11-05 the Shortcuts automation took four screens on 26.5 and one on 27.2. When no simulator matches the phone's version, say on the picture which version you shot.
 
+The iPhone Duo has not been driven end to end yet. On 2026-11-05 typing on its keyboard missed: the taps did not land where the keys were (`docs/dev-log.md`, the entry on the mother's input field), and Settings or Shortcuts on it are unchecked. Try it first; if the taps miss or the rings land off their targets, shoot on "mimamori mother" (26.5) instead and say on the picture that the phone runs 27 and may look different. The Duo has an inner and an outer display of different sizes (the global `iphone-duo` skill), so its scale is not 3: work it out on the display you shot, as in step 2.
+
 Check the language (`xcrun simctl spawn <udid> defaults read -g AppleLanguages`). If it is not Japanese, launch the app with `-AppleLanguages "(ja)" -AppleLocale ja_JP` after the bundle id.
 
 Some system apps are not in the simulator. On 2026-11-05 the iOS 26.5 one had no Phone (`com.apple.mobilephone`); Shortcuts (`com.apple.shortcuts`) and Settings (`com.apple.Preferences`) were there. Check with `xcrun simctl listapps <udid>`. When the steps pick a missing app, shoot that screen with another app and say so on the picture; the person picks the real one.
 
 ## 2. Drive it
 
-In the main session, point mobilebuildmcp at the simulator for this guide with `session_set_defaults` (`simulatorName` and `simulatorId`, never `persist`), and run `session_show_defaults` first: the repository's default is "mimamori iPhone". A subagent may not change the defaults (`guard-mcp.sh`); it passes the udid or asks the main session.
+In the main session, run `session_show_defaults` first and keep what it prints: the repository's default is "mimamori iPhone", and the session may have moved it already. Then point mobilebuildmcp at the simulator for this guide with `session_set_defaults` (`simulatorName` and `simulatorId`, never `persist`). Step 4 puts the kept values back. A subagent may not change the defaults (`guard-mcp.sh`); it passes the udid or asks the main session.
 
 Open the app with `xcrun simctl launch <udid> <bundle id>`. For each screen, screenshot before acting:
 
@@ -32,7 +34,7 @@ Open the app with `xcrun simctl launch <udid> <bundle id>`. For each screen, scr
 xcrun simctl io <udid> screenshot <scratchpad>/guide/NN.png
 ```
 
-Then act, and write down the `x` and `y` the tap or touch result prints. Those are points; the picture needs pixels, so note the scale too (screenshot width ÷ the screen's width in points: 3 on an iPhone 17 Pro, 1206 px ÷ 402 pt).
+Then act, and write down the `x` and `y` the tap or touch result prints. Those are points; the picture needs pixels, so note the scale too (screenshot width ÷ the screen's width in points: 3 on an iPhone 17 Pro, 1206 px ÷ 402 pt). The script refuses a mark that falls outside the screenshot, which is what a pixel given in place of a point usually does.
 
 What the tools did on 2026-11-05:
 
@@ -67,5 +69,6 @@ The title is the goal, not a heading with a colon. The notes say which simulator
 
 - Look at the picture yourself before sending: cut it into pieces with `sips --cropOffset <y> 0 -c <h> <w> out.png --out part.png` and read each. Every caption inside its tile, every ring on its target, numbers in order
 - Send it with `SendUserFile` (`display: "render"`), and give the same steps in text in the message, one line per tap, so they can be searched and quoted
+- Put the mobilebuildmcp defaults back to what step 2 kept (`session_set_defaults` with that `simulatorName` and `simulatorId`), before deleting anything: a later verifier that builds on the default would otherwise hit a simulator that no longer exists, and it may not change the defaults itself
 - Delete the temporary iOS 27.1 simulator (`xcrun simctl delete <its udid>`, after checking the udid in `xcrun simctl list devices`), and the screenshots in the scratchpad once the person is done. Leave "mimamori mother" as it is
 - If a screen on the phone turned out different, write what differed on the issue the steps belong to, with both versions
