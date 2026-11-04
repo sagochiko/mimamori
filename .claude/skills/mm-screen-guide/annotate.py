@@ -126,6 +126,7 @@ def self_test():
         probe = ImageDraw.Draw(Image.new("RGB", (10, 10)))
         lines = wrap(probe, long, font(26), W - 32)
         assert len(lines) >= 2, "a long caption wraps"
+        assert len(wrap(probe, long, font(34), COLS * W + (COLS - 1) * GAP)) >= 2, "a long title wraps"
         # A run of closers at every position across the break: still inside the width, never at a line start.
         for n in range(10, 30):
             for closers in ("」", "」。", "」）。"):

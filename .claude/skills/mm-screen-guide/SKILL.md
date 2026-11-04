@@ -1,6 +1,6 @@
 ---
 name: mm-screen-guide
-description: Makes a picture of tap-by-tap steps for something the author or the mother does on an iPhone (Settings, Shortcuts automations, TestFlight, permission prompts) - goes through the same screens on a simulator of the phone's iOS version, screenshots each one, and marks where to tap. Use before handing a person steps on a phone screen, when text steps would be hard to follow ("手順を画像で", "スクショで手順を作って", "シミュレータで撮って手順に").
+description: Makes a picture of tap-by-tap steps for something the author or the mother does on an iPhone (Settings, Shortcuts automations, TestFlight, permission prompts) - goes through the same screens on the mother-role simulator (iOS 26.5), screenshots each one, and marks where to tap. Use before handing a person steps on a phone screen, when text steps would be hard to follow ("手順を画像で", "スクショで手順を作って", "シミュレータで撮って手順に").
 ---
 
 # Steps as a picture
@@ -63,5 +63,5 @@ The title is the goal, not a heading with a colon. The notes say which simulator
 - Look at the picture yourself before sending: cut it into pieces with `sips --cropOffset <y> 0 -c <h> <w> out.png --out part.png` and read each. Every caption inside its tile, every ring on its target, numbers in order
 - Send it with `SendUserFile` (`display: "render"`), and give the same steps in text in the message, one line per tap, so they can be searched and quoted
 - Put the mobilebuildmcp defaults back to what step 2 kept (`session_set_defaults` with that `simulatorName` and `simulatorId`): a later verifier builds on the default and may not change it itself
-- Delete the screenshots in the scratchpad once the person is done. Leave "mimamori mother" as it is; what the guide made there (an automation, a setting) does not touch the mimamori app
+- Delete the screenshots in the scratchpad once the person is done. Leave "mimamori mother" itself, but undo what the steps changed on it (an automation, a permission, an extension's switch), or write on the issue what is left: a later verifier shoots the app on this simulator
 - If a screen on the phone turned out different, write what differed on the issue the steps belong to, with both versions
