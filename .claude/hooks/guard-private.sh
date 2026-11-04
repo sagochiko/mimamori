@@ -79,10 +79,14 @@ fi
 
 # Only a gh that runs as a command and writes to an issue or a PR. The pattern also finds one inside
 # $( or a backtick, which the word list does not show as a command.
-writes=()
+writes=() xargs_write=0
 while read -r k r; do
-  [[ "${WORDS[k]}" =~ ^(issue|pr)$ && "${WORDS[k + 1]}" =~ ^(create|edit|comment|close|reopen|review)$ ]] && writes+=("$((k + 2))")
+  [[ "${WORDS[k]}" =~ ^(issue|pr)$ && "${WORDS[k + 1]}" =~ ^(create|edit|comment|close|reopen|review)$ ]] || continue
+  behind_xargs "$k" && xargs_write=1
+  writes+=("$((k + 2))")
 done < <(gh_calls)
+# A bare xargs adds words from stdin, such as the body after --body, which the scan cannot see.
+((xargs_write)) && block guard-private "blocked: gh issue/pr behind xargs takes words from stdin, so the personal-data check cannot see the body. Write the body with the Write tool to a file and pass it with --body-file and an absolute path."
 at='(^|[;&|(`]|'"$nl"')[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:];&|]*[[:space:]]+)*([^[:space:];&|()`]*/)?gh[[:space:]]+((-R|--repo)([=[:space:]]+)[^[:space:];&|]+[[:space:]]+)*(issue|pr)[[:space:]]+(create|edit|comment|close|reopen|review)'
 texts=0
 rest=$cmd

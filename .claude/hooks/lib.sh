@@ -287,7 +287,10 @@ command_starts() {
       while ((k < m)); do
         w=${WORDS[k]}
         case $w in
-          '{' | '!' | if | then | else | elif | do | while | until | nohup | builtin | noglob) k=$((k + 1)) ;;
+          '{' | '!' | if | then | else | elif | do | while | until | noglob) k=$((k + 1)) ;;
+          nohup | builtin) # nohup [--] CMD
+            k=$((k + 1))
+            [[ "${WORDS[k]}" == -- ]] && k=$((k + 1)) ;;
           time | */time) # time -p
             k=$((k + 1))
             while ((k < m)) && [[ "${WORDS[k]}" == -* ]]; do k=$((k + 1)); done ;;
@@ -320,7 +323,7 @@ command_starts() {
           command) # command [-p] CMD; command -v / -V only looks CMD up
             [[ "${WORDS[k + 1]}" =~ ^-[pvV]*[vV] ]] && break
             k=$((k + 1))
-            while ((k < m)) && [[ "${WORDS[k]}" == -p ]]; do k=$((k + 1)); done ;;
+            while ((k < m)) && [[ "${WORDS[k]}" == -p || "${WORDS[k]}" == -- ]]; do k=$((k + 1)); done ;;
           xargs | */xargs) # only a bare xargs is stripped
             [[ "${WORDS[k + 1]}" == -* ]] && break
             k=$((k + 1)) ;;
@@ -333,6 +336,17 @@ command_starts() {
     fi
     k=$((k + 1))
   done
+}
+
+# behind_xargs <index>: the word at <index> runs under a bare xargs (one that command_starts looked
+# through), which adds words from stdin that no gate can read.
+behind_xargs() {
+  local j
+  for ((j = $1 - 1; j >= 0; j--)); do
+    is_op "${WORDS[j]}" && return 1
+    [[ "${WORDS[j]}" == xargs || "${WORDS[j]}" == */xargs ]] && return 0
+  done
+  return 1
 }
 
 # gh_calls: from WORDS (shell_words), every gh that runs as a command (command_starts). Prints one line

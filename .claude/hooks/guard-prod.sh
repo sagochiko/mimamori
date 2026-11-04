@@ -38,7 +38,10 @@ add_base() {
 }
 cur=$cwd
 for k in "${starts[@]}"; do
-  [[ "${WORDS[k]}" == cd || "${WORDS[k]}" == pushd ]] && ((k + 1 < m)) && ! is_op "${WORDS[k + 1]}" && add_base "${WORDS[k + 1]}"
+  [[ "${WORDS[k]}" == cd || "${WORDS[k]}" == pushd ]] || continue
+  j=$((k + 1))
+  while ((j < m)) && [[ "${WORDS[j]}" == -[LPe@] || "${WORDS[j]}" == -- ]]; do ((j++)); done
+  ((j < m)) && ! is_op "${WORDS[j]}" && [[ "${WORDS[j]}" != - ]] && add_base "${WORDS[j]}"
 done
 # Also from the raw text, for a cd inside bash -c "...".
 while IFS= read -r d; do add_base "$d"; done < <(grep -oE '(^|[;&|[:space:]])(cd|pushd)[[:space:]]+[^;&|[:space:]]+' <<<"$cmd" | sed -E 's/^.*(cd|pushd)[[:space:]]+//' | tr -d "'\"")
@@ -54,20 +57,25 @@ on_main() {
   return 1
 }
 force() { block guard-prod "blocked: git push that forces or mirrors ($1) rewrites or removes remote history. Push without it; if a rewrite is really needed, the author runs it by hand."; }
-# here: where the push runs, the cwd moved by every cd or pushd before it in the command.
-here=$cwd
+# here: where the push runs, the cwd moved by every cd or pushd before it in the command. A move the
+# hook cannot follow (cd -, cd --, popd, a variable, a subshell) sets unsure, and then the session's
+# cwd and every cd or pushd target in the command (bases) count instead.
+here=$cwd unsure=0
 for k in "${starts[@]}"; do
   w=${WORDS[k]}
+  if [[ "$w" == popd ]]; then unsure=1; continue; fi
   if [[ "$w" == cd || "$w" == pushd ]]; then
     d=$HOME j=$((k + 1))
     while ((j < m)) && [[ "${WORDS[j]}" == -[LPe@] ]]; do ((j++)); done
-    ((j < m)) && ! is_op "${WORDS[j]}" && d=${WORDS[j]/#\~/$HOME}
-    # cd - goes back to where the command started from, as far as this hook can tell.
-    if [[ "$d" == - ]]; then here=$cwd; elif [[ "$d" == /* ]]; then here=$d; else here=$here/$d; fi
+    ((j < m)) && ! is_op "${WORDS[j]}" && d=${WORDS[j]}
+    [[ "$d" == - || "$d" == -- || "$d" == *'$'* || "$d" == *'`'* ]] && unsure=1
+    d=${d/#\~/$HOME}
+    if [[ "$d" == /* ]]; then here=$d; else here=$here/$d; fi
     continue
   fi
   [[ "$w" == git || "$w" == */git ]] || continue
-  cdirs=()
+  for ((j = 0; j < k; j++)); do [[ "${WORDS[j]}" == "(" || "${WORDS[j]}" == ")" ]] && unsure=1; done
+  gk=$k cdirs=()
   ((k++))
   while ((k < m)) && [[ "${WORDS[k]}" == -* ]]; do
     case ${WORDS[k]} in
@@ -77,6 +85,7 @@ for k in "${starts[@]}"; do
     esac
   done
   [[ "${WORDS[k]}" == push ]] || continue
+  behind_xargs "$gk" && ask "git push behind xargs, which adds words from stdin this hook cannot read: confirm with the author"
   ((k++))
   pos=() dashdash=0 every=0
   while ((k < m)) && ! is_op "${WORDS[k]}"; do
@@ -118,9 +127,12 @@ for k in "${starts[@]}"; do
     [[ "$dst" == main || "$dst" == *'*'* ]] && ask "git push to main ($r): confirm with the author. Changes reach main through a reviewed PR."
   done
   if ((current)); then
-    d=$here
-    for c in "${cdirs[@]}"; do [[ "$c" == /* ]] && d=$c || d=$d/$c; done
-    on_main "$d" && ask "git push from main: confirm with the author. Changes reach main through a reviewed PR."
+    if ((unsure)); then dirs=("${bases[@]}"); else dirs=("$here"); fi
+    for b in "${dirs[@]}"; do
+      d=$b
+      for c in "${cdirs[@]}"; do [[ "$c" == /* ]] && d=$c || d=$d/$c; done
+      on_main "$d" && ask "git push from main: confirm with the author. Changes reach main through a reviewed PR." && break
+    done
   fi
 done
 
@@ -135,6 +147,7 @@ field() { # <-f|-F> <name=value>: -F reads @file, -f takes the text as it is
 }
 while read -r k _; do
   [[ "${WORDS[k]}" == api ]] || continue
+  behind_xargs "$k" && ask "gh api behind xargs, which adds words from stdin this hook cannot read: confirm with the author"
   ((k++))
   method="" fields=0 input=0 endpoint="" fromfile=0 mutation=0
   while ((k < m)) && ! is_op "${WORDS[k]}"; do
