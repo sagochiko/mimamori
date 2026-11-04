@@ -14,7 +14,7 @@ import { access, appendFile, mkdir, readdir, readFile, writeFile } from "node:fs
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseCases, type EvalCase } from "./lib/cases";
-import { loadJudge, type Judge, JudgeUnavailableError } from "./lib/judge";
+import { type ConsultJudge, loadConsultJudge, loadJudge, type Judge, JudgeUnavailableError } from "./lib/judge";
 import { countRunsOn, judgeCases, type Mode, resultsRow, type RunMetrics, scoreRun } from "./lib/score";
 import { groupKey } from "./lib/split-plan";
 
@@ -26,6 +26,8 @@ export interface RunOptions {
   /** ISO time with the +09:00 offset. Defaults to now in JST. */
   now?: string;
   judge?: Judge;
+  /** The consultation Claude for rules+claude (eval/lib/score.ts). */
+  consult?: ConsultJudge;
   /** For rules+claude when no judge is given. Defaults to ANTHROPIC_API_KEY in the environment. */
   apiKey?: string;
 }
@@ -125,12 +127,12 @@ export async function runEval(options: RunOptions): Promise<{ exitCode: number; 
   }
 
   let scored;
+  const apiKey = "apiKey" in options ? options.apiKey : process.env.ANTHROPIC_API_KEY;
   try {
-    scored = await judgeCases(
-      cases,
-      mode,
-      options.judge ?? loadJudge("apiKey" in options ? options.apiKey : process.env.ANTHROPIC_API_KEY),
-    );
+    scored = await judgeCases(cases, mode, {
+      judge: options.judge ?? loadJudge(apiKey),
+      consult: options.consult ?? loadConsultJudge(apiKey),
+    });
   } catch (error) {
     if (error instanceof JudgeUnavailableError) return stop(error.message);
     throw error;
