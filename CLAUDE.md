@@ -37,7 +37,7 @@
 
 サブエージェントの報告は、親が自分の目で確かめてから採る(作者のグローバルの決まりでも、親はサブエージェントの結果を自分で見る)。レビューの指摘は、挙げられたファイルと行を読む、安く済むなら再現する、挙げられた文書を開く、のどれかで確かめる。PR の「レビュー」の節には、指摘ごとに採ったか採らなかったかと、確かめ方(コードで見た、再現した、文書で見た、確かめていない)を書く。フックが残す原文(`docs/audits/raw/`)は確かめる前の材料で、採ったという意味ではない。
 
-ハーネスの穴と、Anthropic の best practices に沿った改善は、言われるのを待たずに Claude が提案して実装し、ふつうのハーネスの PR としてレビューを通してからマージする。権限を緩める変更、外に出る操作(デプロイ、送信、公開)、設計や範囲の変更は、先に AskUserQuestion で聞く(2026年11月3日に作者が決めた)。フック、skill、サブエージェント、rule、設定、作業の流れを足したり変えたりする前に、code.claude.com の該当する文書(best-practices、hooks-guide、memory、sub-agents、skills、settings、permissions、costs)を確かめてそれに従う。外れるときは、その理由を [`docs/harness.md`](docs/harness.md) に書く。
+ハーネスの穴と、Anthropic の best practices に沿った改善は、言われるのを待たずに Claude が提案して実装し、ふつうのハーネスの PR としてレビューを通してからマージする。権限を緩める変更、外に出る操作のうち送信と公開(リポジトリの公開、人へのメッセージ)、設計や範囲の変更は、先に AskUserQuestion で聞く(2026年11月3日に作者が決めた)。デプロイと TestFlight へのアップロードは、「データと安全」のとおり開発中は聞かずに進める(2026年11月4日に改めた)。フック、skill、サブエージェント、rule、設定、作業の流れを足したり変えたりする前に、code.claude.com の該当する文書(best-practices、hooks-guide、memory、sub-agents、skills、settings、permissions、costs)を確かめてそれに従う。外れるときは、その理由を [`docs/harness.md`](docs/harness.md) に書く。
 
 詰まったこと、案を捨てたこと、Claude の提案を採らなかったことは、その場で `/mm-devlog` を使って [`docs/dev-log.md`](docs/dev-log.md) に書く。提出フォームの「一番詰まった場面」はここから選ぶ。
 
