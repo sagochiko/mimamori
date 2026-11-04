@@ -65,7 +65,7 @@ repo=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
 # turned into ->/ (seen in this repository's folder there). List the ones that exist before the launch,
 # so step 5 can tell the new session's transcript from this session's own.
 projects="$HOME/.claude/projects/$(printf %s "$repo" | sed 's/[^A-Za-z0-9]/-/g')"
-ls "$projects"/*.jsonl >"$HOME/tmp/mimamori-handoff-$stamp.before" 2>/dev/null
+"$repo/scripts/handoff-started.sh" before "$projects" "$HOME/tmp/mimamori-handoff-$stamp.before" || exit 1
 launcher="$HOME/tmp/mimamori-handoff-$stamp.command"
 cat >"$launcher" <<EOF
 #!/bin/zsh
@@ -82,7 +82,7 @@ Open the `.command` file with `open -a Terminal`. Do not drive Terminal with App
 
 ## 5. Check that it started
 
-A running process is not enough. The new window can sit before its first turn: an interactive session on Fable can show a one-time usage-credits consent prompt ("In interactive sessions, Claude Code can show a Fable usage-credits consent prompt", https://code.claude.com/docs/en/model-config), and whether `/mm-autopilot` at the head of the launch prompt runs the skill is not written in the docs. So wait for the first turn in the new session's transcript: a transcript that did not exist before the launch, holds the brief's path, and has an answer from Claude (`"type":"assistant"`). For the autopilot line, it must also hold the line Claude Code adds when a skill runs (`Base directory for this skill: ...`), seen in this repository's transcripts.
+A running process is not enough. The new window can sit before its first turn: an interactive session on Fable can show a one-time usage-credits consent prompt ("In interactive sessions, Claude Code can show a Fable usage-credits consent prompt", https://code.claude.com/docs/en/model-config), and whether `/mm-autopilot` at the head of the launch prompt runs the skill is not written in the docs. So wait for the first turn in the new session's transcript: a transcript that is not in the list step 4 took before the launch, holds the brief's path, and has an answer from Claude with a tool call in it. For the autopilot line, it must also hold the line Claude Code adds when a skill runs (`Base directory for this skill: ...`), seen in this repository's transcripts. An answer alone is not enough: a failed API request is kept as an assistant line too (`"isApiErrorMessage": true`), while both launch prompts start by reading a file, so a real first turn calls a tool. [`scripts/handoff-started.sh`](../../../scripts/handoff-started.sh) does the check once, and `scripts/test-hooks.sh` runs it on made-up transcripts.
 
 Run this in the background (`run_in_background`), not as a foreground sleep, with the values from step 4 filled in. It gives up after 10 minutes:
 
@@ -93,13 +93,8 @@ projects="$HOME/.claude/projects/$(printf %s "$repo" | sed 's/[^A-Za-z0-9]/-/g')
 brief="$HOME/tmp/mimamori-handoff-$stamp.md"
 skill="Base directory for this skill: $repo/.claude/skills/mm-autopilot" # for the autopilot line; skill="" otherwise
 for i in $(seq 120); do
-  for f in "$projects"/*.jsonl; do
-    grep -qxF "$f" "$HOME/tmp/mimamori-handoff-$stamp.before" && continue
-    grep -qF "$brief" "$f" && grep -qF '"type":"assistant"' "$f" || continue
-    [[ -z "$skill" ]] || grep -qF "$skill" "$f" || continue
-    echo "$f"
-    exit 0
-  done
+  "$repo/scripts/handoff-started.sh" check "$projects" "$HOME/tmp/mimamori-handoff-$stamp.before" "$brief" "$skill"
+  case $? in 0) exit 0 ;; 2) exit 2 ;; esac
   sleep 5
 done
 exit 1
@@ -107,10 +102,12 @@ exit 1
 
 On exit 0, go to step 6.
 
+On exit 2, the list from step 4 is missing, so the new window cannot be told from this session. Do not go to step 6: stop the new window (`pkill -f "mimamori-handoff-$stamp.md"`, then `pgrep` to see it is gone) and do step 4 again from the top.
+
 On exit 1, do not go to step 6. First see whether the window started claude at all (`pgrep -fl "mimamori-handoff-$stamp.md"`); if not, look at the `.command` file and try step 4 once more. If it did start but never reached its first turn:
 
-- When the author is here, ask once with AskUserQuestion: the new window has not started its first turn; if it shows the Fable consent prompt, choose to continue on Fable. After the answer, run the loop once more.
-- When the author is away (the autopilot), or did not answer, stop the new session so two sessions never work on the same tree: `pkill -f "mimamori-handoff-$stamp.md"`, then check with `pgrep` that it is gone. Stay in this session and keep going: for the autopilot, run its loop here on this model. Queue the consent as an "作者:" step with `/mm-human-queue`, so the next autopilot gets Fable. Stopping until morning is the worst outcome while the author is away (the author, 2026-11-05).
+- When the author is here (not the autopilot), ask once with AskUserQuestion: the new window has not started its first turn; if it shows the Fable consent prompt, choose to continue on Fable. After the answer, run the loop once more.
+- For the autopilot, do not ask: a question has no time limit and nobody is there to answer it. Stop the new session so two sessions never work on the same tree: `pkill -f "mimamori-handoff-$stamp.md"`, then check with `pgrep` that it is gone. Stay in this session and keep going: for the autopilot, run its loop here on this model. Queue the consent as an "作者:" step with `/mm-human-queue`, so the next autopilot gets Fable. Stopping until morning is the worst outcome while the author is away (the author, 2026-11-05).
 
 ## 6. Stop here
 
