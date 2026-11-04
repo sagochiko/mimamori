@@ -95,7 +95,17 @@ cd server && npx tsc --noEmit -p ../eval/tsconfig.json  # eval/ の型検査
 
 1回ごとに `eval/results.jsonl` に1行(数字に `ts`、`set`、`mode`、`git_sha`、`n`、`notes` を足したもの)、[`RESULTS.md`](RESULTS.md) に表の1行が増える。dev の例文ごとの結果は `eval/out/dev-latest.json` に出る。
 
-`rules+claude` は、判定のキューと同じ [`server/src/claude.ts`](../server/src/claude.ts) の `requestClaudeJudgment` と `decide` で段階を決め、1と2を家族に届くものとして数える。鍵は環境変数 `ANTHROPIC_API_KEY` から読む。鍵が無ければ、Claude を呼ばず何も記録せずに止まる(そのときの `make eval` は、`rules` の行を書いたあとに失敗で終わる)。Claude が形の合う答えを返さなかった例文は規則だけで数え、その件数を `results.jsonl` の `claude_unanswered` と画面に出す。この数が多い回は、ほとんど規則だけの数字になっている。
+`rules+claude` は、判定のキューと同じ [`server/src/claude.ts`](../server/src/claude.ts) の `requestClaudeJudgment` と `decide` で段階を決め(声の相談だけは母の相談と同じ道で決める。下の「相談の測り方」)、1と2を家族に届くものとして数える。鍵は環境変数 `ANTHROPIC_API_KEY` から読む。鍵が無ければ、Claude を呼ばず何も記録せずに止まる(そのときの `make eval` は、`rules` の行を書いたあとに失敗で終わる)。Claude が形の合う答えを返さなかった例文は規則だけで数え(相談は本番と同じく、規則が決められなければ2段階)、その件数を `results.jsonl` の `claude_unanswered` と画面に出す。この数が多い回は、ほとんど規則だけの数字になっている。
+
+## 相談の測り方
+
+声の相談(`consult`)の例文は、母の相談(`POST /consult`)と同じ道で段階を決める。判定の中身は [`server/src/consult-judge.ts`](../server/src/consult-judge.ts) にあり、本番の [`server/src/consult.ts`](../server/src/consult.ts) と [`eval/lib/score.ts`](lib/score.ts) が同じ関数を呼ぶ。前のやり取りは付けず、1回の相談として測る。
+
+`rules` の行では Claude を呼ばない。母の言葉がニセ警察の筋書き(`tellsPoliceScript`)に当たれば1段階、当たらなければ `judgeByRules` の段階をそのまま使う。本番で Claude が答えられなかったときは、規則が決められない相談も2段階で家族に知らせるが、この行はそれを数えない。数えると、規則が何も見つけない相談がすべて家族に届き、規則だけで何が分かるかが見えなくなるからだ。送金、認証コード、構成プロファイル、データの削除の話題は、本番では Claude の答えに関係なく家族に回す(`decidePlan`)が、これも `rules` の行には出ず、`rules+claude` の行にだけ出る。dev では本物の相談の2件(c-gb-06、c-gp-02)がこれに当たるので、`rules+claude` の consult の誤判定は、Claude が何と答えても2件以上になる。
+
+`rules+claude` の行では、筋書きに当たった相談は本番と同じく Claude を呼ばずに1段階にする。当たらない相談は、判定のキューの `requestClaudeJudgment` ではなく、相談用の `requestClaudeConsult`(Sonnet)に聞き、本番と同じ `judgeConsult` で段階を決める。相談用の Claude が形の合う答えを返さなかったときは、本番と同じく段階は規則の段階か、規則が決められなければ2になり、`claude_unanswered` に数える。筋書きで決まって Claude を呼ばなかった例文は `claude_unanswered` に数えない。`eval/out/dev-latest.json` の例文ごとの結果には、筋書きで決まったかを `consult_script` で残す。
+
+2026年11月5日に、この測り方に変えた(#74)。それまでは相談も `judgeByRules` と `requestClaudeJudgment` に通していて、本番の母の相談で起きることを測っていなかった。変えたのは数字を見る前で、2026年11月5日 00:39 までの `rules` の行の `consult` は、前の測り方の数字になっている。
 
 ## 規則だけの数字(下書き)
 
