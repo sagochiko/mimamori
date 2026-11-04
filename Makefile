@@ -44,14 +44,19 @@ apple-skills:
 	for s in swiftui-specialist swiftui-whats-new-27 modernize-tests; do rm -rf .claude/skills/$$s; cp -R "$$tmp/$$s" .claude/skills/; done && \
 	rm -rf "$$tmp" && echo "exported Apple skills into .claude/skills (ignored by git)"
 
-# The simulator the skills use, always named "mimamori iPhone", on the iOS 27.1 runtime. The device
-# type is the first iPhone that runtime supports. A runtime accepts only its own device types: on
-# 2026-11-03 iOS 27.1 listed only iPhone Duo, and iPhone 18 Pro failed with "Incompatible device".
-SIM_RUNTIME := com.apple.CoreSimulator.SimRuntime.iOS-27-1
+# The simulator the skills use, always named "mimamori iPhone": an iPhone 17 Pro on iOS 26.5. On this
+# Mac the iOS 27.1 runtime supports only iPhone Duo (iPhone 18 Pro fails with "Incompatible device"),
+# and a folding phone's outer display is not what the mother's iPhone looks like. The app targets
+# iOS 26.0, so 26.5 runs it; what only iOS 27 changes is checked on the real iPhone. The author chose
+# this on 2026-11-04. An older "mimamori iPhone" of another type is reported, not deleted.
+SIM_RUNTIME := com.apple.CoreSimulator.SimRuntime.iOS-26-5
+SIM_TYPE := com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro
 simulator:
 	@xcrun simctl list devices available | grep -q "mimamori iPhone" || { \
-	  type=$$(xcrun simctl list runtimes -j | jq -r --arg r "$(SIM_RUNTIME)" \
-	    '.runtimes[] | select(.identifier == $$r and .isAvailable) | .supportedDeviceTypes[] | select(.productFamily == "iPhone") | .identifier' | head -1); \
-	  [ -n "$$type" ] || { echo "the $(SIM_RUNTIME) runtime is missing or supports no iPhone (xcrun simctl list runtimes)"; exit 1; }; \
-	  xcrun simctl create "mimamori iPhone" "$$type" $(SIM_RUNTIME) >/dev/null && echo "created mimamori iPhone ($$type)"; }
+	  xcrun simctl create "mimamori iPhone" $(SIM_TYPE) $(SIM_RUNTIME) >/dev/null || { \
+	    echo "could not create $(SIM_TYPE) on $(SIM_RUNTIME) (xcrun simctl list runtimes)"; exit 1; }; \
+	  echo "created mimamori iPhone"; }
+	@xcrun simctl list devices available -j | jq -e --arg t "$(SIM_TYPE)" \
+	  '[.devices[][] | select(.name == "mimamori iPhone")] | all(.deviceTypeIdentifier == $$t)' >/dev/null || \
+	  echo "a \"mimamori iPhone\" of another device type exists; delete it with xcrun simctl delete <udid> and run make simulator again"
 	@xcrun simctl list devices available | grep "mimamori iPhone"
