@@ -8,7 +8,10 @@ source "$(dirname "$0")/lib.sh"
 in=$(cat)
 targets=$(tool_targets "$in")
 targets=${targets//.dev.vars.example/}
-pat='(\.dev\.vars|\.p8([^a-zA-Z0-9]|$)|\.p12([^a-zA-Z0-9]|$)|client_secret[^ ]*\.json|AuthKey_[A-Z0-9]+|\.wrangler/config|\.config/gh/|security[[:space:]]+find-|gh[[:space:]]+auth[[:space:]]+token|gh[[:space:]]+auth[[:space:]]+status[^;&|]*(--show-token|[[:space:]]-[[:alpha:]]*t[[:alpha:]]*([[:space:]]|$))|printenv)'
+# The gh auth status branch stops at the end of its own command (; & | or a newline), and a short-flag
+# cluster with t ends at anything that is not a letter, so -t;true and -t|pbcopy count (PR #96 review 2).
+nl=$'\n'
+pat='(\.dev\.vars|\.p8([^a-zA-Z0-9]|$)|\.p12([^a-zA-Z0-9]|$)|client_secret[^ ]*\.json|AuthKey_[A-Z0-9]+|\.wrangler/config|\.config/gh/|security[[:space:]]+find-|gh[[:space:]]+auth[[:space:]]+token|gh[[:space:]]+auth[[:space:]]+status[^;&|'"$nl"']*(--show-token|[[:space:]]-[[:alpha:]]*t[[:alpha:]]*([^[:alnum:]_-]|$))|printenv)'
 if [[ "$targets" =~ $pat ]]; then
   block guard-secrets "blocked: this touches a secret (${BASH_REMATCH[1]}). Keys live in Workers secrets and .dev.vars, and only the author handles them. Use .dev.vars.example for the shape.$MENTION_HINT"
 fi
