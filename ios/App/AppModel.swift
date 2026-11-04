@@ -69,6 +69,8 @@ final class AppModel {
   /// comes to the front.
   func refresh() {
     session.refresh()
+    // A 401 while locked cleared the key but could not reach her conversation; it goes now.
+    if UIApplication.shared.isProtectedDataAvailable { chat.forgetIfLeft(route: route) }
   }
 
   /// The model the app runs with. Debug builds launched with `-mimamori-stub` use canned answers.

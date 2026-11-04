@@ -238,6 +238,48 @@ struct ChatRetentionTests {
   }
 }
 
+// Review of PR #79, second round: a 401 while the iPhone is locked clears the key, but the
+// conversation could not be read or removed then. Once data can be read again it goes.
+@Suite("ロック中に家族から外れたとき")
+struct ChatLeftWhileLockedTests {
+  @Test("読めるようになって役割の選択に戻っていれば、残っていた会話を消す")
+  func clearsOnceReadable() throws {
+    var saved = ChatLog()
+    saved.append(.protected, "前の相談", at: .t0)
+    let store = MemoryChatStore(try saved.encoded())
+    store.locked = true
+    var keeper = ChatKeeper(store: store)
+    keeper.forgetIfLeft(route: .chooseRole, at: .t0 + 60)
+    // Still locked: nothing can be done yet, and nothing is lost by mistake.
+    #expect(store.data != nil)
+
+    store.locked = false
+    keeper.forgetIfLeft(route: .chooseRole, at: .t0 + 60)
+    #expect(store.data == nil)
+    #expect(keeper.log.messages.isEmpty)
+  }
+
+  @Test("家族の中にいるあいだは消さない")
+  func keepsWhileJoined() throws {
+    var saved = ChatLog()
+    saved.append(.protected, "前の相談", at: .t0)
+    let store = MemoryChatStore(try saved.encoded())
+    var keeper = ChatKeeper(store: store)
+    keeper.forgetIfLeft(route: .protectedHome, at: .t0 + 60)
+    #expect(store.removes == 0)
+    keeper.load(at: .t0 + 60)
+    #expect(keeper.log.messages.map(\.text) == ["前の相談"])
+  }
+
+  @Test("会話が空なら何もしない")
+  func nothingToForget() {
+    let store = MemoryChatStore()
+    var keeper = ChatKeeper(store: store)
+    keeper.forgetIfLeft(route: .chooseRole, at: .t0)
+    #expect(store.removes == 0)
+  }
+}
+
 @Suite("声と文字で読み上げるかどうか")
 struct SpeakOnlyByVoiceTests {
   static let answer = ConsultAnswer(reply: "設定の「一般」から", speak: "設定の一般から", tap: nil, handoff: false)
