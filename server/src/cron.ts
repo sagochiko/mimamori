@@ -22,7 +22,7 @@ export const JOBS: Job[] = [
   // First notices the family never got (the queue gave up while APNs failed). Before the watch, so a
   // case's first notice goes out before its reminder.
   { name: "case-first-notice", everyMinutes: 5, run: sendFirstNotices },
-  // Cases nobody accepted within 30 minutes. Before the cleanup, so notices are never starved by it.
+  // Cases not resolved within 30 minutes. Before the cleanup, so notices are never starved by it.
   { name: "case-watch", everyMinutes: 5, run: watchUnanswered },
   // 04:00 JST, when the family is least likely to be using the app.
   { name: "retention", dailyAtJst: "04:00", run: purgeExpired },

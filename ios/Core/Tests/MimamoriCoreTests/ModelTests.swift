@@ -55,16 +55,16 @@ struct ModelTests {
     }
   }
 
-  @Test("相談を読む。受け持ちはまだいなくてよい")
+  @Test("相談を読む。解決した人はまだいなくてよい")
   func decodesCase() throws {
     let json = #"""
-      {"id":"c-1","alertId":"a-1","state":"notified","assigneeMemberId":null,
-       "notifiedAt":"2026-11-03T00:00:00.123Z","acceptedAt":null,"resolvedAt":null}
+      {"id":"c-1","alertId":"a-1","state":"notified","resolvedBy":null,
+       "notifiedAt":"2026-11-03T00:00:00.123Z","resolvedAt":null}
       """#
     let item = try APIClient.decoder.decode(Case.self, from: Data(json.utf8))
     #expect(item.state == .notified)
-    #expect(item.assigneeMemberId == nil)
-    #expect(item.acceptedAt == nil)
+    #expect(item.resolvedBy == nil)
+    #expect(item.resolvedAt == nil)
   }
 
   @Test("鍵がなければ役の選択から始める")

@@ -61,12 +61,25 @@ public struct Alert: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
-/// `cases.state`.
+/// `cases.state` as the family and the protected person see it: not resolved yet, or resolved.
+/// The server shows a case left in the old "accepted" state as "notified"; an older server may still
+/// send "accepted", which is read the same way, never as resolved. Any other value fails decoding.
 public enum CaseState: String, Codable, Sendable, CaseIterable {
-    case notified, accepted, resolved
+    case notified, resolved
+
+    public init(from decoder: any Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        switch raw {
+        case "notified", "accepted": self = .notified
+        case "resolved": self = .resolved
+        default:
+            throw DecodingError.dataCorrupted(
+                .init(codingPath: decoder.codingPath, debugDescription: "unknown case state: \(raw)"))
+        }
+    }
 }
 
-/// Who took a case, with the name the others see ("(名前)が対応中").
+/// The family member who pressed "解決" ("(名前)が解決").
 public struct CaseMember: Codable, Hashable, Sendable {
     public let memberId: String
     public let displayName: String
@@ -77,7 +90,8 @@ public struct CaseMember: Codable, Hashable, Sendable {
     }
 }
 
-/// The alert a case was opened for, as the family card shows it.
+/// The alert a case was opened for, as the family card shows it. `summary` is one line made by the
+/// rules or Claude, never the protected person's words or the received text cut out.
 public struct CaseAlert: Codable, Hashable, Sendable {
     public let level: Level
     public let source: AlertSource
@@ -92,59 +106,34 @@ public struct CaseAlert: Codable, Hashable, Sendable {
     }
 }
 
-/// A reply the assignee wrote to the protected person (`relays`). Plain text, read aloud with the
-/// normal system voice on the protected person's iPhone.
-public struct Relay: Codable, Hashable, Sendable, Identifiable {
-    public let id: String
-    public let fromMemberId: String
-    public let fromName: String
-    public let body: String
-    public let createdAt: Date
-
-    public init(id: String, fromMemberId: String, fromName: String, body: String, createdAt: Date) {
-        self.id = id
-        self.fromMemberId = fromMemberId
-        self.fromName = fromName
-        self.body = body
-        self.createdAt = createdAt
-    }
-}
-
-/// A row of `GET /cases` (server/src/cases.ts, `CaseView`). Fields added in task 10 may be missing
-/// from an older server and then read as empty.
+/// A row of `GET /cases` (server/src/cases.ts, `CaseView`). Every family member sees the same case;
+/// nobody takes it over. Fields an older server does not send are read as empty.
 public struct Case: Codable, Hashable, Sendable, Identifiable {
     public let id: String
     public let alertId: String?
     public let state: CaseState
-    public let assigneeMemberId: String?
-    public let assignee: CaseMember?
     public let notifiedAt: Date
-    public let acceptedAt: Date?
     public let resolvedAt: Date?
-    /// Set when the server's 30-minute watch found nobody had accepted.
+    public let resolvedBy: CaseMember?
+    /// Set when the server's 30-minute watch found the case not resolved.
     public let renotifiedAt: Date?
     public let alert: CaseAlert?
-    /// What the AI told the protected person before a family member took over.
+    /// The last answer the AI gave the protected person in this case.
     public let aiReply: String?
-    public let relays: [Relay]
 
     public init(
-        id: String, alertId: String?, state: CaseState, assigneeMemberId: String?, assignee: CaseMember? = nil,
-        notifiedAt: Date, acceptedAt: Date?, resolvedAt: Date?, renotifiedAt: Date? = nil,
-        alert: CaseAlert? = nil, aiReply: String? = nil, relays: [Relay] = []
+        id: String, alertId: String?, state: CaseState, notifiedAt: Date, resolvedAt: Date? = nil,
+        resolvedBy: CaseMember? = nil, renotifiedAt: Date? = nil, alert: CaseAlert? = nil, aiReply: String? = nil
     ) {
         self.id = id
         self.alertId = alertId
         self.state = state
-        self.assigneeMemberId = assigneeMemberId
-        self.assignee = assignee
         self.notifiedAt = notifiedAt
-        self.acceptedAt = acceptedAt
         self.resolvedAt = resolvedAt
+        self.resolvedBy = resolvedBy
         self.renotifiedAt = renotifiedAt
         self.alert = alert
         self.aiReply = aiReply
-        self.relays = relays
     }
 
     public init(from decoder: any Decoder) throws {
@@ -152,15 +141,12 @@ public struct Case: Codable, Hashable, Sendable, Identifiable {
         id = try c.decode(String.self, forKey: .id)
         alertId = try c.decodeIfPresent(String.self, forKey: .alertId)
         state = try c.decode(CaseState.self, forKey: .state)
-        assigneeMemberId = try c.decodeIfPresent(String.self, forKey: .assigneeMemberId)
-        assignee = try c.decodeIfPresent(CaseMember.self, forKey: .assignee)
         notifiedAt = try c.decode(Date.self, forKey: .notifiedAt)
-        acceptedAt = try c.decodeIfPresent(Date.self, forKey: .acceptedAt)
         resolvedAt = try c.decodeIfPresent(Date.self, forKey: .resolvedAt)
+        resolvedBy = try c.decodeIfPresent(CaseMember.self, forKey: .resolvedBy)
         renotifiedAt = try c.decodeIfPresent(Date.self, forKey: .renotifiedAt)
         alert = try c.decodeIfPresent(CaseAlert.self, forKey: .alert)
         aiReply = try c.decodeIfPresent(String.self, forKey: .aiReply)
-        relays = try c.decodeIfPresent([Relay].self, forKey: .relays) ?? []
     }
 }
 

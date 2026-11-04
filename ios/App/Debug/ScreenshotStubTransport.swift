@@ -7,8 +7,13 @@
   /// before the Workers host exists. Release builds never contain this file's code.
   struct ScreenshotStubTransport: HTTPTransport {
     static var isRequested: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub") }
-    /// With `-mimamori-stub-relay-fails` as well, "送る" answers 500, to see how a failed reply looks.
-    static var relayFails: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-relay-fails") }
+    /// With `-mimamori-stub-heard <text>`, pressing the microphone "hears" that text at once, since the
+    /// simulator has no on-device Japanese recognition. The answer comes from the stub below.
+    static var heardText: String? {
+      let args = ProcessInfo.processInfo.arguments
+      guard let i = args.firstIndex(of: "-mimamori-stub-heard"), i + 1 < args.count else { return nil }
+      return args[i + 1]
+    }
     /// The stub keeps the key in memory, so the real marker file is left alone.
     static let marker = FileInstallMarker(url: URL.temporaryDirectory.appending(path: "mimamori-stub-installed"))
 
@@ -27,10 +32,12 @@
             : (201, Self.joinAnswer(role: Self.role(in: request)))
         case ("PUT", "/members/me/apns"):
           (204, "")
+        case ("POST", "/consult"):
+          (200, Self.consultAnswer(to: Self.field("text", in: request) ?? ""))
         case ("GET", "/cases"):
           (200, StubCases.shared.list())
         case ("POST", let p) where p.hasPrefix("/cases/"):
-          StubCases.shared.act(path: p, body: Self.field("body", in: request))
+          StubCases.shared.act(path: p)
         default:
           (404, "{}")
         }
@@ -49,6 +56,17 @@
       String(decoding: try! JSONSerialization.data(withJSONObject: value), as: UTF8.self)
     }
 
+    /// The fake-police answer for anything about the police, otherwise the storage guidance.
+    private static func consultAnswer(to text: String) -> String {
+      let police = "詐欺で使われる説明と一致しています。送金せず、いったん電話を切って家族に確かめて"
+      let storage = "設定の「一般」から「iPhone ストレージ」を開くと、空きを作れます。広告の掃除アプリは入れなくていいよ"
+      let reply = text.contains("警察") ? police : storage
+      return json([
+        "reply": reply, "speak": reply.replacingOccurrences(of: "「", with: "").replacingOccurrences(of: "」", with: ""),
+        "handoff": text.contains("警察"),
+      ])
+    }
+
     private static func role(in request: URLRequest) -> String { field("role", in: request) ?? "protected" }
 
     /// Same shape as the task 2 server: `{familyId, memberId, deviceKey, familyToken, role}`.
@@ -62,8 +80,8 @@
     }
   }
 
-  /// Made-up cases for the screenshots: one just sent to the family, one the sister took and
-  /// answered, and one nobody took for 40 minutes. Accepting, replying, and resolving change them.
+  /// Made-up cases for the screenshots: one just sent to the family, one the sister resolved, and one
+  /// not resolved for 40 minutes. "解決" resolves one as 作者.
   final class StubCases: @unchecked Sendable {
     static let shared = StubCases()
     private let lock = NSLock()
@@ -78,25 +96,17 @@
       cases = [
         [
           "id": "c-police", "alertId": "a-1", "state": "notified", "notifiedAt": at(3),
-          "alert": alert(1, "call", "警察を名乗る電話の相談", "口座が犯罪に使われていると言い、送金を求めた"),
+          "alert": alert(1, "consult", "警察を名乗る電話の相談", "口座が犯罪に使われたという話がある"),
           "aiReply": "詐欺で使われる説明と一致しています。送金せず、いったん電話を切って家族に確かめて",
-          "relays": [],
         ],
         [
-          "id": "c-sister", "alertId": "a-2", "state": "accepted", "notifiedAt": at(20), "acceptedAt": at(18),
-          "assigneeMemberId": "m-sister", "assignee": ["memberId": "m-sister", "displayName": "妹"],
-          "alert": alert(1, "sms", "銀行を名乗るSMS", "暗証番号の入力を求めるページに誘った"),
-          "relays": [
-            [
-              "id": "r-1", "fromMemberId": "m-sister", "fromName": "妹", "createdAt": at(15),
-              "body": "今から電話するね。番号は入れないで",
-            ]
-          ],
+          "id": "c-sister", "alertId": "a-2", "state": "resolved", "notifiedAt": at(20), "resolvedAt": at(12),
+          "resolvedBy": ["memberId": "m-sister", "displayName": "妹"],
+          "alert": alert(1, "sms", "SMS 暗証番号やパスワードを求めている bank-check.example", "暗証番号やパスワードを求めている"),
         ],
         [
           "id": "c-old", "alertId": "a-3", "state": "notified", "notifiedAt": at(40), "renotifiedAt": at(5),
-          "alert": alert(2, "sms", "宅配の不在通知を名乗るSMS", "送り主の名前と違うドメインに誘った"),
-          "relays": [],
+          "alert": alert(2, "sms", "SMS 宅配の不在の知らせをかたっている parcel-notice.example", "宅配の不在の知らせをかたっている"),
         ],
       ]
     }
@@ -105,38 +115,16 @@
       lock.withLock { ScreenshotStubTransport.json(["cases": cases]) }
     }
 
-    /// `/cases/{id}/accept|relay|resolve`. The stub's member is "m-stub", shown as 作者.
-    func act(path: String, body: String?) -> (Int, String) {
+    /// `/cases/{id}/resolve`. The stub's member is "m-stub", shown as 作者. Other verbs are gone (404).
+    func act(path: String) -> (Int, String) {
       let parts = path.split(separator: "/").map(String.init)
-      guard parts.count == 3 else { return (404, "{}") }
-      let (id, verb) = (parts[1], parts[2])
+      guard parts.count == 3, parts[2] == "resolve" else { return (404, #"{"error":"not_found"}"#) }
       return lock.withLock {
-        guard let i = cases.firstIndex(where: { $0["id"] as? String == id }) else { return (404, "{}") }
-        let now = Date.now.ISO8601Format()
-        switch verb {
-        case "accept":
-          if cases[i]["state"] as? String != "notified" {
-            let assignee = cases[i]["assignee"] ?? NSNull()
-            return (409, ScreenshotStubTransport.json(["error": "already_accepted", "assignee": assignee]))
-          }
-          cases[i]["state"] = "accepted"
-          cases[i]["acceptedAt"] = now
-          cases[i]["assigneeMemberId"] = "m-stub"
-          cases[i]["assignee"] = ["memberId": "m-stub", "displayName": "作者"]
-        case "relay":
-          if ScreenshotStubTransport.relayFails { return (500, #"{"error":"stub"}"#) }
-          var relays = cases[i]["relays"] as? [[String: Any]] ?? []
-          relays.append([
-            "id": UUID().uuidString, "fromMemberId": "m-stub", "fromName": "作者", "createdAt": now,
-            "body": body ?? "",
-          ])
-          cases[i]["relays"] = relays
-          return (201, ScreenshotStubTransport.json(["id": "r-new", "createdAt": now]))
-        case "resolve":
+        guard let i = cases.firstIndex(where: { $0["id"] as? String == parts[1] }) else { return (404, "{}") }
+        if cases[i]["state"] as? String != "resolved" {
           cases[i]["state"] = "resolved"
-          cases[i]["resolvedAt"] = now
-        default:
-          return (404, "{}")
+          cases[i]["resolvedAt"] = Date.now.ISO8601Format()
+          cases[i]["resolvedBy"] = ["memberId": "m-stub", "displayName": "作者"]
         }
         return (200, ScreenshotStubTransport.json(cases[i]))
       }
