@@ -1158,6 +1158,7 @@ describe("a line from Claude that says the family was told", () => {
     ["家族に伝わるように連絡して"],
     ["家族に連絡を入れてみて"],
     ["家族に言ったほうがいいよ"],
+    ["家族に届いたか電話して聞いてみて"],
   ];
 
   it.each(advice)("still lets Claude tell her to ask the family at level 3: %s", async (line) => {
