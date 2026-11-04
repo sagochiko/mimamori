@@ -12,7 +12,7 @@ struct ProtectedHomeView: View {
   @Environment(\.scenePhase) private var scenePhase
 
   @State private var draft = ""
-  @FocusState private var writing: Bool
+  @State private var writing = false
   /// Keeps the answer in view while the notices above it change after a handoff. Scrolling herself
   /// stops it.
   @State private var followsConsult = false
@@ -140,13 +140,12 @@ struct ProtectedHomeView: View {
   /// listening) and the send button once she has written something, as in the AI chat apps.
   private var inputBar: some View {
     HStack(alignment: .bottom, spacing: 4) {
-      TextField("メッセージ", text: $draft, axis: .vertical)
-        .font(.body)
-        .lineLimit(1...6)
-        .focused($writing)
-        .padding(.leading, 16)
-        .padding(.vertical, 11)
-        .accessibilityHint("スマホの困りごとや気になる電話のことを書いて、送るボタンを押してください。答えは読み上げません")
+      MessageField(
+        text: $draft, isFocused: $writing, placeholder: "メッセージ", textStyle: .body, maxLines: 6,
+        hint: "スマホの困りごとや気になる電話のことを書いて、送るボタンを押してください。答えは読み上げません"
+      )
+      .padding(.leading, 16)
+      .padding(.vertical, 11)
       Group {
         if hasDraft && !listening { sendButton } else { microphone }
       }

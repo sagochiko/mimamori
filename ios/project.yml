@@ -164,6 +164,21 @@ targets:
         com.apple.security.application-groups:
           - group.com.sagochiko.mimamori
 
+  # Tests of the app's own UIKit parts, run inside the app (the host). Launched with -mimamori-stub
+  # (the scheme's test arguments), so the host never reaches the real backend.
+  MimamoriTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - AppTests
+    dependencies:
+      - target: Mimamori
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1"
+        PRODUCT_BUNDLE_IDENTIFIER: com.sagochiko.mimamori.AppTests
+        GENERATE_INFOPLIST_FILE: YES
+
   CallDirectory:
     type: app-extension
     platform: iOS
@@ -197,5 +212,11 @@ schemes:
         ShareExtension: all
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - MimamoriTests
+      commandLineArguments:
+        "-mimamori-stub": true
     archive:
       config: Release
