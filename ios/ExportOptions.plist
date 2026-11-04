@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Options for `xcodebuild -exportArchive` in /mm-release. Keys are the ones `xcodebuild -help` lists.
+  destination=upload sends the build to App Store Connect as part of the export.
+  manageAppVersionAndBuildNumber=false keeps the build number from ios/project.yml, so the number in
+  git is the number in TestFlight. testFlightInternalTestingOnly is left out on purpose: an
+  internal-only build cannot be added to the judges' external group.
+-->
+<plist version="1.0">
+<dict>
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>destination</key>
+	<string>upload</string>
+	<key>teamID</key>
+	<string>CTK4XXPWH9</string>
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+	<key>uploadSymbols</key>
+	<true/>
+</dict>
+</plist>

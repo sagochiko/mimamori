@@ -21,6 +21,8 @@ export interface ScoredCase {
   rule_level?: Level;
   confident?: boolean;
   reasons?: string[];
+  /** rules+claude only: false when Claude gave nothing usable and the rules stood alone. */
+  claude_answered?: boolean;
 }
 
 export interface SourceMetrics {
@@ -132,7 +134,8 @@ export async function judgeCases(
     const input = toRuleInput(c);
     const start = now();
     const rule = judgeByRules(input);
-    const level = mode === "rules" ? rule.level : (await judge(input, rule)).level;
+    const combined = mode === "rules" ? null : await judge(input, rule);
+    const level = combined === null ? rule.level : combined.level;
     const latency = now() - start;
     scored.push({
       id: c.id,
@@ -144,6 +147,7 @@ export async function judgeCases(
       rule_level: rule.level,
       confident: rule.confident,
       reasons: rule.reasons,
+      ...(combined === null ? {} : { claude_answered: combined.checking !== true }),
     });
   }
   return scored;
