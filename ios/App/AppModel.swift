@@ -54,6 +54,9 @@ final class AppModel {
       if route == .chooseRole {
         self?.invite = nil
         self?.cases = []
+        // The key is gone (a 401, or this iPhone left the family): her conversation goes with it.
+        // Not before the first unlock, when the Keychain only reads as empty.
+        if UIApplication.shared.isProtectedDataAvailable { self?.chat.clear() }
       }
     }
   }
