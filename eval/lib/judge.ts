@@ -1,10 +1,14 @@
 // The Claude side of `--mode rules+claude`: the same requestClaudeJudgment and decide that the judge
 // queue uses (server/src/claude.ts, task 6), so the numbers measure what the family would get.
+// Consultations go the way POST /consult takes them instead (#74): the consultation Claude
+// (requestClaudeConsult in server/src/consult-judge.ts), asked only when her words do not tell the
+// fake-police script, and combined by judgeConsult there (eval/lib/score.ts).
 // Without an API key the mode stops with a clear error instead of making up numbers.
 // No Node APIs here, so the server's Vitest (in workerd) can import this file; eval/run.ts passes the
 // key from the environment.
 
 import { type ClaudeJudgment, decide, requestClaudeJudgment } from "../../server/src/claude";
+import { type ClaudeConsult, requestClaudeConsult } from "../../server/src/consult-judge";
 import type { RuleInput, RuleResult } from "../../server/src/rules/index";
 
 /** The level the family and the mother would get once Claude's judgment is combined with the rules. */
@@ -29,6 +33,13 @@ export const unavailableJudge: Judge = async () => {
   throw new JudgeUnavailableError();
 };
 
+/** The consultation Claude: her words and the rules on them in, its answer or null for any failure out. */
+export type ConsultJudge = (text: string, rule: RuleResult) => Promise<ClaudeConsult | null>;
+
+export const unavailableConsultJudge: ConsultJudge = async () => {
+  throw new JudgeUnavailableError();
+};
+
 /** Lays Claude's answer over the rule result exactly as the judge queue does. */
 export function claudeJudge(ask: AskClaude): Judge {
   return async (input, rule) => {
@@ -41,4 +52,10 @@ export function claudeJudge(ask: AskClaude): Judge {
 export function loadJudge(apiKey: string | undefined): Judge {
   if (!apiKey) return unavailableJudge;
   return claudeJudge((input, rule) => requestClaudeJudgment({ ANTHROPIC_API_KEY: apiKey }, input, rule));
+}
+
+/** The consultation Claude for rules+claude runs (no earlier turns), or one that stops the run without a key. */
+export function loadConsultJudge(apiKey: string | undefined): ConsultJudge {
+  if (!apiKey) return unavailableConsultJudge;
+  return (text, rule) => requestClaudeConsult({ ANTHROPIC_API_KEY: apiKey }, text, rule);
 }
