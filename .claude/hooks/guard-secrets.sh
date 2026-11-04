@@ -8,6 +8,8 @@ source "$(dirname "$0")/lib.sh"
 in=$(cat)
 targets=$(tool_targets "$in")
 targets=${targets//.dev.vars.example/}
+# A backslash at the end of a line continues the command, as the shell reads it (PR #96 review 3).
+targets=${targets//\\$'\n'/ }
 # The gh auth status branch stops at the end of its own command (; & | or a newline), and a short-flag
 # cluster with t ends at anything that is not a letter, so -t;true and -t|pbcopy count (PR #96 review 2).
 nl=$'\n'
