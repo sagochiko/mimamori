@@ -414,8 +414,9 @@ function policePlan(text: string, rule: RuleResult): Plan {
  */
 function plan(text: string, rule: RuleResult, claude: ClaudeConsult | null): Plan {
   const p = decidePlan(text, rule, claude);
-  const reasons = cardReasons(text, rule, p.reasons);
-  return { ...p, reasons, summary: summaryOf(text, rule, claude, reasons) };
+  const steered = rule.reasons.includes(INJECTION.reason) || (claude?.injection_suspected ?? false);
+  const reasons = cardReasons(text, rule, p.reasons, steered);
+  return { ...p, reasons, summary: summaryOf(text, rule, claude, reasons, steered) };
 }
 
 /** The rules' own wording, which may share words with hers ("口座が犯罪に使われ…") and is still not hers. */
@@ -425,25 +426,34 @@ function fixedLines(text: string, rule: RuleResult): string[] {
 
 /**
  * The reasons kept for the family's card, which VoiceOver reads out: a reason Claude wrote that
- * quotes her words is dropped. When none is left, the rules' reasons, or the fixed placeholder.
+ * quotes her words is dropped. When her words carry text aimed at the AI or at keeping the family
+ * out (`steered`), no line Claude wrote is kept, since such text may have written it. When none is
+ * left, the rules' reasons, or the fixed placeholder.
  */
-function cardReasons(text: string, rule: RuleResult, reasons: string[]): string[] {
+function cardReasons(text: string, rule: RuleResult, reasons: string[], steered: boolean): string[] {
+  const fixed = fixedLines(text, rule);
   const fallback = rule.reasons.length > 0 ? rule.reasons : [PLACEHOLDER_REASON];
-  return ownLines(reasons, fixedLines(text, rule), [text], fallback);
+  return ownLines(steered ? reasons.filter((r) => fixed.includes(r)) : reasons, fixed, [text], fallback);
 }
 
 /**
  * The family's one line for a consultation that is not the script: Claude's topic, else the first
  * reason, else FALLBACK_TOPIC. A line Claude wrote is skipped when it repeats her words or would tell
  * the family it is fine; the fixed lines of the rules are used as they are. When her words carry
- * text aimed at the AI or at keeping the family out, Claude's topic is not used at all: it is the
- * line such text would try to steer.
+ * text aimed at the AI or at keeping the family out (`steered`), only the fixed lines are used, never
+ * Claude's topic or reasons: they are the lines such text would try to steer.
  */
-function summaryOf(text: string, rule: RuleResult, claude: ClaudeConsult | null, reasons: string[]): string {
+function summaryOf(
+  text: string,
+  rule: RuleResult,
+  claude: ClaudeConsult | null,
+  reasons: string[],
+  steered: boolean,
+): string {
   const fixed = new Set(fixedLines(text, rule));
   // Not even "安全な…" as a name for the case: the family must not read it as a verdict.
-  const own = (line: string) => fixed.has(line) || (usable(line) && !/安全/.test(line) && !quotes(line, [text]));
-  const steered = rule.reasons.includes(INJECTION.reason) || (claude?.injection_suspected ?? false);
+  const own = (line: string) =>
+    fixed.has(line) || (!steered && usable(line) && !/安全/.test(line) && !quotes(line, [text]));
   const topic = claude?.topic && !steered ? [claude.topic] : [];
   const candidates = [...topic, ...reasons.filter((r) => r !== PLACEHOLDER_REASON), ...rule.reasons];
   return candidates.map((l) => l.trim()).find((l) => l !== "" && own(l)) ?? FALLBACK_TOPIC;

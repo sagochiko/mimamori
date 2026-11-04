@@ -29,6 +29,7 @@ import {
 } from "./claude";
 import { sendPush, type PushPayload } from "./push";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
+import { INJECTION } from "./rules/phrases";
 import { ownLines, quotes } from "./summary";
 
 export interface JudgePayload {
@@ -170,12 +171,15 @@ function receivedOf(job: JudgeJob): string[] {
 
 /**
  * The reasons kept for the family's card and the mother's notice: a reason Claude wrote that quotes
- * the received text is dropped (src/summary.ts). When none is left, the rules' reasons, or the
- * placeholder.
+ * the received text is dropped (src/summary.ts). When the text carries instructions aimed at the
+ * judgment or at keeping the family out (`steered`), no reason Claude wrote is kept at all, since
+ * such text may have written it. When none is left, the rules' reasons, or the placeholder. The
+ * one line (summarize) is made from these, so it follows.
  */
-function cardReasons(job: JudgeJob, rule: RuleResult, reasons: string[]): string[] {
+function cardReasons(job: JudgeJob, rule: RuleResult, reasons: string[], steered: boolean): string[] {
+  const fixed = [...rule.reasons, PLACEHOLDER_REASON];
   const fallback = rule.reasons.length > 0 ? rule.reasons : [PLACEHOLDER_REASON];
-  return ownLines(reasons, [...rule.reasons, PLACEHOLDER_REASON], receivedOf(job), fallback);
+  return ownLines(steered ? reasons.filter((r) => fixed.includes(r)) : reasons, fixed, receivedOf(job), fallback);
 }
 
 function summarize(job: JudgeJob, domain: string | null, rule: RuleResult, reasons: string[]): string {
@@ -358,7 +362,8 @@ async function judgeOne(
   // time Claude gives nothing: a consultation from the mother must not wait on Claude coming back.
   const decision = decide(rule, claude);
   const level = decision.level;
-  const reasons = cardReasons(job, rule, decision.reasons);
+  const steered = rule.reasons.includes(INJECTION.reason) || (claude?.injection_suspected ?? false);
+  const reasons = cardReasons(job, rule, decision.reasons, steered);
 
   const now = deps.now();
   const domain = normalizeDomain(job);
