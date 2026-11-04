@@ -49,22 +49,29 @@ No keys, tokens, or family data go in the brief, as anywhere else.
 
 ## 4. Open the new session
 
+Pick the model of the new main session by who it works with (the author decided on 2026-11-04):
+
+- The author is here, or this is not an autopilot run: `model=opus` and `prompt="$brief を読んで、その指示に従って進めて"`. Talking with the author is mostly design and rule decisions.
+- This session is running `/mm-autopilot` (the author is away): `model=fable` and `prompt="/mm-autopilot $brief を先に読み、その続きから進めて"`. The skill name goes first, so the new session runs the skill; Claude cannot start it itself, since the skill sets `disable-model-invocation`.
+
 ```sh
 stamp=<the same YYYYMMDD-HHMM>
+model=<opus or fable, from the list above>
 mkdir -p "$HOME/tmp"
 brief="$HOME/tmp/mimamori-handoff-$stamp.md"
+prompt=<the prompt from the list above>
 repo=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
 launcher="$HOME/tmp/mimamori-handoff-$stamp.command"
 cat >"$launcher" <<EOF
 #!/bin/zsh
 cd "$repo" || exit 1
-exec "$(command -v claude)" "$brief を読んで、その指示に従って進めて"
+exec "$(command -v claude)" --model "$model" "$prompt"
 EOF
 chmod +x "$launcher"
 open -a Terminal "$launcher"
 ```
 
-The heredoc is unquoted on purpose: the repository path, the brief path, and the `claude` binary are filled in now, from this shell where `claude` is on the PATH. The session starts in the main checkout, so it loads the project's settings and hooks.
+The heredoc is unquoted on purpose: the repository path, the model, the prompt with the brief path, and the `claude` binary are filled in now, from this shell where `claude` is on the PATH. The session starts in the main checkout, so it loads the project's settings and hooks. `--model` takes an alias such as `opus` or `fable` and applies to the launched session only (https://code.claude.com/docs/en/cli-reference, https://code.claude.com/docs/en/model-config). On Opus 5.5 the project's `modelSettings` sets `xhigh` effort; Fable runs at its own default.
 
 Open the `.command` file with `open -a Terminal`. Do not drive Terminal with AppleScript (`tell application "Terminal" to do script`): called from a Claude Code shell it times out. Opening a `.command` file needs no extra permission.
 
@@ -77,6 +84,8 @@ for i in $(seq 30); do pgrep -fl "mimamori-handoff-$stamp.md" && exit 0; sleep 2
 ```
 
 If it exits 1, the window did not start claude: look at the `.command` file and try once more; if it fails again, tell the author what failed.
+
+The loop sees the process, not the screen. An interactive session on Fable can stop at a one-time usage-credits consent prompt before its first turn ("In interactive sessions, Claude Code can show a Fable usage-credits consent prompt", https://code.claude.com/docs/en/model-config). Once the author has accepted it, it does not come back. Until then, a Fable handoff made while the author is away can wait on that prompt, so the accepting is an "作者:" step from #85.
 
 ## 6. Stop here
 
