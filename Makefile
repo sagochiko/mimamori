@@ -1,6 +1,6 @@
 # One-command entry points. Claude Code and the author use the same commands.
 
-.PHONY: setup bootstrap verify eval eval-split eval-holdout usage apple-skills simulator
+.PHONY: setup bootstrap verify eval eval-rules eval-split eval-holdout usage apple-skills simulator
 
 # Once per clone: use the repository's git hooks (the commit convention in .githooks/commit-msg).
 setup:
@@ -19,9 +19,18 @@ verify:
 	@scripts/verify.sh
 
 # Accuracy on the dev set, rules only and rules plus Claude (the contract in task 4 of docs/plan.md).
-# Each run appends to eval/results.jsonl and eval/RESULTS.md.
+# Each run appends to eval/results.jsonl and eval/RESULTS.md. The Claude half needs ANTHROPIC_API_KEY
+# in the environment; it is checked first, so a shell without the key (a git worktree, a session
+# where the author has not exported it) records nothing instead of a rules row with no Claude row.
+# The value is only tested for being set, never printed.
 eval:
+	@test -n "$$ANTHROPIC_API_KEY" || { echo "make eval: ANTHROPIC_API_KEY is not set, so the rules+claude half cannot run; nothing was measured. Export the key in this shell, or run make eval-rules for the rules half alone."; exit 1; }
 	@cd server && npx tsx ../eval/run.ts --set dev --mode rules && npx tsx ../eval/run.ts --set dev --mode rules+claude
+
+# The rules half alone, which calls no API and costs nothing from the daily budget. For checking a
+# rule change where no key is at hand; the notes column says it is rules only.
+eval-rules:
+	@cd server && npx tsx ../eval/run.ts --set dev --mode rules
 
 # Move whole scam patterns from eval/cases/pool into dev or holdout.
 eval-split:

@@ -21,6 +21,20 @@ expect() { # <expected exit> <hook> <json> <label>
 expect 2 guard-secrets.sh '{"tool_name":"Read","tool_input":{"file_path":"server/.dev.vars"}}' "reading .dev.vars is blocked"
 expect 0 guard-secrets.sh '{"tool_name":"Read","tool_input":{"file_path":"server/.dev.vars.example"}}' "reading .dev.vars.example passes"
 expect 2 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"cat ~/keys/AuthKey_ABC123.p8"}}' "reading an APNs key is blocked"
+expect 2 guard-secrets.sh '{"tool_name":"Read","tool_input":{"file_path":"/Users/someone/.config/gh/hosts.yml"}}' "reading the gh token file is blocked"
+expect 2 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"grep oauth_token ~/.config/gh/hosts.yml"}}' "grep in the gh config directory is blocked"
+expect 0 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"gh auth status"}}' "gh auth status passes"
+expect 2 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"gh auth status --show-token"}}' "gh auth status --show-token is blocked"
+expect 2 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"gh auth status -t"}}' "gh auth status -t is blocked"
+expect 2 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"gh auth status -h github.com -t"}}' "gh auth status with -t after another flag is blocked"
+expect 0 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"gh auth status -h github.com"}}' "gh auth status -h passes"
+expect 0 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"gh auth status && git push -u origin HEAD"}}' "a -u after gh auth status in another command passes"
+expect 2 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"gh auth status -t;true"}}' "gh auth status -t right before ; is blocked"
+expect 2 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"gh auth status -t|pbcopy"}}' "gh auth status -t right before | is blocked"
+expect 2 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"gh auth status -t>/tmp/x"}}' "gh auth status -t right before > is blocked"
+expect 0 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"gh auth status\nls -lt"}}' "a t flag on the next line after gh auth status passes"
+expect 2 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"gh auth status \\\n--show-token"}}' "the token flag on a line continued with a backslash is blocked"
+expect 0 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"gh config get git_protocol"}}' "gh config passes"
 expect 2 guard-holdout.sh '{"tool_name":"Read","tool_input":{"file_path":"eval/cases/holdout/a.jsonl"}}' "reading holdout is blocked"
 expect 0 guard-holdout.sh '{"tool_name":"Read","tool_input":{"file_path":"eval/cases/dev/a.jsonl"}}' "reading dev passes"
 expect 0 guard-holdout.sh '{"tool_name":"Write","agent_type":"mm-eval-curator","tool_input":{"file_path":"eval/cases/pool/a.jsonl"}}' "the curator writes the pool"
@@ -447,6 +461,51 @@ nojq 2 guard-private.sh 'gh issue create --title x --body y' "the personal-data 
 nojq 0 guard-private.sh 'git status --short' "the personal-data gate lets ordinary commands through when jq fails"
 nojq 2 guard-private.sh 'git commit --no-verify -m x' "the commit-hooks guard holds when jq fails"
 nojq 2 guard-private.sh 'git -c core.hooksPath=/dev/null commit -m x' "the hooks-path guard holds when jq fails"
+# guard-prod fails closed the same way (M1 end audit, 2026-11-05): registered with onFailure "block",
+# and without jq it stops what it guards (git push, wrangler, gh api) and lets the rest through.
+jq -e '[.hooks.PreToolUse[].hooks[] | select(.command | endswith("guard-prod.sh")) | select(.onFailure == "block")] | length == 1' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: guard-prod.sh must be registered once with onFailure block"; fail=1; }
+nojq 2 guard-prod.sh 'git push --force origin main' "guard-prod stops a force push when jq fails"
+nojq 2 guard-prod.sh 'npx wrangler d1 delete mimamori' "guard-prod stops wrangler when jq fails"
+nojq 2 guard-prod.sh 'gh api -X DELETE repos/x/y' "guard-prod stops gh api when jq fails"
+nojq 0 guard-prod.sh 'pushd server && npm test' "guard-prod lets pushd through when jq fails"
+nojq 0 guard-prod.sh 'ls -la server' "guard-prod lets ordinary commands through when jq fails"
+# In the raw JSON a newline or a tab is the two characters \n or \t, so a gh on the second line follows an
+# n or a t (PR #96 review). jq -Rs puts a real newline into the input the way Claude Code sends it.
+nojq_raw() { # <expected exit> <hook> <command with real newlines or tabs> <label>
+  local got
+  printf '%s' "$3" | jq -Rsc '{tool_name:"Bash",tool_input:{command:.}}' | PATH="$T/nojq:$PATH" "$H/$2" >/dev/null 2>&1
+  got=$?
+  if [[ $got -ne $1 ]]; then echo "hook test failed: $4 (expected $1, got $got)"; fail=1; fi
+}
+nojq_raw 2 guard-prod.sh $'cd server\ngh api -X DELETE repos/x/y' "guard-prod stops a gh on the second line when jq fails"
+nojq_raw 2 guard-prod.sh $'cd server\n\tgh api -X DELETE repos/x/y' "guard-prod stops a gh after a tab when jq fails"
+nojq_raw 2 guard-prod.sh $'cd server\nnpx wrangler deploy' "guard-prod stops wrangler on the second line when jq fails"
+nojq_raw 2 guard-private.sh $'cat <<EOF >/tmp/x\nbody\nEOF\ngh issue create --title t --body-file /tmp/x' "guard-private stops a gh after a heredoc when jq fails"
+nojq_raw 0 guard-prod.sh $'cd server\nnpm test' "guard-prod lets an ordinary second line through when jq fails"
+# guard-mcp: a subagent cannot move the session's simulator, project, or scheme; the main session can.
+mcp() { # <expected exit> <json> <label>
+  echo "$2" | "$H/guard-mcp.sh" >/dev/null 2>&1
+  local got=$?
+  if [[ $got -ne $1 ]]; then echo "hook test failed: guard-mcp: $3 (expected $1, got $got)"; fail=1; fi
+}
+mcp 2 '{"tool_name":"mcp__mobilebuildmcp__session_set_defaults","agent_type":"mm-verifier","agent_id":"abc","tool_input":{"simulatorName":"iPhone 17"}}' "a subagent cannot set the session defaults"
+mcp 2 '{"tool_name":"mcp__mobilebuildmcp__session_clear_defaults","agent_type":"mm-implementer","tool_input":{}}' "a subagent cannot clear the session defaults"
+mcp 2 '{"tool_name":"mcp__mobilebuildmcp__session_use_defaults_profile","agent_type":"general-purpose","tool_input":{"profile":"x"}}' "a subagent cannot switch the defaults profile"
+mcp 0 '{"tool_name":"mcp__mobilebuildmcp__session_set_defaults","tool_input":{"simulatorName":"iPhone 17"}}' "the main session sets the defaults"
+mcp 0 '{"tool_name":"mcp__mobilebuildmcp__session_show_defaults","agent_type":"mm-verifier","tool_input":{}}' "a subagent reads the defaults"
+mcp 0 '{"tool_name":"mcp__mobilebuildmcp__build_run_sim","agent_type":"mm-verifier","tool_input":{}}' "a subagent builds and runs"
+echo 'not json' | PATH="$T/nojq:$PATH" "$H/guard-mcp.sh" >/dev/null 2>&1 && { echo "hook test failed: guard-mcp lets a call through when jq fails"; fail=1; }
+jq -e '[.hooks.PreToolUse[] | select(.matcher | split("|") | (index("mcp__mobilebuildmcp__session_set_defaults") and index("mcp__mobilebuildmcp__session_clear_defaults") and index("mcp__mobilebuildmcp__session_use_defaults_profile"))) | .hooks[] | select(.command | endswith("guard-mcp.sh")) | select(.onFailure == "block")] | length == 1' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: guard-mcp.sh must match the three default-rewriting tools with onFailure block"; fail=1; }
+# The connectors' outward and destructive tools: sending mail asks, deleting is denied. The rule shape
+# is mcp__<server>__<tool>; a rule with parentheses is dropped by Claude Code when it loads the file.
+jq -e '(.permissions.ask | index("mcp__claude_ai_Gmail__send_message") and index("mcp__claude_ai_Gmail__reply") and index("mcp__claude_ai_Gmail__forward"))' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: sending mail through the Gmail connector must ask"; fail=1; }
+jq -e '(.permissions.deny | index("mcp__claude_ai_Gmail__trash_*") and index("mcp__claude_ai_Gmail__delete_*") and index("mcp__claude_ai_Gmail__apply_sensitive_*") and index("mcp__claude_ai_Gmail__mark_message_spam") and index("mcp__claude_ai_Gmail__mark_thread_spam") and index("mcp__claude_ai_Google_Calendar__delete_event") and index("mcp__claude_ai_Claude_Docs__delete"))' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: the connectors' delete tools must be denied"; fail=1; }
+jq -e '[.permissions[][] | select(startswith("mcp__") and contains("("))] | length == 0' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: an mcp__ rule with parentheses is skipped by Claude Code"; fail=1; }
 # stop-gate: judged in the tree of the input's cwd, against origin/main, and never passing untested.
 # $T/work is the throwaway repository of the merge tests. Its local main stays behind origin/main.
 g switch -q -c gate origin/main 2>/dev/null
@@ -779,6 +838,21 @@ touch "$T/mkwt/.claude/state/holdout.unlock"
 hold && { echo "make test failed: eval-holdout takes an unlock file in the worktree, which the author never makes"; fail=1; }
 rm -f "$T/mkwt/.claude/state/holdout.unlock" && touch "$M/.claude/state/holdout.unlock"
 hold || { echo "make test failed: eval-holdout from a worktree finds the author's unlock in the main tree"; fail=1; }
+# make eval needs the API key before it runs anything, so a shell without it leaves no rules-only row
+# behind (M1 end audit: a worktree run recorded the rules half and skipped the Claude half). The fake
+# npx leaves a mark when it runs. make eval-rules runs the rules half without a key.
+mkdir -p "$T/markbin" && printf '#!/bin/sh\ntouch "%s/npx-ran"\n' "$T" >"$T/markbin/npx" && chmod +x "$T/markbin/npx"
+ev() { # <key or ""> <target>: make in the throwaway worktree (it has a server/), the key unset from the outer shell first
+  (cd "$T/mkwt" && env -u ANTHROPIC_API_KEY ${1:+ANTHROPIC_API_KEY=$1} PATH="$T/markbin:$PATH" make -s "$2" >/dev/null 2>&1)
+}
+rm -f "$T/npx-ran"
+ev "" eval && { echo "make test failed: eval runs without the API key"; fail=1; }
+[[ -e "$T/npx-ran" ]] && { echo "make test failed: eval without the key still started a measurement"; fail=1; }
+ev test-only-not-a-key eval || { echo "make test failed: eval runs when the key is set"; fail=1; }
+[[ -e "$T/npx-ran" ]] || { echo "make test failed: eval with the key did not start the measurement"; fail=1; }
+rm -f "$T/npx-ran"
+ev "" eval-rules || { echo "make test failed: eval-rules needs no key"; fail=1; }
+[[ -e "$T/npx-ran" ]] || { echo "make test failed: eval-rules did not start the measurement"; fail=1; }
 jq -nc --arg d "$T/mkwt" '{tool_name:"Bash",tool_input:{command:"make eval-holdout"},cwd:$d}' |
   CLAUDE_PROJECT_DIR="$T/mkwt" "$H/guard-holdout.sh" >/dev/null 2>&1 ||
   { echo "hook test failed: guard-holdout finds the unlock in the main tree from a worktree session"; fail=1; }
