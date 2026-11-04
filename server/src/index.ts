@@ -1,6 +1,7 @@
 // Routing. Each route lives in its own module; this file only matches method and path.
 
 import { acceptRoute, listCases, relayRoute, resolveRoute } from "./cases";
+import { consultRoute } from "./consult";
 import { runScheduled } from "./cron";
 import { createFamily, createInvite, deleteEverything, joinInvite, leaveFamily, registerApns } from "./families";
 import { errorResponse, HttpError } from "./http";
@@ -15,6 +16,7 @@ const routes: Array<[method: string, pattern: RegExp, handler: Handler]> = [
   ["PUT", /^\/members\/me\/apns$/, (req, env) => registerApns(req, env)],
   ["DELETE", /^\/members\/([^/]+)$/, (req, env, [id]) => leaveFamily(req, env, id ?? "")],
   ["DELETE", /^\/families\/me$/, (req, env) => deleteEverything(req, env)],
+  ["POST", /^\/consult$/, (req, env) => consultRoute(req, env)],
   ["GET", /^\/cases$/, (req, env) => listCases(req, env)],
   ["POST", /^\/cases\/([^/]+)\/accept$/, (req, env, [id]) => acceptRoute(req, env, id ?? "")],
   ["POST", /^\/cases\/([^/]+)\/relay$/, (req, env, [id]) => relayRoute(req, env, id ?? "")],
