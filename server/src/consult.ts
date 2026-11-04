@@ -140,6 +140,12 @@ const REASSURING = new RegExp(
   ].join("|"),
 );
 
+// Lines saying the family was told. Whether anyone was told is decided here (openCase and
+// family_notified_at), never by Claude: on a path that tells nobody, or when the notice did not reach
+// them, such a line would make her think the family knows (#60). "家族に確かめて" or "家族に連絡して"
+// tell her to ask and are fine.
+const TOLD_CLAIM = /家族(に|へ)(は|も)?(お?知らせ|伝え|連絡|共有|通知)(し)?(まし|た|てあ|ておき|ていま)/;
+
 // What she asks about is a message, a call, a link, a page, or installing an app: then Claude's free
 // guidance is not read out (a "help" answer could still tell her it is fine), and she gets the fixed
 // level 3 line. Pure phone troubles (Wi-Fi, volume, storage) keep Claude's guidance.
@@ -339,7 +345,9 @@ function policeReasons(text: string): string[] {
 
 /** A line from Claude that may be read out to her. */
 function usable(line: string): boolean {
-  return line.trim() !== "" && !soundsSafe(line) && !BROAD_CLAIM.test(line) && !REASSURING.test(line);
+  return (
+    line.trim() !== "" && !soundsSafe(line) && !BROAD_CLAIM.test(line) && !REASSURING.test(line) && !TOLD_CLAIM.test(line)
+  );
 }
 
 /**
@@ -565,9 +573,9 @@ async function familyWasTold(env: Env, caseId: string | null): Promise<boolean> 
   return row?.family_notified_at != null;
 }
 
-/** Her answer when the family was not told: NOT_REACHED in place of "家族に伝えました", or after it. */
-function notReached(reply: string): string {
-  if (reply.includes(TOLD_FAMILY)) return reply.replace(TOLD_FAMILY, NOT_REACHED);
+/** Her answer when the family was not told: NOT_REACHED in place of every "家族に伝えました", or after it. */
+export function notReachedReply(reply: string): string {
+  if (reply.includes(TOLD_FAMILY)) return reply.replaceAll(TOLD_FAMILY, NOT_REACHED);
   return `${reply.replace(/[。、\s]+$/, "")}。${NOT_REACHED}`;
 }
 
@@ -620,7 +628,7 @@ export async function consult(
     const alertId = await insertAlert(env, member.familyId, p, now);
     if (p.toFamily) caseId = await openFor(env, alertId, budget, deps);
   }
-  const reply = p.toFamily && !(await familyWasTold(env, caseId)) ? notReached(p.reply) : p.reply;
+  const reply = p.toFamily && !(await familyWasTold(env, caseId)) ? notReachedReply(p.reply) : p.reply;
   // She hears the whole answer; the card gets a fixed line instead when the answer repeats her words.
   if (caseId !== null) await recordAiReply(env, caseId, repeats(reply, [text]) ? AI_REPLY_ON_CARD : reply);
   return answer(reply, p.toFamily);

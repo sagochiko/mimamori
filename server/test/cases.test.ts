@@ -629,6 +629,37 @@ describe("the 30-minute watch", () => {
     expect(sent).toHaveLength(0);
   });
 
+  it("cases of a family with no device do not crowd out another family's untold case from the retry", async () => {
+    // A family whose members registered no device: 25 untold cases, newer than the other family's.
+    const deviceless = await family();
+    await env.DB.prepare("UPDATE members SET apns_token = NULL WHERE family_id = ? AND role = 'family'")
+      .bind(deviceless.familyId)
+      .run();
+    const now = Date.now();
+    for (let i = 0; i < 25; i++) {
+      const alertId = await newAlert(deviceless.familyId);
+      await env.DB.prepare(
+        "INSERT INTO cases (id, family_id, alert_id, state, notified_at) VALUES (?, ?, ?, 'notified', ?)",
+      )
+        .bind(crypto.randomUUID(), deviceless.familyId, alertId, now - 60_000 + i)
+        .run();
+    }
+    // The other family's notice failed on APNs ten minutes ago.
+    const f = await family();
+    const alertId = await newAlert(f.familyId);
+    const apns = apnsFailsFor([f.author.token, f.sister.token]);
+    await expect(open(alertId)).rejects.toMatchObject({ name: "CaseNoticeDeferred" });
+    await backdate((await caseOf(alertId))?.id ?? "", 10);
+    apns.ok = true;
+    sent = [];
+
+    await tick(now);
+
+    expect(to(f.author)).toHaveLength(1);
+    expect(to(f.sister)).toHaveLength(1);
+    expect((await caseOf(alertId))?.family_notified_at).not.toBeNull();
+  });
+
   it("an untold case is still watched: after 30 minutes the protected person hears it did not reach the family, even while the family's devices fail", async () => {
     const f = await family();
     const alertId = await newAlert(f.familyId);

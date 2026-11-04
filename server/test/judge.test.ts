@@ -576,6 +576,31 @@ describe("judge consumer", () => {
       expect(pushesTo([fam.tokens.mother])).toHaveLength(1);
     });
 
+    // #60: a family with no device to notify is not told, so the message is retried like a failed
+    // notice; the retry neither asks Claude again nor pushes to the mother twice.
+    it("retries when no family member has a device, without asking Claude again or telling the mother twice", async () => {
+      const fam = await setupFamily();
+      await env.DB.prepare("UPDATE members SET apns_token = NULL WHERE family_id = ? AND role = 'family'")
+        .bind(fam.familyId)
+        .run();
+      const message = messageOf(queued(smsJob(fam.familyId)));
+      const first = fakes();
+      const r1 = await runMessages([message], first);
+      expect(r1.result.retryMessages).toHaveLength(1);
+      expect(first.claudeCalls).toBe(1);
+      expect(pushesTo([fam.tokens.mother])).toHaveLength(1);
+      const [alert] = await alertsOf(fam.familyId);
+      expect((await caseOf(alert?.id))?.family_notified_at).toBeNull();
+
+      const second = fakes();
+      const r2 = await runMessages([redelivered(message, 2)], second);
+      expect(r2.result.retryMessages).toHaveLength(1);
+      expect(second.claudeCalls).toBe(0);
+      expect(pushesTo([fam.tokens.mother])).toHaveLength(1);
+      expect(pushesTo(fam.tokens.family)).toHaveLength(0);
+      expect(await alertsOf(fam.familyId)).toHaveLength(1);
+    });
+
     it("retries when openCase fails for another reason", async () => {
       const fam = await setupFamily();
       const { result } = await run([smsJob(fam.familyId)], fakes({ openCase: () => Promise.reject(new Error("d1")) }));

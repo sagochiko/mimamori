@@ -325,12 +325,16 @@ export async function openCase(env: Env, alertId: string, budget: ExternalBudget
 /**
  * Every 5 minutes, before the 30-minute watch (src/cron.ts): the first notice of a case nobody in the
  * family was told about yet, as when the queue stopped retrying while APNs kept failing. Newest
- * first, for a day after the case opened, within the tick's shared budget.
+ * first, for a day after the case opened, within the tick's shared budget. Only families with a
+ * device to notify: a family that registered none would fill the batch and keep another family's
+ * failed notice from being retried. Its cases are picked up once someone registers a device.
  */
 export async function sendFirstNotices(env: Env, now: number, budget: ExternalBudget): Promise<void> {
   const due = await env.DB.prepare(
     `SELECT c.id, c.family_id, a.level, a.summary FROM cases c LEFT JOIN alerts a ON a.id = c.alert_id
       WHERE c.state != 'resolved' AND c.family_notified_at IS NULL AND c.notified_at > ?
+        AND EXISTS (SELECT 1 FROM members m
+                     WHERE m.family_id = c.family_id AND m.role = 'family' AND m.apns_token IS NOT NULL)
       ORDER BY c.notified_at DESC LIMIT ${FIRST_NOTICE_BATCH}`,
   )
     .bind(now - FIRST_NOTICE_RETRY_MS)
