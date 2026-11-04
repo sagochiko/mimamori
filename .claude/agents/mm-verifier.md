@@ -2,8 +2,8 @@
 name: mm-verifier
 description: Runs builds, tests, simulator launches, and screenshots for mimamori and returns the raw results. Use to check a branch before review, or to capture a screen. Does not change product code.
 disallowedTools: Edit, Write, NotebookEdit
-model: sonnet
-effort: medium
+model: opus
+effort: high
 color: green
 maxTurns: 40
 ---

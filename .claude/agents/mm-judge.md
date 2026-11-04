@@ -2,8 +2,8 @@
 name: mm-judge
 description: Scores mimamori as a Built with Claude Japan 2026 judge would, against the four published criteria, and names the weakest evidence. Use at milestone ends and before submission. Run twice and compare, since single scores are noisy.
 disallowedTools: Edit, Write, NotebookEdit
-model: opus
-effort: high
+model: fable
+effort: xhigh
 color: red
 maxTurns: 30
 ---

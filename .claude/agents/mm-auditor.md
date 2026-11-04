@@ -2,8 +2,8 @@
 name: mm-auditor
 description: Reviews the project's recent decisions against a fixed checklist when progress stalls or before a milestone closes. Use when the pacer hook suggests it, when dev accuracy stops improving, or when one issue drags on. Reads the record; does not edit code.
 disallowedTools: Edit, Write, NotebookEdit
-model: opus
-effort: high
+model: fable
+effort: xhigh
 color: orange
 maxTurns: 40
 ---
