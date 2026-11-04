@@ -105,7 +105,7 @@ mimamori/
 | `members` | `id`、`family_id`、`role`(`protected` か `family`)、`display_name`、`device_key_hash`、`apns_token`、`apns_env` |
 | `invites` | `code`(6桁)、`family_id`、`expires_at`、`used_at` |
 | `alerts` | `id`、`family_id`、`source`(`sms`、`gmail`、`dns`、`page`、`call`、`consult`)、`level`(1、2、3)、`reasons`(JSON)、`summary`、`rule_level`、`claude_level`、`created_at`、`sender_key` と `domain_key`(送り主とドメインを家族の ID と合わせた SHA-256。1時間に1回にまとめるために使う)、`notified`(家族と母に知らせる行なら1。3段階と、まとめて知らせなかった行は0)、`protected_notified_at`(母への通知が届いた時刻。届くまでは空) |
-| `cases` | `id`、`family_id`、`alert_id`、`state`(`notified`、`resolved`。前の版の `accepted` が残っていたら解決していないものとして扱う)、`assignee_member_id`(解決を押した家族)、`agent_session_id`、`notified_at`、`resolved_at`、`renotified_at`、`ai_reply`(AI が母に最後に答えたこと)、`family_notified_at`(家族に最初の知らせが届いた時刻。届くまでは空)。`accepted_at` は残すが読み書きしない |
+| `cases` | `id`、`family_id`、`alert_id`、`state`(`notified`、`resolved`。前の版の `accepted` が残っていたら解決していないものとして扱う)、`assignee_member_id`(解決を押した家族)、`agent_session_id`、`notified_at`、`resolved_at`、`renotified_at`、`ai_reply`(AI が母に最後に答えたこと)、`family_notified_at`(家族に最初の知らせが届いた時刻。届くまでは空)、`family_notice_claimed_at`(最初の知らせを送る前に立て、届くか諦めたら空に戻す claim の時刻で、5分より古いものは次の送り手が引き継ぐ。#64)。`accepted_at` は残すが読み書きしない |
 | `relays` | `id`、`case_id`、`from_member_id`、`body`、`created_at`。家族から母への返事を外したので、読み書きせず、相談と一緒に消すだけにする(本番の D1 を変えないため、表は残す) |
 | `smiles` | `id`、`family_id`、`member_id`、`r2_key`、`score`、`created_at` |
 | `gmail_auth` | `family_id`、`refresh_token_enc`、`granted_at`、`last_history_id`、`expired_notified_at` |
@@ -382,7 +382,7 @@ Safari の拡張機能、背面タップ、DNS のサーバーが止まったと
 **つなぎ目**
 
 - 使うもの `alerts`、`sendPush`
-- 渡すもの `openCase(env, alertId, budget)`(`budget` は呼び出し1回で共有する外への通信の枠。相談の行は最初に入れて残す。家族の端末の数だけ枠が取れないときと、家族の誰にも知らせが届かなかったとき(通知を受けられる端末が無いときも含む)は、`family_notified_at` を空のまま `CaseNoticeDeferred` を投げる。同じ `alertId` でもう一度呼ぶと家族に知らせ、知らせ済みなら知らせも枠の消費もせずに相談を返す)、`resolveCase(env, caseId, memberId)`、`recordAiReply(env, caseId, text)`(AI の答えをカードのために残す。AI はいつも母に答える)
+- 渡すもの `openCase(env, alertId, budget)`(`budget` は呼び出し1回で共有する外への通信の枠。相談の行は最初に入れて残す。家族の端末の数だけ枠が取れないときと、家族の誰にも知らせが届かなかったとき(通知を受けられる端末が無いときも含む)は、`family_notified_at` を空のまま `CaseNoticeDeferred` を投げる。同じ `alertId` でもう一度呼ぶと家族に知らせ、知らせ済みなら知らせも枠の消費もせずに相談を返す。別の呼び出しがその知らせを送っている最中(`family_notice_claimed_at` が立っている)なら、投げずに相談を返し、届くまでは届いていないと読む)、`resolveCase(env, caseId, memberId)`、`recordAiReply(env, caseId, text)`(AI の答えをカードのために残す。AI はいつも母に答える)
 
 **手順**
 
