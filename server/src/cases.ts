@@ -276,8 +276,9 @@ async function sendCaseNotice(
 
 /**
  * Tells the family again about a case they were already told of, because its level just became
- * heavier (a later consultation in the same conversation). Best effort: when the budget or APNs
- * fails, the card still shows the heavier level. Returns whether a family device took it.
+ * heavier (a later consultation in the same conversation). When the budget or APNs fails, it is
+ * logged and the case goes back to waiting for its first notice, so the 5-minute tick
+ * (sendFirstNotices) sends it with the heavier level. Returns whether a family device took it.
  */
 export async function tellFamilyHeavier(env: Env, caseId: string, budget: ExternalBudget): Promise<boolean> {
   const row = await env.DB.prepare(
@@ -288,7 +289,11 @@ export async function tellFamilyHeavier(env: Env, caseId: string, budget: Extern
     .first<{ id: string; family_id: string; level: number; summary: string | null }>();
   if (!row) return false;
   const sent = await sendCaseNotice(env, { id: row.id, familyId: row.family_id, level: row.level, summary: row.summary }, budget);
-  return sent === "told";
+  if (sent === "told") return true;
+  // Back on the first notice's retry: the 5-minute tick sends it again, with the heavier level.
+  console.error("case heavier notice deferred", sent);
+  await env.DB.prepare("UPDATE cases SET family_notified_at = NULL WHERE id = ?").bind(caseId).run();
+  return false;
 }
 
 /**
