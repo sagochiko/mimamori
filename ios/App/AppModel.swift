@@ -78,7 +78,8 @@ final class AppModel {
     #if DEBUG
       if ScreenshotStubTransport.isRequested {
         return AppModel(
-          store: InMemoryDeviceKeyStore(ScreenshotStubTransport.joinedAs), transport: ScreenshotStubTransport(),
+          store: InMemoryDeviceKeyStore(ScreenshotStubTransport.joinedAs),
+          transport: ScreenshotStubTransport(),
           marker: ScreenshotStubTransport.marker,
           chatStore: ScreenshotStubTransport.chatStore)
       }
@@ -147,7 +148,8 @@ final class AppModel {
 
   /// The microphone: starts listening, or stops it.
   func micTapped() {
-    if case .listening = voice.phase {} else {
+    if case .listening = voice.phase {
+    } else {
       followUp.consultStarted()
       followUpPrompt = nil
     }
@@ -260,8 +262,14 @@ final class AppModel {
   /// Asks for notification permission once the person has joined, then registers with APNs.
   func requestPushIfJoined() async {
     guard route != .chooseRole else { return }
+    #if DEBUG
+      // The stub has no APNs, and the permission sheet would cover the screenshots.
+      if ScreenshotStubTransport.isRequested { return }
+    #endif
     let granted =
-      (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+      (try? await UNUserNotificationCenter.current().requestAuthorization(options: [
+        .alert, .sound, .badge,
+      ])) ?? false
     if granted { UIApplication.shared.registerForRemoteNotifications() }
   }
 
