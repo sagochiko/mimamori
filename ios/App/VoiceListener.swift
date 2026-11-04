@@ -11,6 +11,8 @@ import Speech
 @MainActor
 final class VoiceListener {
   enum Event {
+    /// The microphone and the recognizer are running (after the permission sheets, the first time).
+    case started
     case partial(String)
     case final(String)
     case failed(ConsultFailure)
@@ -53,6 +55,7 @@ final class VoiceListener {
           self?.handle(text: text, isFinal: isFinal, failed: failed, generation: current)
         }
       }
+      onEvent?(.started)
     } catch {
       fail(.unavailable, generation: current)
     }

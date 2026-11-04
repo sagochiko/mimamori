@@ -143,6 +143,7 @@ final class AppModel {
 
   private func listened(_ event: VoiceListener.Event) {
     switch event {
+    case .started: apply(voice.listeningStarted(at: .now))
     case .partial(let text): apply(voice.heard(text, isFinal: false, at: .now))
     case .final(let text): apply(voice.heard(text, isFinal: true, at: .now))
     case .failed(let failure): apply(voice.listeningFailed(failure))
@@ -161,6 +162,8 @@ final class AppModel {
             continue
           }
         #endif
+        // The silence clock starts when the listener reports .started, not here: the first time,
+        // the permission sheets come first (VoiceConsult.listeningStarted).
         watchSilence()
         Task { await listener.start() }
       case .stopListening:

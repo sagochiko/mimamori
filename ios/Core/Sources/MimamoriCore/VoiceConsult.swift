@@ -82,9 +82,12 @@ public enum ConsultEffect: Equatable, Sendable {
 
 public struct VoiceConsult: Sendable {
   public private(set) var phase: ConsultPhase = .idle
+  /// When the recognizer actually started. Nil while the permission sheets are still up.
   private var startedAt: Date?
   private var lastHeardAt: Date?
   private var stopRequested = false
+  /// She pressed again before listening started: stop as soon as it starts.
+  private var stopPending = false
 
   /// The server refuses longer text (server/src/consult.ts, CONSULT_TEXT_MAX_CHARS).
   public static let maxCharacters = 1000
@@ -102,15 +105,28 @@ public struct VoiceConsult: Sendable {
     switch phase {
     case .idle, .answered, .failed:
       phase = .listening(heard: "")
-      startedAt = now
+      startedAt = nil
       lastHeardAt = nil
       stopRequested = false
+      stopPending = false
       return [.stopSpeaking, .startListening]
     case .listening:
+      guard startedAt != nil else {
+        stopPending = true
+        return []
+      }
       return requestStop()
     case .thinking:
       return []
     }
+  }
+
+  /// The recognizer is listening. The first time, this comes after the permission sheets, so the
+  /// silence clock starts here, not at the press. A press that came before is carried out now.
+  public mutating func listeningStarted(at now: Date) -> [ConsultEffect] {
+    guard case .listening = phase, startedAt == nil else { return [] }
+    startedAt = now
+    return stopPending ? requestStop() : []
   }
 
   /// What the recognizer has so far. The final result sends it.

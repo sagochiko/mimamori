@@ -64,6 +64,7 @@ struct VoiceConsultTests {
   func secondTapStopsAndSends() {
     var flow = VoiceConsult()
     _ = flow.micTapped(at: .t0)
+    _ = flow.listeningStarted(at: .t0)
     #expect(flow.heard("警察から電話があって", isFinal: false, at: .t0 + 1).isEmpty)
     #expect(flow.phase == .listening(heard: "警察から電話があって"))
     #expect(flow.micTapped(at: .t0 + 2) == [.stopListening])
@@ -103,11 +104,13 @@ struct VoiceConsultTests {
   func silenceStops() {
     var flow = VoiceConsult()
     _ = flow.micTapped(at: .t0)
+    _ = flow.listeningStarted(at: .t0)
     #expect(flow.tick(at: .t0 + 7.9).isEmpty)
     #expect(flow.tick(at: .t0 + 8) == [.stopListening])
 
     var talking = VoiceConsult()
     _ = talking.micTapped(at: .t0)
+    _ = talking.listeningStarted(at: .t0)
     _ = talking.heard("ストレージが", isFinal: false, at: .t0 + 1)
     #expect(talking.tick(at: .t0 + 2.9).isEmpty)
     _ = talking.heard("ストレージがいっぱい", isFinal: false, at: .t0 + 2.5)
@@ -117,10 +120,37 @@ struct VoiceConsultTests {
     #expect(talking.tick(at: .t0 + 5).isEmpty)
   }
 
+  @Test("許可の画面で聞き始めが遅れても、始まるまでは黙っているとみなさない")
+  func silenceCountsFromTheStart() {
+    var flow = VoiceConsult()
+    _ = flow.micTapped(at: .t0)
+    // The first time, the speech and microphone permission sheets take a while.
+    #expect(flow.tick(at: .t0 + 8).isEmpty)
+    #expect(flow.tick(at: .t0 + 12).isEmpty)
+    #expect(flow.listeningStarted(at: .t0 + 12.5).isEmpty)
+    #expect(flow.tick(at: .t0 + 20.4).isEmpty)
+    #expect(flow.tick(at: .t0 + 20.5) == [.stopListening])
+  }
+
+  @Test("聞き始める前に押されたら、始まった直後に止める。マイクは次も効く")
+  func stopBeforeStartIsKept() {
+    var flow = VoiceConsult()
+    _ = flow.micTapped(at: .t0)
+    // Nothing is listening yet, so there is nothing to stop now.
+    #expect(flow.micTapped(at: .t0 + 3).isEmpty)
+    #expect(flow.micTapped(at: .t0 + 4).isEmpty)
+    #expect(flow.listeningStarted(at: .t0 + 9) == [.stopListening])
+    #expect(flow.tick(at: .t0 + 20).isEmpty)
+    // The recognizer ends with nothing heard; the next press listens again.
+    #expect(flow.listeningFailed(.notHeard).isEmpty)
+    #expect(flow.micTapped(at: .t0 + 21) == [.stopSpeaking, .startListening])
+  }
+
   @Test("1分たったら話していても止める(端末の中の聞き取りの上限)")
   func longTalkStops() {
     var flow = VoiceConsult()
     _ = flow.micTapped(at: .t0)
+    _ = flow.listeningStarted(at: .t0)
     for second in stride(from: 1.0, to: 60, by: 1) {
       _ = flow.heard(String(repeating: "あ", count: Int(second)), isFinal: false, at: .t0 + second)
     }
