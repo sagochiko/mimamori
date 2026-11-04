@@ -35,11 +35,11 @@
 リポジトリは提出のときに公開するので、コミットにも家族の情報を入れない仕組みを `.githooks/` に置いた。`make setup` で `core.hooksPath` を向ける(`make bootstrap` の中でも流れる)。
 
 - `commit-msg` はコミットメッセージの形を確かめる。メッセージに電話番号の形、メールアドレス、非公開の語、作者の以前のプロジェクトの名前が入っていたら止める。マージのメッセージも調べる
-- `pre-commit` はステージした差分の足した行だけを調べ、同じ規則に当たったら止める
+- `pre-commit` はステージした差分の足した行だけを調べ、同じ規則に当たったら止める。`origin/main` を取り込むマージの途中では、マージの相手(`MERGE_HEAD`)に既にある行を調べず、このブランチと、衝突を手で解いた行だけを調べる。main の行は main に入ったときに調べてあり、取り込むたびに止まると取り込めないため(2026年11月4日に作者が決めた)
 
 規則は [`scripts/scan-private.sh`](../scripts/scan-private.sh) の1か所にあり、`guard-private.sh` と `/mm-endgame` の公開前の調べもこれを使う。電話番号は携帯、固定、+81 の形を、全角の数字も含めて見る。メールアドレスは `noreply@anthropic.com` と `*@users.noreply.github.com` だけを通す。非公開の語は作者だけが書く `.claude/private-terms.local` に1行に1語で置き、大文字と小文字を区別せずに探す。Claude はこの一覧を読まず、当たったときも語そのものは出さず「`docs/x.md:12: private term`」のように場所と規則だけを出す。
 
-試験用の例文とテスト(`server/test/`、`eval/cases/`、`eval/test/`、`ios/Core/Tests/`、`scripts/test-hooks.sh`)では、電話番号とメールの形を調べない。詐欺の SMS の差出人や「サポートセンター 050-…」がテストの中身そのものだからだ。非公開の語はそこでも調べるので、家族の本当の番号やアドレスは一覧のほうに書く。バンドル ID の `com.sagochiko.mimamori` とチームの ID は公開してよいもので、止めない。
+試験用の例文とテスト(`server/test/`、`eval/cases/`、`eval/test/`、`ios/Core/Tests/`、`scripts/test-hooks.sh`)では、電話番号とメールの形を調べない。詐欺の SMS の差出人や「サポートセンター 050-…」がテストの中身そのものだからだ。電話番号の形を判定する規則(`server/src/rules/`)と、レビュー役や監査役の報告の原文(`docs/audits/raw/`)も同じ扱いにした。規則は番号の型そのものを書き、原文は試験の作り物の番号や会社の公式のアドレスを引くため(2026年11月4日に作者が決めた)。公開前の全履歴の調べ(`scripts/scan-private.sh history`)も同じ範囲で見る。各コミットが足した行を見て、マージのコミットは数えないので、main から入った行を二重に数えない。非公開の語はそこでも調べるので、家族の本当の番号やアドレスは一覧のほうに書く。バンドル ID の `com.sagochiko.mimamori` とチームの ID は公開してよいもので、止めない。
 
 自己テスト(`scripts/test-hooks.sh`)は、本物の一覧を読まないよう、テストのときだけ差し替えの変数でダミーの一覧を渡す。worktree から本体のツリーの一覧を見つけられるかも、使い捨てのリポジトリで確かめる。`.worktreeinclude` には2つの一覧を書き、Claude Code が作る worktree にも写させる。
 

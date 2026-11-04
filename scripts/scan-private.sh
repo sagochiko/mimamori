@@ -5,11 +5,17 @@
 # per line, "#" for comments, matched without regard to case. Only the author writes it; Claude never
 # reads it. Hits print only where they are and which rule matched, never the matched text.
 #
-#   scripts/scan-private.sh staged                  added lines of the staged diff (.githooks/pre-commit)
+#   scripts/scan-private.sh staged                  added lines of the staged diff (.githooks/pre-commit);
+#                                                   while a merge is in progress, only the lines the merge
+#                                                   partner (MERGE_HEAD, usually origin/main) does not have
 #   scripts/scan-private.sh message <file>          a commit message (.githooks/commit-msg)
 #   scripts/scan-private.sh text <label> [<file>]   any text, from a file or stdin (guard-private.sh)
 #   scripts/scan-private.sh history                 every commit on every branch, and every issue and
-#                                                   PR with its comments (/mm-endgame, before going public)
+#                                                   PR with its comments (/mm-endgame, before going public).
+#                                                   Each commit's own lines. Merges are skipped, so the
+#                                                   lines a merge brings from main are not counted twice;
+#                                                   lines written by hand to resolve a conflict are checked
+#                                                   only by pre-commit, at the merge
 #
 # Exit status: 0 clean, 1 hits, 2 the scan could not run. scripts/test-hooks.sh points
 # MM_PRIVATE_TERMS_FILE at a dummy list; nothing else sets it.
@@ -36,10 +42,12 @@ phone='(^|[^0-9A-Za-z+])(0[789]0[- ]?[0-9]{4}[- ]?[0-9]{4}|0[1-9][0-9]{0,3}-[0-9
 email='[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
 allowed='^[0-9]+:(noreply@anthropic\.com|[A-Za-z0-9._%+-]+@users\.noreply\.github\.com)$'
 # Test data is made of scam and genuine messages, so senders and numbers in it are the point
-# (a +8190... sender, "サポートセンター 050-...", shipment-tracking@... of a real shop). There the phone
-# and email shapes are not checked; the private terms still are. Put the family's real numbers and
-# addresses in the private list, which applies everywhere.
-test_data='^(commit [0-9a-f]+ )?(server/test/|eval/cases/|eval/test/|ios/Core/Tests/|scripts/test-hooks\.sh:)'
+# (a +8190... sender, "サポートセンター 050-...", shipment-tracking@... of a real shop). The same holds for
+# the phone rules (server/src/rules/ matches number shapes) and for the reviewers' raw reports
+# (docs/audits/raw/ quotes those test numbers and published company addresses; the author decided this
+# on 2026-11-04). There the phone and email shapes are not checked; the private terms still are. Put
+# the family's real numbers and addresses in the private list, which applies everywhere.
+test_data='^(commit [0-9a-f]+ )?(server/test/|server/src/rules/|eval/cases/|eval/test/|ios/Core/Tests/|docs/audits/raw/|scripts/test-hooks\.sh:)'
 
 # scan <tsv>: each line is "<location>\t<text>". Prints "<location>: <rule>" per hit.
 scan() {
@@ -72,7 +80,10 @@ diff_lines() {
 
 case $1 in
   staged)
-    git -c core.quotePath=false diff --cached -U0 --no-color --no-ext-diff --diff-filter=ACMR | diff_lines >"$tmp/tsv" || exit 2
+    # During a merge, compare with the merge partner instead of HEAD: the lines main already has were
+    # checked when they landed there, so only what this branch (or the resolution) adds is checked.
+    base=$(git rev-parse -q --verify MERGE_HEAD 2>/dev/null)
+    git -c core.quotePath=false diff --cached ${base:+"$base"} -U0 --no-color --no-ext-diff --diff-filter=ACMR | diff_lines >"$tmp/tsv" || exit 2
     ;;
   message)
     [[ -r "$2" ]] || exit 2
@@ -83,7 +94,7 @@ case $1 in
     awk -v l="$2" '{ printf "%s line %d\t%s\n", l, NR, $0 }' "${3:--}" >"$tmp/tsv" || exit 2
     ;;
   history)
-    git -C "$here" -c core.quotePath=false log --all -p -U0 --no-color --no-ext-diff --format='MMSCAN-COMMIT %h' | diff_lines >"$tmp/tsv" || exit 2
+    git -C "$here" -c core.quotePath=false log --all -p -U0 --diff-merges=off --no-color --no-ext-diff --format='MMSCAN-COMMIT %h' | diff_lines >"$tmp/tsv" || exit 2
     git -C "$here" log --all --format='MMSCAN-COMMIT %h%n%B' |
       awk '/^MMSCAN-COMMIT / { c = $2; n = 0; next } { n++; printf "commit %s message line %d\t%s\n", c, n, $0 }' >>"$tmp/tsv" || exit 2
     cd "$here" || exit 2

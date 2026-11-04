@@ -367,6 +367,13 @@ staged 0 docs/a.md '返信は noreply@anthropic.com から' "the Claude address 
 staged 0 server/test/a.test.ts "sender: \"$ph\"" "phone shapes in test data pass"
 staged 1 server/test/a.test.ts 'たぬき山ぽん太' "private terms are refused in test data too"
 staged 0 docs/a.md 'ふつうの文' "a clean line passes"
+# The phone rules and the reviewers' raw reports quote phone and email shapes on purpose (a test
+# number, a company's published address); there only the private terms are checked (author, 2026-11-04).
+mkdir -p "$R/server/src/rules" "$R/docs/audits/raw"
+staged 0 server/src/rules/a.ts "const sample = \"$ph\"" "phone shapes in the rules pass"
+staged 0 docs/audits/raw/a.md '窓口は support@example.com と書いてある' "an email address in a raw report passes"
+staged 1 docs/audits/raw/a.md 'Tanukiyama に聞いた' "private terms are refused in raw reports too"
+staged 1 server/src/a.ts "const sample = \"$ph\"" "phone shapes elsewhere in server/src are still refused"
 # In a git worktree the lists are found in the main tree (--git-common-dir), without the test variables.
 printf '%s\n' 'Kitsunezaka' >"$R/.claude/private-terms.local"
 printf '%s\n' '/tmp/mm-test/fox-dummy-app' >"$R/.claude/prior-work.local"
@@ -400,6 +407,29 @@ fi
 [[ -s "$T/wt/docs/audits/raw/$rname" && ! -e "$R/docs/audits/raw/$rname" ]] && grep -q 'Status: changes needed' "$T/sp/review-comment.md" &&
   [[ "$(head -1 "$T/sp/review-comment.md")" == "## mm-reviewer の報告(原文)" ]] ||
   { echo "skill test failed: the step 6.1 template moves the report into the worktree and builds the comment"; fail=1; }
+
+# scan-private.sh history applies the same scope: shapes in the rules and in raw reports pass, private
+# terms do not. A fake gh lists no issues and no PRs.
+mkdir -p "$T/histbin" && printf '#!/bin/sh\necho "[]"\n' >"$T/histbin/gh" && chmod +x "$T/histbin/gh"
+history() { (cd "$R" && PATH="$T/histbin:$PATH" scripts/scan-private.sh history >/dev/null 2>&1); }
+printf 'const sample = "%s"\n' "$ph" >"$R/server/src/rules/b.ts" && printf '窓口は support@example.com\n' >"$R/docs/audits/raw/b.md"
+r add server/src/rules/b.ts docs/audits/raw/b.md && r commit -q --no-verify -m "rules and a raw report"
+history || { echo "scan test failed: history skips phone and email shapes in server/src/rules and docs/audits/raw"; fail=1; }
+printf 'Tanukiyama\n' >"$R/docs/audits/raw/c.md" && r add docs/audits/raw/c.md && r commit -q --no-verify -m "a term"
+history && { echo "scan test failed: history still finds private terms in docs/audits/raw"; fail=1; }
+
+# Merging main in: pre-commit checks only the lines the branch adds, not the lines main already has.
+r worktree add -q "$T/mg" -b mg 2>/dev/null
+mg() { git -c user.name=test -c user.email=test@localhost -c commit.gpgsign=false -C "$T/mg" "$@"; }
+printf 'ok\n' >"$T/mg/side.md" && mg add side.md && mg commit -q --no-verify -m side
+printf '連絡先 %s\n' "$ph" >"$R/docs/on-main.md" && r add docs/on-main.md && r commit -q --no-verify -m "on main"
+mg merge -q --no-ff --no-commit main >/dev/null 2>&1
+(cd "$T/mg" && .githooks/pre-commit >/dev/null 2>&1) ||
+  { echo "pre-commit test failed: a merge is refused for a line main already has"; fail=1; }
+printf '連絡先 %s\n' "$ph" >"$T/mg/resolved.md" && mg add resolved.md
+(cd "$T/mg" && .githooks/pre-commit >/dev/null 2>&1) &&
+  { echo "pre-commit test failed: a merge lets through a line that only the merge adds"; fail=1; }
+mg merge --abort 2>/dev/null
 
 # The holdout unlock lives in the main tree. `make eval-holdout` and guard-holdout.sh look there,
 # also from a worktree. A fake npx stands in for the measurement.
