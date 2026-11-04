@@ -382,7 +382,7 @@ Safari の拡張機能、背面タップ、DNS のサーバーが止まったと
 **つなぎ目**
 
 - 使うもの `alerts`、`sendPush`
-- 渡すもの `openCase(env, alertId, budget)`(`budget` は呼び出し1回で共有する外への通信の枠。相談の行は最初に入れて残す。家族の端末の数だけ枠が取れないときと、家族の誰にも知らせが届かなかったとき(通知を受けられる端末が無いときも含む)は、`family_notified_at` を空のまま `CaseNoticeDeferred` を投げる。同じ `alertId` でもう一度呼ぶと家族に知らせ、知らせ済みなら知らせも枠の消費もせずに相談を返す)、`resolveCase(env, caseId, memberId)`、`recordAiReply(env, caseId, text)`(AI の答えをカードのために残す。AI はいつも母に答える)
+- 渡すもの `openCase(env, alertId, budget)`(`budget` は呼び出し1回で共有する外への通信の枠。相談の行は最初に入れて残す。家族の端末の数だけ枠が取れないときと、家族の誰にも知らせが届かなかったとき(通知を受けられる端末が無いときも含む)は、`family_notified_at` を空のまま `CaseNoticeDeferred` を投げる。同じ `alertId` でもう一度呼ぶと家族に知らせ、知らせ済みなら知らせも枠の消費もせずに相談を返す。別の呼び出しがその知らせを送っている最中(`family_notice_claimed_at` が立っている)なら、投げずに相談を返し、届くまでは届いていないと読む)、`resolveCase(env, caseId, memberId)`、`recordAiReply(env, caseId, text)`(AI の答えをカードのために残す。AI はいつも母に答える)
 
 **手順**
 
