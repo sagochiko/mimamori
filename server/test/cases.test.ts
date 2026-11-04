@@ -4,15 +4,17 @@
 import { createExecutionContext, createScheduledController, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { http, HttpResponse } from "msw";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExternalBudget } from "../src/budget";
 import {
+  CLAIM_TTL_MS,
   NO_REPLY_YET,
   NOT_REACHED,
   NOT_RESOLVED_YET,
   openCase,
   recordAiReply,
   resolveCase,
+  tellFamilyHeavier,
   UNANSWERED_AFTER_MS,
 } from "../src/cases";
 import { JOBS } from "../src/cron";
@@ -132,9 +134,14 @@ function open(alertId: string, budget = new ExternalBudget()) {
 }
 
 async function caseOf(alertId: string) {
-  return env.DB.prepare("SELECT id, state, family_notified_at FROM cases WHERE alert_id = ?")
+  return env.DB.prepare("SELECT id, state, family_notified_at, family_notice_claimed_at FROM cases WHERE alert_id = ?")
     .bind(alertId)
-    .first<{ id: string; state: string; family_notified_at: number | null }>();
+    .first<{ id: string; state: string; family_notified_at: number | null; family_notice_claimed_at: number | null }>();
+}
+
+/** Another caller's claim on sending the case's first notice, taken at `at`. */
+async function claimedBy(alertId: string, at: number): Promise<void> {
+  await env.DB.prepare("UPDATE cases SET family_notice_claimed_at = ? WHERE alert_id = ?").bind(at, alertId).run();
 }
 
 async function casesFor(alertId: string): Promise<number> {
@@ -290,6 +297,113 @@ describe("openCase", () => {
     await tick(Date.now());
     expect(to(f.sister)).toEqual([expect.objectContaining({ title: "1段階", body: "警察を名乗る電話の相談" })]);
     expect((await caseOf(alertId))?.family_notified_at).not.toBeNull();
+  });
+});
+
+// #64: the claim on sending the first notice is its own column, so a notice still being sent is
+// never read as told, by the protected person's answer, her screen, or the 30-minute watch.
+describe("the claim on the first notice", () => {
+  it("while the notice is being sent the case is claimed but not told, and reads as told once a device took it", async () => {
+    const f = await family();
+    const alertId = await newAlert(f.familyId);
+    const during: unknown[] = [];
+    network.use(
+      http.post(`${SANDBOX}/3/device/:token`, async ({ request }) => {
+        const { caseId } = (await request.json()) as { caseId: string };
+        const row = await env.DB.prepare("SELECT family_notified_at, family_notice_claimed_at FROM cases WHERE id = ?")
+          .bind(caseId)
+          .first<{ family_notified_at: number | null; family_notice_claimed_at: number | null }>();
+        const list = await call("GET", "/cases", { deviceKey: f.mother.deviceKey, env: pushEnv });
+        const { cases } = (await list.json()) as { cases: Array<{ id: string; familyNotifiedAt: string | null }> };
+        const view = cases.find((c) => c.id === caseId);
+        during.push({ ...row, familyNotifiedAt: view === undefined ? "missing" : view.familyNotifiedAt });
+        return new HttpResponse(null, { status: 200 });
+      }),
+    );
+
+    await open(alertId);
+
+    expect(during).toEqual([
+      { family_notified_at: null, family_notice_claimed_at: expect.any(Number), familyNotifiedAt: null },
+      { family_notified_at: null, family_notice_claimed_at: expect.any(Number), familyNotifiedAt: null },
+    ]);
+    expect(await caseOf(alertId)).toMatchObject({ family_notified_at: expect.any(Number), family_notice_claimed_at: null });
+  });
+
+  it("when the budget or APNs fails, only the claim is let go and the case stays untold", async () => {
+    const f = await family();
+    const alertId = await newAlert(f.familyId);
+
+    await expect(open(alertId, new ExternalBudget(1))).rejects.toMatchObject({ reason: "no_budget" });
+    expect(await caseOf(alertId)).toMatchObject({ family_notified_at: null, family_notice_claimed_at: null });
+
+    const apns = apnsFailsFor([f.author.token, f.sister.token]);
+    await expect(open(alertId)).rejects.toMatchObject({ reason: "not_delivered" });
+    expect(await caseOf(alertId)).toMatchObject({ family_notified_at: null, family_notice_claimed_at: null });
+
+    apns.ok = true;
+    await open(alertId);
+    expect(to(f.author)).toHaveLength(1);
+    expect(await caseOf(alertId)).toMatchObject({ family_notified_at: expect.any(Number), family_notice_claimed_at: null });
+  });
+
+  it("while another caller is sending, openCase sends nothing, takes no ticket, does not throw, and the case reads untold", async () => {
+    const f = await family();
+    const alertId = await newAlert(f.familyId);
+    await expect(open(alertId, new ExternalBudget(1))).rejects.toMatchObject({ name: "CaseNoticeDeferred" });
+    const at = Date.now();
+    await claimedBy(alertId, at);
+    const budget = new ExternalBudget(40);
+
+    const opened = await open(alertId, budget);
+
+    expect(sent).toHaveLength(0);
+    expect(budget.remaining).toBe(40);
+    expect(opened?.familyNotifiedAt).toBeNull();
+    // The other caller's claim is left alone; that caller lets go of it.
+    expect(await caseOf(alertId)).toMatchObject({ family_notified_at: null, family_notice_claimed_at: at });
+  });
+
+  it("the tick takes over a claim older than CLAIM_TTL_MS, as from a Worker that stopped mid-send, and leaves a newer one alone", async () => {
+    const f = await family();
+    const alertId = await newAlert(f.familyId);
+    await expect(open(alertId, new ExternalBudget(1))).rejects.toMatchObject({ name: "CaseNoticeDeferred" });
+
+    const recent = Date.now() - CLAIM_TTL_MS + 60_000;
+    await claimedBy(alertId, recent);
+    await tick(Date.now());
+    expect(to(f.author)).toHaveLength(0);
+    expect(to(f.sister)).toHaveLength(0);
+    expect(await caseOf(alertId)).toMatchObject({ family_notified_at: null, family_notice_claimed_at: recent });
+
+    await claimedBy(alertId, Date.now() - CLAIM_TTL_MS - 1000);
+    await tick(Date.now());
+    expect(to(f.author)).toHaveLength(1);
+    expect(to(f.sister)).toHaveLength(1);
+    expect(await caseOf(alertId)).toMatchObject({ family_notified_at: expect.any(Number), family_notice_claimed_at: null });
+  });
+
+  it("a heavier notice that no device took puts the case back on the first notice's retry, with no claim left", async () => {
+    const f = await family();
+    const alertId = await newAlert(f.familyId, { level: 2 });
+    const caseId = (await open(alertId))?.id ?? "";
+    // No path leaves a claim beside the mark; one put there by hand must not hold back the retry either.
+    await env.DB.prepare("UPDATE cases SET family_notice_claimed_at = ? WHERE id = ?").bind(Date.now(), caseId).run();
+    await env.DB.prepare("UPDATE alerts SET level = 1 WHERE id = ?").bind(alertId).run();
+    const apns = apnsFailsFor([f.author.token, f.sister.token]);
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await tellFamilyHeavier(pushEnv, caseId, new ExternalBudget())).toBe(false);
+    } finally {
+      errors.mockRestore();
+    }
+    expect(await caseOf(alertId)).toMatchObject({ family_notified_at: null, family_notice_claimed_at: null });
+
+    apns.ok = true;
+    sent = [];
+    await tick(Date.now());
+    expect(to(f.author)).toEqual([expect.objectContaining({ title: "1段階" })]);
+    expect(to(f.sister)).toEqual([expect.objectContaining({ title: "1段階" })]);
   });
 });
 
