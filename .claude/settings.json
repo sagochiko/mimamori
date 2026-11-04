@@ -62,8 +62,6 @@
     "ask": [
       "Bash(*wrangler secret delete*)",
       "Bash(*wrangler versions secret delete*)",
-      "Bash(xcrun simctl erase *)",
-      "Bash(xcrun simctl delete *)",
       "Bash(gh pr merge*--admin*)",
       "Bash(gh api *-X DELETE*)",
       "Bash(gh api *-XDELETE*)",
