@@ -7,18 +7,11 @@ description: Makes a picture of tap-by-tap steps for something the author or the
 
 The author found text-only steps hard to follow (2026-11-05). Before asking someone to tap through iPhone screens, go through the same screens yourself on a simulator, screenshot each, and send one picture with a red ring and number on every tap. `/mm-human-queue` still decides whether the step becomes an "作者:" issue; this skill makes what goes in it.
 
-## 1. Pick the simulator by whose phone it is
+## 1. Use "mimamori mother"
 
-Read the phone's iOS version first (`xcrun devicectl list devices`, then `xcrun devicectl device info details --device <udid>` and its `OS Version` line).
+Shoot every guide on "mimamori mother" (iPhone 17 Pro, iOS 26.5), for the author's phone and the mother's alike. Both are an ordinary iPhone 16 (the author said on 2026-11-05 that any ordinary iPhone model will do). The mother's runs iOS 26.5.2 (#24), so her screens match. The author's ran iOS 27.2 on 2026-11-05, and no simulator on this Mac shows iOS 27 on an ordinary iPhone: the iOS 27.1 runtime runs only the folding iPhone Duo, whose displays differ and whose taps missed (`Makefile`, `simulator`; `docs/dev-log.md`). So read the phone's version first (`xcrun devicectl list devices`, then `xcrun devicectl device info details --device <udid>` and its `OS Version` line), and when it is not 26, say on the picture that it was shot on 26.5 and that the screens may differ. On 2026-11-05 the Shortcuts automation took four screens on 26.5 and one on 27.2.
 
-| Phone | Simulator |
-|---|---|
-| The author's iPhone (iOS 27.2 on 2026-11-05) | A temporary iPhone Duo on the iOS 27.1 runtime, the only device type that runtime runs on this Mac (`Makefile`, `simulator`). Create it for this guide and delete it afterwards: `xcrun simctl create "mimamori guide 27" "<iPhone Duo device type id from xcrun simctl list devicetypes>" com.apple.CoreSimulator.SimRuntime.iOS-27-1` |
-| The mother's iPhone (iOS 26.5.2) | "mimamori mother" (iOS 26.5, iPhone 17 Pro) |
-
-Never use "mimamori iPhone": it is the family role, joined to the production family (`docs/harness.md`, "設定の範囲"). The screens of iOS 26 and 27 differ: on 2026-11-05 the Shortcuts automation took four screens on 26.5 and one on 27.2. When no simulator matches the phone's version, say on the picture which version you shot.
-
-The iPhone Duo has not been driven end to end yet. On 2026-11-05 typing on its keyboard missed: the taps did not land where the keys were (`docs/dev-log.md`, the entry on the mother's input field), and Settings or Shortcuts on it are unchecked. Try it first; if the taps miss or the rings land off their targets, shoot on "mimamori mother" (26.5) instead and say on the picture that the phone runs 27 and may look different. The Duo has an inner and an outer display of different sizes (the global `iphone-duo` skill), so its scale is not 3: work it out on the display you shot, as in step 2.
+Never use "mimamori iPhone": it is the family role, joined to the production family (`docs/harness.md`, "設定の範囲").
 
 Check the language (`xcrun simctl spawn <udid> defaults read -g AppleLanguages`). If it is not Japanese, launch the app with `-AppleLanguages "(ja)" -AppleLocale ja_JP` after the bundle id.
 
@@ -69,6 +62,6 @@ The title is the goal, not a heading with a colon. The notes say which simulator
 
 - Look at the picture yourself before sending: cut it into pieces with `sips --cropOffset <y> 0 -c <h> <w> out.png --out part.png` and read each. Every caption inside its tile, every ring on its target, numbers in order
 - Send it with `SendUserFile` (`display: "render"`), and give the same steps in text in the message, one line per tap, so they can be searched and quoted
-- Put the mobilebuildmcp defaults back to what step 2 kept (`session_set_defaults` with that `simulatorName` and `simulatorId`), before deleting anything: a later verifier that builds on the default would otherwise hit a simulator that no longer exists, and it may not change the defaults itself
-- Delete the temporary iOS 27.1 simulator (`xcrun simctl delete <its udid>`, after checking the udid in `xcrun simctl list devices`), and the screenshots in the scratchpad once the person is done. Leave "mimamori mother" as it is
+- Put the mobilebuildmcp defaults back to what step 2 kept (`session_set_defaults` with that `simulatorName` and `simulatorId`): a later verifier builds on the default and may not change it itself
+- Delete the screenshots in the scratchpad once the person is done. Leave "mimamori mother" as it is; what the guide made there (an automation, a setting) does not touch the mimamori app
 - If a screen on the phone turned out different, write what differed on the issue the steps belong to, with both versions
