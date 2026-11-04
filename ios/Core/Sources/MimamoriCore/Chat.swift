@@ -151,6 +151,16 @@ public struct ChatKeeper: Sendable {
     isLoaded = true
   }
 
+  /// After data can be read again: when the app is back at role selection (the key went, say by a
+  /// 401 while the iPhone was locked) and a conversation is still kept, it goes. Nothing happens
+  /// while the file cannot be read.
+  public mutating func forgetIfLeft(route: AppRoute, at now: Date = .now) {
+    guard route == .chooseRole else { return }
+    load(at: now)
+    guard isLoaded, !log.messages.isEmpty else { return }
+    clear()
+  }
+
   private func save() {
     guard isLoaded, let data = try? log.encoded() else { return }
     try? store.write(data)
