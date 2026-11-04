@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import type { Judge } from "../lib/judge";
+import type { ConsultJudge, Judge } from "../lib/judge";
 import { runEval } from "../run";
 
 let repo: string;
@@ -65,6 +65,18 @@ async function writeCases(set: string) {
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, "fixture.jsonl"), `${cases.map((c) => JSON.stringify(c)).join("\n")}\n`);
 }
+
+// Consultations go to the consultation Claude, not to the judge (#74): this one answers at level 2.
+const consult: ConsultJudge = async () => ({
+  kind: "scam",
+  level: 2,
+  reasons: ["知らない相手からの電話"],
+  basis: "詐欺の手口と似ているところがあります。",
+  action: "電話を切って家族に確かめて",
+  handoff: false,
+  injection_suspected: false,
+  topic: null,
+});
 
 const read = (file: string) => readFile(path.join(evalDir, file), "utf8");
 const header = "| 日時 | セット | 方式 | 件数 | 見逃し率 | 誤判定率 | 要らない通知 | 中央値(ms) | 変えたこと |\n|---|---|---|---:|---:|---:|---:|---:|---|\n";
@@ -138,7 +150,7 @@ describe("runEval --mode rules+claude", () => {
 
   it("uses the judge it is given", async () => {
     const judge: Judge = async () => ({ level: 2 });
-    const { exitCode } = await runEval({ evalDir, set: "dev", mode: "rules+claude", notes: "", now: TODAY, judge });
+    const { exitCode } = await runEval({ evalDir, set: "dev", mode: "rules+claude", notes: "", now: TODAY, judge, consult });
     assert.equal(exitCode, 0);
     const r = JSON.parse((await read("results.jsonl")).trim());
     assert.equal(r.mode, "rules+claude");
@@ -149,7 +161,7 @@ describe("runEval --mode rules+claude", () => {
   it("counts and prints the cases where Claude gave nothing and the rules stood alone", async () => {
     let n = 0;
     const judge: Judge = async (_input, rule) => (n++ === 0 ? { level: rule.level ?? 2, checking: true } : { level: 2, checking: false });
-    const { exitCode, lines } = await runEval({ evalDir, set: "dev", mode: "rules+claude", notes: "", now: TODAY, judge });
+    const { exitCode, lines } = await runEval({ evalDir, set: "dev", mode: "rules+claude", notes: "", now: TODAY, judge, consult });
     assert.equal(exitCode, 0);
     const r = JSON.parse((await read("results.jsonl")).trim());
     assert.equal(r.claude_unanswered, 1);
