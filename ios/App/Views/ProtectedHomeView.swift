@@ -11,7 +11,7 @@ struct ProtectedHomeView: View {
   @Environment(\.scenePhase) private var scenePhase
 
   @State private var draft = ""
-  @FocusState private var writing: Bool
+  @State private var writing = false
   /// Keeps the answer in view while the notices above it change after a handoff. Scrolling herself
   /// stops it.
   @State private var followsConsult = false
@@ -122,16 +122,15 @@ struct ProtectedHomeView: View {
 
   private var inputBar: some View {
     HStack(alignment: .bottom, spacing: 8) {
-      TextField("メッセージ", text: $draft, axis: .vertical)
-        .font(.title3)
-        .lineLimit(1...5)
-        .focused($writing)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 16)
-        .background(
-          RoundedRectangle(cornerRadius: 20).fill(Color(.secondarySystemGroupedBackground))
-        )
-        .accessibilityHint("スマホの困りごとや気になる電話のことを書いて、送るボタンを押してください。答えは読み上げません")
+      MessageField(
+        text: $draft, isFocused: $writing, placeholder: "メッセージ", textStyle: .title3, maxLines: 5,
+        hint: "スマホの困りごとや気になる電話のことを書いて、送るボタンを押してください。答えは読み上げません"
+      )
+      .padding(.horizontal, 16)
+      .padding(.vertical, 16)
+      .background(
+        RoundedRectangle(cornerRadius: 20).fill(Color(.secondarySystemGroupedBackground))
+      )
       if !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         sendButton
       }
