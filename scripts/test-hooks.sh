@@ -24,6 +24,11 @@ expect 2 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"cat ~/ke
 expect 2 guard-secrets.sh '{"tool_name":"Read","tool_input":{"file_path":"/Users/someone/.config/gh/hosts.yml"}}' "reading the gh token file is blocked"
 expect 2 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"grep oauth_token ~/.config/gh/hosts.yml"}}' "grep in the gh config directory is blocked"
 expect 0 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"gh auth status"}}' "gh auth status passes"
+expect 2 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"gh auth status --show-token"}}' "gh auth status --show-token is blocked"
+expect 2 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"gh auth status -t"}}' "gh auth status -t is blocked"
+expect 2 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"gh auth status -h github.com -t"}}' "gh auth status with -t after another flag is blocked"
+expect 0 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"gh auth status -h github.com"}}' "gh auth status -h passes"
+expect 0 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"gh auth status && git push -u origin HEAD"}}' "a -u after gh auth status in another command passes"
 expect 0 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"gh config get git_protocol"}}' "gh config passes"
 expect 2 guard-holdout.sh '{"tool_name":"Read","tool_input":{"file_path":"eval/cases/holdout/a.jsonl"}}' "reading holdout is blocked"
 expect 0 guard-holdout.sh '{"tool_name":"Read","tool_input":{"file_path":"eval/cases/dev/a.jsonl"}}' "reading dev passes"
@@ -460,6 +465,19 @@ nojq 2 guard-prod.sh 'npx wrangler d1 delete mimamori' "guard-prod stops wrangle
 nojq 2 guard-prod.sh 'gh api -X DELETE repos/x/y' "guard-prod stops gh api when jq fails"
 nojq 0 guard-prod.sh 'pushd server && npm test' "guard-prod lets pushd through when jq fails"
 nojq 0 guard-prod.sh 'ls -la server' "guard-prod lets ordinary commands through when jq fails"
+# In the raw JSON a newline or a tab is the two characters \n or \t, so a gh on the second line follows an
+# n or a t (PR #96 review). jq -Rs puts a real newline into the input the way Claude Code sends it.
+nojq_raw() { # <expected exit> <hook> <command with real newlines or tabs> <label>
+  local got
+  printf '%s' "$3" | jq -Rsc '{tool_name:"Bash",tool_input:{command:.}}' | PATH="$T/nojq:$PATH" "$H/$2" >/dev/null 2>&1
+  got=$?
+  if [[ $got -ne $1 ]]; then echo "hook test failed: $4 (expected $1, got $got)"; fail=1; fi
+}
+nojq_raw 2 guard-prod.sh $'cd server\ngh api -X DELETE repos/x/y' "guard-prod stops a gh on the second line when jq fails"
+nojq_raw 2 guard-prod.sh $'cd server\n\tgh api -X DELETE repos/x/y' "guard-prod stops a gh after a tab when jq fails"
+nojq_raw 2 guard-prod.sh $'cd server\nnpx wrangler deploy' "guard-prod stops wrangler on the second line when jq fails"
+nojq_raw 2 guard-private.sh $'cat <<EOF >/tmp/x\nbody\nEOF\ngh issue create --title t --body-file /tmp/x' "guard-private stops a gh after a heredoc when jq fails"
+nojq_raw 0 guard-prod.sh $'cd server\nnpm test' "guard-prod lets an ordinary second line through when jq fails"
 # guard-mcp: a subagent cannot move the session's simulator, project, or scheme; the main session can.
 mcp() { # <expected exit> <json> <label>
   echo "$2" | "$H/guard-mcp.sh" >/dev/null 2>&1
@@ -479,7 +497,7 @@ jq -e '[.hooks.PreToolUse[] | select(.matcher | split("|") | (index("mcp__mobile
 # is mcp__<server>__<tool>; a rule with parentheses is dropped by Claude Code when it loads the file.
 jq -e '(.permissions.ask | index("mcp__claude_ai_Gmail__send_message") and index("mcp__claude_ai_Gmail__reply") and index("mcp__claude_ai_Gmail__forward"))' .claude/settings.json >/dev/null ||
   { echo "settings test failed: sending mail through the Gmail connector must ask"; fail=1; }
-jq -e '(.permissions.deny | index("mcp__claude_ai_Gmail__trash_*") and index("mcp__claude_ai_Gmail__delete_*") and index("mcp__claude_ai_Google_Calendar__delete_event") and index("mcp__claude_ai_Claude_Docs__delete"))' .claude/settings.json >/dev/null ||
+jq -e '(.permissions.deny | index("mcp__claude_ai_Gmail__trash_*") and index("mcp__claude_ai_Gmail__delete_*") and index("mcp__claude_ai_Gmail__apply_sensitive_*") and index("mcp__claude_ai_Gmail__mark_message_spam") and index("mcp__claude_ai_Gmail__mark_thread_spam") and index("mcp__claude_ai_Google_Calendar__delete_event") and index("mcp__claude_ai_Claude_Docs__delete"))' .claude/settings.json >/dev/null ||
   { echo "settings test failed: the connectors' delete tools must be denied"; fail=1; }
 jq -e '[.permissions[][] | select(startswith("mcp__") and contains("("))] | length == 0' .claude/settings.json >/dev/null ||
   { echo "settings test failed: an mcp__ rule with parentheses is skipped by Claude Code"; fail=1; }

@@ -105,6 +105,9 @@
       "Bash(gh issue delete*)",
       "mcp__claude_ai_Gmail__trash_*",
       "mcp__claude_ai_Gmail__delete_*",
+      "mcp__claude_ai_Gmail__apply_sensitive_*",
+      "mcp__claude_ai_Gmail__mark_message_spam",
+      "mcp__claude_ai_Gmail__mark_thread_spam",
       "mcp__claude_ai_Google_Calendar__delete_event",
       "mcp__claude_ai_Claude_Docs__delete"
     ]
