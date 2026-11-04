@@ -290,7 +290,8 @@ Safari の拡張機能、背面タップ、DNS のサーバーが止まったと
 - 使うもの `judgeByRules`、`sendPush`
 - 渡すもの `enqueueJudge(env, job: { familyId, source, payload })`、`alerts` の行、2段階以上でタスク10の `openCase(env, alertId, budget)` を呼ぶ
 - 家族への知らせは、相談の ID を持つ `openCase` からだけ送る。受け手は母にだけ送る。枠を前もって確かめるときは、母の端末の数に家族の届く端末の数を足す
-- `openCase` が `CaseNoticeDeferred` を投げたら、メッセージをやり直す。受け手はメッセージの ID を知らせの ID にしているので、やり直しで届いた同じメッセージは、家族に知らせる知らせの行(`notified = 1`。3段階と、1時間に1回にまとめて知らせなかった行は除く)があり、相談が無いか家族に届いていない(`family_notified_at` が空)ときは `openCase(env, alertId, budget)` だけを呼び、Claude の判定も母への通知も飛ばす。キューがやり直しをあきらめても相談の行は残り、5分ごとの Cron が1日のあいだ家族への最初の知らせを送り直す
+- `enqueueJudge` が `crypto.randomUUID()` で知らせの ID(`alertId`)を作り、キューの本文に入れる。受け手はキューのメッセージの ID ではなく、本文のこの ID で `alerts` の行を作る。Cloudflare の文書はメッセージの ID がやり直しで変わらないとは書いていないためで、本文に ID が無いか UUID の形でないメッセージは、Claude を呼ばずに捨てる
+- `openCase` が `CaseNoticeDeferred` を投げたら、メッセージをやり直す。やり直しで届いた同じ本文は、家族に知らせる知らせの行(`notified = 1`。3段階と、1時間に1回にまとめて知らせなかった行は除く)があり、相談が無いか家族に届いていない(`family_notified_at` が空)ときは `openCase(env, alertId, budget)` だけを呼び、Claude の判定も母への通知も飛ばす。キューがやり直しをあきらめても相談の行は残り、5分ごとの Cron が1日のあいだ家族への最初の知らせを送り直す
 
 **手順**
 
