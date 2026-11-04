@@ -128,10 +128,10 @@ describe("runEval --mode rules", () => {
 });
 
 describe("runEval --mode rules+claude", () => {
-  it("stops with a clear error until the judge exists, and records nothing", async () => {
-    const { exitCode, lines } = await runEval({ evalDir, set: "dev", mode: "rules+claude", notes: "", now: TODAY });
+  it("stops with a clear error without ANTHROPIC_API_KEY, and records nothing", async () => {
+    const { exitCode, lines } = await runEval({ evalDir, set: "dev", mode: "rules+claude", notes: "", now: TODAY, apiKey: "" });
     assert.equal(exitCode, 1);
-    assert.match(lines.join("\n"), /judge not available until #7/);
+    assert.match(lines.join("\n"), /ANTHROPIC_API_KEY/);
     await assert.rejects(read("results.jsonl"));
     assert.ok((await read("RESULTS.md")).endsWith(header));
   });
@@ -144,6 +144,16 @@ describe("runEval --mode rules+claude", () => {
     assert.equal(r.mode, "rules+claude");
     assert.equal(r.misses, 0);
     assert.equal(r.false_alarms, 1);
+  });
+
+  it("counts and prints the cases where Claude gave nothing and the rules stood alone", async () => {
+    let n = 0;
+    const judge: Judge = async (_input, rule) => (n++ === 0 ? { level: rule.level ?? 2, checking: true } : { level: 2, checking: false });
+    const { exitCode, lines } = await runEval({ evalDir, set: "dev", mode: "rules+claude", notes: "", now: TODAY, judge });
+    assert.equal(exitCode, 0);
+    const r = JSON.parse((await read("results.jsonl")).trim());
+    assert.equal(r.claude_unanswered, 1);
+    assert.match(lines.join("\n"), /claude gave nothing for 1 of 3/);
   });
 
   it("refuses a dev run once today's budget is used, without calling the judge", async () => {

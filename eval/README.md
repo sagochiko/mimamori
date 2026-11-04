@@ -87,7 +87,7 @@ cd server && npx tsc --noEmit -p ../eval/tsconfig.json  # eval/ の型検査
 
 1回ごとに `eval/results.jsonl` に1行(数字に `ts`、`set`、`mode`、`git_sha`、`n`、`notes` を足したもの)、[`RESULTS.md`](RESULTS.md) に表の1行が増える。dev の例文ごとの結果は `eval/out/dev-latest.json` に出る。
 
-`rules+claude` は、Claude の判定(タスク6、#7)ができるまで「judge not available until #7」で止まり、何も記録しない。そのため今の `make eval` は、`rules` の行を書いたあとに失敗で終わる。#7 が [`eval/lib/judge.ts`](lib/judge.ts) の `loadJudge()` を本物に差し替える。
+`rules+claude` は、判定のキューと同じ [`server/src/claude.ts`](../server/src/claude.ts) の `requestClaudeJudgment` と `decide` で段階を決め、1と2を家族に届くものとして数える。鍵は環境変数 `ANTHROPIC_API_KEY` から読む。鍵が無ければ、Claude を呼ばず何も記録せずに止まる(そのときの `make eval` は、`rules` の行を書いたあとに失敗で終わる)。Claude が形の合う答えを返さなかった例文は規則だけで数え、その件数を `results.jsonl` の `claude_unanswered` と画面に出す。この数が多い回は、ほとんど規則だけの数字になっている。
 
 ## 規則だけの数字(下書き)
 

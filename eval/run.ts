@@ -26,6 +26,8 @@ export interface RunOptions {
   /** ISO time with the +09:00 offset. Defaults to now in JST. */
   now?: string;
   judge?: Judge;
+  /** For rules+claude when no judge is given. Defaults to ANTHROPIC_API_KEY in the environment. */
+  apiKey?: string;
 }
 
 async function exists(file: string): Promise<boolean> {
@@ -124,14 +126,29 @@ export async function runEval(options: RunOptions): Promise<{ exitCode: number; 
 
   let scored;
   try {
-    scored = await judgeCases(cases, mode, options.judge ?? loadJudge());
+    scored = await judgeCases(
+      cases,
+      mode,
+      options.judge ?? loadJudge("apiKey" in options ? options.apiKey : process.env.ANTHROPIC_API_KEY),
+    );
   } catch (error) {
     if (error instanceof JudgeUnavailableError) return stop(error.message);
     throw error;
   }
   const metrics = scoreRun(scored);
 
-  const record = { ...metrics, ts, set, mode, git_sha: gitSha(evalDir), n: cases.length, notes: options.notes };
+  // A rules+claude run where Claude often gave nothing is mostly the rules; say how often.
+  const unanswered = mode === "rules+claude" ? scored.filter((c) => c.claude_answered === false).length : null;
+  const record = {
+    ...metrics,
+    ts,
+    set,
+    mode,
+    git_sha: gitSha(evalDir),
+    n: cases.length,
+    notes: options.notes,
+    ...(unanswered === null ? {} : { claude_unanswered: unanswered }),
+  };
   await appendFile(resultsFile, `${previous && !previous.endsWith("\n") ? "\n" : ""}${JSON.stringify(record)}\n`);
   const resultsMd = path.join(evalDir, "RESULTS.md");
   const table = await readFile(resultsMd, "utf8").catch(() => "");
@@ -145,6 +162,7 @@ export async function runEval(options: RunOptions): Promise<{ exitCode: number; 
   }
 
   lines.push(...summary(set, mode, cases.length, metrics));
+  if (unanswered !== null) lines.push(`  claude gave nothing for ${unanswered} of ${cases.length}`);
   return { exitCode: 0, lines };
 }
 
