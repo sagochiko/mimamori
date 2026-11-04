@@ -1018,6 +1018,10 @@ describe("a line from Claude that says the family was told", () => {
     ["家族に知らせました"],
     ["ご家族にお知らせしました"],
     ["家族に連絡しておきました"],
+    // The polite forms too.
+    ["家族にお伝えしました"],
+    ["ご家族にご連絡しました"],
+    ["家族にご報告しました"],
   ])("is not read out at level 3, where nobody is told: %s", async (claim) => {
     const fam = await setupFamily();
     const said = scam({ level: 3, basis: `${claim}。`, action: `${claim}。お金や暗証番号を聞かれたら止めて` });
