@@ -49,7 +49,7 @@ import { CaseNoticeDeferred, NOT_REACHED, openCase, recordAiReply, tellFamilyHea
 import { CLAUDE_TIMEOUT_MS, decide, PLACEHOLDER_REASON, soundsSafe, type Level } from "./claude";
 import { HttpError, json, readJson } from "./http";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
-import { INJECTION, matchSpans, MONEY_MOVE, POLICE_SCRIPT, type PhraseRule } from "./rules/phrases";
+import { INJECTION, matchSpans, MONEY_MOVE, POLICE_CALLER, POLICE_SCRIPT, type PhraseRule } from "./rules/phrases";
 import { ownLines, quotes, repeats } from "./summary";
 
 export const CONSULT_MODEL = "claude-sonnet-5-5";
@@ -369,10 +369,11 @@ function allOf(said: Said): string[] {
 }
 
 /** The parts of the script in one stretch of her words. */
-function scriptParts(text: string): { police: PhraseRule[]; money: boolean } {
+function scriptParts(text: string): { police: PhraseRule[]; caller: boolean; money: boolean } {
   const t = normalize(text);
   return {
     police: POLICE_SCRIPT.filter((rule) => matchSpans(rule, t).length > 0),
+    caller: matchSpans(POLICE_CALLER, t).length > 0,
     money: matchSpans(MONEY_MOVE, t).length > 0,
   };
 }
@@ -381,22 +382,27 @@ function scriptParts(text: string): { police: PhraseRule[]; money: boolean } {
  * Two or more parts of the fake-police script in her own words, counted over this turn and her
  * earlier ones, so a script told in two turns counts (#73). Moving money is a part of the script as
  * docs/design.md lists it ("送金や口座の移し替え"), but banks talk about transfers too, so it counts
- * only next to one of the police parts. This turn must add a part of its own: "それってどういうこと?"
- * after the script goes to Claude, which sees the earlier turns, instead of the same fixed line again.
+ * only next to one of the police parts. So does a caller who says he is the police ("警察から電話",
+ * #72): a genuine call from the police is not the script until the script's own words come.
+ * This turn must add a part of its own (a police part, the caller, or moving money):
+ * "それってどういうこと?" after the script goes to Claude, which sees the earlier turns, instead of
+ * the same fixed line again. "警察を名乗る電話だった" after "口座が犯罪にって言われて" does count:
+ * it goes on telling the script.
  */
 function tellsPoliceScript(said: Said): boolean {
   const now = scriptParts(said.text);
-  if (now.police.length === 0 && !now.money) return false;
+  if (now.police.length === 0 && !now.caller && !now.money) return false;
   const parts = allOf(said).map(scriptParts);
   const police = new Set(parts.flatMap((p) => p.police)).size;
+  const caller = parts.some((p) => p.caller) ? 1 : 0;
   const money = parts.some((p) => p.money) ? 1 : 0;
-  return police >= 1 && police + money >= 2;
+  return police >= 1 && police + caller + money >= 2;
 }
 
 /** The parts of the script she told, as reasons for the family's card. */
 function policeReasons(said: Said): string[] {
   const told = allOf(said).map(normalize);
-  return [...POLICE_SCRIPT, MONEY_MOVE]
+  return [POLICE_CALLER, ...POLICE_SCRIPT, MONEY_MOVE]
     .filter((rule) => told.some((t) => matchSpans(rule, t).length > 0))
     .map((rule) => rule.reason);
 }
@@ -464,8 +470,10 @@ interface Plan {
  * is not asked, so nothing it might say (level 3, "safe") can change this answer.
  */
 function policePlan(said: Said, rule: RuleResult): Plan {
-  // The rules saw this turn only; the parts told in earlier turns are added after their reasons.
-  const reasons = [...new Set([...rule.reasons, ...policeReasons(said)])];
+  // As before for one turn: the rules' reasons, or the parts she told when the rules have none. The
+  // rules saw this turn only, so the parts told in earlier turns are added after them.
+  const now = rule.reasons.length > 0 ? rule.reasons : policeReasons({ text: said.text, earlier: [] });
+  const reasons = [...new Set([...now, ...(said.earlier.length > 0 ? policeReasons(said) : [])])];
   return {
     level: 1,
     reasons,
