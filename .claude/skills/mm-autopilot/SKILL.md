@@ -8,6 +8,8 @@ disable-model-invocation: true
 
 Read `CONDITIONS.md` first; the session hook has already given you the time left and the open issues.
 
+The autopilot's main session runs on Fable (the author decided on 2026-11-04): with nobody to ask, it decides alone what to merge and what to queue, so it gets the strongest model. If this session is on another model (the system prompt names it), do not start the loop here. Hand over with `/mm-handoff`, choosing its autopilot line: the new window runs `claude --model fable "/mm-autopilot <brief> ..."`. A model set in a skill's frontmatter would last only "for the rest of the current turn" (https://code.claude.com/docs/en/skills), and the autopilot spans many turns (each report of a background subagent starts a new one), so the model is set at launch instead. The Opus session stops changing things once the Fable one is up (`/mm-handoff` step 6).
+
 Loop:
 1. List open issues in the current milestone: `gh issue list --milestone "<milestone>" --state open --json number,title,labels`.
 2. Pick the lowest-numbered issue labeled `core` that is not `needs-human` or `blocked` and that no open "作者:" issue blocks (`/mm-task` step 1). If none, pick a `peripheral` one only when `CONDITIONS.md` allows peripheral work now.

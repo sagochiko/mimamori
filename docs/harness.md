@@ -47,14 +47,22 @@
 
 実装とレビューを分け、レビュー、検証、監査、採点の役には編集のツールを渡していない(Bash は git や gh で読むために持つ)。過去の受賞作で公開リポジトリを確認できた8件のうち、サブエージェントの定義を置いていたものは無かった。数を増やすより、役割と使うモデルの理由が言えるものだけを置いた。
 
-| 名前 | モデル | 役割 |
-|---|---|---|
-| `mm-implementer` | Opus | 1件の Issue をテストから実装する |
-| `mm-verifier` | Sonnet | ビルド、テスト、シミュレータの画面を確かめ、数字と画像だけを返す |
-| `mm-reviewer` | Opus | 書いた本人と別の目で、計画のつなぎ目の約束と設計との食い違いを探す。編集のツールを持たない |
-| `mm-auditor` | Opus | 停滞したときに、判断の記録を `.claude/checklists/audit.md` と突き合わせる。編集のツールを持たない |
-| `mm-judge` | Opus | 審査の4基準で採点し、一番弱い証拠を挙げる。ぶれがあるので2回走らせて比べる |
-| `mm-eval-curator` | Sonnet | 公開されている注意喚起から試験用の例文を集める。分ける前の置き場(`eval/cases/pool/`)にだけ書ける。フックで止めている |
+| 名前 | モデル | effort | 役割 | そのモデルと effort にした理由 |
+|---|---|---|---|---|
+| `mm-implementer` | Opus | xhigh | 1件の Issue をテストから実装する | 書く量が多いので、作者と話す主と同じ Opus にした。失敗の経路、注入された文、30日の削除のような端のケースを落とすと主役の場面が壊れるので、effort を1段上げた |
+| `mm-verifier` | Opus | high | ビルド、テスト、シミュレータの画面を確かめ、数字と画像だけを返す | 手順は決まっているが、撮った画面が設計どおりかの判断と、落ちたテストの原因の行の読み分けが要る |
+| `mm-reviewer` | Fable | xhigh | 書いた本人と別の目で、計画のつなぎ目の約束と設計との食い違いを探す。編集のツールを持たない | 実装役(Opus)と別のモデルにして、同じ思い込みで見落とさない独立した強い目にした |
+| `mm-auditor` | Fable | xhigh | 停滞したときに、判断の記録を `.claude/checklists/audit.md` と突き合わせる。編集のツールを持たない | 主(Opus)の局所解を外から疑う役なので、主と別の強い目にした |
+| `mm-judge` | Fable | xhigh | 審査の4基準で採点し、一番弱い証拠を挙げる。ぶれがあるので2回走らせて比べる | 作った側と別の強い目で、根拠のない主張を見抜かせる |
+| `mm-eval-curator` | Opus | high | 公開されている注意喚起から試験用の例文を集める。分ける前の置き場(`eval/cases/pool/`)にだけ書ける。フックで止めている | 集め方の手順は決まっているが、詐欺と本物の境目の例と、注入の例を見分けて書き分ける |
+
+主のセッションも役で分ける。作者と話す対話の主は Opus で、effort は xhigh にした。作者がいないあいだの `/mm-autopilot` の主は Fable で、effort は Fable の既定の high のままにした。聞ける人がいないので、何をマージし、何を「作者: 」の Issue に積むかを1人で決めるからだ。どちらも2026年11月4日の夜に作者が決めた(#85)。新しい主は `/mm-handoff` が `claude --model opus` か `claude --model fable` で起動する。[cli-reference](https://code.claude.com/docs/en/cli-reference) の `--model` は「Sets the model for the current session with a model alias such as `sonnet`, `opus`, `haiku`, or `fable`」で、起動したセッションにだけ当たる。skill の frontmatter の `model` は「The override applies for the rest of the current turn and isn't saved to settings」([skills](https://code.claude.com/docs/en/skills))なので、何ターンも続く autopilot には使えない。
+
+主の設定は [`.claude/settings.json`](../.claude/settings.json) の2つのキーで入れた。`"language": "japanese"` は [settings-reference](https://code.claude.com/docs/en/settings-reference) で Scope が「Any file」のキーで、サブエージェントの報告が英語だと主の応答も英語に引かれていたので足した。Opus 5.5 の effort は `modelSettings` の `claude-opus-5-5` に `xhigh` を置いた。上の階の `effortLevel` にしなかったのは、文書に「In project, local, and managed settings, and with `--settings`, this key applies to every model.」とあり、Fable の主まで動かしてしまうからだ。作者のユーザー設定にも Opus 5.5 の xhigh が保存されているが、それは作者の端末の中だけなので、このリポジトリを開く人と worktree のセッションに同じ値を渡すためにプロジェクトに置いた。ファイルをまたぐと「the highest-precedence settings file that sets either an `effortLevel` for that model or a top-level `effortLevel` that applies to that model decides」なので、プロジェクトの値がユーザーの値より強い。セッションの中の `/effort` と起動の `--effort` はそれより先に当たる([model-config](https://code.claude.com/docs/en/model-config) の「Adjust effort level」)。
+
+サブエージェントの model と effort は frontmatter で決める。[sub-agents](https://code.claude.com/docs/en/sub-agents) の `model` は「`sonnet`, `opus`, `haiku`, `fable`, a full model ID such as `claude-opus-5-5`, or `inherit`」を取り、`effort` は「Overrides the session effort level」で「Options: `low`, `medium`, `high`, `xhigh`, `max`; available levels depend on the model」とある。[model-config](https://code.claude.com/docs/en/model-config) の表では Fable 5.1 と Opus 5.5 のどちらも `xhigh` を使える。呼ぶ側については、Agent ツールに渡す model が解決の順番の1番目(「The per-invocation `model` parameter」)で、frontmatter より優先される。作者のグローバルの決まりは「単純な作業は Sonnet を指定する」なので、そのまま当てると検証役が Opus から、レビュー役が Fable から黙って外れる。`/mm-task` と `/mm-endgame` には、`mm-*` を呼ぶときは model を省くか定義と同じにすると書いた。
+
+effort の `max` は使わない。model-config に「`max` may show diminishing returns and is prone to overthinking, so test before adopting it broadly」とあり、設定のキーでも「`max` isn't accepted as a level in either key」だからだ。[`scripts/test-hooks.sh`](../scripts/test-hooks.sh) は、各サブエージェントの frontmatter が opus か fable、high か xhigh であることと、この表と `CLAUDE.md` の表の行が frontmatter と同じことを確かめる。理由を読む人が、実際に動くものを読めるようにするためだ。
 
 ## skill
 
@@ -98,7 +106,7 @@ Apple Developer の登録(bundle ID、App Group、capability、端末)は、`/mm
 
 作者のグローバルの設定(文章の決まり、質問の仕方、使用量のガード)はそのまま読み込み、このリポジトリに関係しないプラグインと skill だけを `.claude/settings.json` で切った。グローバルを丸ごと切り離す起動の仕方(`claude --setting-sources project,local`)も試したが、使用量のガードまで消えるので採らなかった。このリポジトリで要る決まりは、すべてリポジトリの中に書いてある。
 
-主のモデルは Opus のままにし、Fable を advisor に付ける(`advisorModel: "fable"`)。2026年11月3日に作者が決め([`docs/audits/2026-11-03-2330-best-practice-research.md`](audits/2026-11-03-2330-best-practice-research.md) の「advisor とモデル」)、2026年11月4日の夜に作者がもう一度選んで入れた。[advisor](https://code.claude.com/docs/en/advisor) によると、advisor は相談のたびに advisor のモデルの単価でトークンを使い、「The advisor model's own read of the conversation is not cached」なので、会話が長いほど1回が高くなる。プランによっては、Fable を advisor にする前に `/model fable` で使用量のクレジットで払うことへの一度きりの同意が要り、同意の前は advisor なしで動く。`advisorModel` はどの設定のファイルにも書けるキー([settings-reference](https://code.claude.com/docs/en/settings-reference) の表の Scope が「Any file」)なので、作者のユーザー設定ではなくこのプロジェクトに置いた。サブエージェントも同じ advisor を受け継ぐので、Sonnet で安く回す役(mm-verifier、mm-eval-curator)でも、相談のたびに Fable の単価がかかる。`/advisor off` は作者のユーザー設定(`~/.claude/settings.json`)にも書き込む([settings-reference](https://code.claude.com/docs/en/settings-reference) の `advisorModel`「Claude Code saves your pick to this key」)。このリポジトリではプロジェクトの値のほうが強いので次のセッションでまた付くが、ほかのプロジェクトの advisor まで消えうる。ずっと止めるときは `.claude/settings.json` から消す。調べの文書では「同意のあとで入れる」としていたが、同意の前は advisor なしで動き、費用もかからない(advisor の文書「a Fable advisor bills nothing before you give it」)ので、先に入れて、要るときに同意を頼む順にした。
+主のモデルは Opus のままにし、Fable を advisor に付ける(`advisorModel: "fable"`)。2026年11月3日に作者が決め([`docs/audits/2026-11-03-2330-best-practice-research.md`](audits/2026-11-03-2330-best-practice-research.md) の「advisor とモデル」)、2026年11月4日の夜に作者がもう一度選んで入れた。[advisor](https://code.claude.com/docs/en/advisor) によると、advisor は相談のたびに advisor のモデルの単価でトークンを使い、「The advisor model's own read of the conversation is not cached」なので、会話が長いほど1回が高くなる。プランによっては、Fable を advisor にする前に `/model fable` で使用量のクレジットで払うことへの一度きりの同意が要り、同意の前は advisor なしで動く。`advisorModel` はどの設定のファイルにも書けるキー([settings-reference](https://code.claude.com/docs/en/settings-reference) の表の Scope が「Any file」)なので、作者のユーザー設定ではなくこのプロジェクトに置いた。サブエージェントも同じ advisor を受け継ぐので、Opus で動く役(mm-implementer、mm-verifier、mm-eval-curator)でも、相談のたびに Fable の単価がかかる。`/advisor off` は作者のユーザー設定(`~/.claude/settings.json`)にも書き込む([settings-reference](https://code.claude.com/docs/en/settings-reference) の `advisorModel`「Claude Code saves your pick to this key」)。このリポジトリではプロジェクトの値のほうが強いので次のセッションでまた付くが、ほかのプロジェクトの advisor まで消えうる。ずっと止めるときは `.claude/settings.json` から消す。調べの文書では「同意のあとで入れる」としていたが、同意の前は advisor なしで動き、費用もかからない(advisor の文書「a Fable advisor bills nothing before you give it」)ので、先に入れて、要るときに同意を頼む順にした。
 
 コミットには `Co-Authored-By: Claude` が付く(`attribution` の設定)。放置したときの要約(`idleCompaction`)は切り、窓の上端近くの自動の要約(1M のモデルで約967K トークン)は安全網として残した。要約の前に `/mm-handoff` で移るのが本筋だからだ。
 

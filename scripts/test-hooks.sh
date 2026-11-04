@@ -498,6 +498,32 @@ jq -e '.hooks.PreCompact[] | select(.matcher == "auto") | .hooks[] | select(.com
   { echo "settings test failed: compact-flag.sh runs on automatic compaction"; fail=1; }
 jq -e '.idleCompaction == false' .claude/settings.json >/dev/null || { echo "settings test failed: idleCompaction is off"; fail=1; }
 
+# Models and effort (#85). The main session answers in Japanese and runs Opus 5.5 at xhigh. A top-level
+# effortLevel in project settings would apply to every model, so the level sits under modelSettings.
+jq -e '.language == "japanese"' .claude/settings.json >/dev/null || { echo "settings test failed: language is japanese"; fail=1; }
+jq -e '.modelSettings["claude-opus-5-5"].effortLevel == "xhigh" and (has("effortLevel") | not)' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: Opus 5.5 runs at xhigh through modelSettings, with no top-level effortLevel"; fail=1; }
+# Each subagent's model and effort are the ones the two tables in CLAUDE.md and docs/harness.md give,
+# so a judge reading the reasons reads what actually runs.
+fm() { awk -v k="$2" 'NR == 1 && $0 == "---" { on = 1; next } on && $0 == "---" { exit } on && $1 == k":" { print $2 }' "$1"; }
+row() { awk -F'|' -v n="\`$2\`" -v m="$3" -v e="$4" '{ for (i = 2; i < NF - 1; i++) { a = $i; gsub(/ /, "", a); b = $(i + 1); gsub(/ /, "", b); c = $(i + 2); gsub(/ /, "", c); if (a == n && tolower(b) == m && c == e) found = 1 } } END { exit !found }' "$1"; }
+for f in .claude/agents/mm-*.md; do
+  name=$(basename "$f" .md) model=$(fm "$f" model) effort=$(fm "$f" effort)
+  case $model in opus | fable) ;; *) echo "agent test failed: $name runs on opus or fable, not '$model'"; fail=1 ;; esac
+  case $effort in high | xhigh) ;; *) echo "agent test failed: $name runs at high or xhigh, not '$effort' (max is prone to overthinking)"; fail=1 ;; esac
+  row CLAUDE.md "$name" "$model" "$effort" || { echo "agent test failed: the CLAUDE.md table row of $name says $model and $effort"; fail=1; }
+  row docs/harness.md "$name" "$model" "$effort" || { echo "agent test failed: the docs/harness.md table row of $name says $model and $effort"; fail=1; }
+done
+# The independent eyes (review, audit, judging) run on Fable; implementation stays on Opus.
+for name in mm-reviewer mm-auditor mm-judge; do
+  [[ "$(fm ".claude/agents/$name.md" model)" == fable ]] || { echo "agent test failed: $name runs on fable"; fail=1; }
+done
+# A new main session starts on the model its role needs: Opus with the author, Fable for the autopilot.
+grep -q 'exec "$(command -v claude)" --model "$model"' .claude/skills/mm-handoff/SKILL.md ||
+  { echo "skill test failed: mm-handoff starts the new session with --model"; fail=1; }
+grep -q -- '--model fable' .claude/skills/mm-autopilot/SKILL.md ||
+  { echo "skill test failed: mm-autopilot moves to a Fable main session"; fail=1; }
+
 # save-report: a subagent's handback is kept verbatim, marked as unchecked, and never blocked.
 export MM_RAW_REPORT_DIR=$T/raw
 report=$'- Status: changes needed\n- server/src/a.ts:12 の判定が逆\n\n`code` と "引用" もそのまま'
