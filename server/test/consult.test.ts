@@ -791,6 +791,13 @@ describe("consult.ts", () => {
     }
   });
 
+  // The first wall against "家族に伝えました" from Claude (#65); TOLD_CLAIM is the second.
+  it("tells Claude not to say the family was told, since the system decides that", () => {
+    const { system } = buildConsultRequest("x", { level: null, reasons: [], confident: false });
+    expect(system).toContain("家族に知らせた、伝えた、連絡した、とは書かないでください");
+    expect(system).toContain("知らせるかどうかは見守りの仕組みが決めます");
+  });
+
   it("uses the real Claude call by default", () => {
     expect(typeof defaultConsultDeps.askClaude).toBe("function");
   });
@@ -1090,6 +1097,17 @@ describe("a line from Claude that says the family was told", () => {
     ["家族に伝えたね"],
     ["家族に知らせてあるよ"],
     ["家族に伝えたので、待っていてね"],
+    // Rewordings the word list once let through (#65).
+    ["家族に通知を送りました"],
+    ["家族に連絡が行きました"],
+    ["家族に連絡済みです"],
+    ["家族の方に知らせました"],
+    ["家族にも伝わりました"],
+    ["ご家族の方にお知らせしました"],
+    ["家族に連絡を入れておきました"],
+    ["家族にメッセージを送っておいたよ"],
+    ["家族に知らせが届きました"],
+    ["家族に言っておきました"],
   ];
 
   it.each(claims)("is not read out at level 3, where nobody is told: %s", async (claim) => {
@@ -1130,6 +1148,16 @@ describe("a line from Claude that says the family was told", () => {
     // Not "…ほうが安心だよ": "安心" is a reassuring word that REASSURING keeps from being read out.
     ["家族に連絡しておいたほうがいいよ"],
     ["家族に連絡しましたか？"],
+    // The wider list (#65) must still let these through.
+    ["家族に確かめて"],
+    ["家族に電話して"],
+    ["家族に通知を送ってね"],
+    ["家族の方に知らせてください"],
+    ["家族にも伝えてね"],
+    ["家族に連絡済みですか？"],
+    ["家族に伝わるように連絡して"],
+    ["家族に連絡を入れてみて"],
+    ["家族に言ったほうがいいよ"],
   ];
 
   it.each(advice)("still lets Claude tell her to ask the family at level 3: %s", async (line) => {
