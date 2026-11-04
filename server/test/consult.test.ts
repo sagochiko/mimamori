@@ -1,12 +1,12 @@
 // The mother's voice consultation (task 12 in docs/plan.md): POST /consult. Claude is a fake in most
-// tests and an msw handler in the route tests; the rules, D1, openCase, and deliverAiReply are real.
+// tests and an msw handler in the route tests; the rules, D1, openCase, and recordAiReply are real.
 // APNs is mocked with msw, so the family's notices can be counted.
 
 import { env } from "cloudflare:workers";
 import { http, HttpResponse } from "msw";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ExternalBudget } from "../src/budget";
-import { acceptCase, openCase, sendFirstNotices } from "../src/cases";
+import { openCase, resolveCase, sendFirstNotices } from "../src/cases";
 import { soundsSafe } from "../src/claude";
 import {
   buildConsultRequest,
@@ -24,7 +24,7 @@ import { network } from "./network";
 
 const SANDBOX = "https://api.sandbox.push.apple.com";
 const MESSAGES_URL = "https://api.anthropic.com/v1/messages";
-// openCase and acceptCase stamp rows with the real clock, so the fake clock starts from it.
+// openCase and resolveCase stamp rows with the real clock, so the fake clock starts from it.
 const T0 = Date.now();
 
 const POLICE_REPLY = "詐欺で使われる説明と一致しています。送金せず、いったん電話を切って家族に確かめて";
@@ -108,6 +108,7 @@ const scam = (over: Partial<ClaudeConsult> = {}): ClaudeConsult => ({
   action: "送金せず、いったん電話を切って家族に確かめて",
   handoff: false,
   injection_suspected: false,
+  topic: "警察を名乗る電話の相談",
   ...over,
 });
 
@@ -119,6 +120,7 @@ const help = (over: Partial<ClaudeConsult> = {}): ClaudeConsult => ({
   action: "設定の「一般」から「iPhone ストレージ」を開くと、空きを作れます。広告の掃除アプリは入れなくていいよ",
   handoff: false,
   injection_suspected: false,
+  topic: "ストレージの空きの相談",
   ...over,
 });
 
@@ -384,35 +386,40 @@ describe("consult.ts", () => {
     expect(familyPushes(fam)).toHaveLength(2);
   });
 
-  it("answers '(名前)が見ています' without guiding once a family member has accepted her case", async () => {
+  it("always answers her: a later consultation in her open case gets the AI's answer, and the card shows it", async () => {
     const fam = await setupFamily();
     await consult(consultEnv, motherOf(fam), POLICE, new ExternalBudget(), fakes(scam()));
-    const [opened] = await casesOf(fam.familyId);
-    await acceptCase(consultEnv, opened!.id, fam.sister.id);
     pushes = [];
 
-    const deps = fakes(help());
-    const answer = await consult(consultEnv, motherOf(fam), "このあとどうしたらいい？", new ExternalBudget(), deps);
-    expect(answer).toEqual({ reply: "妹が見ています", speak: "妹が見ています", handoff: true });
-    expect(deps.claudeCalls).toBe(0);
-    expect(await alertsOf(fam.familyId)).toHaveLength(1);
+    const later = scam({ level: 2, basis: "詐欺の手口と似ているところがあります。", action: "知らない番号には折り返さないで" });
+    const deps = fakes(later, T0 + 5 * 60_000);
+    const answer = await consult(consultEnv, motherOf(fam), "さっきの人からまたかかってきた", new ExternalBudget(), deps);
+    expect(deps.claudeCalls).toBe(1);
+    expect(answer).toMatchObject({ reply: "詐欺の手口と似ているところがあります。知らない番号には折り返さないで", handoff: true });
+    expect((await casesOf(fam.familyId))[0]?.ai_reply).toBe(answer.reply);
+    // Not heavier than level 1: nobody is told again.
     expect(pushes).toHaveLength(0);
+
+    const trouble = fakes(help({ action: "横のボタンで音を大きくできます" }), T0 + 6 * 60_000);
+    const guided = await consult(consultEnv, motherOf(fam), "音が小さくて聞こえない", new ExternalBudget(), trouble);
+    expect(guided).toEqual({ reply: "横のボタンで音を大きくできます", speak: "横のボタンで音を大きくできます", handoff: false });
+    for (const a of [answer, guided]) expect(a.reply).not.toMatch(/見ています/);
   });
 
-  it("answers '(名前)が見ています' when the family accepts while Claude is still answering", async () => {
+  it("starts a new case once the family resolved her last one", async () => {
     const fam = await setupFamily();
-    await consult(consultEnv, motherOf(fam), POLICE, new ExternalBudget(), fakes(scam()));
-    const [opened] = await casesOf(fam.familyId);
-    const firstReply = opened?.ai_reply;
+    await consult(consultEnv, motherOf(fam), POLICE_CALL, new ExternalBudget(), fakes(scam({ level: 2 })));
+    const [first] = await casesOf(fam.familyId);
+    await resolveCase(consultEnv, first!.id, fam.sister.id);
+    pushes = [];
 
-    const deps = fakes(async () => {
-      await acceptCase(consultEnv, opened!.id, fam.owner.id);
-      return scam();
-    });
-    const answer = await consult(consultEnv, motherOf(fam), "まだ電話がつながってる。どうしよう", new ExternalBudget(), deps);
-    expect(answer.reply).toBe("作者が見ています");
-    // The late answer is not recorded on the family's card either.
-    expect((await casesOf(fam.familyId))[0]?.ai_reply).toBe(firstReply);
+    const answer = await consult(consultEnv, motherOf(fam), POLICE, new ExternalBudget(), fakes(scam(), T0 + 5 * 60_000));
+    expect(answer).toEqual({ reply: POLICE_REPLY, speak: POLICE_REPLY, handoff: true });
+    const cases = await casesOf(fam.familyId);
+    expect(cases).toHaveLength(2);
+    expect(cases.map((c) => c.state)).toEqual(["resolved", "notified"]);
+    expect(cases[1]?.ai_reply).toBe(POLICE_REPLY);
+    expect(familyPushes(fam)).toHaveLength(2);
   });
 
   it("keeps a heavier second consultation in the same open case and tells the family again", async () => {
@@ -725,6 +732,20 @@ describe("parseClaudeConsult", () => {
     expect(parseClaudeConsult(help())).toEqual(help());
   });
 
+  // The topic only names the case for the family; a missing or broken one must not cost her the answer.
+  it.each([
+    ["missing", (({ topic: _t, ...rest }) => rest)(scam())],
+    ["over 20 characters", { ...scam(), topic: "あ".repeat(21) }],
+    ["empty", { ...scam(), topic: "  " }],
+    ["not text", { ...scam(), topic: 3 }],
+  ])("keeps the answer with no topic when the topic is %s", (_label, value) => {
+    expect(parseClaudeConsult(value)).toEqual({ ...scam(), topic: null });
+  });
+
+  it("takes a topic of exactly 20 characters", () => {
+    expect(parseClaudeConsult({ ...scam(), topic: "あ".repeat(20) })?.topic).toBe("あ".repeat(20));
+  });
+
   it.each([
     ["an unknown kind", { ...scam(), kind: "chat" }],
     ["level 0", { ...scam(), level: 0 }],
@@ -791,5 +812,104 @@ describe("smartphone troubles", () => {
     expect(answer.handoff).toBe(true);
     expect((await alertsOf(fam.familyId))[0]?.level).toBe(1);
     expect(familyPushes(fam)).toHaveLength(2);
+  });
+});
+
+// "家族への知らせと解決" in docs/design.md: the family's notice and card name the trouble in one line
+// made by the rules or by Claude, never her words cut out (decided by the author on 2026-11-04).
+describe("the one line the family gets", () => {
+  /** Every stretch of QUOTE_RUN characters of her words, for checking nothing was cut out of them. */
+  function runsOf(text: string, run = 8): string[] {
+    const c = [...text.replace(/\s+/g, "")];
+    return Array.from({ length: Math.max(0, c.length - run + 1) }, (_, i) => c.slice(i, i + run).join(""));
+  }
+
+  async function cardOf(fam: Family) {
+    const res = await call("GET", "/cases", { deviceKey: fam.owner.deviceKey, env: consultEnv });
+    return ((await res.json()) as { cases: Array<{ alert: { summary: string; reasons: string[] } | null; aiReply: string | null }> })
+      .cases[0];
+  }
+
+  function expectNothingOf(said: string, lines: string[]) {
+    const all = lines.join("\n");
+    expect(all).not.toMatch(/相談「/);
+    for (const run of runsOf(said)) expect(all).not.toContain(run);
+  }
+
+  it("is a fixed line for the fake-police script, on the notice and on the card", async () => {
+    const fam = await setupFamily();
+    await consult(consultEnv, motherOf(fam), POLICE, new ExternalBudget(), fakes(null));
+
+    expect(familyPushes(fam).map((p) => [p.title, p.body])).toEqual([
+      ["1段階", "警察を名乗る電話の相談"],
+      ["1段階", "警察を名乗る電話の相談"],
+    ]);
+    const card = await cardOf(fam);
+    expect(card?.alert?.summary).toBe("警察を名乗る電話の相談");
+    // The reasons are the rules' own fixed lines, not pieces of what she said.
+    const fixed = judgeByRules({ source: "consult", text: POLICE }).reasons;
+    expect(card?.alert?.reasons.every((r) => fixed.includes(r) || /^[^「」]+$/.test(r))).toBe(true);
+    expectNothingOf(POLICE, [card?.alert?.summary ?? "", card?.aiReply ?? "", ...familyPushes(fam).map((p) => `${p.title}${p.body}`)]);
+  });
+
+  it("is Claude's topic when Claude names the trouble in its own words", async () => {
+    const fam = await setupFamily();
+    const said = "宅配業者を名乗るSMSが来て、リンクを開いたほうがいいのか迷ってる";
+    await consult(consultEnv, motherOf(fam), said, new ExternalBudget(), fakes(scam({ level: 2, topic: "宅配を名乗るSMSの相談" })));
+
+    expect((await cardOf(fam))?.alert?.summary).toBe("宅配を名乗るSMSの相談");
+    expect(familyPushes(fam).map((p) => p.body)).toEqual(["宅配を名乗るSMSの相談", "宅配を名乗るSMSの相談"]);
+    expectNothingOf(said, familyPushes(fam).map((p) => p.body));
+  });
+
+  it("drops a topic or a reason from Claude that repeats her words, and uses the next own line", async () => {
+    const fam = await setupFamily();
+    const said = "口座が凍結されるって電話で言われて、どうしたらいいのか分からない";
+    const claude = scam({
+      level: 2,
+      topic: "口座が凍結されるって電話",
+      reasons: ["口座が凍結されると急がせている", "お金の話で急がせている"],
+    });
+    await consult(consultEnv, motherOf(fam), said, new ExternalBudget(), fakes(claude));
+
+    expect((await cardOf(fam))?.alert?.summary).toBe("お金の話で急がせている");
+    expectNothingOf(said, familyPushes(fam).map((p) => p.body));
+  });
+
+  it("is the fixed 'スマホの相談' when nothing else is its own line", async () => {
+    const fam = await setupFamily();
+    const said = "画面に変な表示が出て困ってる、どうすればいい";
+    const claude = help({ handoff: true, topic: null, reasons: ["画面に変な表示が出て困っている"] });
+    const answer = await consult(consultEnv, motherOf(fam), said, new ExternalBudget(), fakes(claude));
+
+    expect(answer.handoff).toBe(true);
+    expect((await cardOf(fam))?.alert?.summary).toBe("スマホの相談");
+    expect(familyPushes(fam).map((p) => p.body)).toEqual(["スマホの相談", "スマホの相談"]);
+  });
+
+  it("uses the rules' reason when Claude gives nothing", async () => {
+    const fam = await setupFamily();
+    const said = "よく分からない画面が出て困ってる";
+    await consult(consultEnv, motherOf(fam), said, new ExternalBudget(), fakes(null));
+    expect((await cardOf(fam))?.alert?.summary).toBe("AI が答えきれなかった相談");
+  });
+
+  it("does not use a topic that would tell the family it is fine", async () => {
+    const fam = await setupFamily();
+    await consult(consultEnv, motherOf(fam), POLICE_CALL, new ExternalBudget(), fakes(scam({ level: 2, topic: "安全な連絡の相談" })));
+    const summary = (await cardOf(fam))?.alert?.summary ?? "";
+    expect(summary).not.toMatch(/安全/);
+    expect(summary).toBe("口座が犯罪に使われたという話がある");
+  });
+
+  it("follows the heavier level: the line becomes the fake-police one when the script comes later", async () => {
+    const fam = await setupFamily();
+    await consult(consultEnv, motherOf(fam), POLICE_CALL, new ExternalBudget(), fakes(scam({ level: 2, topic: "警察を名乗る人からの電話" })));
+    expect((await cardOf(fam))?.alert?.summary).toBe("警察を名乗る人からの電話");
+    pushes = [];
+
+    await consult(consultEnv, motherOf(fam), POLICE, new ExternalBudget(), fakes(null, T0 + 5 * 60_000));
+    expect((await cardOf(fam))?.alert?.summary).toBe("警察を名乗る電話の相談");
+    expect(familyPushes(fam).map((p) => p.body)).toEqual(["警察を名乗る電話の相談", "警察を名乗る電話の相談"]);
   });
 });

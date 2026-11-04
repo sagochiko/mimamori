@@ -1,5 +1,5 @@
-// Task 10 "引き継ぎ" in docs/plan.md: opening a case, the first accept wins, relays from the assignee
-// only, the AI stopping once a family member has taken over, and the 30-minute watch.
+// Task 10 "家族への知らせと解決" in docs/plan.md: opening a case, "解決" by any family member, the
+// accept and relay routes being gone, and the 30-minute watch.
 
 import { createExecutionContext, createScheduledController, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
@@ -7,12 +7,10 @@ import { http, HttpResponse } from "msw";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ExternalBudget } from "../src/budget";
 import {
-  acceptCase,
-  aiGuidanceStopped,
-  deliverAiReply,
   NO_REPLY_YET,
+  NOT_RESOLVED_YET,
   openCase,
-  relay,
+  recordAiReply,
   resolveCase,
   UNANSWERED_AFTER_MS,
 } from "../src/cases";
@@ -241,7 +239,7 @@ describe("openCase", () => {
     await expect(open(alertId)).rejects.toMatchObject({ name: "CaseNoticeDeferred" });
     const caseId = (await caseOf(alertId))?.id ?? "";
 
-    expect(await deliverAiReply(pushEnv, caseId, "送金せず、家族に確かめて")).toEqual({ delivered: true });
+    await recordAiReply(pushEnv, caseId, "送金せず、家族に確かめて");
     apns.ok = true;
     const opened = await open(alertId);
 
@@ -286,258 +284,143 @@ describe("openCase", () => {
   });
 });
 
-describe("accept", () => {
-  it("of two near-simultaneous accepts, only one takes the case and the other gets 409 with the assignee's name", async () => {
-    const f = await family();
-    const opened = await open(await newAlert(f.familyId));
-    const caseId = opened?.id ?? "";
-
-    const [a, s] = await Promise.all([
-      call("POST", `/cases/${caseId}/accept`, { deviceKey: f.author.deviceKey, env: pushEnv }),
-      call("POST", `/cases/${caseId}/accept`, { deviceKey: f.sister.deviceKey, env: pushEnv }),
-    ]);
-
-    const statuses = [a.status, s.status].sort();
-    expect(statuses).toEqual([200, 409]);
-    const [winner, loser] = a.status === 200 ? [f.author, s] : [f.sister, a];
-    const winnerName = winner === f.author ? "作者" : "妹";
-    expect(await loser.json()).toEqual({
-      error: "already_accepted",
-      assignee: { memberId: winner.memberId, displayName: winnerName },
-    });
-    const row = await caseRow(caseId);
-    expect(row?.state).toBe("accepted");
-    expect(row?.assignee_member_id).toBe(winner.memberId);
-  });
-
-  it("accepting again by the assignee is not an error", async () => {
-    const f = await family();
-    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
-    await acceptCase(pushEnv, caseId, f.author.memberId);
-    const again = await call("POST", `/cases/${caseId}/accept`, { deviceKey: f.author.deviceKey, env: pushEnv });
-    expect(again.status).toBe(200);
-    expect(((await again.json()) as { state: string }).state).toBe("accepted");
-  });
-
-  it("raises the flag that stops the AI's guidance for that case", async () => {
-    const f = await family();
-    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
-    expect(await aiGuidanceStopped(env, caseId)).toBe(false);
-
-    await acceptCase(pushEnv, caseId, f.sister.memberId);
-
-    expect(await aiGuidanceStopped(env, caseId)).toBe(true);
-  });
-
-  it("tells the protected person who is looking into it", async () => {
+describe("taking a case over and replying are gone", () => {
+  it("POST /cases/{id}/accept and /relay answer 404 and change nothing", async () => {
     const f = await family();
     const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
     sent = [];
 
-    await acceptCase(pushEnv, caseId, f.sister.memberId);
+    for (const verb of ["accept", "relay"]) {
+      for (const p of [f.author, f.sister, f.mother]) {
+        const res = await call("POST", `/cases/${caseId}/${verb}`, {
+          deviceKey: p.deviceKey,
+          body: { body: "今から電話するね" },
+          env: pushEnv,
+        });
+        expect(res.status).toBe(404);
+      }
+    }
 
-    expect(to(f.mother).map((s) => s.body)).toEqual(["妹が見ています"]);
-    // The others see "妹が対応中" on their card; no extra notification for them.
-    expect(to(f.author)).toHaveLength(0);
-  });
-
-  it("the protected person cannot accept, and another family cannot see the case", async () => {
-    const f = await family();
-    const other = await createFamily("別の家族");
-    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
-
-    const byMother = await call("POST", `/cases/${caseId}/accept`, { deviceKey: f.mother.deviceKey, env: pushEnv });
-    expect(byMother.status).toBe(403);
-    const byStranger = await call("POST", `/cases/${caseId}/accept`, { deviceKey: other.deviceKey, env: pushEnv });
-    expect(byStranger.status).toBe(404);
-    expect((await caseRow(caseId))?.state).toBe("notified");
+    expect(await caseRow(caseId)).toMatchObject({ state: "notified", assignee_member_id: null, accepted_at: null });
+    const relays = await env.DB.prepare("SELECT COUNT(*) AS n FROM relays WHERE case_id = ?").bind(caseId).first<{ n: number }>();
+    expect(relays?.n).toBe(0);
+    expect(sent).toHaveLength(0);
   });
 });
 
-describe("the AI after a family member took over", () => {
-  it("an AI answer still in flight when the case was accepted never reaches the protected person", async () => {
+describe("the AI's answer on the card", () => {
+  it("the latest answer the AI gave is always kept and the family card shows it", async () => {
     const f = await family();
     const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
 
-    // The AI started answering while the case was still only notified...
-    const before = await aiGuidanceStopped(env, caseId);
-    expect(before).toBe(false);
-    // ...the sister accepted while it was working...
-    await acceptCase(pushEnv, caseId, f.sister.memberId);
-    // ...and its answer arrives afterwards.
-    const outcome = await deliverAiReply(env, caseId, "送金はせず、いったん電話を切って");
-
-    expect(outcome).toEqual({ delivered: false, assigneeName: "妹" });
-    expect((await caseRow(caseId))?.ai_reply).toBeNull();
-    const list = await call("GET", "/cases", { deviceKey: f.mother.deviceKey, env: pushEnv });
-    const view = ((await list.json()) as { cases: Array<{ id: string; aiReply: string | null }> }).cases.find(
-      (c) => c.id === caseId,
-    );
-    expect(view?.aiReply).toBeNull();
-  });
-
-  it("before anyone accepts, the AI's answer goes through and the family card shows it", async () => {
-    const f = await family();
-    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
-
-    expect(await deliverAiReply(env, caseId, "送金はせず、いったん電話を切って")).toEqual({ delivered: true });
+    await recordAiReply(env, caseId, "送金はせず、いったん電話を切って");
+    await recordAiReply(env, caseId, "お金や暗証番号の話には応じず、家族に確かめて");
 
     const list = await call("GET", "/cases", { deviceKey: f.author.deviceKey, env: pushEnv });
     const view = ((await list.json()) as { cases: Array<{ id: string; aiReply: string | null }> }).cases.find(
       (c) => c.id === caseId,
     );
-    expect(view?.aiReply).toBe("送金はせず、いったん電話を切って");
-  });
-});
-
-describe("relay", () => {
-  it("only the assignee can send the protected person a reply", async () => {
-    const f = await family();
-    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
-    await acceptCase(pushEnv, caseId, f.author.memberId);
-
-    const bySister = await call("POST", `/cases/${caseId}/relay`, {
-      deviceKey: f.sister.deviceKey,
-      body: { body: "私が電話するね" },
-      env: pushEnv,
-    });
-    expect(bySister.status).toBe(403);
-    await expect(relay(pushEnv, caseId, f.sister.memberId, "私が電話するね")).rejects.toMatchObject({ status: 403 });
-    const relays = await env.DB.prepare("SELECT COUNT(*) AS n FROM relays WHERE case_id = ?").bind(caseId).first<{ n: number }>();
-    expect(relays?.n).toBe(0);
-  });
-
-  it("nobody can relay before the case is accepted", async () => {
-    const f = await family();
-    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
-    const res = await call("POST", `/cases/${caseId}/relay`, {
-      deviceKey: f.author.deviceKey,
-      body: { body: "大丈夫？" },
-      env: pushEnv,
-    });
-    expect(res.status).toBe(409);
-  });
-
-  it("the assignee's reply is kept as text, sent to the protected person, and listed with the sender's name", async () => {
-    const f = await family();
-    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
-    await acceptCase(pushEnv, caseId, f.author.memberId);
-    sent = [];
-
-    const res = await call("POST", `/cases/${caseId}/relay`, {
-      deviceKey: f.author.deviceKey,
-      body: { body: "  今から電話するから、お金は振り込まないで  " },
-      env: pushEnv,
-    });
-    expect(res.status).toBe(201);
-
-    expect(to(f.mother)).toEqual([
-      expect.objectContaining({ title: "作者から", body: "今から電話するから、お金は振り込まないで" }),
-    ]);
-    expect(to(f.sister)).toHaveLength(0);
-    const list = await call("GET", "/cases", { deviceKey: f.mother.deviceKey, env: pushEnv });
-    const view = ((await list.json()) as { cases: Array<{ id: string; relays: unknown[] }> }).cases.find(
-      (c) => c.id === caseId,
-    );
-    expect(view?.relays).toEqual([
-      expect.objectContaining({
-        fromMemberId: f.author.memberId,
-        fromName: "作者",
-        body: "今から電話するから、お金は振り込まないで",
-      }),
-    ]);
-  });
-
-  it("refuses an empty or very long reply", async () => {
-    const f = await family();
-    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
-    await acceptCase(pushEnv, caseId, f.author.memberId);
-    for (const body of ["   ", "あ".repeat(201), 42]) {
-      const res = await call("POST", `/cases/${caseId}/relay`, { deviceKey: f.author.deviceKey, body: { body }, env: pushEnv });
-      expect(res.status).toBe(400);
-    }
-  });
-
-  it("counts characters as the iPhone does (grapheme clusters), so a reply with emoji the screen allows is taken", async () => {
-    const f = await family();
-    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
-    await acceptCase(pushEnv, caseId, f.author.memberId);
-    // 200 characters on the iPhone's counter (String.count); 370 UTF-16 units and 240 code points.
-    const ok = "👍".repeat(100) + "👨‍👩‍👧".repeat(10) + "あ".repeat(90);
-    const res = await call("POST", `/cases/${caseId}/relay`, { deviceKey: f.author.deviceKey, body: { body: ok }, env: pushEnv });
-    expect(res.status).toBe(201);
-
-    const over = await call("POST", `/cases/${caseId}/relay`, {
-      deviceKey: f.author.deviceKey,
-      body: { body: `${ok}👍` },
-      env: pushEnv,
-    });
-    expect(over.status).toBe(400);
+    expect(view?.aiReply).toBe("お金や暗証番号の話には応じず、家族に確かめて");
   });
 });
 
 describe("resolve", () => {
-  it("only the assignee resolves, and a resolved case takes no more replies", async () => {
+  it("any family member resolves, and the rest of the family hears '(名前)が解決'", async () => {
     const f = await family();
     const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
-    await acceptCase(pushEnv, caseId, f.sister.memberId);
+    sent = [];
 
-    await expect(resolveCase(pushEnv, caseId, f.author.memberId)).rejects.toMatchObject({ status: 403 });
     const res = await call("POST", `/cases/${caseId}/resolve`, { deviceKey: f.sister.deviceKey, env: pushEnv });
     expect(res.status).toBe(200);
-    expect(((await res.json()) as { state: string }).state).toBe("resolved");
+    expect(await res.json()).toMatchObject({
+      state: "resolved",
+      resolvedBy: { memberId: f.sister.memberId, displayName: "妹" },
+    });
     expect((await caseRow(caseId))?.resolved_at).not.toBeNull();
 
-    await expect(relay(pushEnv, caseId, f.sister.memberId, "もう一言")).rejects.toMatchObject({ status: 409 });
-    const late = await call("POST", `/cases/${caseId}/accept`, { deviceKey: f.author.deviceKey, env: pushEnv });
-    expect(late.status).toBe(409);
+    expect(to(f.author).map((s) => s.body)).toEqual(["妹が解決"]);
+    expect(to(f.author)[0]?.data.caseId).toBe(caseId);
+    // Not the one who pressed it, and not the protected person: her card for the case goes away.
+    expect(to(f.sister)).toHaveLength(0);
+    expect(to(f.mother)).toHaveLength(0);
   });
 
-  it("a case nobody accepted cannot be marked resolved", async () => {
+  it("of two near-simultaneous presses, one records it and the family is told once", async () => {
     const f = await family();
     const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
-    const res = await call("POST", `/cases/${caseId}/resolve`, { deviceKey: f.author.deviceKey, env: pushEnv });
-    expect(res.status).toBe(409);
+    sent = [];
+
+    const [a, s] = await Promise.all([
+      call("POST", `/cases/${caseId}/resolve`, { deviceKey: f.author.deviceKey, env: pushEnv }),
+      call("POST", `/cases/${caseId}/resolve`, { deviceKey: f.sister.deviceKey, env: pushEnv }),
+    ]);
+    expect([a.status, s.status]).toEqual([200, 200]);
+    const views = [(await a.json()) as { resolvedBy: { memberId: string } }, (await s.json()) as { resolvedBy: { memberId: string } }];
+    const winner = (await caseRow(caseId))?.assignee_member_id;
+    expect(views.map((v) => v.resolvedBy.memberId)).toEqual([winner, winner]);
+    // Only the other of the two hears it.
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.token).toBe(winner === f.author.memberId ? f.sister.token : f.author.token);
+  });
+
+  it("pressing it again later is not an error and tells nobody again", async () => {
+    const f = await family();
+    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
+    await resolveCase(pushEnv, caseId, f.sister.memberId);
+    sent = [];
+
+    const again = await call("POST", `/cases/${caseId}/resolve`, { deviceKey: f.author.deviceKey, env: pushEnv });
+    expect(again.status).toBe(200);
+    expect(((await again.json()) as { resolvedBy: { displayName: string } }).resolvedBy.displayName).toBe("妹");
+    expect(sent).toHaveLength(0);
+  });
+
+  it("the protected person cannot resolve, and another family cannot see the case", async () => {
+    const f = await family();
+    const other = await createFamily("別の家族");
+    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
+
+    const byMother = await call("POST", `/cases/${caseId}/resolve`, { deviceKey: f.mother.deviceKey, env: pushEnv });
+    expect(byMother.status).toBe(403);
+    const byStranger = await call("POST", `/cases/${caseId}/resolve`, { deviceKey: other.deviceKey, env: pushEnv });
+    expect(byStranger.status).toBe(404);
     expect((await caseRow(caseId))?.state).toBe("notified");
   });
-});
 
-describe("when the assignee leaves the family", () => {
-  it("their accepted case goes back to nobody's, so another family member can take it", async () => {
+  it("a case resolved by someone who then left stays resolved, named 家族", async () => {
     const f = await family();
     const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
-    await acceptCase(pushEnv, caseId, f.sister.memberId);
-
-    const left = await call("DELETE", "/members/me", { deviceKey: f.sister.deviceKey, env: pushEnv });
-    expect(left.status).toBe(204);
-
-    const row = await caseRow(caseId);
-    expect(row).toMatchObject({ state: "notified", assignee_member_id: null, accepted_at: null });
-    expect((await acceptCase(pushEnv, caseId, f.author.memberId)).assignee?.displayName).toBe("作者");
-  });
-
-  it("leaves resolved cases and other people's cases as they are", async () => {
-    const f = await family();
-    const done = (await open(await newAlert(f.familyId)))?.id ?? "";
-    await acceptCase(pushEnv, done, f.sister.memberId);
-    await resolveCase(pushEnv, done, f.sister.memberId);
-    const authors = (await open(await newAlert(f.familyId)))?.id ?? "";
-    await acceptCase(pushEnv, authors, f.author.memberId);
+    await resolveCase(pushEnv, caseId, f.sister.memberId);
 
     await call("DELETE", "/members/me", { deviceKey: f.sister.deviceKey, env: pushEnv });
 
-    expect((await caseRow(done))?.state).toBe("resolved");
-    expect(await caseRow(authors)).toMatchObject({ state: "accepted", assignee_member_id: f.author.memberId });
+    const list = await call("GET", "/cases", { deviceKey: f.author.deviceKey, env: pushEnv });
+    const view = ((await list.json()) as { cases: Array<Record<string, unknown>> }).cases.find((c) => c.id === caseId);
+    expect(view).toMatchObject({ state: "resolved", resolvedBy: { memberId: f.sister.memberId, displayName: "家族" } });
+  });
+
+  it("a case left in the old 'accepted' state is shown as not resolved and can be resolved", async () => {
+    const f = await family();
+    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
+    await env.DB.prepare("UPDATE cases SET state = 'accepted', assignee_member_id = ?, accepted_at = ? WHERE id = ?")
+      .bind(f.sister.memberId, Date.now(), caseId)
+      .run();
+
+    const list = await call("GET", "/cases", { deviceKey: f.author.deviceKey, env: pushEnv });
+    const view = ((await list.json()) as { cases: Array<Record<string, unknown>> }).cases.find((c) => c.id === caseId);
+    expect(view).toMatchObject({ state: "notified", resolvedBy: null });
+
+    const done = await resolveCase(pushEnv, caseId, f.author.memberId);
+    expect(done).toMatchObject({ state: "resolved", resolvedBy: { memberId: f.author.memberId, displayName: "作者" } });
   });
 });
 
 describe("GET /cases", () => {
-  it("lists the family's cases with the alert, the assignee's name, and nothing from other families", async () => {
+  it("lists the family's cases with the alert and the AI's answer, and nothing from other families", async () => {
     const f = await family();
     const other = await family();
-    const mine = (await open(await newAlert(f.familyId, { level: 2, summary: "宅配を名乗るSMS" })))?.id ?? "";
+    const mine = (await open(await newAlert(f.familyId, { level: 2, summary: "SMS 宅配の不在の知らせをかたっている" })))?.id ?? "";
     const theirs = (await open(await newAlert(other.familyId)))?.id ?? "";
-    await acceptCase(pushEnv, mine, f.sister.memberId);
 
     const res = await call("GET", "/cases", { deviceKey: f.author.deviceKey, env: pushEnv });
     expect(res.status).toBe(200);
@@ -545,11 +428,19 @@ describe("GET /cases", () => {
     expect(cases.map((c) => c.id)).toEqual([mine]);
     expect(cases.map((c) => c.id)).not.toContain(theirs);
     expect(cases[0]).toMatchObject({
-      state: "accepted",
-      assignee: { memberId: f.sister.memberId, displayName: "妹" },
-      alert: { level: 2, source: "call", summary: "宅配を名乗るSMS", reasons: ["警察を名乗り、口座の移し替えを求めた"] },
-      relays: [],
+      state: "notified",
+      resolvedBy: null,
+      resolvedAt: null,
+      alert: {
+        level: 2,
+        source: "call",
+        summary: "SMS 宅配の不在の知らせをかたっている",
+        reasons: ["警察を名乗り、口座の移し替えを求めた"],
+      },
+      aiReply: null,
     });
+    // Nothing of the hand-off is left in the shape.
+    for (const gone of ["assignee", "assigneeMemberId", "acceptedAt", "relays"]) expect(cases[0]).not.toHaveProperty(gone);
     expect(typeof cases[0]?.notifiedAt).toBe("string");
   });
 
@@ -570,7 +461,7 @@ describe("the 30-minute watch", () => {
     expect(names.indexOf("case-watch")).toBeLessThan(names.indexOf("retention-sessions"));
   });
 
-  it("after 30 minutes with nobody accepting, tells the protected person and notifies the family again, once", async () => {
+  it("after 30 minutes without '解決', tells the protected person and notifies the family again, once", async () => {
     const f = await family();
     const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
     await backdate(caseId, 31);
@@ -580,8 +471,8 @@ describe("the 30-minute watch", () => {
 
     expect(to(f.mother).map((s) => s.body)).toEqual([NO_REPLY_YET]);
     expect(NO_REPLY_YET).toBe("家族から返事がまだ。急ぐなら電話して");
-    expect(to(f.author)).toHaveLength(1);
-    expect(to(f.sister)).toHaveLength(1);
+    expect(to(f.author)).toEqual([expect.objectContaining({ title: "まだ解決していません", body: "警察を名乗る電話の相談" })]);
+    expect(to(f.sister)).toEqual([expect.objectContaining({ title: NOT_RESOLVED_YET })]);
     expect((await caseRow(caseId))?.renotified_at).not.toBeNull();
 
     // Later ticks do not notify again.
@@ -607,15 +498,15 @@ describe("the 30-minute watch", () => {
     }
     const list = await call("GET", "/cases", { deviceKey: f.mother.deviceKey, env: pushEnv });
     const view = ((await list.json()) as { cases: Array<Record<string, unknown>> }).cases.find((c) => c.id === caseId);
-    expect(view).toMatchObject({ state: "notified", assignee: null, resolvedAt: null });
+    expect(view).toMatchObject({ state: "notified", resolvedBy: null, resolvedAt: null });
     expect(typeof view?.renotifiedAt).toBe("string");
   });
 
-  it("leaves alone a case accepted in time, and one that is not yet 30 minutes old", async () => {
+  it("leaves alone a case resolved in time, and one that is not yet 30 minutes old", async () => {
     const f = await family();
-    const accepted = (await open(await newAlert(f.familyId)))?.id ?? "";
-    await acceptCase(pushEnv, accepted, f.author.memberId);
-    await backdate(accepted, 40);
+    const resolved = (await open(await newAlert(f.familyId)))?.id ?? "";
+    await resolveCase(pushEnv, resolved, f.author.memberId);
+    await backdate(resolved, 40);
     const young = (await open(await newAlert(f.familyId)))?.id ?? "";
     await backdate(young, 29);
     sent = [];
@@ -657,39 +548,20 @@ describe("the 30-minute watch", () => {
     expect(deletes).toBe(37);
   });
 
-  it("a case released by an assignee who left is watched again: the rest of the family and the protected person hear once", async () => {
+  it("watches a case left in the old 'accepted' state like any case that is not resolved", async () => {
     const f = await family();
     const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
-    // The watch already fired once before the sister accepted.
-    await backdate(caseId, 40);
-    await tick(Date.now());
-    await acceptCase(pushEnv, caseId, f.sister.memberId);
-    await call("DELETE", "/members/me", { deviceKey: f.sister.deviceKey, env: pushEnv });
+    await env.DB.prepare("UPDATE cases SET state = 'accepted', assignee_member_id = ?, accepted_at = ? WHERE id = ?")
+      .bind(f.sister.memberId, Date.now(), caseId)
+      .run();
+    await backdate(caseId, 31);
     sent = [];
 
     await tick(Date.now());
 
     expect(to(f.mother).map((s) => s.body)).toEqual([NO_REPLY_YET]);
     expect(to(f.author)).toHaveLength(1);
-    expect(to(f.sister)).toHaveLength(0);
-    sent = [];
-    await tick(Date.now() + 5 * 60_000);
-    expect(sent).toHaveLength(0);
-  });
-
-  it("a released case younger than 30 minutes waits for the 30 minutes from the first notice", async () => {
-    const f = await family();
-    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
-    await acceptCase(pushEnv, caseId, f.sister.memberId);
-    await call("DELETE", "/members/me", { deviceKey: f.sister.deviceKey, env: pushEnv });
-    await backdate(caseId, 10);
-    sent = [];
-
-    await tick(Date.now());
-    expect(sent).toHaveLength(0);
-
-    await tick(Date.now() + 21 * 60_000);
-    expect(to(f.mother).map((s) => s.body)).toEqual([NO_REPLY_YET]);
+    expect(to(f.sister)).toHaveLength(1);
   });
 
   it("tells the family about a case the queue gave up on, at the next tick, once", async () => {

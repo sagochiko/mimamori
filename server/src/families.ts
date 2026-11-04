@@ -169,23 +169,13 @@ export async function registerApns(request: Request, env: Env): Promise<Response
 
 /**
  * DELETE /members/{id}: leave the family. Only the member themself (or "me").
- * The row goes away, so the device key answers 401 from the next call.
- *
- * Cases they had accepted go back to 'notified' with nobody assigned, or nobody could relay or resolve
- * them and the 30-minute watch (which looks at 'notified' only) would never see them again.
- * renotified_at is cleared so the watch tells the rest of the family and the protected person once
- * more, counted from the first notice: at the next tick if that was 30 minutes ago or more.
+ * The row goes away, so the device key answers 401 from the next call. A case they resolved stays
+ * resolved, and the card names them as "家族" from then on.
  */
 export async function leaveFamily(request: Request, env: Env, memberId: string): Promise<Response> {
   const me = await requireMember(request, env);
   if (memberId !== "me" && memberId !== me.id) throw new HttpError(403, "only_self");
-  await env.DB.batch([
-    env.DB.prepare(
-      `UPDATE cases SET state = 'notified', assignee_member_id = NULL, accepted_at = NULL, renotified_at = NULL
-        WHERE assignee_member_id = ? AND state = 'accepted'`,
-    ).bind(me.id),
-    env.DB.prepare("DELETE FROM members WHERE id = ?").bind(me.id),
-  ]);
+  await env.DB.prepare("DELETE FROM members WHERE id = ?").bind(me.id).run();
   return noContent();
 }
 
