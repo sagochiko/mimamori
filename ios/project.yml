@@ -52,10 +52,11 @@ targets:
     info:
       path: App/Info.plist
       properties:
-        CFBundleDisplayName: mimamori
+        # Dev region (ja) value; ja.lproj and en.lproj InfoPlist.strings set the shown name per language.
+        CFBundleDisplayName: みまもり
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        CFBundleLocalizations: [ja]
+        CFBundleLocalizations: [ja, en]
         MimamoriAPIBaseURL: https://$(MIMAMORI_API_HOST)
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
@@ -85,7 +86,7 @@ targets:
     info:
       path: MessageFilter/Info.plist
       properties:
-        CFBundleDisplayName: mimamori
+        CFBundleDisplayName: みまもり
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:
@@ -120,7 +121,7 @@ targets:
     info:
       path: SafariExtension/Info.plist
       properties:
-        CFBundleDisplayName: mimamori
+        CFBundleDisplayName: みまもり
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:
@@ -144,7 +145,7 @@ targets:
     info:
       path: ShareExtension/Info.plist
       properties:
-        CFBundleDisplayName: mimamori
+        CFBundleDisplayName: みまもり
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:
@@ -173,7 +174,7 @@ targets:
     info:
       path: CallDirectory/Info.plist
       properties:
-        CFBundleDisplayName: mimamori
+        CFBundleDisplayName: みまもり
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:

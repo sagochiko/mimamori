@@ -14,8 +14,10 @@
 		3792C21DC96CFB08E303BF69 /* ProtectedHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC84E1DC90613B9EB0164B49 /* ProtectedHomeView.swift */; };
 		38A272F7AE944C9DF6A7E596 /* FamilyHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 516788DAB13E4B039651659A /* FamilyHomeView.swift */; };
 		43B9311E811375C7729B1D8E /* CaseCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9CA9B42DD3FC3299CFAB648 /* CaseCardView.swift */; };
+		4799E09B550CE33AF47CF9CB /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = DE1A428163B195BBC1D9C552 /* InfoPlist.strings */; };
 		4B33968B0F409367195FDDED /* RoleSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06074B0D983CF3372440534D /* RoleSelectionView.swift */; };
 		506A9F65B0840324B1E52A9E /* ScreenshotStubTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C21EE2A82C9D0DAFA79176F /* ScreenshotStubTransport.swift */; };
+		542AC95379E9D9FC5C6A6632 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = B1443023B56F8245D19DE5D7 /* InfoPlist.strings */; };
 		56FEB594CFB85A1BCA209BE5 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BDA3D10727E119E0680CB3C /* AppModel.swift */; };
 		5AB286F4D233C69A78E81661 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6347632638B2BBB1D921BC29 /* ShareViewController.swift */; };
 		623BFA36F797A841D73BCCCA /* MimamoriCore in Frameworks */ = {isa = PBXBuildFile; productRef = 7E983F62499436B4FE715598 /* MimamoriCore */; };
@@ -28,8 +30,11 @@
 		A6C56C492741A879A53F09EC /* KeychainDeviceKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B78E521DD07930F33B780261 /* KeychainDeviceKeyStore.swift */; };
 		B30588DA403943E16C24E603 /* FamilyStartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EB3212F121AF5A1BC7F588E /* FamilyStartView.swift */; };
 		CA60F854809C86C96B2A956E /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04CE476A28DC68FEBBCCD33 /* AppConfig.swift */; };
+		CC53B3BFD66808AB9E8791E7 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 323881E1882ECFEB4C39DB1F /* InfoPlist.strings */; };
 		CDFD1C8B9D9F3A1A276E39B0 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 1F9B0F681A88B43BA14AE240 /* manifest.json */; };
 		D25B0DFFB4B0A2D9778F1F00 /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5CA27DA8F58C1AD1C5641A2 /* SafariWebExtensionHandler.swift */; };
+		D5A915164C35F53A970D7704 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 01495D6F82DC6AD75CE163A4 /* InfoPlist.strings */; };
+		D6D36C1F5814E263377C9774 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 86C975201DC4D87FB98BBD52 /* InfoPlist.strings */; };
 		F7662858D9EEFCBA1B6DCD99 /* CallDirectory.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FE2AA537BD66CC913767D2DC /* CallDirectory.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -80,16 +85,22 @@
 		19DEE47BDDF8CD2C46408D60 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		1BDA3D10727E119E0680CB3C /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		1F9B0F681A88B43BA14AE240 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = manifest.json; sourceTree = "<group>"; };
+		269A9FC1AFAA472457732ED0 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		3A6A9A0EF7199C388B1E5887 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		3D71E050B6AB7E4A2CC31D69 /* JoinView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JoinView.swift; sourceTree = "<group>"; };
 		3E0EF675CA21B27398D564F4 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
 		3EB3212F121AF5A1BC7F588E /* FamilyStartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FamilyStartView.swift; sourceTree = "<group>"; };
 		40AB4308C8B210487E08269B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		4EDF58AC7BF0B880A61FAE9D /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		516788DAB13E4B039651659A /* FamilyHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FamilyHomeView.swift; sourceTree = "<group>"; };
+		5B1160E3057AE1DBB06229E3 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		6347632638B2BBB1D921BC29 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		6636D20FA1E1AADEB45C6CB1 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
 		6739C49E1B0EA3024DC91B5F /* CallFollowUpNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallFollowUpNotifier.swift; sourceTree = "<group>"; };
 		6857C3950869A3E22C6DC8CE /* Mimamori.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Mimamori.entitlements; sourceTree = "<group>"; };
+		712562C323E2A51682DDF23D /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		7C21EE2A82C9D0DAFA79176F /* ScreenshotStubTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotStubTransport.swift; sourceTree = "<group>"; };
+		82D66AF2F38B7CBCD40033EE /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		84BA38ED727FD076C6B3DDD6 /* ReplySpeaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplySpeaker.swift; sourceTree = "<group>"; };
 		95CDB77E0372A19FBBE234F4 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		9CC66F62DBB65E534422C6B7 /* Mimamori.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Mimamori.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -107,9 +118,13 @@
 		E01211C64F467DD0EC1AA9C3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		E45414D046D363FD33D0A71A /* MimamoriApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MimamoriApp.swift; sourceTree = "<group>"; };
 		E5CA27DA8F58C1AD1C5641A2 /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
+		EC4358BDD5FA2EE8A3FB6021 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		ECDC69D9559207B1E43D992A /* CallDirectoryHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallDirectoryHandler.swift; sourceTree = "<group>"; };
+		ED5BA5FA26F250B07F3A7807 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		F8469859BF8A09F6E12A30DD /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		F92B2D41F2C7B84131342EF1 /* MessageFilter.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MessageFilter.entitlements; sourceTree = "<group>"; };
 		FD7A8F57CDE97D7412DC8AF8 /* Core */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Core; path = Core; sourceTree = SOURCE_ROOT; };
+		FDACD4CB18AA0B3020A09078 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		FE2AA537BD66CC913767D2DC /* CallDirectory.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = CallDirectory.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -131,6 +146,7 @@
 				E01211C64F467DD0EC1AA9C3 /* Info.plist */,
 				F92B2D41F2C7B84131342EF1 /* MessageFilter.entitlements */,
 				B441389511B639CF9457DFD2 /* MessageFilterExtension.swift */,
+				DE1A428163B195BBC1D9C552 /* InfoPlist.strings */,
 			);
 			path = MessageFilter;
 			sourceTree = "<group>";
@@ -191,6 +207,7 @@
 				C9A3D90DB810FD968F731C97 /* Info.plist */,
 				A661F91A9FD78D7FF973B911 /* SafariExtension.entitlements */,
 				E5CA27DA8F58C1AD1C5641A2 /* SafariWebExtensionHandler.swift */,
+				B1443023B56F8245D19DE5D7 /* InfoPlist.strings */,
 				ECD53E3044157CEC7D843B17 /* Resources */,
 			);
 			path = SafariExtension;
@@ -223,6 +240,7 @@
 				84BA38ED727FD076C6B3DDD6 /* ReplySpeaker.swift */,
 				AF3C946C7E291506723FB25A /* VoiceListener.swift */,
 				4623E0F92491831EF284BE09 /* Debug */,
+				86C975201DC4D87FB98BBD52 /* InfoPlist.strings */,
 				3C25AF4BBF2EBFEA8CE0308F /* Views */,
 			);
 			path = App;
@@ -234,6 +252,7 @@
 				40AB4308C8B210487E08269B /* Info.plist */,
 				3E0EF675CA21B27398D564F4 /* ShareExtension.entitlements */,
 				6347632638B2BBB1D921BC29 /* ShareViewController.swift */,
+				01495D6F82DC6AD75CE163A4 /* InfoPlist.strings */,
 			);
 			path = ShareExtension;
 			sourceTree = "<group>";
@@ -252,6 +271,7 @@
 				A5A6A6699D77BEFE19DAB2D5 /* CallDirectory.entitlements */,
 				ECDC69D9559207B1E43D992A /* CallDirectoryHandler.swift */,
 				19DEE47BDDF8CD2C46408D60 /* Info.plist */,
+				323881E1882ECFEB4C39DB1F /* InfoPlist.strings */,
 			);
 			path = CallDirectory;
 			sourceTree = "<group>";
@@ -264,6 +284,7 @@
 			buildConfigurationList = 9CD80662FC72227BA99F2616 /* Build configuration list for PBXNativeTarget "MessageFilter" */;
 			buildPhases = (
 				62C6CC143AE04590B49766E2 /* Sources */,
+				BE003E25DDC8F136068B50A7 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -281,6 +302,7 @@
 			buildConfigurationList = F5C4BD14E89D61C005FD837C /* Build configuration list for PBXNativeTarget "ShareExtension" */;
 			buildPhases = (
 				7AA92CB887D585E533815E42 /* Sources */,
+				09E93CFAFB2DB3B59E97D321 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -298,6 +320,7 @@
 			buildConfigurationList = E2D509237633D5B030F92DA1 /* Build configuration list for PBXNativeTarget "Mimamori" */;
 			buildPhases = (
 				752CC58A4F4E99607B42DE77 /* Sources */,
+				8D47CFA0099B55CD39E91919 /* Resources */,
 				A205F87CB94B0ACCA39B66F9 /* Frameworks */,
 				F41342551632905C68A98BE1 /* Embed Foundation Extensions */,
 			);
@@ -339,6 +362,7 @@
 			buildConfigurationList = 0EF8295D4EC7EC6744ED8C76 /* Build configuration list for PBXNativeTarget "CallDirectory" */;
 			buildPhases = (
 				213F8CD872859225B6545336 /* Sources */,
+				D45077DED0FDA17146784995 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -387,6 +411,7 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				Base,
+				en,
 				ja,
 			);
 			mainGroup = CD44A50BE7DD385179B1BE7A;
@@ -409,10 +434,43 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		09E93CFAFB2DB3B59E97D321 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D5A915164C35F53A970D7704 /* InfoPlist.strings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8D47CFA0099B55CD39E91919 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D6D36C1F5814E263377C9774 /* InfoPlist.strings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BE003E25DDC8F136068B50A7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4799E09B550CE33AF47CF9CB /* InfoPlist.strings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D45077DED0FDA17146784995 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC53B3BFD66808AB9E8791E7 /* InfoPlist.strings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		D8302586C50255E757E4CBA4 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				542AC95379E9D9FC5C6A6632 /* InfoPlist.strings in Resources */,
 				CDFD1C8B9D9F3A1A276E39B0 /* manifest.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -493,6 +551,54 @@
 			targetProxy = 41B99FDA0940661FD31E736A /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		01495D6F82DC6AD75CE163A4 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				F8469859BF8A09F6E12A30DD /* en */,
+				269A9FC1AFAA472457732ED0 /* ja */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+		323881E1882ECFEB4C39DB1F /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				5B1160E3057AE1DBB06229E3 /* en */,
+				FDACD4CB18AA0B3020A09078 /* ja */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+		86C975201DC4D87FB98BBD52 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				ED5BA5FA26F250B07F3A7807 /* en */,
+				82D66AF2F38B7CBCD40033EE /* ja */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+		B1443023B56F8245D19DE5D7 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				712562C323E2A51682DDF23D /* en */,
+				4EDF58AC7BF0B880A61FAE9D /* ja */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+		DE1A428163B195BBC1D9C552 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				EC4358BDD5FA2EE8A3FB6021 /* en */,
+				3A6A9A0EF7199C388B1E5887 /* ja */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
 		01639E694198BCC0B2ED6E0A /* Release */ = {
