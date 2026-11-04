@@ -90,6 +90,10 @@ public final class Session {
     try await call { try await $0.resolve(caseId: caseId) }
   }
 
+  public func consult(text: String) async throws -> ConsultAnswer {
+    try await call { try await $0.consult(text: text) }
+  }
+
   /// This device's member id, to tell "my" cases from the others' on the family cards.
   public var memberId: String? { store.load()?.memberId }
 

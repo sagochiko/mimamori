@@ -92,6 +92,11 @@ public final class APIClient: Sendable {
     try await send("POST", "cases/\(caseId)/resolve", body: Empty?.none, auth: true)
   }
 
+  /// `POST /consult`. What the protected person said, as text; the answer to show and read aloud.
+  public func consult(text: String) async throws -> ConsultAnswer {
+    try await send("POST", "consult", body: ConsultBody(text: text), auth: true)
+  }
+
   // MARK: Plumbing
 
   static let decoder: JSONDecoder = {
@@ -202,6 +207,10 @@ private struct CaseList: Decodable {
 private struct ConflictAnswer: Decodable {
   let error: String
   let assignee: CaseMember?
+}
+
+private struct ConsultBody: Encodable {
+  let text: String
 }
 
 private struct RelayBody: Encodable {

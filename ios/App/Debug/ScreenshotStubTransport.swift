@@ -9,6 +9,13 @@
     static var isRequested: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub") }
     /// With `-mimamori-stub-relay-fails` as well, "送る" answers 500, to see how a failed reply looks.
     static var relayFails: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-relay-fails") }
+    /// With `-mimamori-stub-heard <text>`, pressing the microphone "hears" that text at once, since the
+    /// simulator has no on-device Japanese recognition. The answer comes from the stub below.
+    static var heardText: String? {
+      let args = ProcessInfo.processInfo.arguments
+      guard let i = args.firstIndex(of: "-mimamori-stub-heard"), i + 1 < args.count else { return nil }
+      return args[i + 1]
+    }
     /// The stub keeps the key in memory, so the real marker file is left alone.
     static let marker = FileInstallMarker(url: URL.temporaryDirectory.appending(path: "mimamori-stub-installed"))
 
@@ -27,6 +34,8 @@
             : (201, Self.joinAnswer(role: Self.role(in: request)))
         case ("PUT", "/members/me/apns"):
           (204, "")
+        case ("POST", "/consult"):
+          (200, Self.consultAnswer(to: Self.field("text", in: request) ?? ""))
         case ("GET", "/cases"):
           (200, StubCases.shared.list())
         case ("POST", let p) where p.hasPrefix("/cases/"):
@@ -47,6 +56,17 @@
 
     fileprivate static func json(_ value: Any) -> String {
       String(decoding: try! JSONSerialization.data(withJSONObject: value), as: UTF8.self)
+    }
+
+    /// The fake-police answer for anything about the police, otherwise the storage guidance.
+    private static func consultAnswer(to text: String) -> String {
+      let police = "詐欺で使われる説明と一致しています。送金せず、いったん電話を切って家族に確かめて"
+      let storage = "設定の「一般」から「iPhone ストレージ」を開くと、空きを作れます。広告の掃除アプリは入れなくていいよ"
+      let reply = text.contains("警察") ? police : storage
+      return json([
+        "reply": reply, "speak": reply.replacingOccurrences(of: "「", with: "").replacingOccurrences(of: "」", with: ""),
+        "handoff": text.contains("警察"),
+      ])
     }
 
     private static func role(in request: URLRequest) -> String { field("role", in: request) ?? "protected" }
