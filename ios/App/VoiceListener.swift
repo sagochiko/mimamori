@@ -124,9 +124,14 @@ final class VoiceListener {
   }
 
   /// Speech recognition and the microphone, asked for the first time the microphone is pressed.
-  private static func permitted() async -> Bool {
+  /// Nonisolated for the same reason as above: TCC calls the speech answer back on a background
+  /// queue, and when this closure inherited the main actor, Swift's run-time check stopped the app
+  /// right after the permission sheet (author's iPhone, iOS 27.2, 2026年11月4日).
+  nonisolated private static func permitted() async -> Bool {
     let speech = await withCheckedContinuation { continuation in
-      SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
+      SFSpeechRecognizer.requestAuthorization { @Sendable status in
+        continuation.resume(returning: status)
+      }
     }
     guard speech == .authorized else { return false }
     return await AVAudioApplication.requestRecordPermission()
