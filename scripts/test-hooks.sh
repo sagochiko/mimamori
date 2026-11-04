@@ -593,6 +593,13 @@ grep -q 'scripts/handoff-started.sh" before ' .claude/skills/mm-handoff/SKILL.md
   grep -q 'Base directory for this skill: $repo/.claude/skills/mm-autopilot' .claude/skills/mm-handoff/SKILL.md &&
   ! grep -q 'pgrep -fl "mimamori-handoff-$stamp.md" && exit 0' .claude/skills/mm-handoff/SKILL.md ||
   { echo "skill test failed: mm-handoff waits for the new session's first turn with scripts/handoff-started.sh"; fail=1; }
+# mm-screen-guide's picture builder: captions wrap inside their tile and the marks are drawn. It needs
+# Pillow and the Hiragino font, which a Mac has and a cloud session may not, so it runs only where both are.
+# The check uses python3 -I like the run, so a Pillow that only -I cannot see skips instead of failing.
+if python3 -I -c 'import PIL' 2>/dev/null && [[ -f "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc" ]]; then
+  out=$(python3 -I .claude/skills/mm-screen-guide/annotate.py --self-test 2>&1) ||
+    { echo "skill test failed: mm-screen-guide annotate.py --self-test: $(tail -1 <<<"$out")"; fail=1; }
+fi
 # handoff-started.sh on made-up transcripts. The old session's own transcript holds the brief, Claude's
 # answers, and the skill line too, so only transcripts missing from the list taken before the launch count.
 # An API error is kept as an assistant line (isApiErrorMessage), so a first turn needs a tool call.
