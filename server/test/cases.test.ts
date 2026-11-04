@@ -8,6 +8,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ExternalBudget } from "../src/budget";
 import {
   NO_REPLY_YET,
+  NOT_REACHED,
   NOT_RESOLVED_YET,
   openCase,
   recordAiReply,
@@ -270,17 +271,25 @@ describe("openCase", () => {
     expect(to(f.author)).toHaveLength(1);
   });
 
-  it("opens the case without throwing when no family member has a device to notify", async () => {
+  it("when no family member has a device to notify, keeps the case untold and throws, and the tick tells a device registered later", async () => {
     const f = await family();
     await env.DB.prepare("UPDATE members SET apns_token = NULL WHERE family_id = ? AND role = 'family'")
       .bind(f.familyId)
       .run();
+    const alertId = await newAlert(f.familyId);
 
-    const opened = await open(await newAlert(f.familyId), new ExternalBudget(0));
+    // Nobody was told, so it is not told (#60): the protected person must not hear "家族に伝えました".
+    await expect(open(alertId, new ExternalBudget(0))).rejects.toMatchObject({ name: "CaseNoticeDeferred", reason: "not_delivered" });
+    expect((await caseOf(alertId))?.state).toBe("notified");
+    expect((await caseOf(alertId))?.family_notified_at).toBeNull();
 
-    expect(opened?.state).toBe("notified");
-    // Nobody to tell is not "untold": the 5-minute tick does not keep retrying it.
-    expect((await caseOf(opened?.alertId ?? ""))?.family_notified_at).not.toBeNull();
+    await env.DB.prepare("UPDATE members SET apns_token = ?, apns_env = 'sandbox' WHERE id = ?")
+      .bind(f.sister.token, f.sister.memberId)
+      .run();
+    sent = [];
+    await tick(Date.now());
+    expect(to(f.sister)).toEqual([expect.objectContaining({ title: "1段階", body: "警察を名乗る電話の相談" })]);
+    expect((await caseOf(alertId))?.family_notified_at).not.toBeNull();
   });
 });
 
@@ -587,7 +596,7 @@ describe("the 30-minute watch", () => {
     expect(sent).toHaveLength(0);
   });
 
-  it("an untold case is still watched: after 30 minutes the protected person hears, even while the family's devices fail", async () => {
+  it("an untold case is still watched: after 30 minutes the protected person hears it did not reach the family, even while the family's devices fail", async () => {
     const f = await family();
     const alertId = await newAlert(f.familyId);
     apnsFailsFor([f.author.token, f.sister.token]);
@@ -597,7 +606,9 @@ describe("the 30-minute watch", () => {
 
     await tick(Date.now());
 
-    expect(to(f.mother).map((s) => s.body)).toEqual([NO_REPLY_YET]);
+    // Not "家族から返事がまだ": the family never got it (#60).
+    expect(to(f.mother).map((s) => s.body)).toEqual([NOT_REACHED]);
+    expect(NOT_REACHED).toBe("家族に届いていません。急ぐなら電話して");
   });
 
   it("does not remind about a case older than a day", async () => {

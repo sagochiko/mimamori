@@ -510,8 +510,9 @@ describe("consult.ts", () => {
     const deps = fakes(help());
     const answer = await consult(consultEnv, motherOf(fam), "よく分からない画面が出て困ってる", new ExternalBudget(0), deps);
     expect(deps.claudeCalls).toBe(0);
-    expect(answer).toMatchObject({ reply: "うまく答えられませんでした。家族に伝えました", handoff: true });
-    // The family could not be told within this request; the case waits for the 5-minute tick.
+    // The family could not be told within this request, so she is not told they were (#60); the case
+    // waits for the 5-minute tick.
+    expect(answer).toMatchObject({ reply: "うまく答えられませんでした。家族に届いていません。急ぐなら電話して", handoff: true });
     const [opened] = await casesOf(fam.familyId);
     expect(opened?.family_notified_at).toBeNull();
     expect(familyPushes(fam)).toHaveLength(0);
@@ -520,7 +521,7 @@ describe("consult.ts", () => {
   it("answers the script with the fixed line when no ticket is left, and the case waits for the tick", async () => {
     const fam = await setupFamily();
     const answer = await consult(consultEnv, motherOf(fam), POLICE, new ExternalBudget(0), fakes(scam()));
-    expect(answer.reply).toBe(POLICE_REPLY);
+    expect(answer.reply).toBe(`${POLICE_REPLY}。家族に届いていません。急ぐなら電話して`);
     const [opened] = await casesOf(fam.familyId);
     expect(opened?.family_notified_at).toBeNull();
     expect(familyPushes(fam)).toHaveLength(0);
@@ -1004,5 +1005,129 @@ describe("the one line the family gets", () => {
     await consult(consultEnv, motherOf(fam), POLICE, new ExternalBudget(), fakes(null, T0 + 5 * 60_000));
     expect((await cardOf(fam))?.alert?.summary).toBe("警察を名乗る電話の相談");
     expect(familyPushes(fam).map((p) => p.body)).toEqual(["警察を名乗る電話の相談", "警察を名乗る電話の相談"]);
+  });
+});
+
+// #60: when the notice did not reach the family, she must not think the family knows ("通知が届かな
+// かったときに、母に解決済みと思わせない" in docs/design.md). The answer says so in place of
+// "家族に伝えました", and the card keeps what she heard.
+describe("when the notice does not reach the family", () => {
+  const NOT_REACHED = "家族に届いていません。急ぐなら電話して";
+  type Cause = "budget" | "apns" | "device";
+  const causes: Array<[string, Cause]> = [
+    ["no ticket is left for the family's devices", "budget"],
+    ["APNs takes none of it", "apns"],
+    ["no family member has a device to notify", "device"],
+  ];
+
+  /** Makes the family's notice fail; returns the budget to consult with (`claudeTickets` for Claude). */
+  async function failing(fam: Family, cause: Cause, claudeTickets: number): Promise<ExternalBudget> {
+    if (cause === "apns") {
+      network.use(
+        http.post(`${SANDBOX}/3/device/:token`, ({ params }) =>
+          fam.familyTokens.includes(String(params.token)) ? new HttpResponse(null, { status: 500 }) : undefined,
+        ),
+      );
+    }
+    if (cause === "device") {
+      await env.DB.prepare("UPDATE members SET apns_token = NULL WHERE family_id = ? AND role = 'family'")
+        .bind(fam.familyId)
+        .run();
+    }
+    // One family device short of the two the notice needs.
+    return new ExternalBudget(cause === "budget" ? claudeTickets + 1 : 40);
+  }
+
+  it.each(causes)("answers the script with 'not reached' after the fixed line when %s", async (_label, cause) => {
+    const fam = await setupFamily();
+    const budget = await failing(fam, cause, 0);
+    const answer = await consult(consultEnv, motherOf(fam), POLICE, budget, fakes(null));
+
+    const reply = `${POLICE_REPLY}。${NOT_REACHED}`;
+    expect(answer).toEqual({ reply, speak: reply, handoff: true });
+    const [opened] = await casesOf(fam.familyId);
+    expect(opened?.family_notified_at).toBeNull();
+    // The card shows what she heard.
+    expect(opened?.ai_reply).toBe(reply);
+  });
+
+  it.each(causes)("says 'not reached' in place of '家族に伝えました' in a handoff when %s", async (_label, cause) => {
+    const fam = await setupFamily();
+    const budget = await failing(fam, cause, 1);
+    const answer = await consult(consultEnv, motherOf(fam), "写真を全部消したいんだけど、どうすればいい？", budget, fakes(help()));
+
+    expect(answer).toMatchObject({ reply: `これは家族と一緒にやろう。${NOT_REACHED}`, handoff: true });
+    expect(answer.reply).not.toContain("家族に伝えました");
+  });
+
+  it.each(causes)("says 'not reached' when Claude could not answer and %s", async (_label, cause) => {
+    const fam = await setupFamily();
+    const budget = await failing(fam, cause, 1);
+    const answer = await consult(consultEnv, motherOf(fam), "よく分からない画面が出て困ってる", budget, fakes(null));
+    expect(answer).toMatchObject({ reply: `うまく答えられませんでした。${NOT_REACHED}`, handoff: true });
+  });
+
+  it("adds 'not reached' after Claude's warning without doubling the full stop", async () => {
+    const fam = await setupFamily();
+    const budget = await failing(fam, "device", 1);
+    const said = scam({ level: 2, basis: "急がせる話があります。", action: "電話を切って家族に確かめて。" });
+    const answer = await consult(consultEnv, motherOf(fam), POLICE_CALL, budget, fakes(said));
+    expect(answer.reply).toBe(`急がせる話があります。電話を切って家族に確かめて。${NOT_REACHED}`);
+  });
+
+  it("keeps the answers as they are when the family was told", async () => {
+    const fam = await setupFamily();
+    expect((await consult(consultEnv, motherOf(fam), POLICE, new ExternalBudget(), fakes(null))).reply).toBe(POLICE_REPLY);
+    const other = await setupFamily();
+    const handoff = await consult(consultEnv, motherOf(other), "写真を全部消したいんだけど、どうすればいい？", new ExternalBudget(), fakes(help()));
+    expect(handoff.reply).toBe("これは家族と一緒にやろう。家族に伝えました");
+  });
+
+  it("counts as told when one family device took it", async () => {
+    const fam = await setupFamily();
+    const [, sisterToken] = fam.familyTokens;
+    network.use(
+      http.post(`${SANDBOX}/3/device/:token`, ({ params }) =>
+        String(params.token) === sisterToken ? new HttpResponse(null, { status: 500 }) : undefined,
+      ),
+    );
+    const answer = await consult(consultEnv, motherOf(fam), POLICE, new ExternalBudget(), fakes(null));
+    expect(answer.reply).toBe(POLICE_REPLY);
+  });
+
+  it("says 'not reached' when the heavier notice of her open case could not go out", async () => {
+    const fam = await setupFamily();
+    await consult(consultEnv, motherOf(fam), POLICE_CALL, new ExternalBudget(), fakes(scam({ level: 2 })));
+    network.use(http.post(`${SANDBOX}/3/device/:token`, () => new HttpResponse(null, { status: 500 })));
+    const original = console.error;
+    console.error = () => {};
+    let answer;
+    try {
+      answer = await consult(consultEnv, motherOf(fam), POLICE, new ExternalBudget(), fakes(null, T0 + 5 * 60_000));
+    } finally {
+      console.error = original;
+    }
+    expect(answer.reply).toBe(`${POLICE_REPLY}。${NOT_REACHED}`);
+  });
+
+  it("does not say 'not reached' when her open case was told and the new consultation is no heavier", async () => {
+    const fam = await setupFamily();
+    await consult(consultEnv, motherOf(fam), POLICE_CALL, new ExternalBudget(), fakes(scam({ level: 2 })));
+    const answer = await consult(
+      consultEnv,
+      motherOf(fam),
+      "やっぱり気になる",
+      new ExternalBudget(),
+      fakes(help({ handoff: true }), T0 + 6 * 60_000),
+    );
+    expect(answer.reply).toBe("これは家族と一緒にやろう。家族に伝えました");
+  });
+
+  it("answers 'not reached' on the route when the family has no device", async () => {
+    const fam = await setupFamily();
+    await failing(fam, "device", 0);
+    const res = await call("POST", "/consult", { deviceKey: fam.mother.deviceKey, body: { text: POLICE }, env: consultEnv });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { reply: string }).reply).toBe(`${POLICE_REPLY}。${NOT_REACHED}`);
   });
 });

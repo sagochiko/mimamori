@@ -18,7 +18,10 @@
 // the reasons, and the last answer the AI gave her (cases.ai_reply). The AI always answers her; the
 // family only learns what she is troubled by, how dangerous it is, and whether it was solved.
 // A later consultation that joins her open case tells the family again only when it makes the level
-// heavier, and sends the first notice if that one could not go out yet.
+// heavier, and sends the first notice if that one could not go out yet. When, after that, no family
+// device has taken the case's notice (cases.family_notified_at is still NULL: no budget, APNs failed
+// for every device, or no device registered), she hears NOT_REACHED in place of "家族に伝えました",
+// so she does not think the family knows (#60).
 //
 // Request shape, checked 2026-11-04 with the claude-docs MCP:
 // - /docs/en/models/sonnet-5-5/overview: model ID claude-sonnet-5-5. Adaptive thinking is on by
@@ -30,7 +33,7 @@
 
 import { requireMember, type Member } from "./auth";
 import { ExternalBudget } from "./budget";
-import { CaseNoticeDeferred, openCase, recordAiReply, tellFamilyHeavier } from "./cases";
+import { CaseNoticeDeferred, NOT_REACHED, openCase, recordAiReply, tellFamilyHeavier } from "./cases";
 import { CLAUDE_TIMEOUT_MS, decide, PLACEHOLDER_REASON, soundsSafe, type Level } from "./claude";
 import { HttpError, json, readJson } from "./http";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
@@ -539,7 +542,10 @@ async function insertAlert(env: Env, familyId: string, p: Plan, now: number): Pr
   return id;
 }
 
-/** Opens the case and tells the family. A notice that could not go out now is retried by the tick. */
+/**
+ * Opens the case and tells the family. A notice that could not go out now is retried by the tick;
+ * whether it went out is read from the case afterwards (familyWasTold).
+ */
 async function openFor(env: Env, alertId: string, budget: ExternalBudget, deps: ConsultDeps): Promise<string | null> {
   try {
     await deps.openCase(env, alertId, budget);
@@ -548,6 +554,21 @@ async function openFor(env: Env, alertId: string, budget: ExternalBudget, deps: 
   }
   const row = await env.DB.prepare("SELECT id FROM cases WHERE alert_id = ?").bind(alertId).first<{ id: string }>();
   return row?.id ?? null;
+}
+
+/** Whether a family device took the case's notice. family_notified_at is the one record of that. */
+async function familyWasTold(env: Env, caseId: string | null): Promise<boolean> {
+  if (caseId === null) return false;
+  const row = await env.DB.prepare("SELECT family_notified_at FROM cases WHERE id = ?")
+    .bind(caseId)
+    .first<{ family_notified_at: number | null }>();
+  return row?.family_notified_at != null;
+}
+
+/** Her answer when the family was not told: NOT_REACHED in place of "家族に伝えました", or after it. */
+function notReached(reply: string): string {
+  if (reply.includes(TOLD_FAMILY)) return reply.replace(TOLD_FAMILY, NOT_REACHED);
+  return `${reply.replace(/[。、\s]+$/, "")}。${NOT_REACHED}`;
 }
 
 /**
@@ -599,9 +620,10 @@ export async function consult(
     const alertId = await insertAlert(env, member.familyId, p, now);
     if (p.toFamily) caseId = await openFor(env, alertId, budget, deps);
   }
+  const reply = p.toFamily && !(await familyWasTold(env, caseId)) ? notReached(p.reply) : p.reply;
   // She hears the whole answer; the card gets a fixed line instead when the answer repeats her words.
-  if (caseId !== null) await recordAiReply(env, caseId, repeats(p.reply, [text]) ? AI_REPLY_ON_CARD : p.reply);
-  return answer(p.reply, p.toFamily);
+  if (caseId !== null) await recordAiReply(env, caseId, repeats(reply, [text]) ? AI_REPLY_ON_CARD : reply);
+  return answer(reply, p.toFamily);
 }
 
 /** POST /consult with { text }: only the protected person consults. */
