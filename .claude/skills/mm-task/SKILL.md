@@ -40,6 +40,8 @@ To run several issues at once, give each its own worktree instead; see "Several 
 
 ## 3. Implement
 
+On every Agent call to an `mm-*` subagent in this skill, leave out `model` or pass the one its definition sets (the table in `CLAUDE.md`, "モデルの使い分け"). The per-invocation `model` parameter comes first in the order Claude Code resolves a subagent's model, before the definition's frontmatter (https://code.claude.com/docs/en/sub-agents, "Choose a model"), so a habit of passing `sonnet` for routine work would silently move the verifier off Opus and the reviewer off Fable. Leave out `effort` too; the definitions set it.
+
 Start the `mm-implementer` subagent with the issue number and the path of the working tree it works in (the main checkout, or the issue's worktree). Wait for its report.
 
 ## 4. Verify

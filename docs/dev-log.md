@@ -390,6 +390,17 @@ Claude Code(mm-implementer)には、親のセッションから「2回に分け�
 
 今の言葉に筋書きの部品が1つでもあるときだけ合わせて数え、部品の無い問いかけは前のやり取りごと Claude に渡す形にした(`tellsPoliceScript`)。テスト「asks Claude, with the turns, when her new words add nothing to a script she already told」で確かめている。もう1つ、`make eval` は判定(Haiku)の指示文しか測っておらず、相談の指示文の変更は数字に出ないことも分かった。この作業の木では `ANTHROPIC_API_KEY` が環境に無く、`rules+claude` は「nothing was measured or recorded」で止まり、規則だけの1行(見逃し 17/53、誤判定 0/43)が残った。使ったのは mm-implementer、Vitest、claude-docs の MCP。
 
+## 2026年11月5日 0:40 autopilot を Fable にするのに skill の model は使えなかった (#85)
+
+作者が決めた役ごとのモデル(レビュー、監査、採点は Fable、作者がいないあいだの autopilot の主も Fable)を、サブエージェントの定義と skill に入れていた。
+
+親のセッションからの指示は「起動の書き方(`claude --model ...` など)は code.claude.com の文書で確かめる」だった。
+
+skills の文書では、frontmatter の `model` は「The override applies for the rest of the current turn and isn't saved to settings. The session model resumes when you send your next prompt.」だった。autopilot は裏のサブエージェントの報告が届くたびに新しいターンになるので、2ターン目から Opus に戻る。もう1つ、sub-agents の文書では Agent ツールに渡す model が frontmatter より先に解決される。作者のグローバルの決まりは「単純な作業は Sonnet を指定する」なので、そのまま当てると検証役が定義の Opus から Sonnet に黙って下がる。
+
+`/mm-autopilot` の頭に `model: fable` を書けば足りると思っていた。呼ぶ側の model のことは考えていなかった。
+
+autopilot は、Fable でなければ `/mm-handoff` で `claude --model fable "/mm-autopilot <引き継ぎの文書> ..."` の新しい窓に移る形にした。skill の頭に `model: fable` を置く案は1ターンしか持たないので採らなかった。`/mm-task` と `/mm-endgame` には「`mm-*` を呼ぶときは model を省くか定義と同じにする」と書き、`scripts/test-hooks.sh` で frontmatter と `CLAUDE.md`、`docs/harness.md` の表がずれていないかを確かめる。使ったのは mm-implementer、WebFetch(code.claude.com の文書)、フックの自己テスト。
 ## 2026年11月5日 00:50 送ったあと欄に文字が残る件は、シミュレータでは再現しなかった (#88)
 
 母の画面で「それってどういうこと?」を送ると、欄に文字が残ったまま送るボタンが消えた件を直していた。作者の iPhone は iOS 27.2 で、日本語の変換を確定する前に押すとずれる、という見立てだった。
