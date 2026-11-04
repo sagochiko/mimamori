@@ -271,18 +271,63 @@ is_op() { [[ "$1" == ";" || "$1" == "&" || "$1" == "&&" || "$1" == "|" || "$1" =
 is_redir() { [[ "$1" =~ ^[0-9]*[\<\>] || "$1" == "&>" ]]; }
 
 # command_starts: from WORDS, the index of the command word of each simple command, after VAR=value
-# prefixes and the reserved words that hand the head on ({ ! if then else elif do while until time).
+# prefixes, the reserved words that hand the head on ({ ! if then else elif do while until), and the
+# wrappers Claude Code strips before it matches permission rules (https://code.claude.com/docs/en/permissions,
+# "Wrappers"): timeout, time, nice, nohup, stdbuf, command and builtin, zsh's noglob, and xargs without
+# flags. Without this, `timeout 60 git push -f` matched the allow rule `git push*` and no gate saw the
+# push. `command -v` and `command -V` only look a command up, so they stay the command. env is not in
+# that list, so the rules see `env git ...` as env and ask; the gates do not look through it either.
 # Sets STARTS.
 command_starts() {
-  local k=0 m=${#WORDS[@]} start=1
+  local k=0 m=${#WORDS[@]} start=1 w
   STARTS=()
   while ((k < m)); do
     if is_op "${WORDS[k]}"; then start=1; k=$((k + 1)); continue; fi
     if ((start)); then
       while ((k < m)); do
-        case ${WORDS[k]} in
-          '{' | '!' | if | then | else | elif | do | while | until | time) k=$((k + 1)) ;;
-          *) if [[ "${WORDS[k]}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then k=$((k + 1)); else break; fi ;;
+        w=${WORDS[k]}
+        case $w in
+          '{' | '!' | if | then | else | elif | do | while | until | noglob) k=$((k + 1)) ;;
+          nohup | builtin) # nohup [--] CMD
+            k=$((k + 1))
+            [[ "${WORDS[k]}" == -- ]] && k=$((k + 1)) ;;
+          time | */time) # time -p
+            k=$((k + 1))
+            while ((k < m)) && [[ "${WORDS[k]}" == -* ]]; do k=$((k + 1)); done ;;
+          timeout | */timeout) # timeout [-s SIG] [-k DUR] [--flags] DURATION
+            k=$((k + 1))
+            while ((k < m)) && [[ "${WORDS[k]}" == -?* ]]; do
+              case ${WORDS[k]} in
+                -s | -k | --signal | --kill-after) k=$((k + 2)) ;;
+                --) k=$((k + 1)); break ;;
+                *) k=$((k + 1)) ;;
+              esac
+            done
+            k=$((k + 1)) ;;
+          nice | */nice) # nice [-n N | -N | --adjustment[=]N]
+            k=$((k + 1))
+            while ((k < m)) && [[ "${WORDS[k]}" == -?* ]]; do
+              case ${WORDS[k]} in
+                -n | --adjustment) k=$((k + 2)) ;;
+                *) k=$((k + 1)) ;;
+              esac
+            done ;;
+          stdbuf | */stdbuf) # stdbuf -i MODE -o MODE -e MODE, or glued (-oL, --output=L)
+            k=$((k + 1))
+            while ((k < m)) && [[ "${WORDS[k]}" == -?* ]]; do
+              case ${WORDS[k]} in
+                -i | -o | -e | --input | --output | --error) k=$((k + 2)) ;;
+                *) k=$((k + 1)) ;;
+              esac
+            done ;;
+          command) # command [-p] CMD; command -v / -V only looks CMD up
+            [[ "${WORDS[k + 1]}" =~ ^-[pvV]*[vV] ]] && break
+            k=$((k + 1))
+            while ((k < m)) && [[ "${WORDS[k]}" == -p || "${WORDS[k]}" == -- ]]; do k=$((k + 1)); done ;;
+          xargs | */xargs) # only a bare xargs is stripped
+            [[ "${WORDS[k + 1]}" == -* ]] && break
+            k=$((k + 1)) ;;
+          *) if [[ "$w" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then k=$((k + 1)); else break; fi ;;
         esac
       done
       if ((k < m)) && ! is_op "${WORDS[k]}"; then STARTS+=("$k"); fi
@@ -291,6 +336,17 @@ command_starts() {
     fi
     k=$((k + 1))
   done
+}
+
+# behind_xargs <index>: the word at <index> runs under a bare xargs (one that command_starts looked
+# through), which adds words from stdin that no gate can read.
+behind_xargs() {
+  local j
+  for ((j = $1 - 1; j >= 0; j--)); do
+    is_op "${WORDS[j]}" && return 1
+    [[ "${WORDS[j]}" == xargs || "${WORDS[j]}" == */xargs ]] && return 0
+  done
+  return 1
 }
 
 # gh_calls: from WORDS (shell_words), every gh that runs as a command (command_starts). Prints one line
@@ -303,8 +359,9 @@ gh_calls() {
     w=${WORDS[k]}
     [[ "$w" == gh || "$w" == */gh ]] || continue
     repo=""
+    # Back to the start of the simple command, past wrappers such as timeout 30 (command_starts).
     for ((j = k - 1; j >= 0; j--)); do
-      [[ "${WORDS[j]}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || break
+      is_op "${WORDS[j]}" && break
       [[ "${WORDS[j]}" == GH_REPO=* ]] && repo=${WORDS[j]#GH_REPO=}
     done
     k=$((k + 1))

@@ -1,6 +1,6 @@
 ---
 name: mm-release
-description: Uploads a mimamori build to App Store Connect for TestFlight - bumps the build number, archives Release, checks the archive, exports and uploads after the author approves, then fills in the mother's internal group and the judges' external group in Chrome and leaves only Submit Review to the author. Use for "TestFlight に上げて", "母に新しい版を届けて", "/mm-release".
+description: Uploads a mimamori build to App Store Connect for TestFlight - bumps the build number, archives Release, checks the archive, exports and uploads, then fills in the mother's internal group and the judges' external group in Chrome and leaves only Submit Review to the author. Use for "TestFlight に上げて", "母に新しい版を届けて", "/mm-release".
 ---
 
 # Upload a build for TestFlight
@@ -60,9 +60,9 @@ Expect: `$N` twice (no `ApplicationProperties` means it is not an iOS app archiv
 
 The stub check reads every file in the `.app`, not only `Mimamori`, because a Debug build of Xcode 27.1 moves the code into `*.debug.dylib` files. Measured on 2026-11-04 with simulator builds of the same scheme: Debug had 4 debug dylibs (`Mimamori.debug.dylib` and one in each embedded extension), 0 hits in `Mimamori` alone and 8 over the whole `.app`; Release had no debug dylib and 0 hits over the whole `.app`. So 8 in Debug shows the check finds the stub, and 0 here means it is gone. A debug dylib in this archive means the Release configuration was not used; stop.
 
-## 4. Export and upload (the author approves)
+## 4. Export and upload
 
-Tell the author in one line what is about to go up: build number, version (`MARKETING_VERSION` in `ios/project.yml`), API host, and that approving it also puts the build in the mother's group once Apple has processed it ("承認すると、処理のあと母のグループにも入れる"). Then run the export. The hook (`guard-prod.sh`) and the `ask` rule make the author approve it; never reshape the command to get around them. If they decline, stop.
+Say in one line what is about to go up: build number, version (`MARKETING_VERSION` in `ios/project.yml`), API host, and that the build also goes into the mother's group once Apple has processed it ("処理のあと母のグループにも入れる"). Then run the export without waiting: since 2026-11-04 the author lets uploads to App Store Connect run unasked during development, and keeps only Submit Review in step 5. If a permission prompt or a hook still stops the export, do not reshape the command to get around it; report it.
 
 ```sh
 xcodebuild -exportArchive -archivePath "$A" -exportOptionsPlist ios/ExportOptions.plist \
@@ -106,7 +106,7 @@ Apple processes an upload before it can be added to a group. Read build `$N`'s r
 
 Open `$BUILDS` in a second new tab; this is the work tab. Fill in, without pressing any button that sends the build to testers outside the family's group or to Apple:
 
-1. Internal Testing > the mother's group. If the group uses automatic distribution, build `$N` is already listed; go on. Otherwise use Add Builds, choose `$N`, write What to Test, and press Add. Claude presses this one: it reaches only the mother's internal group, which the author approved in step 4.
+1. Internal Testing > the mother's group. If the group uses automatic distribution, build `$N` is already listed; go on. Otherwise use Add Builds, choose `$N`, write What to Test, and press Add. Claude presses this one: it reaches only the mother's internal group, which step 4 announced and the author's decision of 2026-11-04 covers.
 2. Test Information. Beta App Description and Feedback Email must already be filled (issue #34). The feedback address is the author's, so do not type one; if either is empty, stop and point to issue #34. Paste the review note below into Review Notes in the beta app review information and save.
 3. External Testing > the judges' group > Add Builds. Choose `$N`, go on to What to Test and write it, and tick Automatically notify testers so the judges get the build as soon as it is approved. Stop with Submit Review on the screen (Start Testing when Apple does not review this build). Do not press it, and leave this tab alone from here on.
 

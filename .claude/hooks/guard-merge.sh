@@ -19,7 +19,10 @@ nl=$'\n'
 shell_words "$cmd"
 calls=()
 while read -r k r; do
-  [[ "${WORDS[k]}" == pr && "${WORDS[k + 1]}" == merge ]] && calls+=("$((k + 2)) $r")
+  [[ "${WORDS[k]}" == pr && "${WORDS[k + 1]}" == merge ]] || continue
+  # A bare xargs adds words from stdin (another PR, --admin) that the gate cannot read.
+  behind_xargs "$k" && block guard-merge "blocked: gh pr merge behind xargs takes words from stdin that this gate cannot check. Run gh pr merge <number> --merge directly."
+  calls+=("$((k + 2)) $r")
 done < <(gh_calls)
 # The same merge as text after an operator, a ( or a backtick: this also finds one inside $(...),
 # backticks, a heredoc, or bash -c "...; gh pr merge", which the words do not show as a command.
