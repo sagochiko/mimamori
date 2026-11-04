@@ -80,7 +80,7 @@ The author does one thing here: press Submit Review, because it sends the build 
 The app is opened by its Apple ID, never through the app list at `https://appstoreconnect.apple.com/apps`: that list shows the author's other apps, and this project keeps the author's earlier projects out of Claude's context. The Apple ID is a number, not a secret; App Store Connect shows it under App Information. Fill it in here after issue #34:
 
 ```sh
-ASC_APP_ID=<ASC_APP_ID>   # the app's Apple ID (digits); replace the mark after issue #34
+ASC_APP_ID=6830395335   # the app's Apple ID in App Store Connect (issue #34)
 BUILDS="https://appstoreconnect.apple.com/apps/$ASC_APP_ID/testflight/ios"
 ```
 
