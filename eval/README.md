@@ -95,7 +95,7 @@ cd server && npx tsc --noEmit -p ../eval/tsconfig.json  # eval/ の型検査
 
 1回ごとに `eval/results.jsonl` に1行(数字に `ts`、`set`、`mode`、`git_sha`、`n`、`notes` を足したもの)、[`RESULTS.md`](RESULTS.md) に表の1行が増える。dev の例文ごとの結果は `eval/out/dev-latest.json` に出る。
 
-`rules+claude` は、判定のキューと同じ [`server/src/claude.ts`](../server/src/claude.ts) の `requestClaudeJudgment` と `decide` で段階を決め(声の相談だけは母の相談と同じ道で決める。下の「相談の測り方」)、1と2を家族に届くものとして数える。鍵は環境変数 `ANTHROPIC_API_KEY` から読む。鍵が無ければ、Claude を呼ばず何も記録せずに止まる(そのときの `make eval` は、`rules` の行を書いたあとに失敗で終わる)。Claude が形の合う答えを返さなかった例文は規則だけで数え(相談は本番と同じく、規則が決められなければ2段階)、その件数を `results.jsonl` の `claude_unanswered` と画面に出す。この数が多い回は、ほとんど規則だけの数字になっている。
+`rules+claude` は、判定のキューと同じ [`server/src/claude.ts`](../server/src/claude.ts) の `requestClaudeJudgment` と `decide` で段階を決め(声の相談だけは母の相談と同じ道で決める。下の「相談の測り方」)、1と2を家族に届くものとして数える。鍵は環境変数 `ANTHROPIC_API_KEY` から読む。鍵が無ければ、Claude を呼ばず何も記録せずに止まる。`make eval` は流す前に鍵の有無を見て、無ければ `rules` の行も書かずに止まる。鍵の無いところで規則の変更を見るときは `make eval-rules` を流す。Claude が形の合う答えを返さなかった例文は規則だけで数え(相談は本番と同じく、規則が決められなければ2段階)、その件数を `results.jsonl` の `claude_unanswered` と画面に出す。この数が多い回は、ほとんど規則だけの数字になっている。
 
 ## 相談の測り方
 
