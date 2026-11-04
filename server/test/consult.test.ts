@@ -20,7 +20,7 @@ import {
   type ConsultDeps,
 } from "../src/consult";
 import { resetApnsJwtCache } from "../src/push";
-import { judgeByRules } from "../src/rules";
+import { judgeByRules, type RuleInput } from "../src/rules";
 import { MONEY_MOVE, POLICE_SCRIPT } from "../src/rules/phrases";
 import { call, createFamily, invite, join } from "./helpers";
 import { network } from "./network";
@@ -248,6 +248,51 @@ describe("fake police consultation", () => {
     expect(answer.handoff).toBe(true);
     expect((await alertsOf(fam.familyId))[0]?.level).toBe(1);
     expect(familyPushes(fam)).toHaveLength(2);
+  });
+
+  // #72: the main line of the demo (docs/design.md, ニセ警察詐欺). A caller who says he is the police
+  // is a part of the script in her consultation, next to one of the script's own parts.
+  it.each([
+    ["the main line", "警察から電話があって、口座が犯罪に使われてるって"],
+    ["the main line without the comma speech recognition drops", "警察から電話があって口座が犯罪に使われてるって"],
+    ["someone from the police station", "警察署の人から、口座が犯罪に使われてるって言われた"],
+    ["someone who says he is a police officer", "警察官を名乗る人から電話で、口座が犯罪に使われてるって"],
+    ["someone called police", "警察って人から口座が犯罪に使われてるって電話があった"],
+    ["a caller from the police and proving innocence", "警察から電話があって、潔白を証明してって言われた"],
+  ])("is level 1 by the rules alone when a caller from the police tells %s, with the fixed answer", async (_label, text) => {
+    const fam = await setupFamily();
+    const deps = fakes(scam({ level: 2 }));
+    const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps);
+    expect(deps.claudeCalls).toBe(0);
+    expect(answer).toEqual({ reply: POLICE_REPLY, speak: POLICE_REPLY, handoff: true });
+    const [alert] = await alertsOf(fam.familyId);
+    expect(alert).toMatchObject({ source: "consult", level: 1, notified: 1 });
+    expect(familyPushes(fam)).toHaveLength(2);
+  });
+
+  it.each([
+    ["only a lost wallet", "警察から電話があって、落とし物が届いてるって"],
+    ["only a lost wallet, without the comma", "警察から電話があって落とし物が届いてるって"],
+    // Moving money counts only next to one of the script's own parts: "振り込め詐欺" says 振り込.
+    ["only a warning that names transfer scams", "警察署の人から、振り込め詐欺に気をつけてって電話があった"],
+  ])("asks Claude when a caller from the police tells %s, which is not the script", async (_label, text) => {
+    const fam = await setupFamily();
+    const deps = fakes(scam({ level: 3, reasons: ["お金や暗証番号の話は出ていない"], basis: "", action: "お金や暗証番号を聞かれたら止めて" }));
+    const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps);
+    expect(deps.claudeCalls).toBe(1);
+    expect(answer.reply).not.toBe(POLICE_REPLY);
+    expect((await alertsOf(fam.familyId)).every((a) => a.level !== 1)).toBe(true);
+    expect(familyPushes(fam).every((p) => p.title !== "1段階")).toBe(true);
+  });
+
+  // Genuine warnings from banks and the police put "a call that says it is the police" next to "your
+  // account is used in a crime". The caller is a part only in her consultation, so they stay below 1.
+  it.each([
+    ["a bank's SMS", { source: "sms", text: "【銀行からのお知らせ】警察を名乗る人から電話で、口座が犯罪に使われているなどと言われたら詐欺です。お金を振り込ませる手口にご注意ください。" }],
+    ["a police page", { source: "page", url: "https://www.npa.go.jp/example/warning.html", domain: "www.npa.go.jp", text: "警察官を名乗る人から電話があり、口座が犯罪に使われていると言われたら、いったん電話を切って家族に相談してください。" }],
+    ["a bank's mail", { source: "gmail", sender: "info@example-bank.co.jp", text: "警察から電話があり口座が犯罪に使われていると言われても、キャッシュカードは渡さないでください。" }],
+  ] as [string, RuleInput][])("does not make %s that warns about the caller level 1", (_label, input) => {
+    expect(judgeByRules(input).level).not.toBe(1);
   });
 
   it("drops a broad verdict from Claude and keeps evidence and action apart", async () => {

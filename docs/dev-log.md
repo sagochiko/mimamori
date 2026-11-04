@@ -341,3 +341,15 @@ App Store Connect の検査で4つ断られた。「A value for the Info.plist k
 ここまでシミュレータと実機には何度も入れていたが、アイコンが無いことはどこでも止まらなかった。アーカイブの確かめにも、アイコンと拡張の manifest の項目が無かった。
 
 作者と相談し、今夜は仮のアイコン(地の色に「み」の1文字)を `ios/App/Assets.xcassets` に1枚置き、`manifest.json` に説明の1行とアイコン5枚を足して、同じビルド番号で上げ直した。2回目は「Uploaded Mimamori」で通り、作者が審査の申請を押してビルド2は「審査待ち」になった。今その場で本番のアイコンを作る案は、審査の申請が遅れるので採らなかった。使ったのは `/mm-release`、`xcodebuild`、mm-reviewer。
+
+## 2026年11月4日 22:20 dev の精度の測定は、相談の筋書きの数え方を通っていなかった (#72)
+
+本番で母の役の作者が「警察から電話があって、口座が犯罪に使われてるって」と話すと2段階になった件を直していた。相談の筋書きの数え方(`server/src/consult.ts` の `tellsPoliceScript`)にだけ、警察を名乗る相手からの連絡を部品として足した。
+
+親のセッションからの指示は「`make eval` を1回だけ流し、`eval/RESULTS.md` に足された行を見る」で、Issue の完了の条件は「dev の consult の見逃しが減り、本物の誤報が増えていない」だった。
+
+流す前に測り方を読むと、[`eval/lib/score.ts`](../eval/lib/score.ts) の136行は相談の例文も `judgeByRules` に通し、Claude の側は判定のキューと同じ `requestClaudeJudgment` を使っていた。`POST /consult` の `tellsPoliceScript` と、相談用の Claude の呼び出しはどちらも通らない。今回の直しは `judgeByRules` を変えないので、規則だけの数字は変わりようがない。
+
+Issue を書いた時点では、dev の consult の45件が母の相談と同じ道を通ると思っていた。実際には、相談の例文は SMS やページと同じ判定で測られていて、相談の答え(1段階と決まった答え、Claude に回るか)は測られていなかった。
+
+`make eval` は流さなかった。Claude を96回呼んで、変わらない数字の行を1つ足すだけになるため。相談の道は Vitest で確かめた。言い方6つが規則だけで1段階になり、落とし物の連絡など3つは Claude に回り、銀行と警察の本物の注意喚起3つは `judgeByRules` で1段階にならない。警察を名乗る連絡を SMS とページの規則にも足す案は、試しに足すと注意喚起の3つがどれも1段階になったので採らなかった。相談の道を eval で測れるようにするかは別の Issue で決める。使ったのは mm-implementer、Vitest。
