@@ -265,6 +265,10 @@ describe("fake police consultation", () => {
     ["someone from the National Police Agency", "警察庁の人から電話で、口座が犯罪に使われてるって"],
     ["someone who says he is a detective", "刑事を名乗る人から電話で、口座が犯罪に使われてるって"],
     ["a call that says 'this is the police'", "警察ですって電話で、口座が犯罪に使われてるって"],
+    // #78: speech recognition (or her own way of talking) drops a particle.
+    ["a call that says it is the police, without が", "警察を名乗る電話きて潔白を証明してって"],
+    ["a call that says it is the police, without を", "警察名乗る電話が来て、潔白を証明してって"],
+    ["someone who says he is the police, without を", "警察名乗る人から電話で、口座が犯罪に使われてるって"],
   ])("is level 1 by the rules alone when a caller from the police tells %s, with the fixed answer", async (_label, text) => {
     const fam = await setupFamily();
     const deps = fakes(scam({ level: 2 }));
