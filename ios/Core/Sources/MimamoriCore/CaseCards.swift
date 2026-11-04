@@ -39,6 +39,40 @@ public struct FamilyCard: Equatable, Sendable {
   }
 }
 
+/// A button of the question that "解決" asks first. One verb each; the meaning goes to VoiceOver.
+public enum ResolveChoice: String, CaseIterable, Sendable {
+  case resolve, cancel
+
+  public var title: String {
+    switch self {
+    case .resolve: "解決にする"
+    case .cancel: "やめる"
+    }
+  }
+}
+
+/// "解決" asks before it sends (#60): a mistaken press would stop the 30-minute watch, take the case
+/// off the protected person's screen, and tell the rest of the family "(名前)が解決". Only
+/// "解決にする" sends, once; "やめる", or closing the question, sends nothing.
+public struct ResolveConfirmation: Equatable, Sendable {
+  /// The case being asked about, while the question is shown.
+  public private(set) var asking: Case?
+
+  public init() {}
+
+  /// "解決" was pressed on this case. A resolved case has no "解決" to ask about.
+  public mutating func ask(_ item: Case) {
+    guard item.state == .notified else { return }
+    asking = item
+  }
+
+  /// Closes the question. Returns the case to send `POST /cases/{id}/resolve` for, or nil to send nothing.
+  public mutating func choose(_ choice: ResolveChoice) -> Case? {
+    defer { asking = nil }
+    return choice == .resolve ? asking : nil
+  }
+}
+
 /// One line on the protected person's screen.
 ///
 /// While the case is open, it says "家族に伝えました", and after 30 minutes "家族から返事がまだ。急ぐなら
@@ -75,10 +109,14 @@ public struct ProtectedNotice: Equatable, Sendable, Identifiable {
   }
 
   private static func notice(for item: Case, now: Date) -> ProtectedNotice? {
-    guard item.state == .notified, now.timeIntervalSince(item.notifiedAt) < openShownFor else { return nil }
+    guard item.state == .notified, now.timeIntervalSince(item.notifiedAt) < openShownFor else {
+      return nil
+    }
     let summary = item.alert.map(\.summary).flatMap { $0.isEmpty ? nil : $0 }
-    let waitedTooLong = item.renotifiedAt != nil || now.timeIntervalSince(item.notifiedAt) >= unansweredAfter
-    return ProtectedNotice(id: item.id, status: waitedTooLong ? noReplyYet : toldFamily, summary: summary)
+    let waitedTooLong =
+      item.renotifiedAt != nil || now.timeIntervalSince(item.notifiedAt) >= unansweredAfter
+    return ProtectedNotice(
+      id: item.id, status: waitedTooLong ? noReplyYet : toldFamily, summary: summary)
   }
 }
 

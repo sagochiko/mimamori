@@ -3,12 +3,14 @@ import SwiftUI
 
 /// One case on a family member's screen: the level, the one line of what she is troubled by, what
 /// the AI told her, whether it was solved, and "電話する" and "解決". Every family member sees the same
-/// card. The reasons are read by VoiceOver only.
+/// card. The reasons are read by VoiceOver only. "解決" asks first, with "解決にする" and "やめる" and no
+/// sentence of its own (#60).
 struct CaseCardView: View {
   let card: FamilyCard
   @Environment(AppModel.self) private var model
   @Environment(\.openURL) private var openURL
   @State private var askingNumber = false
+  @State private var confirmation = ResolveConfirmation()
 
   private var item: Case { card.item }
 
@@ -40,6 +42,23 @@ struct CaseCardView: View {
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(RoundedRectangle(cornerRadius: 20).fill(Color(.secondarySystemBackground)))
     .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(levelColor.opacity(0.6), lineWidth: 2))
+    .confirmationDialog(
+      CardAction.resolve.title,
+      isPresented: Binding(
+        get: { confirmation.asking?.id == item.id },
+        set: { shown in if !shown { _ = confirmation.choose(.cancel) } }
+      ),
+      titleVisibility: .hidden
+    ) {
+      ForEach(ResolveChoice.allCases, id: \.self) { choice in
+        Button(choice.title, role: choice == .cancel ? .cancel : nil) {
+          if let chosen = confirmation.choose(choice) {
+            Task { await model.resolve(chosen) }
+          }
+        }
+        .accessibilityHint(choice.hint)
+      }
+    }
     .sheet(isPresented: $askingNumber) {
       PhoneNumberSheet { number in
         ProtectedPhoneStore.save(number)
@@ -108,7 +127,7 @@ struct CaseCardView: View {
 
   private func perform(_ action: CardAction) {
     switch action {
-    case .resolve: Task { await model.resolve(item) }
+    case .resolve: confirmation.ask(item)
     case .call:
       if let number = ProtectedPhoneStore.load() {
         openURL(number.url)
@@ -124,7 +143,17 @@ extension CardAction {
   var hint: String {
     switch self {
     case .call: "母に電話します。長押しで番号を変えられます"
-    case .resolve: "母と話して解決したら押します。ほかの家族にも解決と知らせます"
+    case .resolve: "母と話して解決したら押します。押すと確かめます"
+    }
+  }
+}
+
+extension ResolveChoice {
+  /// What the choice does, said only by VoiceOver.
+  var hint: String {
+    switch self {
+    case .resolve: "この相談を解決にして、ほかの家族にも解決と知らせます。母の画面からこの相談が消えます"
+    case .cancel: "解決にせず、カードに戻ります。誰にも知らせません"
     }
   }
 }

@@ -131,6 +131,64 @@ struct FamilyCardTests {
   }
 }
 
+// #60: a mistaken "解決" stops the 30-minute watch, takes the case off her screen, and tells the
+// rest of the family, so pressing it asks first.
+@Suite("解決の確かめ")
+struct ResolveConfirmationTests {
+  @Test("確かめのボタンは「解決にする」と「やめる」")
+  func titles() {
+    #expect(ResolveChoice.allCases.map(\.title) == ["解決にする", "やめる"])
+  }
+
+  @Test("「解決」を押すと、送らずに確かめる")
+  func askFirst() throws {
+    let item = try decodeCase(caseJSON())
+    var confirmation = ResolveConfirmation()
+    confirmation.ask(item)
+    #expect(confirmation.asking == item)
+  }
+
+  @Test("「やめる」なら何も送らず、確かめを閉じる")
+  func cancelSendsNothing() throws {
+    var confirmation = ResolveConfirmation()
+    confirmation.ask(try decodeCase(caseJSON()))
+    #expect(confirmation.choose(.cancel) == nil)
+    #expect(confirmation.asking == nil)
+    // Dismissing the dialog after that sends nothing either.
+    #expect(confirmation.choose(.cancel) == nil)
+  }
+
+  @Test("「解決にする」なら、その相談を送る")
+  func resolveSendsTheCase() throws {
+    let item = try decodeCase(caseJSON(id: "c-9"))
+    var confirmation = ResolveConfirmation()
+    confirmation.ask(item)
+    #expect(confirmation.choose(.resolve)?.id == "c-9")
+    #expect(confirmation.asking == nil)
+  }
+
+  @Test("確かめていなければ「解決にする」でも送らない")
+  func nothingAskedSendsNothing() {
+    var confirmation = ResolveConfirmation()
+    #expect(confirmation.choose(.resolve) == nil)
+  }
+
+  @Test("一度送ったら、続けて押しても2回は送らない")
+  func sendsOnce() throws {
+    var confirmation = ResolveConfirmation()
+    confirmation.ask(try decodeCase(caseJSON()))
+    #expect(confirmation.choose(.resolve) != nil)
+    #expect(confirmation.choose(.resolve) == nil)
+  }
+
+  @Test("解決した相談には確かめを出さない")
+  func resolvedIsNotAsked() throws {
+    var confirmation = ResolveConfirmation()
+    confirmation.ask(try decodeCase(caseJSON(state: "resolved", resolvedBy: ("m-2", "妹"))))
+    #expect(confirmation.asking == nil)
+  }
+}
+
 @Suite("母の画面の知らせ")
 struct ProtectedNoticeTests {
   @Test("家族に知らせた直後は「家族に伝えました」")
