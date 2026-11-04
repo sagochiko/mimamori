@@ -1,0 +1,5 @@
+{"id":"c-gf-01","source":"consult","sender":"","domain":"","text":"さっき孫から電話があって、今度の週末に遊びに来るって。声はいつもの孫だったわ。","url":"","expected_level":null,"is_scam":false,"note":"self-written; family call"}
+{"id":"c-gf-02","source":"consult","sender":"","domain":"","text":"娘が電話してくれて、病院の予約の日を確認してくれたの。ありがたいわ。","url":"","expected_level":null,"is_scam":false,"note":"self-written; family call"}
+{"id":"c-gf-03","source":"consult","sender":"","domain":"","text":"息子から電話で、風邪を引いたから声がおかしいけど大丈夫って。お金の話は何もなかったわ。","url":"","expected_level":3,"is_scam":false,"note":"self-written; family call with changed voice but no money request"}
+{"id":"c-gf-04","source":"consult","sender":"","domain":"","text":"妹から、法事の日にちを決めたいって電話が来たの。いつもの番号からだったわ。","url":"","expected_level":null,"is_scam":false,"note":"self-written; family call"}
+{"id":"c-gf-05","source":"consult","sender":"","domain":"","text":"近所の友達が、旅行のお土産を持っていくって電話してくれたの。","url":"","expected_level":null,"is_scam":false,"note":"self-written; friend call"}
