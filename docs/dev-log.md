@@ -258,3 +258,15 @@ PR #41 の2回目のレビューで、レビュー役(mm-reviewer)が Cloudflare
 やり直しでは同じ ID で届くものと思って計画のタスク6にもそう書いていた。ID が変わると、やり直しが新しい知らせとして扱われ、Claude をもう一度呼び、母と家族に2回知らせうる。
 
 本文に ID を入れ、受け手は `parseJob` で UUID の形を確かめてから使う形にした。テストのやり直しはすべて新しいメッセージの ID で届くように変え、直す前のコードでは13件落ちた。ID の無い古い形の本文は、その場で ID を作るとやり直しのたびに別の知らせになるので、捨てることにした。デプロイ前でキューに古い形は無い。デプロイした Worker でわざとやり直させて ID を比べる案は、作者の手が要り、確かめても文書の保証にはならないので採らなかった。使ったのは mm-implementer、Cloudflare の文書の MCP、`npx vitest run`。
+
+## 2026年11月4日 allow の `*` の下で force push の別の書き方が黙って通った (ハーネス)
+
+開発中は削除と取り返しのつかない操作のほかは確認なしにする、という決まりに合わせて、`.claude/settings.json` の allow に `git push*` と `gh api *` を足し、force push は deny の文字列で止めるつもりでいた。
+
+レビュー役(mm-reviewer)に差分を見せると、deny の文字列から漏れる形が並んだ。実装役には「`guard-prod.sh` で `shell_words` を使って git の全体のオプションを読み飛ばし、push のフラグの束と refspec を語で読む。`gh api` は GET と HEAD のほかのメソッドと、`-X GET` 無しのフィールドを ask にする」と頼んだ。
+
+レビューの照らし合わせでは、`git push -fu origin x`、`-uf`、`--mirror`、`origin --delete main`、`origin :main`、`HEAD:main` がどれも allow に落ちた。`gh api -X PATCH repos/sagochiko/mimamori -f visibility=public` と `gh api -X PUT .../pulls/3/merge` も黙って通った。逆に deny の `git push*-f` は `git push -u origin fix-f` に、`git push*+*` は `c++fix` に当たっていた。テストを先に書いて直す前のフックと設定に当てると、69件が落ちた。
+
+deny を足していけば塞がると思っていた。短いフラグは `-fu` のように束ねられ、git は `--mir` のような長いフラグの省略も受ける。`gh api` は `-f` を付けると `-X` が無くても POST になるので、前のテストの「`gh api -X PATCH` は確認なしで通る」は、決まりの側から見て間違った期待を固めていた。
+
+判定はフックに移し、deny は空白を前に置いた形にして予備として残した。allow の `git -c credential.helper= * push*` は、真ん中の `*` に `branch -D main` が入るので消した。graphql は読むだけのことが多いので、mutation と、ファイルや標準入力から読む問い合わせだけを聞く形にした。本番の D1 のマイグレーションに DROP があれば聞く形は、作者の確認を待つ仮の決め方として [`docs/harness.md`](harness.md) に書いた。使ったのは mm-implementer、mm-reviewer、`scripts/test-hooks.sh`、PreToolUse フックの `permissionDecision: "ask"`。
