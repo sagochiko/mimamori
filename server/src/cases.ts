@@ -1,55 +1,58 @@
-// Cases and hand-off ("引き継ぎ" in docs/design.md, task 10 in docs/plan.md).
+// Cases ("家族への知らせと解決" in docs/design.md, task 10 in docs/plan.md).
 //
-// D1 is the source of truth. A case moves only forward: notified -> accepted -> resolved. Every
-// transition is one conditional UPDATE, so when two family members press "引き受ける" at once,
-// exactly one statement finds the case still 'notified' and the other is told who has it.
+// The family only needs to know three things about the protected person: what she is troubled by,
+// whether it is dangerous, and whether it was solved. Every family member sees the same card, and
+// whoever talked with her presses "解決". Nobody takes a case over, and the AI keeps answering her:
+// accepting a case and writing her a reply were dropped on 2026-11-04 (docs/dev-log.md).
 //
-// The flag that stops the AI's guidance is the state itself: once a case is no longer 'notified',
-// a family member has taken over and the AI does not guide the protected person in that case any more
-// (aiGuidanceStopped, deliverAiReply). That way the protected person never has two voices to choose from.
+// D1 is the source of truth. A case moves only forward: notified -> resolved, in one conditional
+// UPDATE, so when two family members press "解決" at once only one of them tells the others.
+//
+// Columns kept from the earlier hand-off and no longer read or written: accepted_at, and the relays
+// table (still deleted with the case). assignee_member_id now holds who pressed "解決". A row left in
+// the old 'accepted' state counts as not resolved.
 
 import { requireMember, type Role } from "./auth";
 import { ExternalBudget } from "./budget";
-import { HttpError, json, readJson } from "./http";
+import { HttpError, json } from "./http";
 import { sendPush } from "./push";
 
 export const UNANSWERED_AFTER_MS = 30 * 60_000;
-/** Shown to the protected person when nobody accepted within 30 minutes. */
+/** Shown to the protected person when the case was not resolved within 30 minutes. */
 export const NO_REPLY_YET = "家族から返事がまだ。急ぐなら電話して";
-export const RELAY_MAX = 200;
+/** The title of the family's second notice, 30 minutes after the first. */
+export const NOT_RESOLVED_YET = "まだ解決していません";
 const AI_REPLY_MAX = 500;
 const LIST_LIMIT = 50;
 const WATCH_BATCH = 20;
 /** A member who left has no row any more; their name is shown as this. */
 const UNKNOWN_NAME = "家族";
 
-export type CaseState = "notified" | "accepted" | "resolved";
+export type CaseState = "notified" | "resolved";
 
 export interface CaseView {
   id: string;
   alertId: string | null;
   state: CaseState;
-  assigneeMemberId: string | null;
-  assignee: { memberId: string; displayName: string } | null;
   notifiedAt: string;
-  acceptedAt: string | null;
   resolvedAt: string | null;
+  /** Who pressed "解決" ("(名前)が解決"). Null while the case is open. */
+  resolvedBy: { memberId: string; displayName: string } | null;
   /** Set when the 30-minute watch told the protected person "家族から返事がまだ". */
   renotifiedAt: string | null;
+  /** The summary is one line made by the rules or Claude, never her words or the received text cut out. */
   alert: { level: 1 | 2 | 3; source: string; summary: string; reasons: string[] } | null;
-  /** What the AI told the protected person before a family member took over. */
+  /** The last answer the AI gave the protected person in this case. */
   aiReply: string | null;
-  relays: Array<{ id: string; fromMemberId: string; fromName: string; body: string; createdAt: string }>;
 }
 
 interface CaseRow {
   id: string;
   alert_id: string | null;
-  state: CaseState;
+  state: string;
   assignee_member_id: string | null;
-  assignee_name: string | null;
+  resolver_name: string | null;
   notified_at: number;
-  accepted_at: number | null;
   resolved_at: number | null;
   renotified_at: number | null;
   ai_reply: string | null;
@@ -72,19 +75,6 @@ function iso(ms: number | null): string | null {
 
 function nameOf(displayName: string | null | undefined): string {
   return displayName && displayName.trim() !== "" ? displayName : UNKNOWN_NAME;
-}
-
-const graphemes = new Intl.Segmenter("ja", { granularity: "grapheme" });
-
-/**
- * Characters as the iPhone counts them (Swift's String.count: extended grapheme clusters), so a reply
- * the composer's "n/200" allows is not refused here. `length` counts UTF-16 units and `[...text]`
- * code points; both count "👨‍👩‍👧" as more than one.
- */
-function characters(text: string): number {
-  let n = 0;
-  for (const _ of graphemes.segment(text)) n++;
-  return n;
 }
 
 function parseReasons(text: string | null): string[] {
@@ -113,8 +103,8 @@ async function loadViews(
     binds.push(filter.alertId);
   }
   const rows = await env.DB.prepare(
-    `SELECT c.id, c.alert_id, c.state, c.assignee_member_id, m.display_name AS assignee_name,
-            c.notified_at, c.accepted_at, c.resolved_at, c.renotified_at, c.ai_reply,
+    `SELECT c.id, c.alert_id, c.state, c.assignee_member_id, m.display_name AS resolver_name,
+            c.notified_at, c.resolved_at, c.renotified_at, c.ai_reply,
             a.level, a.source, a.summary, a.reasons
        FROM cases c
        LEFT JOIN alerts a ON a.id = c.alert_id
@@ -125,47 +115,27 @@ async function loadViews(
   )
     .bind(...binds)
     .all<CaseRow>();
-  if (rows.results.length === 0) return [];
 
-  const relays = await env.DB.prepare(
-    `SELECT r.id, r.case_id, r.from_member_id, r.body, r.created_at, m.display_name
-       FROM relays r LEFT JOIN members m ON m.id = r.from_member_id
-      WHERE r.case_id IN (SELECT value FROM json_each(?))
-      ORDER BY r.created_at`,
-  )
-    .bind(JSON.stringify(rows.results.map((r) => r.id)))
-    .all<{ id: string; case_id: string; from_member_id: string; body: string; created_at: number; display_name: string | null }>();
-  const relaysByCase = new Map<string, CaseView["relays"]>();
-  for (const r of relays.results) {
-    const list = relaysByCase.get(r.case_id) ?? [];
-    list.push({
+  return rows.results.map((r) => {
+    const resolved = r.state === "resolved";
+    return {
       id: r.id,
-      fromMemberId: r.from_member_id,
-      fromName: nameOf(r.display_name),
-      body: r.body,
-      createdAt: new Date(r.created_at).toISOString(),
-    });
-    relaysByCase.set(r.case_id, list);
-  }
-
-  return rows.results.map((r) => ({
-    id: r.id,
-    alertId: r.alert_id,
-    state: r.state,
-    assigneeMemberId: r.assignee_member_id,
-    assignee:
-      r.assignee_member_id === null ? null : { memberId: r.assignee_member_id, displayName: nameOf(r.assignee_name) },
-    notifiedAt: new Date(r.notified_at).toISOString(),
-    acceptedAt: iso(r.accepted_at),
-    resolvedAt: iso(r.resolved_at),
-    renotifiedAt: iso(r.renotified_at),
-    alert:
-      r.level === null
-        ? null
-        : { level: r.level, source: r.source ?? "", summary: r.summary ?? "", reasons: parseReasons(r.reasons) },
-    aiReply: r.ai_reply,
-    relays: relaysByCase.get(r.id) ?? [],
-  }));
+      alertId: r.alert_id,
+      state: resolved ? "resolved" : "notified",
+      notifiedAt: new Date(r.notified_at).toISOString(),
+      resolvedAt: resolved ? iso(r.resolved_at) : null,
+      resolvedBy:
+        resolved && r.assignee_member_id !== null
+          ? { memberId: r.assignee_member_id, displayName: nameOf(r.resolver_name) }
+          : null,
+      renotifiedAt: iso(r.renotified_at),
+      alert:
+        r.level === null
+          ? null
+          : { level: r.level, source: r.source ?? "", summary: r.summary ?? "", reasons: parseReasons(r.reasons) },
+      aiReply: r.ai_reply,
+    };
+  });
 }
 
 async function loadMember(env: Env, memberId: string): Promise<MemberRow> {
@@ -192,6 +162,7 @@ async function notify(
   payload: Parameters<typeof sendPush>[2],
   budget: ExternalBudget,
 ): Promise<void> {
+  if (memberIds.length === 0) return;
   try {
     await sendPush(env, memberIds, payload, budget);
   } catch (error) {
@@ -210,8 +181,9 @@ export class CaseNoticeDeferred extends Error {
   }
 }
 
-/** A day after the case opened, a first notice is no longer worth retrying. */
+/** A day after the case opened, a first notice is no longer worth retrying, nor a reminder worth sending. */
 const FIRST_NOTICE_RETRY_MS = 24 * 3600_000;
+const WATCH_MAX_AGE_MS = FIRST_NOTICE_RETRY_MS;
 const FIRST_NOTICE_BATCH = 20;
 
 /**
@@ -242,7 +214,7 @@ async function tellFamily(
   return sent;
 }
 
-/** The case's notice to every family device: "N段階" and the summary. Never throws. */
+/** The case's notice to every family device: "N段階" and the one-line summary. Never throws. */
 async function sendCaseNotice(
   env: Env,
   c: { id: string; familyId: string; level: number | null; summary: string | null },
@@ -343,7 +315,7 @@ export async function openCase(env: Env, alertId: string, budget: ExternalBudget
 export async function sendFirstNotices(env: Env, now: number, budget: ExternalBudget): Promise<void> {
   const due = await env.DB.prepare(
     `SELECT c.id, c.family_id, a.level, a.summary FROM cases c LEFT JOIN alerts a ON a.id = c.alert_id
-      WHERE c.state = 'notified' AND c.family_notified_at IS NULL AND c.notified_at > ?
+      WHERE c.state != 'resolved' AND c.family_notified_at IS NULL AND c.notified_at > ?
       ORDER BY c.notified_at DESC LIMIT ${FIRST_NOTICE_BATCH}`,
   )
     .bind(now - FIRST_NOTICE_RETRY_MS)
@@ -355,11 +327,12 @@ export async function sendFirstNotices(env: Env, now: number, budget: ExternalBu
 }
 
 /**
- * "引き受ける". Only a family member, and only the first one: the update applies only while the case
- * is 'notified'. Accepting again by the assignee returns the case; anyone else gets 409 with the
- * assignee's name. The protected person is told who is looking into it.
+ * "解決". Any family member, once: the update applies only while the case is not resolved, so of two
+ * members pressing it at once, one records it and tells the rest of the family "(名前)が解決". Pressing
+ * it again, by anyone, returns the case without telling anyone again. The protected person is not
+ * notified; her card for the case goes away.
  */
-export async function acceptCase(
+export async function resolveCase(
   env: Env,
   caseId: string,
   memberId: string,
@@ -368,139 +341,46 @@ export async function acceptCase(
   const me = await loadMember(env, memberId);
   if (me.role !== "family") throw new HttpError(403, "family_only");
 
-  const won = await env.DB.prepare(
-    `UPDATE cases SET state = 'accepted', assignee_member_id = ?, accepted_at = ?
-      WHERE id = ? AND family_id = ? AND state = 'notified' RETURNING id`,
+  const done = await env.DB.prepare(
+    `UPDATE cases SET state = 'resolved', resolved_at = ?, assignee_member_id = ?
+      WHERE id = ? AND family_id = ? AND state != 'resolved' RETURNING id`,
   )
-    .bind(me.id, Date.now(), caseId, me.family_id)
+    .bind(Date.now(), me.id, caseId, me.family_id)
     .first<{ id: string }>();
 
   const [view] = await loadViews(env, me.family_id, { caseId });
   if (!view) throw new HttpError(404, "case_not_found");
-  if (!won) {
-    if (view.state === "accepted" && view.assigneeMemberId === me.id) return view;
-    throw new HttpError(409, view.state === "resolved" ? "already_resolved" : "already_accepted", {
-      assignee: view.assignee,
-    });
-  }
+  if (!done) return view;
 
-  const protectedIds = (await membersOf(env, me.family_id)).filter((m) => m.role === "protected").map((m) => m.id);
+  const others = (await membersOf(env, me.family_id)).filter((m) => m.role === "family" && m.id !== me.id);
   await notify(
     env,
-    protectedIds,
-    { body: `${nameOf(me.display_name)}が見ています`, data: { caseId }, threadId: `case-${caseId}` },
+    others.map((m) => m.id),
+    { body: `${nameOf(me.display_name)}が解決`, data: { caseId }, threadId: `case-${caseId}` },
     budget,
   );
   return view;
 }
 
-/**
- * "母に返事する". Only the assignee of an accepted case. The text is kept as written (trimmed) and
- * sent to the protected person, whose iPhone reads it aloud with the normal system voice.
- */
-export async function relay(
-  env: Env,
-  caseId: string,
-  memberId: string,
-  body: string,
-  budget: ExternalBudget = new ExternalBudget(),
-): Promise<{ id: string; createdAt: string }> {
-  const text = typeof body === "string" ? body.trim() : "";
-  if (text === "" || characters(text) > RELAY_MAX) throw new HttpError(400, "relay_body_invalid");
-  const me = await loadMember(env, memberId);
-
-  const relayId = crypto.randomUUID();
-  const now = Date.now();
-  // The check and the insert are one statement, so a reply cannot slip in after the case was resolved.
-  const inserted = await env.DB.prepare(
-    `INSERT INTO relays (id, case_id, from_member_id, body, created_at)
-     SELECT ?, ?, ?, ?, ? WHERE EXISTS (
-       SELECT 1 FROM cases WHERE id = ? AND family_id = ? AND state = 'accepted' AND assignee_member_id = ?)`,
-  )
-    .bind(relayId, caseId, me.id, text, now, caseId, me.family_id, me.id)
-    .run();
-
-  if (inserted.meta.changes !== 1) {
-    const [view] = await loadViews(env, me.family_id, { caseId });
-    if (!view) throw new HttpError(404, "case_not_found");
-    if (view.state !== "accepted") throw new HttpError(409, "case_not_accepted");
-    throw new HttpError(403, "not_assignee", { assignee: view.assignee });
-  }
-
-  const protectedIds = (await membersOf(env, me.family_id)).filter((m) => m.role === "protected").map((m) => m.id);
-  await notify(
-    env,
-    protectedIds,
-    { title: `${nameOf(me.display_name)}から`, body: text, data: { caseId, relayId }, threadId: `case-${caseId}` },
-    budget,
-  );
-  return { id: relayId, createdAt: new Date(now).toISOString() };
-}
-
-/** "解決". Only the assignee of an accepted case; resolving again is not an error. */
-export async function resolveCase(env: Env, caseId: string, memberId: string): Promise<CaseView> {
-  const me = await loadMember(env, memberId);
-  const done = await env.DB.prepare(
-    `UPDATE cases SET state = 'resolved', resolved_at = ?
-      WHERE id = ? AND family_id = ? AND state = 'accepted' AND assignee_member_id = ? RETURNING id`,
-  )
-    .bind(Date.now(), caseId, me.family_id, me.id)
-    .first<{ id: string }>();
-
-  const [view] = await loadViews(env, me.family_id, { caseId });
-  if (!view) throw new HttpError(404, "case_not_found");
-  if (done) return view;
-  if (view.state === "notified") throw new HttpError(409, "case_not_accepted");
-  if (view.state === "resolved" && view.assigneeMemberId === me.id) return view;
-  throw new HttpError(403, "not_assignee", { assignee: view.assignee });
+/** Keeps the AI's latest answer to the protected person for the family's card. The AI always answers her. */
+export async function recordAiReply(env: Env, caseId: string, text: string): Promise<void> {
+  await env.DB.prepare("UPDATE cases SET ai_reply = ? WHERE id = ?").bind(text.slice(0, AI_REPLY_MAX), caseId).run();
 }
 
 /**
- * True once a family member has taken over the case (or the case is gone): the AI must not guide
- * the protected person in it any more.
- */
-export async function aiGuidanceStopped(env: Env, caseId: string): Promise<boolean> {
-  const row = await env.DB.prepare("SELECT state FROM cases WHERE id = ?").bind(caseId).first<{ state: CaseState }>();
-  return row?.state !== "notified";
-}
-
-/**
- * The gate every AI answer in a case passes on its way to the protected person (task 12's consult).
- * The answer is recorded for the family's card only while the case is still 'notified', checked in
- * the same statement, so an answer that was still being written when a family member accepted is
- * dropped. The caller sends the answer only when `delivered` is true, and otherwise tells the
- * protected person who is looking into it.
- */
-export async function deliverAiReply(
-  env: Env,
-  caseId: string,
-  text: string,
-): Promise<{ delivered: true } | { delivered: false; assigneeName: string | null }> {
-  const updated = await env.DB.prepare("UPDATE cases SET ai_reply = ? WHERE id = ? AND state = 'notified'")
-    .bind(text.slice(0, AI_REPLY_MAX), caseId)
-    .run();
-  if (updated.meta.changes === 1) return { delivered: true };
-  const row = await env.DB.prepare(
-    "SELECT m.display_name FROM cases c LEFT JOIN members m ON m.id = c.assignee_member_id WHERE c.id = ?",
-  )
-    .bind(caseId)
-    .first<{ display_name: string | null }>();
-  return { delivered: false, assigneeName: row?.display_name ? nameOf(row.display_name) : null };
-}
-
-/**
- * Every 5 minutes (src/cron.ts). A case nobody accepted within 30 minutes: the protected person is
- * told "家族から返事がまだ。急ぐなら電話して" and every family member is notified again, once.
- * The state stays 'notified', so nothing tells the protected person it is solved or being handled.
- * A case whose whole family the budget cannot cover is left for a later tick, unclaimed.
+ * Every 5 minutes (src/cron.ts). A case not resolved within 30 minutes: the protected person is told
+ * "家族から返事がまだ。急ぐなら電話して" and every family member is notified again, once. The state
+ * stays as it is, so nothing tells the protected person it is solved. A case whose whole family the
+ * budget cannot cover is left for a later tick, unclaimed. A case more than a day old is not
+ * reminded about any more, so rows that never got a reminder do not all come back at once.
  */
 export async function watchUnanswered(env: Env, now: number, budget: ExternalBudget): Promise<void> {
   const due = await env.DB.prepare(
     `SELECT c.id, c.family_id, a.summary FROM cases c LEFT JOIN alerts a ON a.id = c.alert_id
-      WHERE c.state = 'notified' AND c.renotified_at IS NULL AND c.notified_at <= ?
+      WHERE c.state != 'resolved' AND c.renotified_at IS NULL AND c.notified_at <= ? AND c.notified_at > ?
       ORDER BY c.notified_at LIMIT ${WATCH_BATCH}`,
   )
-    .bind(now - UNANSWERED_AFTER_MS)
+    .bind(now - UNANSWERED_AFTER_MS, now - WATCH_MAX_AGE_MS)
     .all<{ id: string; family_id: string; summary: string | null }>();
 
   for (const row of due.results) {
@@ -509,7 +389,7 @@ export async function watchUnanswered(env: Env, now: number, budget: ExternalBud
     if (budget.remaining < needed) break;
 
     const claimed = await env.DB.prepare(
-      "UPDATE cases SET renotified_at = ? WHERE id = ? AND state = 'notified' AND renotified_at IS NULL",
+      "UPDATE cases SET renotified_at = ? WHERE id = ? AND state != 'resolved' AND renotified_at IS NULL",
     )
       .bind(now, row.id)
       .run();
@@ -526,7 +406,7 @@ export async function watchUnanswered(env: Env, now: number, budget: ExternalBud
       env,
       members.filter((m) => m.role === "family").map((m) => m.id),
       {
-        title: "まだ誰も引き受けていません",
+        title: NOT_RESOLVED_YET,
         body: row.summary && row.summary.trim() !== "" ? row.summary : "相談が届きました",
         data: { caseId: row.id },
         threadId,
@@ -542,20 +422,6 @@ export async function watchUnanswered(env: Env, now: number, budget: ExternalBud
 export async function listCases(request: Request, env: Env): Promise<Response> {
   const me = await requireMember(request, env);
   return json({ cases: await loadViews(env, me.familyId) });
-}
-
-/** POST /cases/{id}/accept */
-export async function acceptRoute(request: Request, env: Env, caseId: string): Promise<Response> {
-  const me = await requireMember(request, env);
-  return json(await acceptCase(env, caseId, me.id));
-}
-
-/** POST /cases/{id}/relay with { body } */
-export async function relayRoute(request: Request, env: Env, caseId: string): Promise<Response> {
-  const me = await requireMember(request, env);
-  const { body } = await readJson(request);
-  if (typeof body !== "string") throw new HttpError(400, "relay_body_invalid");
-  return json(await relay(env, caseId, me.id, body), 201);
 }
 
 /** POST /cases/{id}/resolve */

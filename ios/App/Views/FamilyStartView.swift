@@ -23,7 +23,7 @@ struct FamilyStartView: View {
         .padding()
         .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
         .accessibilityLabel("名前")
-        .accessibilityHint("家族に見える名前です。40文字までです。知らせを引き受けたときにこの名前が出ます")
+        .accessibilityHint("家族に見える名前です。40文字までです。相談を解決にしたときにこの名前が出ます")
 
       Button {
         Task { await model.createFamily(displayName: trimmed) }

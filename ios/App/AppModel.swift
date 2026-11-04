@@ -25,7 +25,6 @@ final class AppModel {
   private(set) var followUpPrompt: String?
 
   @ObservationIgnored private let session: Session
-  @ObservationIgnored private let announcer = ReplyAnnouncer(store: UserDefaultsSpokenStore())
   @ObservationIgnored private lazy var speaker = ReplySpeaker()
   @ObservationIgnored private lazy var listener: VoiceListener = {
     let listener = VoiceListener()
@@ -96,8 +95,7 @@ final class AppModel {
   // MARK: Cases
 
   var familyCards: [FamilyCard] {
-    let me = session.memberId
-    return cases.map { FamilyCard($0, me: me) }
+    cases.map { FamilyCard($0) }
   }
 
   var protectedNotices: [ProtectedNotice] {
@@ -105,15 +103,13 @@ final class AppModel {
   }
 
   /// Reloads the cases. Quiet on failure: the screen keeps what it had and the next refresh tries again.
-  /// On the protected person's phone, replies not read aloud yet are spoken.
+  /// Nothing is read aloud: only the answer to her own consultation is, so a reload cannot cut in while
+  /// she is talking.
   func loadCases() async {
     guard route != .chooseRole else { return }
     now = .now
     guard let fresh = try? await session.cases() else { return }
     cases = fresh
-    if route == .protectedHome {
-      speaker.speak(announcer.toSpeak(protectedNotices))
-    }
   }
 
   /// Every minute while the screen is showing. Cancelled with the view's task.
@@ -122,12 +118,6 @@ final class AppModel {
       await loadCases()
       try? await Task.sleep(for: .seconds(60))
     }
-  }
-
-  /// Reads a reply again when the protected person taps it.
-  func speakAgain(_ reply: ProtectedNotice.Reply) {
-    speaker.stop()
-    speaker.speak(["\(reply.from)。\(reply.body)"])
   }
 
   // MARK: Voice consultation
@@ -227,29 +217,7 @@ final class AppModel {
     followUpPrompt = nil
   }
 
-  func accept(_ item: Case) async {
-    await run(joining: false) { [weak self] session in
-      let updated = try await session.accept(caseId: item.id)
-      self?.replace(updated)
-    }
-    // Someone else may have been first; show who.
-    await loadCases()
-  }
-
-  /// Nil when the reply was sent, otherwise why not. The composer sheet shows the failure itself
-  /// (an alert from the root view would land under the sheet), so `problem` is left alone.
-  func relay(_ item: Case, text: String) async -> Problem? {
-    isBusy = true
-    defer { isBusy = false }
-    do {
-      try await session.relay(caseId: item.id, body: text)
-    } catch {
-      return Problem(error, joining: false)
-    }
-    await loadCases()
-    return nil
-  }
-
+  /// "解決", from any family member. The server tells the rest of the family.
   func resolve(_ item: Case) async {
     await run(joining: false) { [weak self] session in
       let updated = try await session.resolve(caseId: item.id)

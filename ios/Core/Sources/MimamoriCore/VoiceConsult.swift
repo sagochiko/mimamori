@@ -69,6 +69,17 @@ public enum ConsultPhase: Equatable, Sendable {
   case thinking(said: String)
   case answered(said: String, answer: ConsultAnswer)
   case failed(ConsultFailure)
+
+  /// Whether a change in her notices should bring the answer's place back into view: while she talks
+  /// and waits, and after an answer only when it went to the family (its notice is still to come).
+  /// Otherwise a later change, like the 30-minute line, would pull an old answer back up.
+  public var followsNotices: Bool {
+    switch self {
+    case .idle, .failed: false
+    case .listening, .thinking: true
+    case .answered(_, let answer): answer.handoff
+    }
+  }
 }
 
 /// What the App's adapters do next.

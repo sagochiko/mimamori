@@ -1,7 +1,7 @@
 // The judge queue (task 6 in docs/plan.md). Routes that answer at once with the rules (SMS, pages,
 // consultations) put a job here with enqueueJudge; this consumer lays Claude's judgment over the
 // rule result, writes the alerts row, tells the mother, and opens a case. The family is told only by
-// openCase (src/cases.ts), so every notice they get carries the case they can accept.
+// openCase (src/cases.ts), so every notice they get carries the case they can resolve.
 //
 // Who gets told depends only on the level and the family's members, never on Claude's answer or the
 // received text (.claude/rules/server.md).
@@ -21,6 +21,7 @@ import { CaseNoticeDeferred, openCase } from "./cases";
 import {
   ALERT_SOURCES,
   decide,
+  PLACEHOLDER_REASON,
   requestClaudeJudgment,
   type AlertSource,
   type ClaudeJudgment,
@@ -28,6 +29,8 @@ import {
 } from "./claude";
 import { sendPush, type PushPayload } from "./push";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
+import { INJECTION } from "./rules/phrases";
+import { ownLines, quotes } from "./summary";
 
 export interface JudgePayload {
   sender?: string;
@@ -81,7 +84,6 @@ const SOURCE_LABELS: Record<AlertSource, string> = {
   call: "電話",
   consult: "相談",
 };
-const SUMMARY_EXCERPT_CHARS = 30;
 
 function cut(text: string, max: number): string {
   const c = [...text];
@@ -157,11 +159,34 @@ async function keyFor(familyId: string, kind: "sender" | "domain", value: string
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** What arrived, for the family's card. The sender's number is left out; the domain stays. */
-function summarize(job: JudgeJob, domain: string | null): string {
-  const raw = (job.payload.text ?? job.payload.url ?? "").replace(/\s+/g, " ").trim();
-  const excerpt = [...raw].length > SUMMARY_EXCERPT_CHARS ? `${cut(raw, SUMMARY_EXCERPT_CHARS)}…` : raw;
-  return [SOURCE_LABELS[job.source], domain ?? "", excerpt ? `「${excerpt}」` : ""].filter((s) => s !== "").join(" ");
+/**
+ * The family's one line for what arrived: the route, the first reason, and the domain ("SMS 銀行を名乗る
+ * example.com"). The received text is never cut out into it (src/summary.ts): a reason from Claude that
+ * repeats it is skipped, while the rules' fixed reasons are used as they are. The sender's number is
+ * left out.
+ */
+function receivedOf(job: JudgeJob): string[] {
+  return [job.payload.text ?? "", job.payload.url ?? "", job.payload.sender ?? ""];
+}
+
+/**
+ * The reasons kept for the family's card and the mother's notice: a reason Claude wrote that quotes
+ * the received text is dropped (src/summary.ts). When the text carries instructions aimed at the
+ * judgment or at keeping the family out (`steered`), no reason Claude wrote is kept at all, since
+ * such text may have written it. When none is left, the rules' reasons, or the placeholder. The
+ * one line (summarize) is made from these, so it follows.
+ */
+function cardReasons(job: JudgeJob, rule: RuleResult, reasons: string[], steered: boolean): string[] {
+  const fixed = [...rule.reasons, PLACEHOLDER_REASON];
+  const fallback = rule.reasons.length > 0 ? rule.reasons : [PLACEHOLDER_REASON];
+  return ownLines(steered ? reasons.filter((r) => fixed.includes(r)) : reasons, fixed, receivedOf(job), fallback);
+}
+
+function summarize(job: JudgeJob, domain: string | null, rule: RuleResult, reasons: string[]): string {
+  const received = receivedOf(job);
+  const own = (r: string) => r !== PLACEHOLDER_REASON && (rule.reasons.includes(r) || !quotes(r, received));
+  const reason = [...reasons, ...rule.reasons].map((r) => r.trim()).find((r) => r !== "" && own(r));
+  return [SOURCE_LABELS[job.source], reason ?? "", domain ?? ""].filter((s) => s !== "").join(" ");
 }
 
 interface Recipient {
@@ -337,6 +362,8 @@ async function judgeOne(
   // time Claude gives nothing: a consultation from the mother must not wait on Claude coming back.
   const decision = decide(rule, claude);
   const level = decision.level;
+  const steered = rule.reasons.includes(INJECTION.reason) || (claude?.injection_suspected ?? false);
+  const reasons = cardReasons(job, rule, decision.reasons, steered);
 
   const now = deps.now();
   const domain = normalizeDomain(job);
@@ -365,8 +392,8 @@ async function judgeOne(
       job.familyId,
       job.source,
       level,
-      JSON.stringify(decision.reasons),
-      summarize(job, domain),
+      JSON.stringify(reasons),
+      summarize(job, domain, rule, reasons),
       decision.ruleLevel,
       decision.claudeLevel,
       now,
@@ -378,7 +405,7 @@ async function judgeOne(
   // A concurrent delivery of the same message wrote the row first; it does the telling.
   if (inserted.meta.changes === 0 || !notify) return "done";
 
-  const notice = { level, reasons: decision.reasons, checking: decision.checking };
+  const notice = { level, reasons, checking: decision.checking };
   return finishNotices(env, alertId, notice, { mother: true, family: true }, members, budget, deps);
 }
 
