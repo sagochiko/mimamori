@@ -259,6 +259,12 @@ describe("fake police consultation", () => {
     ["someone who says he is a police officer", "警察官を名乗る人から電話で、口座が犯罪に使われてるって"],
     ["someone called police", "警察って人から口座が犯罪に使われてるって電話があった"],
     ["a caller from the police and proving innocence", "警察から電話があって、潔白を証明してって言われた"],
+    // PR #75 review: ways she may say it that the first patterns missed.
+    ["a call that says it is the police", "警察を名乗る電話がきて、口座が犯罪に使われてるって"],
+    ["a call from the National Police Agency", "警察庁から電話があって、口座が犯罪に使われてるって"],
+    ["someone from the National Police Agency", "警察庁の人から電話で、口座が犯罪に使われてるって"],
+    ["someone who says he is a detective", "刑事を名乗る人から電話で、口座が犯罪に使われてるって"],
+    ["a call that says 'this is the police'", "警察ですって電話で、口座が犯罪に使われてるって"],
   ])("is level 1 by the rules alone when a caller from the police tells %s, with the fixed answer", async (_label, text) => {
     const fam = await setupFamily();
     const deps = fakes(scam({ level: 2 }));

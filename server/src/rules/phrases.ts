@@ -96,7 +96,7 @@ export const MONEY_MOVE: PhraseRule = {
 // part of the script only in a consultation (consult.ts, #72), and only next to one of POLICE_SCRIPT:
 // genuine warnings from banks and the police write "警察を名乗る電話" next to "口座が犯罪に使われて
 // いる", so SMS, mail, and pages never count it. Speech recognition may drop the comma after it.
-const POLICE_NAME = "(警察(署|官)?|警視庁|[都道府県]警)";
+const POLICE_NAME = "(警察(署|官|庁)?|警視庁|[都道府県]警|刑事)";
 export const POLICE_CALLER: PhraseRule = {
   kind: "police_caller",
   strength: "medium",
@@ -104,10 +104,10 @@ export const POLICE_CALLER: PhraseRule = {
   patterns: [
     // 警察から電話, 警察署から連絡, 警視庁からかかってきた
     new RegExp(`${POLICE_NAME}から[^。!?\\n]{0,4}(電話|連絡|着信|かかって|言われ)`),
-    // 警察署の人から, 警察官を名乗る人から, 警察って人が, 県警の者で
-    new RegExp(`${POLICE_NAME}(の|を名乗る|と名乗る|って名乗る|だと名乗る|って(いう|言う)?|という|と言う|だという|だって(いう|言う)?)(人|方|者|男性?|女性?|相手)(から|が|で)`),
-    // 警察署の人だって言う電話, 警察だという電話
-    new RegExp(`${POLICE_NAME}(の(人|方))?(だ|です)?(って|と)(いう|言う|名乗る)(電話|人|相手)`),
+    // 警察署の人から, 警察官を名乗る人から, 警察を名乗る電話が, 警察って人が, 県警の者で
+    new RegExp(`${POLICE_NAME}(の|を名乗る|と名乗る|って名乗る|だと名乗る|って(いう|言う)?|という|と言う|だという|だって(いう|言う)?)(人|方|者|男性?|女性?|相手|電話)(から|が|で)`),
+    // 警察署の人だって言う電話, 警察だという電話, 警察ですって電話
+    new RegExp(`${POLICE_NAME}(の(人|方))?((だ|です)(って|と)(いう|言う|名乗る)?|(って|と)(いう|言う|名乗る))(電話|人|相手)`),
   ],
 };
 
