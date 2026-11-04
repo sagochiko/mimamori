@@ -19,8 +19,10 @@ final class AppModel {
   /// "家族から返事がまだ") changes without a new answer from the server.
   private(set) var now = Date.now
 
-  /// The voice consultation on the protected person's screen.
+  /// The consultation on the protected person's screen, by voice or in writing.
   private(set) var voice = VoiceConsult()
+  /// Her conversation, kept on this iPhone only (#73).
+  private(set) var chat: ChatKeeper
   /// "さっきの電話、大丈夫だった？" while a long call waits for an answer.
   private(set) var followUpPrompt: String?
 
@@ -38,8 +40,10 @@ final class AppModel {
     store: any DeviceKeyStore = KeychainDeviceKeyStore(),
     transport: any HTTPTransport = URLSessionTransport(),
     baseURL: URL = AppConfig.apiBaseURL,
-    marker: any InstallMarkerStore = AppModel.installMarker
+    marker: any InstallMarkerStore = AppModel.installMarker,
+    chatStore: any ChatLogStore = FileChatLogStore.standard
   ) {
+    self.chat = ChatKeeper(store: chatStore)
     let session = Session(
       baseURL: baseURL, transport: transport, store: store, marker: marker,
       isProtectedDataAvailable: { UIApplication.shared.isProtectedDataAvailable })
@@ -69,7 +73,9 @@ final class AppModel {
     #if DEBUG
       if ScreenshotStubTransport.isRequested {
         return AppModel(
-          store: InMemoryDeviceKeyStore(), transport: ScreenshotStubTransport(), marker: ScreenshotStubTransport.marker)
+          store: InMemoryDeviceKeyStore(ScreenshotStubTransport.joinedAs), transport: ScreenshotStubTransport(),
+          marker: ScreenshotStubTransport.marker,
+          chatStore: ScreenshotStubTransport.chatStore)
       }
     #endif
     return AppModel()
@@ -120,9 +126,21 @@ final class AppModel {
     }
   }
 
-  // MARK: Voice consultation
+  // MARK: Consultation
 
-  /// The big microphone: starts listening, or stops it.
+  /// Reads her conversation once the file can be read (it cannot while the iPhone is locked).
+  func loadChat() {
+    chat.load()
+  }
+
+  /// The send button next to the text field. Never read aloud: she may be among other people.
+  func sendTyped(_ text: String) {
+    followUp.consultStarted()
+    followUpPrompt = nil
+    apply(voice.typed(text, at: .now))
+  }
+
+  /// The microphone: starts listening, or stops it.
   func micTapped() {
     if case .listening = voice.phase {} else {
       followUp.consultStarted()
@@ -160,7 +178,9 @@ final class AppModel {
         listener.stop()
       case .send(let text):
         silenceWatch?.cancel()
-        Task { await send(text) }
+        // The turns before this one go with it; then her words join the conversation.
+        let history = chat.send(text, at: .now)
+        Task { await send(text, history: history) }
       case .speak(let text):
         speaker.speak([text])
       }
@@ -180,9 +200,12 @@ final class AppModel {
     }
   }
 
-  private func send(_ text: String) async {
+  private func send(_ text: String, history: [ConsultTurn]) async {
     do {
-      let answer = try await session.consult(text: text)
+      let answer = try await session.consult(text: text, history: history)
+      // An answer that comes after she started again is dropped (VoiceConsult.answered).
+      guard case .thinking = voice.phase else { return }
+      chat.answered(answer.reply, at: .now)
       apply(voice.answered(answer))
       // The case shows up: "家族に伝えました", or "家族に届いていません" while no family device took it.
       if answer.handoff { await loadCases() }

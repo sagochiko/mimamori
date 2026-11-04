@@ -79,9 +79,11 @@ public final class APIClient: Sendable {
     try await send("POST", "cases/\(caseId)/resolve", body: Empty?.none, auth: true)
   }
 
-  /// `POST /consult`. What the protected person said, as text; the answer to show and read aloud.
-  public func consult(text: String) async throws -> ConsultAnswer {
-    try await send("POST", "consult", body: ConsultBody(text: text), auth: true)
+  /// `POST /consult`. What the protected person said, as text, with the earlier turns of the same
+  /// conversation (left out when there are none); the answer to show and read aloud.
+  public func consult(text: String, history: [ConsultTurn] = []) async throws -> ConsultAnswer {
+    try await send(
+      "POST", "consult", body: ConsultBody(text: text, history: history.isEmpty ? nil : history), auth: true)
   }
 
   // MARK: Plumbing
@@ -189,6 +191,8 @@ private struct CaseList: Decodable {
 
 private struct ConsultBody: Encodable {
   let text: String
+  /// Nil is left out of the JSON (Encodable skips nil optionals).
+  let history: [ConsultTurn]?
 }
 
 private struct NameBody: Encodable {
