@@ -293,3 +293,51 @@ PR #41 の2回目のレビューで、レビュー役(mm-reviewer)が Cloudflare
 deny を足していけば塞がると思っていた。短いフラグは `-fu` のように束ねられ、git は `--mir` のような長いフラグの省略も受ける。`gh api` は `-f` を付けると `-X` が無くても POST になるので、前のテストの「`gh api -X PATCH` は確認なしで通る」は、決まりの側から見て間違った期待を固めていた。
 
 判定はフックに移し、deny は空白を前に置いた形にして予備として残した。allow の `git -c credential.helper= * push*` は、真ん中の `*` に `branch -D main` が入るので消した。graphql は読むだけのことが多いので、mutation と、ファイルや標準入力から読む問い合わせだけを聞く形にした。本番の D1 のマイグレーションに DROP があれば聞く形は、仮の決め方として入れ、同じ日に聞く形に決まった。2回目のレビューでは、Claude Code が規則を照らす前に `timeout` や `nohup` を外すので、`timeout 60 git push -fu origin main` が allow に落ち、フックも通していたと分かった。`lib.sh` の `command_starts` で同じラッパーを読み飛ばし、マージと個人の情報の関門にも同じ直しが届いた。使ったのは mm-implementer、mm-reviewer、`scripts/test-hooks.sh`、PreToolUse フックの `permissionDecision: "ask"`。
+
+## 2026年11月4日 確認を無くす書き換えを、auto mode の判定が自分の見張りを緩めると見て止めた (ハーネス)
+
+確認の画面が出るたびに作者の在席を待つことになり、作業が止まっていた。そこで、作者に聞く操作を無くし、危ないものだけをフックで止める形に `guard-prod.sh` を書き直すことにした。
+
+実装役(mm-implementer)には「作者に聞く(ask)操作を無くす。危ないものだけをフックが止め(block、終了コード2)、ほかは全部通す」と頼み、止めるもの(force push、main への push、リポジトリの公開や設定の変更、API でのマージ、個人の情報を含む書き込み)と通すものを並べて渡した。
+
+実装役はテストを新しい方針の形に書き換えたが、`guard-prod.sh` を書き直す Write は「Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Self-Modification].」で止まった。実装役は Edit や sed に替えて通すことはせず、止まったまま報告した。書き換えたテストを今のフックに当てると88件が落ちる状態だった。
+
+ハーネスは Claude Code が自分で直してきたので、この書き換えも同じように通ると思っていた。緩める変更(ask を消す)と強める変更(main への push を止める)が混ざった書き換えは、分類器から見ると自分を縛る仕組みをほどく操作に見えた。
+
+3回目のレビューまでの形(デプロイ、秘密の登録、本番の D1 のマイグレーション、`gh api` の読み取りは確認なし)を先にマージし、方針の切り替えは作者が手で当てることにした。途中までの差分はリポジトリの外に保存した。手動のモードに切り替えて書き換えを1つずつ承認する案もあったが、作者がその間 PC の前にいる必要があるので採らなかった。GitHub のブランチの保護で main を守る案は、非公開のリポジトリでは「Upgrade to GitHub Pro or make this repository public to enable this feature.」と返って使えず、公開のときに入れることにした。使ったのは mm-implementer、mm-reviewer、auto mode、PreToolUse フック。
+
+## 2026年11月4日 19:50 最初のデプロイで Cron だけが登録できなかった
+
+裏側を初めて本番の Cloudflare Workers に出していた。D1、R2 のバケット、キューは最初のデプロイで作られる。
+
+`/mm-deploy` の手順どおり `npx wrangler deploy` を流した。
+
+Worker、D1(マイグレーション3つ)、R2、キューはどれも通り、`https://mimamori.sago3.workers.dev` で答えた。Cron だけは「This account has reached the Workers Free limit of 5 cron triggers per account. Upgrade to Workers Paid to increase this limit to 1,000」で失敗した。アカウントの5つの枠は、作者の別のプロジェクトの Worker が使い切っていた。動作の確かめでは、招待のコードの試行を23回続けて送っても 429 が出ず、回数制限が効いていないことも分かった(#67)。
+
+Cron の上限は Worker ごとだと思っていた。上限はアカウント全体で数えるので、ほかのプロジェクトの Worker の状態が mimamori の動きを決めていた。Cron が無いと、知らせの送り直し、30分の見張り、30日の自動削除がどれも動かない。
+
+作者が、もう動かしていない別の Worker の Cron を外すと決め、Claude が Cloudflare の API で3つ外してから `npx wrangler triggers deploy` で mimamori の `*/5 * * * *` を登録した。有料プランに上げる案と、Cron を使わずキューの遅延メッセージで見張りを予約する案もあった。前者はお金がかかり、後者は実装とレビューで数時間かかるので採らなかった。使ったのは `/mm-deploy`、`wrangler`、Claude in Chrome。
+
+## 2026年11月4日 19:40 母を App Store Connect に招待すると Apple のサーバーが 500 を返した (#26)
+
+母を TestFlight の内部テスターにするため、App Store Connect のユーザーとして招待していた。内部テストなら Apple の審査を待たずに配れる。
+
+Claude Code には、招待の画面を開いて役割を Marketing、見られるアプリを mimamori だけにするところまで進めてもらい、作者が名前と母のアドレスを入れた。
+
+「招待」を押すと、3回とも「エラーが発生しました。しばらくしてからもう一度お試しください。」で止まった。ブラウザの通信を見ると、`POST /iris/v1/userInvitations` は 500 で、本文は `"code": "UNEXPECTED_ERROR"`、「An unexpected error occurred on the server side.」だった。送っている中身(役割 `MARKETING`、`allAppsVisible: false`、見られるアプリ1つ)は正しい形で、Apple のシステムの状況にも障害は出ていなかった。
+
+招待は名前とアドレスを入れれば通ると思っていた。母の Apple アカウントには、サインインに使えるアドレスが3つあり、送り先は主要のアドレスではない。これが関係しているかもしれないが、確かめていない。主要のアドレスは母が読んでいないので、通ると読めない場所に招待が届く。
+
+母も審査員と同じ外部テストのグループに入れ、メールで招待した。外部テストのテスターは App Store Connect のユーザーでなくてよいが、最初のビルドの Beta App Review が通るまでは届かない。内部の招待は、同じ中身を30分おきに送り直している。使ったのは Claude in Chrome(ページの中で通信を記録する JavaScript)、`/mm-release`。
+
+## 2026年11月4日 20:58 最初のアップロードは、アプリのアイコンが無くて断られた
+
+ビルド2を TestFlight に上げていた。`/mm-release` のアーカイブの確かめ(ビルド番号、`ITSAppUsesNonExemptEncryption`、宛先、拡張の数、デバッグ用の dylib、スクリーンショット用のスタブ)は全部通っていた。
+
+`xcodebuild -exportArchive` で書き出しとアップロードを流した。
+
+App Store Connect の検査で4つ断られた。「A value for the Info.plist key 'CFBundleIconName' is missing」「The bundle does not contain an app icon for iPhone / iPod Touch of exactly '120x120' pixels」と、Safari 拡張の `manifest.json` の「The description field must be present」「The icons field is required」。
+
+ここまでシミュレータと実機には何度も入れていたが、アイコンが無いことはどこでも止まらなかった。アーカイブの確かめにも、アイコンと拡張の manifest の項目が無かった。
+
+作者と相談し、今夜は仮のアイコン(地の色に「み」の1文字)を `ios/App/Assets.xcassets` に1枚置き、`manifest.json` に説明の1行とアイコン5枚を足して、同じビルド番号で上げ直した。2回目は「Uploaded Mimamori」で通り、作者が審査の申請を押してビルド2は「審査待ち」になった。今その場で本番のアイコンを作る案は、審査の申請が遅れるので採らなかった。使ったのは `/mm-release`、`xcodebuild`、mm-reviewer。
