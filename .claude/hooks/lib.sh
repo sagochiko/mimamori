@@ -110,12 +110,13 @@ author_waiting() {
 
 # need_jq <hook> <json>: the gates read the command with jq. When jq is missing or fails, a gate that
 # just exited 0 would let everything through (onFailure "block" only covers a crash or a timeout). So
-# a call whose raw input mentions gh, --no-verify, or core.hooksPath (what these gates check) is
-# stopped; anything else returns 1 and the caller lets it through, so ordinary Bash keeps working.
+# a call whose raw input mentions gh, wrangler, push, --no-verify, or core.hooksPath (what the gates
+# and guard-prod.sh check) is stopped; anything else returns 1 and the caller lets it through, so
+# ordinary Bash keeps working. push is a whole word, so pushd is not one.
 need_jq() {
   jq -e 'type == "object"' >/dev/null 2>&1 <<<"$2" && return 0
-  if [[ "$2" =~ (^|[^[:alnum:]_.-])gh([^[:alnum:]_.-]|$) || "$2" == *no-verify* || "$2" =~ hooks[Pp]ath ]]; then
-    echo "blocked ($1): this gate needs jq to read the command and jq is missing or failed, so a command with gh, --no-verify, or core.hooksPath does not go through. Install jq (brew install jq) and run it again." >&2
+  if [[ "$2" =~ (^|[^[:alnum:]_.-])(gh|wrangler|push)([^[:alnum:]_.-]|$) || "$2" == *no-verify* || "$2" =~ hooks[Pp]ath ]]; then
+    echo "blocked ($1): this gate needs jq to read the command and jq is missing or failed, so a command with gh, wrangler, git push, --no-verify, or core.hooksPath does not go through. Install jq (brew install jq) and run it again." >&2
     exit 2
   fi
   return 1
