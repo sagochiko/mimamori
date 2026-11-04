@@ -143,11 +143,11 @@ const REASSURING = new RegExp(
 // Lines saying the family was told. Whether anyone was told is decided here (openCase and
 // family_notified_at), never by Claude: on a path that tells nobody, or when the notice did not reach
 // them, such a line would make her think the family knows (#60). Only the finished forms count
-// ("ました", "た" ending the sentence or followed by "よ" or "から", "てあります", "ておきました",
-// "ておいた", "ています"): advice to ask or tell the family ("家族に確かめて", "連絡しましょう",
-// "知らせたほうがいい", "伝えておきましょう", "連絡していますか") is fine.
+// ("ました", "た", "てある", "てあります", "ておきました", "ておいた", "ています"), and not when a
+// question or advice follows: "家族に確かめて", "連絡しましょう", "知らせたほうがいい",
+// "伝えておきましょう", "連絡しておいたほうが", "連絡しましたか？", "連絡していますか" are fine.
 const TOLD_CLAIM =
-  /家族(に|へ)(は|も)?(お?知らせ|お?伝え|ご?連絡|ご?報告|共有|通知)(し)?(ました|た(よ|から|[。、！!]|$)|てあります|ておきました|ておいた|ています(?!か))/;
+  /家族(に|へ)(は|も)?(お?知らせ|お?伝え|ご?連絡|ご?報告|共有|通知)(し)?(ました(?!か)|た(?!ら|い|く|り|ほう|方|か(?!ら)|[?？])|てある|てあります(?!か)|ておきました(?!か)|ておいた(?!ほう|方|ら)|ています(?!か|[?？]))/;
 
 // What she asks about is a message, a call, a link, a page, or installing an app: then Claude's free
 // guidance is not read out (a "help" answer could still tell her it is fine), and she gets the fixed

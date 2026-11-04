@@ -1013,7 +1013,7 @@ describe("the one line the family gets", () => {
 // かったときに、母に解決済みと思わせない" in docs/design.md). The answer says so in place of
 // "家族に伝えました", and the card keeps what she heard.
 describe("a line from Claude that says the family was told", () => {
-  it.each([
+  const claims = [
     ["家族に伝えました"],
     ["家族に知らせました"],
     ["ご家族にお知らせしました"],
@@ -1022,12 +1022,30 @@ describe("a line from Claude that says the family was told", () => {
     ["家族にお伝えしました"],
     ["ご家族にご連絡しました"],
     ["家族にご報告しました"],
-  ])("is not read out at level 3, where nobody is told: %s", async (claim) => {
+    // Casual and mid-sentence forms.
+    ["家族に伝えたね"],
+    ["家族に知らせてあるよ"],
+    ["家族に伝えたので、待っていてね"],
+  ];
+
+  it.each(claims)("is not read out at level 3, where nobody is told: %s", async (claim) => {
     const fam = await setupFamily();
     const said = scam({ level: 3, basis: `${claim}。`, action: `${claim}。お金や暗証番号を聞かれたら止めて` });
     const answer = await consult(consultEnv, motherOf(fam), "知らない番号から荷物の連絡が来た", new ExternalBudget(), fakes(said));
     expect(answer.handoff).toBe(false);
     expect(answer.reply).not.toContain(claim);
+    expect(familyPushes(fam)).toHaveLength(0);
+  });
+
+  // lowConcernReply drops an action that mentions the PIN, so this one does not: the action itself
+  // must be checked.
+  it.each(claims)("is not read out as Claude's level 3 action either: %s", async (claim) => {
+    const fam = await setupFamily();
+    const said = scam({ level: 3, basis: "", action: `${claim}。荷物の連絡は配送会社の公式アプリで確かめて` });
+    const answer = await consult(consultEnv, motherOf(fam), "知らない番号から荷物の連絡が来た", new ExternalBudget(), fakes(said));
+    expect(answer.handoff).toBe(false);
+    expect(answer.reply).not.toContain(claim);
+    expect(answer.reply).not.toContain("配送会社の公式アプリ");
     expect(familyPushes(fam)).toHaveLength(0);
   });
 
@@ -1045,6 +1063,9 @@ describe("a line from Claude that says the family was told", () => {
     ["家族に知らせたほうがいいよ"],
     ["家族に伝えておきましょう"],
     ["家族に連絡していますか"],
+    // Not "…ほうが安心だよ": "安心" is a reassuring word that REASSURING keeps from being read out.
+    ["家族に連絡しておいたほうがいいよ"],
+    ["家族に連絡しましたか？"],
   ];
 
   it.each(advice)("still lets Claude tell her to ask the family at level 3: %s", async (line) => {
