@@ -2,7 +2,7 @@
 name: mm-implementer
 description: Implements one GitHub issue of mimamori with tests first. Use from /mm-task after the issue and its plan section are known. Not for review or for deciding scope.
 model: opus
-effort: high
+effort: xhigh
 color: blue
 maxTurns: 120
 ---

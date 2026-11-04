@@ -66,15 +66,18 @@
 
 ## モデルの使い分け
 
-| 役 | どこ | モデル | 理由 |
-|---|---|---|---|
-| 主な会話と段取り | メインのセッション | Opus | 設計とルールの判断が多い |
-| 実装 | `mm-implementer` | Opus | テストから書き、つなぎ目の約束を守る |
-| 独立したレビュー | `mm-reviewer` | Opus | 書いた本人と別の目で、設計と計画との食い違いを探す。編集はできない |
-| ビルド、テスト、画面の確認 | `mm-verifier` | Sonnet | 手順が決まっていて、結果の数字と画像を返すだけ |
-| 判断の見直し | `mm-auditor` | Opus | 停滞したときに、記録をチェック項目と突き合わせる |
-| 審査員の立場での採点 | `mm-judge` | Opus | 審査の4基準で、提出物の弱いところを探す |
-| 試験用の例文集め | `mm-eval-curator` | Sonnet | 公開の注意喚起から例文を集めて形を揃える |
+| 役 | どこ | モデル | effort | 理由 |
+|---|---|---|---|---|
+| 作者と話す主の会話と段取り | メインのセッション | Opus | xhigh | 設計とルールの判断が多く、作者に聞きながら進める |
+| 作者がいないあいだの主 | `/mm-autopilot` のセッション | Fable | xhigh | 聞ける人がいないので、何をマージし何を作者に積むかを1人で決める |
+| 実装 | `mm-implementer` | Opus | xhigh | テストから書き、つなぎ目の約束を守る。失敗の経路や注入された文のような端のケースを落とさないよう深く考えさせる |
+| 独立したレビュー | `mm-reviewer` | Fable | xhigh | 書いた本人と別の、より強い目で、設計と計画との食い違いを探す。編集はできない |
+| ビルド、テスト、画面の確認 | `mm-verifier` | Opus | high | 手順は決まっているが、シミュレータの画面が設計どおりかの判断と、落ちたときの読み取りが要る |
+| 判断の見直し | `mm-auditor` | Fable | xhigh | 停滞したときに、主と別の強い目で記録をチェック項目と突き合わせる |
+| 審査員の立場での採点 | `mm-judge` | Fable | xhigh | 作った側と別の強い目で、審査の4基準から提出物の弱いところを探す |
+| 試験用の例文集め | `mm-eval-curator` | Opus | high | 手順は決まっているが、詐欺と本物の境目の例と注入の例を見分けて形を揃える |
+
+主の Opus と Fable の effort は [`.claude/settings.json`](.claude/settings.json) の `modelSettings`、サブエージェントの model と effort は `.claude/agents/*.md` の frontmatter で決める。Agent ツールで呼ぶときは model を省くか、表と同じものを渡す。呼ぶときの model は定義より優先されるので、作者のグローバルの「単純な作業は Sonnet」の決まりはこの表の役には当てはめない。effort の `max` は使わない。理由は [`docs/harness.md`](docs/harness.md) の「サブエージェント」に書いた。
 
 作品の中で使うモデルは別で、判定に `claude-haiku-5-5`、母との会話とスクショに `claude-sonnet-5-5`、急がない調べものと引き継ぎに Managed Agents を使う(`docs/design.md`)。モデル ID や API の形は記憶で書かず `claude-docs` の MCP か `/claude-api` で確かめる。
 
