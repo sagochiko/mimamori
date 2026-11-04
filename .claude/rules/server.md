@@ -9,7 +9,8 @@ paths:
 - 即答は決まった規則(`rules/`)で返し、Claude の判定はあとから重ねる。Claude が失敗するか遅れたときは規則の判定だけで知らせ、母には「確かめ中」と出す
 - Claude の答えは Structured Outputs の決まった形だけを受け取る。`injection_suspected` が true なら危なさを1段重くする。通知先と共有の範囲は、Claude の答えや届いた文面では変わらない
 - どの経路でも「安全です」と返さない
-- 鍵は `wrangler secret put`(作者が実行する)と手元の `.dev.vars` だけ。形は `.dev.vars.example` に書く。本番の D1 への変更とデプロイは作者が確認してから行う(フックでも止めている)
+- 鍵は Workers の秘密の置き場(`wrangler secret put`)と手元の `.dev.vars` だけ。形は `.dev.vars.example` に書く。値は作者が入れ(#30)、Claude は値を読まず、書かず、表示しない。`TOKEN_ENC_KEY` のような乱数を `openssl rand` からパイプで直に `wrangler secret put` に渡すのはよい
+- 本番の D1 への変更とデプロイは、開発中は作者の確認を待たずに進める(2026年11月4日に決めた)。本番の D1 で DROP、DELETE、TRUNCATE を含む SQL と `wrangler secret delete` は `guard-prod.sh` が作者に聞かせ、wrangler の削除系と D1 の time-travel の restore は止める
 - 型は `npx wrangler types` で生成し、手で書かない。テストは Vitest と `@cloudflare/vitest-plugin` で書く。外向きの通信は `@msw/cloudflare` で差し替える
 - APNs への送信はデプロイした Worker で確かめる。手元の `wrangler dev` は HTTP/2 で失敗しうる
 - ログに家族の印、端末の鍵、メッセージの本文を出さない
