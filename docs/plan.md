@@ -105,7 +105,7 @@ mimamori/
 | `members` | `id`、`family_id`、`role`(`protected` か `family`)、`display_name`、`device_key_hash`、`apns_token`、`apns_env` |
 | `invites` | `code`(6桁)、`family_id`、`expires_at`、`used_at` |
 | `alerts` | `id`、`family_id`、`source`(`sms`、`gmail`、`dns`、`page`、`call`、`consult`)、`level`(1、2、3)、`reasons`(JSON)、`summary`、`rule_level`、`claude_level`、`created_at`、`sender_key` と `domain_key`(送り主とドメインを家族の ID と合わせた SHA-256。1時間に1回にまとめるために使う)、`notified`(家族と母に知らせる行なら1。3段階と、まとめて知らせなかった行は0)、`protected_notified_at`(母への通知が届いた時刻。届くまでは空) |
-| `cases` | `id`、`family_id`、`alert_id`、`state`(`notified`、`resolved`。前の版の `accepted` が残っていたら解決していないものとして扱う)、`assignee_member_id`(解決を押した家族)、`agent_session_id`、`notified_at`、`resolved_at`、`renotified_at`、`ai_reply`(AI が母に最後に答えたこと)、`family_notified_at`(家族に最初の知らせが届いた時刻。届くまでは空)。`accepted_at` は残すが読み書きしない |
+| `cases` | `id`、`family_id`、`alert_id`、`state`(`notified`、`resolved`。前の版の `accepted` が残っていたら解決していないものとして扱う)、`assignee_member_id`(解決を押した家族)、`agent_session_id`、`notified_at`、`resolved_at`、`renotified_at`、`ai_reply`(AI が母に最後に答えたこと)、`family_notified_at`(家族に最初の知らせが届いた時刻。届くまでは空)、`family_notice_claimed_at`(最初の知らせを送る前に立て、送り終えたら空に戻す claim の時刻で、5分より古いものは次の送り手が引き継ぐ。#64)。`accepted_at` は残すが読み書きしない |
 | `relays` | `id`、`case_id`、`from_member_id`、`body`、`created_at`。家族から母への返事を外したので、読み書きせず、相談と一緒に消すだけにする(本番の D1 を変えないため、表は残す) |
 | `smiles` | `id`、`family_id`、`member_id`、`r2_key`、`score`、`created_at` |
 | `gmail_auth` | `family_id`、`refresh_token_enc`、`granted_at`、`last_history_id`、`expired_notified_at` |
