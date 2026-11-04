@@ -269,4 +269,4 @@ PR #41 の2回目のレビューで、レビュー役(mm-reviewer)が Cloudflare
 
 deny を足していけば塞がると思っていた。短いフラグは `-fu` のように束ねられ、git は `--mir` のような長いフラグの省略も受ける。`gh api` は `-f` を付けると `-X` が無くても POST になるので、前のテストの「`gh api -X PATCH` は確認なしで通る」は、決まりの側から見て間違った期待を固めていた。
 
-判定はフックに移し、deny は空白を前に置いた形にして予備として残した。allow の `git -c credential.helper= * push*` は、真ん中の `*` に `branch -D main` が入るので消した。graphql は読むだけのことが多いので、mutation と、ファイルや標準入力から読む問い合わせだけを聞く形にした。本番の D1 のマイグレーションに DROP があれば聞く形は、作者の確認を待つ仮の決め方として [`docs/harness.md`](harness.md) に書いた。使ったのは mm-implementer、mm-reviewer、`scripts/test-hooks.sh`、PreToolUse フックの `permissionDecision: "ask"`。
+判定はフックに移し、deny は空白を前に置いた形にして予備として残した。allow の `git -c credential.helper= * push*` は、真ん中の `*` に `branch -D main` が入るので消した。graphql は読むだけのことが多いので、mutation と、ファイルや標準入力から読む問い合わせだけを聞く形にした。本番の D1 のマイグレーションに DROP があれば聞く形は、仮の決め方として入れ、同じ日に聞く形に決まった。2回目のレビューでは、Claude Code が規則を照らす前に `timeout` や `nohup` を外すので、`timeout 60 git push -fu origin main` が allow に落ち、フックも通していたと分かった。`lib.sh` の `command_starts` で同じラッパーを読み飛ばし、マージと個人の情報の関門にも同じ直しが届いた。使ったのは mm-implementer、mm-reviewer、`scripts/test-hooks.sh`、PreToolUse フックの `permissionDecision: "ask"`。
