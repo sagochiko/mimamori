@@ -25,6 +25,7 @@
 		5AB286F4D233C69A78E81661 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6347632638B2BBB1D921BC29 /* ShareViewController.swift */; };
 		623BFA36F797A841D73BCCCA /* MimamoriCore in Frameworks */ = {isa = PBXBuildFile; productRef = 7E983F62499436B4FE715598 /* MimamoriCore */; };
 		71BE124743C22D542CE5194E /* CallDirectoryHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECDC69D9559207B1E43D992A /* CallDirectoryHandler.swift */; };
+		7C3ACF594C1E220440463051 /* FileChatLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 419E10C36BDE538278F82BD1 /* FileChatLogStore.swift */; };
 		7DAE002F56540796C0D2E798 /* icon-128.png in Resources */ = {isa = PBXBuildFile; fileRef = 6DA060794DBBAA1CFCB3847D /* icon-128.png */; };
 		801E3FADFE057D756DE7D71E /* CallFollowUpNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6739C49E1B0EA3024DC91B5F /* CallFollowUpNotifier.swift */; };
 		81A7A7A8204D4A2657776DF3 /* MessageFilter.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B2BE94A81A0443A61F439C2E /* MessageFilter.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -101,6 +102,7 @@
 		3E0EF675CA21B27398D564F4 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
 		3EB3212F121AF5A1BC7F588E /* FamilyStartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FamilyStartView.swift; sourceTree = "<group>"; };
 		40AB4308C8B210487E08269B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		419E10C36BDE538278F82BD1 /* FileChatLogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileChatLogStore.swift; sourceTree = "<group>"; };
 		4EDF58AC7BF0B880A61FAE9D /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		516788DAB13E4B039651659A /* FamilyHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FamilyHomeView.swift; sourceTree = "<group>"; };
 		5B1160E3057AE1DBB06229E3 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -246,6 +248,7 @@
 				1BDA3D10727E119E0680CB3C /* AppModel.swift */,
 				0FA418C9775218D6E44586BB /* Assets.xcassets */,
 				6739C49E1B0EA3024DC91B5F /* CallFollowUpNotifier.swift */,
+				419E10C36BDE538278F82BD1 /* FileChatLogStore.swift */,
 				B4E2407A22C382C75C4FAAA0 /* Info.plist */,
 				B78E521DD07930F33B780261 /* KeychainDeviceKeyStore.swift */,
 				6857C3950869A3E22C6DC8CE /* Mimamori.entitlements */,
@@ -528,6 +531,7 @@
 				43B9311E811375C7729B1D8E /* CaseCardView.swift in Sources */,
 				38A272F7AE944C9DF6A7E596 /* FamilyHomeView.swift in Sources */,
 				B30588DA403943E16C24E603 /* FamilyStartView.swift in Sources */,
+				7C3ACF594C1E220440463051 /* FileChatLogStore.swift in Sources */,
 				3108313EAA90F72D86124356 /* JoinView.swift in Sources */,
 				A6C56C492741A879A53F09EC /* KeychainDeviceKeyStore.swift in Sources */,
 				31980380ADC3240C7EE281BC /* MimamoriApp.swift in Sources */,

@@ -1,7 +1,8 @@
 import Foundation
 
-// The protected person's voice consultation ("スマホ相談と声" in docs/design.md): press the big
-// microphone, talk, and the answer is shown and read aloud. The App's adapters do the listening
+// The protected person's consultation ("スマホ相談と声" in docs/design.md): press the microphone
+// and talk, or type and send, and the answer appears in her chat (Chat.swift). An answer is read
+// aloud only when she asked by voice, so a typed question never makes the phone speak in public (#73). The App's adapters do the listening
 // (Speech, on the device), the sending (POST /consult), and the speaking (AVSpeechSynthesizer); every
 // decision about what happens next is here so it can be tested.
 
@@ -99,6 +100,8 @@ public struct VoiceConsult: Sendable {
   private var stopRequested = false
   /// She pressed again before listening started: stop as soon as it starts.
   private var stopPending = false
+  /// This consultation came by voice, so its answer is read aloud.
+  private var byVoice = false
 
   /// The server refuses longer text (server/src/consult.ts, CONSULT_TEXT_MAX_CHARS).
   public static let maxCharacters = 1000
@@ -111,7 +114,7 @@ public struct VoiceConsult: Sendable {
 
   public init() {}
 
-  /// The big microphone. Starts listening, or ends it; ignored while an answer is coming.
+  /// The microphone. Starts listening, or ends it; ignored while an answer is coming.
   public mutating func micTapped(at now: Date) -> [ConsultEffect] {
     switch phase {
     case .idle, .answered, .failed:
@@ -120,6 +123,7 @@ public struct VoiceConsult: Sendable {
       lastHeardAt = nil
       stopRequested = false
       stopPending = false
+      byVoice = true
       return [.stopSpeaking, .startListening]
     case .listening:
       guard startedAt != nil else {
@@ -130,6 +134,24 @@ public struct VoiceConsult: Sendable {
     case .thinking:
       return []
     }
+  }
+
+  /// Whether written words can be sent now: not while listening or waiting for an answer.
+  public var acceptsText: Bool {
+    switch phase {
+    case .idle, .answered, .failed: true
+    case .listening, .thinking: false
+    }
+  }
+
+  /// She typed and pressed send. Sent as it is (trimmed, at most `maxCharacters`); never read aloud.
+  public mutating func typed(_ text: String, at now: Date) -> [ConsultEffect] {
+    guard acceptsText else { return [] }
+    let said = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.maxCharacters))
+    guard !said.isEmpty else { return [] }
+    byVoice = false
+    phase = .thinking(said: said)
+    return [.stopSpeaking, .send(said)]
   }
 
   /// The recognizer is listening. The first time, this comes after the permission sheets, so the
@@ -175,7 +197,7 @@ public struct VoiceConsult: Sendable {
   public mutating func answered(_ answer: ConsultAnswer) -> [ConsultEffect] {
     guard case .thinking(let said) = phase else { return [] }
     phase = .answered(said: said, answer: answer)
-    return [.speak(answer.speak)]
+    return byVoice ? [.speak(answer.speak)] : []
   }
 
   public mutating func sendFailed() {
