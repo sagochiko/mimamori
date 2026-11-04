@@ -6,7 +6,7 @@ options:
   bundleIdPrefix: com.sagochiko
   developmentLanguage: ja
   # The one place that sets the iOS version. 26.0 because AlarmKit needs it; lower it here once the
-  # mother's iPhone model is known (docs/human-queue.md).
+  # mother's iPhone model is known (#24).
   deploymentTarget:
     iOS: "26.0"
   createIntermediateGroups: true

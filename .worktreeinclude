@@ -1,0 +1,5 @@
+# Gitignored files that Claude Code copies into each worktree it creates (claude --worktree, subagents
+# with isolation: worktree; https://code.claude.com/docs/en/worktrees). The hooks also find these lists
+# in the main working tree through the common git directory, so a plain `git worktree add` works too.
+.claude/prior-work.local
+.claude/private-terms.local

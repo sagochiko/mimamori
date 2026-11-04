@@ -2,8 +2,15 @@
 # Feed sample tool calls to the guard hooks and check that each one blocks or passes as intended.
 cd "$(dirname "$0")/.." || exit 1
 export CLAUDE_PROJECT_DIR=$PWD
-export MM_LOG_DIR=$(mktemp -d) # keep test blocks out of the real usage log
-trap 'rm -rf "$MM_LOG_DIR"' EXIT
+T=$(mktemp -d) # everything the tests create: logs, a fake gh, throwaway repositories
+trap '[[ -n "${MM_KEEP_TEST_DIR:-}" ]] && echo "kept $T" || rm -rf "$T"' EXIT
+export MM_LOG_DIR=$T/logs # keep test blocks out of the real usage log
+# Dummy private lists, so no test reads the author's real ones. Only this script sets these two;
+# guard-prior-work.sh blocks Claude from setting them.
+printf '%s\n' '# dummy terms for the tests' 'Tanukiyama' 'たぬき山ぽん太' >"$T/private-terms"
+printf '%s\n' '/tmp/mm-test/old-dummy-app' >"$T/prior-work"
+export MM_PRIVATE_TERMS_FILE=$T/private-terms MM_PRIOR_WORK_FILE=$T/prior-work
+export MM_STATE_DIR=$T/state # pacer and the session hooks keep their state here, not in the real one
 H=.claude/hooks
 fail=0
 expect() { # <expected exit> <hook> <json> <label>
@@ -33,13 +40,414 @@ expect 2 guard-holdout.sh '{"tool_name":"Bash","agent_type":"mm-eval-curator","t
 expect 2 guard-holdout.sh '{"tool_name":"Write","agent_type":"mm-eval-curator","tool_input":{"file_path":"eval/cases/dev/a.jsonl"}}' "the curator cannot write dev"
 expect 0 guard-holdout.sh '{"tool_name":"Bash","tool_input":{"command":"git commit -m \"holdout の扱いを直す\""}}' "a commit message that mentions holdout passes"
 expect 2 guard-prior-work.sh '{"tool_name":"Read","tool_input":{"file_path":".claude/prior-work.local"}}' "the private list is not read"
-if [[ ! -f .claude/state/holdout.unlock ]]; then
+expect 2 guard-prior-work.sh '{"tool_name":"Read","tool_input":{"file_path":".claude/private-terms.local"}}' "the private term list is not read"
+expect 2 guard-prior-work.sh '{"tool_name":"Bash","tool_input":{"command":"grep -c . .claude/private-terms.local"}}' "the private term list is not read from Bash"
+expect 2 guard-prior-work.sh '{"tool_name":"Bash","tool_input":{"command":"MM_PRIVATE_TERMS_FILE=/dev/null git commit -m x"}}' "Claude cannot point the checks at another list"
+expect 2 guard-prior-work.sh '{"tool_name":"Read","tool_input":{"file_path":"/tmp/mm-test/old-dummy-app/App.swift"}}' "a folder in the earlier-project list is not opened"
+expect 0 guard-prior-work.sh '{"tool_name":"Read","tool_input":{"file_path":"server/src/index.ts"}}' "this repository opens"
+if [[ ! -f "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.claude/state/holdout.unlock" ]]; then
   expect 2 guard-holdout.sh '{"tool_name":"Bash","tool_input":{"command":"make eval-holdout"}}' "holdout run is blocked while locked"
 fi
 expect 2 guard-prod.sh '{"tool_name":"Bash","tool_input":{"command":"npx wrangler delete"}}' "wrangler delete is blocked"
 expect 0 guard-prod.sh '{"tool_name":"Bash","tool_input":{"command":"npx wrangler d1 migrations apply db --local"}}' "local D1 passes"
 out=$(echo '{"tool_name":"Bash","tool_input":{"command":"npx wrangler d1 migrations apply db --remote"}}' | $H/guard-prod.sh)
 [[ "$out" == *'"permissionDecision":"ask"'* ]] || { echo "hook test failed: remote D1 should ask"; fail=1; }
+# guard-merge: a fake gh answers from JSON files in $MM_FAKE_GH, and a throwaway bare repository
+# plays origin, so the gate is tested without GitHub.
+mkdir -p "$T/bin" "$T/gh"
+cat >"$T/bin/gh" <<'EOF'
+#!/bin/bash
+# Stand-in for gh: "gh pr view 41 ..." prints $MM_FAKE_GH/pr-41.json; anything else fails like an outage.
+# Every call is logged, so a test can see which repository the gate asked.
+echo "$*" >>"$MM_FAKE_GH/calls.log"
+f="$MM_FAKE_GH/$1-$3.json"
+[[ ("$1 $2" == "pr view" || "$1 $2" == "issue view") && -f "$f" ]] && cat "$f" && exit 0
+exit 1
+EOF
+chmod +x "$T/bin/gh"
+export MM_FAKE_GH=$T/gh
+g() { git -c user.name=test -c user.email=test@localhost -c commit.gpgsign=false -C "$T/work" "$@"; }
+git init -q --bare "$T/origin.git" && git init -q -b main "$T/work" && g remote add origin "$T/origin.git"
+g commit -q --allow-empty -m base && g push -q origin main
+g switch -q -c stale && g commit -q --allow-empty -m stale && stale=$(g rev-parse HEAD)
+g switch -q main && g commit -q --allow-empty -m moved && g push -q origin main
+g switch -q -c fresh && g commit -q --allow-empty -m fresh && fresh=$(g rev-parse HEAD)
+pr() { # <number> <head> <body> [comment...]
+  local n=$1 h=$2 b=$3
+  shift 3
+  jq -n --arg b "$b" --arg h "$h" '{body:$b, comments:[$ARGS.positional[] | {body:.}], headRefOid:$h, baseRefName:"main"}' \
+    --args "$@" >"$MM_FAKE_GH/pr-$n.json"
+}
+issue() { jq -n --arg b "$2" '{body:$b}' >"$MM_FAKE_GH/issue-$1.json"; }
+merge() { # <expected exit> <command> <label>
+  expect "$1" guard-merge.sh "$(jq -nc --arg c "$2" --arg d "$T/work" '{tool_name:"Bash",tool_input:{command:$c},cwd:$d}')" "$3"
+}
+# The review evidence has two parts: the reviewer's report posted as a comment (/mm-task step 6.1),
+# and the parent's decision on each finding in the body's レビュー section (step 6.3).
+review=$'## レビュー\n\nmm-reviewer は approve。指摘なし。'
+decided=$'## レビュー\n\nmm-reviewer は changes needed。\n\n- server/src/a.ts:12 の判定が逆: 採った。再現した。直した\n- 名前の付け方: 採らなかった。計画の名前に合わせているため'
+report=$'## mm-reviewer の報告(原文)\n\n1回目、abc1234 を読んだもの。保存した原文は `docs/audits/raw/x.md`。\n\nサブエージェントの報告の原文。親のセッションが確かめる前のもの。\n\n- Status: approve\n- Findings: none'
+report_ja=$'### mm-reviewer の報告(原文)\n\n2回目、def5678 を読んだもの。\n\n- ステータス: 要修正\n- server/src/a.ts:12 の判定が逆'
+preface_only=$'## mm-reviewer の報告(原文)\n\n1回目、abc1234 を読んだもの。保存した原文は `docs/audits/raw/x.md`。'
+placeholder=$'## 変えたこと\n\nフックを直した。\n\n## レビュー\n\n(mm-reviewer の結果をここに入れる)\n\n## 作者に渡すこと\n\n- 案を採った'
+issue 40 $'- [x] 招待コード\n- [ ] 実機の確認 → #45\n```text\n- [ ] 囲みの中の例\n```'
+issue 46 $'- [x] 招待コード\n- [ ] 残りの画面'
+issue 48 $'- [ ] 続きもこの #48 でやる'
+pr 41 "$fresh" "$review"$'\n\nCloses #40' "$report"
+pr 42 "$fresh" $'## 変えたこと\n\nCloses #40'
+pr 43 "$fresh" 'Closes #40' "$report"
+pr 44 "$fresh" "$review"$'\n\nCloses #40\nCloses #46' "$report"
+pr 47 "$fresh" "$review"$'\n\nfixes #48' "$report"
+pr 49 "$stale" "$review"$'\n\nCloses #40' "$report"
+pr 50 "$fresh" "$review"$'\n\nCloses #51' "$report"
+pr 52 "$fresh" "$decided"$'\n\nCloses #40' "first, a note" "$report_ja"
+pr 54 "$fresh" "$placeholder"
+pr 55 "$fresh" "$placeholder" "$report"
+pr 56 "$fresh" "$decided" "$preface_only"
+pr 57 "$fresh" "$decided"
+pr 58 "$fresh" "$decided" $'まず一言。\n\n'"$report"
+pr 59 "$fresh" "$report"$'\n\n'"$review"
+# The first review of PR #38 wrote its status as a heading with the verdict on the next line.
+report_heading=$'## mm-reviewer の報告(原文)\n\n1回目、abc1234 を読んだもの。\n\nサブエージェントの報告の原文。親のセッションが確かめる前のもの。\n\n前置きの1行。\n## ステータス\n直してから(changes needed)。上の2件は直す。\n\n## 指摘\n\n- a.ts:12'
+report_empty_heading=$'## mm-reviewer の報告(原文)\n\n1回目、abc1234 を読んだもの。\n\n## ステータス\n\n## 指摘\n\n- a.ts:12'
+pr 60 "$fresh" "$decided" "$report_heading"
+pr 61 "$fresh" "$decided" "$report_empty_heading"
+gh_path=$PATH
+PATH="$T/bin:$PATH"
+merge 0 'gh pr merge 41 --merge --delete-branch' "a reviewed PR whose open items say where they continue merges"
+merge 0 'gh pr merge https://github.com/sagochiko/mimamori/pull/41 --merge' "a PR named by URL is checked the same way"
+merge 2 'gh pr merge 42 --merge --delete-branch' "a PR without review results is blocked"
+merge 2 'gh pr merge 43 --merge' "a report comment without the decisions in the body's レビュー section is blocked"
+merge 0 'gh pr merge 52 --merge' "a report among other comments and decisions per finding pass"
+merge 2 'gh pr merge 54 --merge' "the draft body of /mm-task step 5, never reviewed, is blocked"
+merge 2 'gh pr merge 55 --merge' "a report comment with the draft レビュー section is blocked"
+merge 2 'gh pr merge 56 --merge' "a comment with only the heading and the preface is blocked"
+merge 2 'gh pr merge 57 --merge' "decisions without the reviewer's report comment are blocked"
+merge 2 'gh pr merge 58 --merge' "a comment that does not start with the report heading does not count"
+merge 2 'gh pr merge 59 --merge' "a report pasted into the body instead of a comment does not count"
+merge 2 'gh pr merge 44 --merge' "an unchecked item that names no follow-up issue is blocked"
+merge 2 'gh pr merge 47 --merge' "an unchecked item that names only its own issue is blocked"
+merge 2 'gh pr merge 49 --merge' "a PR whose head lacks the current origin/main is blocked"
+merge 2 'gh pr merge 99 --merge' "a PR gh cannot read is blocked (fail closed)"
+merge 2 'gh pr merge 50 --merge' "an issue gh cannot read is blocked (fail closed)"
+merge 2 'gh pr merge --merge --delete-branch' "a merge without a PR number is blocked"
+merge 2 'gh pr merge 41 --merge && gh pr merge 42 --merge' "two merges in one command are blocked"
+merge 0 'grep -n "gh pr merge" .claude/skills/mm-task/SKILL.md' "searching for the words gh pr merge passes"
+merge 0 'gh pr merge 60 --merge' "a status written as a heading with the verdict on the next line counts"
+merge 2 'gh pr merge 61 --merge' "a status heading with nothing under it does not count"
+# A merge inside a compound command, or with quotes or a backslash around its words, is still read.
+merge 2 'for n in 42; do gh pr merge 42 --merge; done' "a merge inside for ... do is checked"
+merge 2 'if gh pr checks 42; then gh pr merge 42 --merge; fi' "a merge inside if ... then is checked"
+merge 2 '{ gh pr merge 42 --merge; }' "a merge inside { } is checked"
+merge 2 'time gh pr merge 42 --merge' "a merge after time is checked"
+merge 2 '! gh pr merge 42 --merge' "a merge after ! is checked"
+merge 2 '"gh" pr merge 42 --merge' "a quoted gh is checked"
+merge 2 '\gh pr merge 42 --merge' "a backslashed gh is checked"
+merge 2 'gh "pr" merge 42 --merge' "a quoted pr is checked"
+merge 2 'gh pr "merge" 42 --merge' "a quoted merge is checked"
+merge 0 'if gh pr checks 41; then gh pr merge 41 --merge; fi' "a reviewed PR merges from inside if ... then"
+merge 0 'gh pr merge 41 --merge --delete-branch 2>&1' "a redirection is not taken for a second PR"
+merge 0 'gh pr merge 41 --merge > /dev/null' "a redirection target is not taken for a second PR"
+merge 0 'gh pr view 41 && git fetch origin && git merge origin/main' "gh and git merge in one command pass"
+# The PR is the first argument after merge, wherever the flags and their values stand.
+merge 2 'GH_REPO=sagochiko/mimamori gh pr merge 42 --merge' "a VAR=value prefix does not hide the merge"
+merge 2 'gh -R sagochiko/mimamori pr merge 42 --merge' "gh -R before pr does not hide the merge"
+merge 2 'gh --repo=sagochiko/mimamori pr merge 42 --merge' "gh --repo= before pr does not hide the merge"
+merge 2 'gh pr merge --squash --subject "fix 41"' "a number inside --subject is not taken for the PR"
+merge 0 'gh pr merge 41 --squash --subject "see 42" --body "and 43"' "numbers inside flag values are not more PRs"
+merge 2 'gh pr merge my-branch --merge' "a PR named by branch is blocked"
+merge 2 'gh pr merge 41 --auto --merge' "--auto is blocked: the check would not run again when it lands"
+merge 2 'GH_REPO=x/y gh pr merge 41 --merge; gh -R x/y pr merge 42' "two merges behind prefixes are blocked"
+: >"$MM_FAKE_GH/calls.log"
+merge 0 'GH_REPO=other/repo gh pr merge 41 --merge' "a merge behind GH_REPO= is checked like any other"
+grep -q -- '-R other/repo' "$MM_FAKE_GH/calls.log" || { echo "hook test failed: the merge gate asks gh about the GH_REPO repository"; fail=1; }
+out=$(jq -nc --arg d "$T/work" '{tool_name:"Bash",tool_input:{command:"gh pr merge 44 --merge"},cwd:$d}' | "$H/guard-merge.sh" 2>&1)
+[[ "$out" == *"残りの画面"* && "$out" != *"実機の確認"* ]] || { echo "hook test failed: the merge gate lists exactly the open items without a follow-up"; fail=1; }
+# origin/main moves on GitHub after the last fetch of this clone. Only a gate that fetches sees it.
+git clone -q -b main "$T/origin.git" "$T/other" &&
+  git -C "$T/other" -c user.name=test -c user.email=test@localhost -c commit.gpgsign=false commit -q --allow-empty -m other &&
+  git -C "$T/other" push -q origin main
+pr 53 "$fresh" "$review"$'\n\nCloses #40' "$report"
+merge 2 'gh pr merge 53 --merge' "a PR whose head lacks an origin/main that moved since the last fetch is blocked"
+g fetch -q origin
+PATH=$gh_path
+# A PreToolUse hook that times out or crashes lets the call through unless onFailure is "block"
+# (https://code.claude.com/docs/en/hooks). The gates that call the network must fail closed.
+jq -e '[.hooks.PreToolUse[].hooks[] | select(.command | endswith("guard-merge.sh")) | select(.onFailure == "block")] | length == 1' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: guard-merge.sh must be registered once with onFailure block"; fail=1; }
+# onFailure "block" does not help when a gate itself exits 0. Without a working jq the gates cannot read
+# the command, so they stop anything that mentions gh and let the rest through.
+mkdir -p "$T/nojq" && printf '#!/bin/sh\nexit 127\n' >"$T/nojq/jq" && chmod +x "$T/nojq/jq"
+nojq() { # <expected exit> <hook> <command> <label>
+  local got
+  jq -nc --arg c "$3" '{tool_name:"Bash",tool_input:{command:$c}}' | PATH="$T/nojq:$PATH" "$H/$2" >/dev/null 2>&1
+  got=$?
+  if [[ $got -ne $1 ]]; then echo "hook test failed: $4 (expected $1, got $got)"; fail=1; fi
+}
+nojq 2 guard-merge.sh 'gh pr merge 41 --merge' "the merge gate stops gh when jq fails"
+nojq 0 guard-merge.sh 'ls -la server' "the merge gate lets ordinary commands through when jq fails"
+nojq 2 guard-private.sh 'gh issue create --title x --body y' "the personal-data gate stops gh when jq fails"
+nojq 0 guard-private.sh 'git status --short' "the personal-data gate lets ordinary commands through when jq fails"
+nojq 2 guard-private.sh 'git commit --no-verify -m x' "the commit-hooks guard holds when jq fails"
+nojq 2 guard-private.sh 'git -c core.hooksPath=/dev/null commit -m x' "the hooks-path guard holds when jq fails"
+# stop-gate: judged in the tree of the input's cwd, against origin/main, and never passing untested.
+# $T/work is the throwaway repository of the merge tests. Its local main stays behind origin/main.
+g switch -q -c gate origin/main 2>/dev/null
+mkdir -p "$T/work/server" && printf '{"name":"x","private":true}\n' >"$T/work/server/package.json"
+g add server/package.json && g commit -q -m "server" && g push -q origin gate:main
+g switch -q -c docs-only origin/main && printf 'x\n' >"$T/work/notes.md" && g add notes.md && g commit -q -m docs
+gate_in() { jq -nc --arg d "$1" '{hook_event_name:"Stop",stop_hook_active:false,cwd:$d}'; }
+out=$(gate_in "$T/work" | "$H/stop-gate.sh" 2>&1)
+[[ -z "$out" ]] || { echo "hook test failed: stop-gate counts commits already on origin/main as this branch's change"; fail=1; }
+printf 'export const x = 1\n' >"$T/work/server/x.ts"
+out=$(gate_in "$T/work" | "$H/stop-gate.sh" 2>&1)
+[[ "$out" == *'"decision":"block"'* && "$out" == *"npm ci in server/"* ]] ||
+  { echo "hook test failed: stop-gate must block, not pass, when server/ changed and node_modules is missing"; fail=1; }
+[[ ! -f "$T/work/.claude/state/stop-gate.pass" ]] || { echo "hook test failed: stop-gate recorded a pass it did not test"; fail=1; }
+rm -f "$T/work/server/x.ts"
+
+# pacer: the context reminders fire once per session at 60% and 80%; compaction leaves a flag for it.
+transcript() { # <file> <tokens of the last main-chain turn>
+  jq -nc --argjson n "$2" '{type:"assistant",isSidechain:false,message:{usage:{input_tokens:10,cache_read_input_tokens:($n - 110),cache_creation_input_tokens:100}}}' >"$1"
+  jq -nc '{type:"assistant",isSidechain:true,message:{usage:{input_tokens:990000}}}' >>"$1" # a subagent's turn does not count
+  echo 'not json' >>"$1"
+}
+pace() { jq -nc --arg s "$1" --arg t "$2" --arg d "$T/work" '{hook_event_name:"Stop",stop_hook_active:false,session_id:$s,transcript_path:$t,cwd:$d}' | "$H/pacer.sh" 2>&1; }
+transcript "$T/t60.jsonl" 643415
+transcript "$T/t85.jsonl" 850000
+[[ "$(pace s1 "$T/t60.jsonl")" == *"コンテキストが60%を超えた(643415"* ]] || { echo "hook test failed: pacer reminds at 60%"; fail=1; }
+[[ "$(pace s1 "$T/t60.jsonl")" != *"コンテキスト"* ]] || { echo "hook test failed: pacer reminds at 60% only once"; fail=1; }
+[[ "$(pace s1 "$T/t85.jsonl")" == *"コンテキストが80%を超えた"* ]] || { echo "hook test failed: pacer reminds at 80%"; fail=1; }
+[[ "$(pace s1 "$T/t85.jsonl")" != *"コンテキスト"* ]] || { echo "hook test failed: pacer reminds at 80% only once"; fail=1; }
+transcript "$T/t10.jsonl" 100000
+echo '{"session_id":"s2","trigger":"auto"}' | "$H/compact-flag.sh"
+[[ "$(pace s2 "$T/t10.jsonl")" == *"自動の要約が走った"* ]] || { echo "hook test failed: pacer reports an automatic compaction"; fail=1; }
+[[ "$(pace s2 "$T/t10.jsonl")" != *"自動の要約"* ]] || { echo "hook test failed: pacer reports a compaction only once"; fail=1; }
+# The 4-hour stall counts the issue branch's own commits from origin/main, in the input's cwd.
+g switch -q -c issue-9-old origin/main && GIT_COMMITTER_DATE="$(($(date +%s) - 5 * 3600)) +0900" g commit -q --allow-empty -m old
+[[ "$(pace s3 "$T/t10.jsonl")" == *"Branch issue-9-old has been open for more than 4 hours"* ]] ||
+  { echo "hook test failed: pacer finds a long issue branch in the cwd's tree"; fail=1; }
+g switch -q docs-only
+# A local main that was never pulled must not make a new branch look old: the 5-hour-old commit landed
+# on origin/main through someone else's PR.
+p() { git -c user.name=test -c user.email=test@localhost -c commit.gpgsign=false -C "$T/p" "$@"; }
+git init -q --bare "$T/p.git" && git init -q -b main "$T/p" && p remote add origin "$T/p.git"
+p commit -q --allow-empty -m base && p push -q origin main
+p switch -q -c landed && GIT_COMMITTER_DATE="$(($(date +%s) - 5 * 3600)) +0900" p commit -q --allow-empty -m landed && p push -q origin landed:main
+p fetch -q origin && p switch -q -c issue-10-new origin/main && p commit -q --allow-empty -m new
+out=$(jq -nc --arg t "$T/t10.jsonl" --arg d "$T/p" '{hook_event_name:"Stop",stop_hook_active:false,session_id:"s4",transcript_path:$t,cwd:$d}' | "$H/pacer.sh" 2>&1)
+[[ "$out" != *"issue-10-new has been open"* ]] || { echo "hook test failed: pacer counts commits already on origin/main against a new branch"; fail=1; }
+jq -e '.hooks.PreCompact[] | select(.matcher == "auto") | .hooks[] | select(.command | endswith("compact-flag.sh"))' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: compact-flag.sh runs on automatic compaction"; fail=1; }
+jq -e '.idleCompaction == false' .claude/settings.json >/dev/null || { echo "settings test failed: idleCompaction is off"; fail=1; }
+
+# save-report: a subagent's handback is kept verbatim, marked as unchecked, and never blocked.
+export MM_RAW_REPORT_DIR=$T/raw
+report=$'- Status: changes needed\n- server/src/a.ts:12 の判定が逆\n\n`code` と "引用" もそのまま'
+hand() { jq -nc --arg t "$1" --arg m "$2" '{hook_event_name:"PostToolUse",tool_name:"SubagentHandback",agent_type:$t,agent_id:"a4d2c8f1e0b3a297",tool_input:{message:$m}}'; }
+hand mm-reviewer "$report" | "$H/save-report.sh" || { echo "hook test failed: save-report must not block"; fail=1; }
+saved=$(ls "$T/raw"/*-mm-reviewer-a4d2c8f1.md 2>/dev/null | head -1)
+first="サブエージェントの報告の原文。親のセッションが確かめる前のもの。ホームの道筋だけを ~ に替えた。"
+[[ -n "$saved" && "$(head -1 "$saved")" == "$first" && "$(tail -n +3 "$saved")" == "$report" ]] ||
+  { echo "hook test failed: a reviewer's report is saved verbatim under docs/audits/raw with the unchecked line first"; fail=1; }
+# The repository goes public, and the user name of this Mac is on the private list: home paths become ~.
+rm -f "$T/raw"/*
+hand mm-reviewer $'- Status: approve\n- /Users/testperson/develop/a.md と /Users/testperson と /Users/testpersonal/b\n- /tmp/claude-501/-Users-testperson-develop-x/a.md と -Users-testpersonal-y' |
+  HOME=/Users/testperson "$H/save-report.sh"
+saved=$(ls "$T/raw"/*-mm-reviewer-a4d2c8f1.md 2>/dev/null | head -1)
+[[ -n "$saved" && "$(tail -n 2 "$saved")" == $'- ~/develop/a.md と ~ と /Users/testpersonal/b\n- /tmp/claude-501/-~-develop-x/a.md と -Users-testpersonal-y' ]] ||
+  { echo "hook test failed: save-report turns the home path and its dashed form in scratchpad paths, and only those, into ~"; fail=1; }
+rm -f "$T/raw"/*
+hand mm-implementer "done" | "$H/save-report.sh"
+ls "$MM_LOG_DIR/reports"/*-mm-implementer-a4d2c8f1.md >/dev/null 2>&1 || { echo "hook test failed: other reports go to .claude/logs/reports"; fail=1; }
+hand mm-reviewer "$report" | MM_RAW_REPORT_DIR=/dev/null/nowhere "$H/save-report.sh" ||
+  { echo "hook test failed: save-report must not block when it cannot write"; fail=1; }
+grep -q '"kind":"report-not-saved"' "$MM_LOG_DIR/usage.jsonl" || { echo "hook test failed: a failed save is logged"; fail=1; }
+jq -e '.hooks.PostToolUse[] | select(.matcher == "SubagentHandback") | .hooks[] | select(.command | endswith("save-report.sh"))' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: save-report.sh runs after SubagentHandback"; fail=1; }
+
+# usage-log: a SendMessage to a subagent counts as a resume of its type; a report to main does not.
+ul() { "$H/usage-log.sh" <<<"$1"; }
+ul '{"hook_event_name":"PostToolUse","tool_name":"Agent","tool_input":{"subagent_type":"mm-reviewer","name":"rev1"},"tool_response":{"agentId":"a77f00d1"}}'
+ul '{"hook_event_name":"PostToolUse","tool_name":"SendMessage","tool_input":{"to":"a77f00d1","message":"2回目"}}'
+ul '{"hook_event_name":"PostToolUse","tool_name":"SendMessage","tool_input":{"to":"rev1 [3fa9c1]","message":"3回目"}}'
+ul '{"hook_event_name":"PostToolUse","tool_name":"SendMessage","tool_input":{"to":"main","message":"報告"}}'
+[[ "$(jq -c 'select(.kind == "resume") | .name' "$MM_LOG_DIR/usage.jsonl" | tr '\n' ' ')" == '"mm-reviewer" "mm-reviewer" ' ]] ||
+  { echo "hook test failed: usage-log counts resumes by the target's type and skips reports to main"; fail=1; }
+jq -e '.hooks.PostToolUse[] | select(.matcher | split("|") | index("SendMessage"))' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: usage-log.sh runs after SendMessage"; fail=1; }
+
+# Personal data. Shapes are built in pieces so this file holds no whole phone number.
+ph="090-1234"
+ph+="-5678"
+priv() { # <expected exit> <command> <label> [cwd]
+  expect "$1" guard-private.sh "$(jq -nc --arg c "$2" --arg d "${4:-$T}" '{tool_name:"Bash",tool_input:{command:$c},cwd:$d}')" "$3"
+}
+printf '%s\n' '母の iPhone の機種を確かめる。' '関連 #3' 'Co-Authored-By: Claude <noreply@anthropic.com>' >"$T/clean.md"
+printf '%s\n' '機種を確かめる。' '連絡は TANUKIYAMA さんへ' >"$T/term.md"
+priv 0 "gh issue create --title \"作者: 機種\" --label needs-human --body-file $T/clean.md" "a clean issue body passes"
+priv 2 "gh issue create --title \"作者: 機種\" --body-file $T/term.md" "a body file with a private term is blocked, whatever its case"
+priv 2 "gh issue edit 3 -F term.md" "a relative body file is read from the command's directory"
+mkdir -p "$T/Tanukiyama" && cp "$T/clean.md" "$T/Tanukiyama/clean.md"
+priv 0 "cd $T/Tanukiyama && gh issue create --title ok --body-file $T/Tanukiyama/clean.md" "paths of the body file and of cd are not published, so they are not scanned"
+priv 2 "gh pr comment 3 --body \"電話は $ph\"" "a phone number in --body is blocked"
+priv 2 "gh issue comment 3 --body-file $T/missing.md" "a body file that cannot be read is blocked"
+priv 0 "gh issue list --label needs-human --state open" "reading issues passes"
+priv 0 'grep -n "gh issue create" .claude/skills/mm-human-queue/SKILL.md' "searching for the words gh issue create passes"
+priv 2 "git commit --no-verify -m x" "a commit that skips its hooks is blocked"
+priv 2 "git commit -n -m x" "a commit with -n is blocked"
+priv 0 "git commit -q -F $T/clean.md" "an ordinary commit passes"
+priv 2 "git -c core.hooksPath=/dev/null commit -m x" "switching the hooks path off is blocked"
+priv 0 "git config core.hooksPath .githooks" "make setup's hooks path passes"
+# A body that comes from stdin or from a command substitution is not in the command text, so the scan
+# never sees it. Only a heredoc keeps the body in the command.
+priv 2 "cat $T/term.md | gh issue create --title x -F -" "a body piped into -F - is blocked"
+priv 2 "gh issue create --title x -F - < $T/term.md" "a body redirected into -F - is blocked"
+priv 2 "gh issue create --title x --body-file - < $T/clean.md" "--body-file - without a heredoc is blocked, even for a clean file"
+priv 2 "gh issue create --title x --body-file /dev/stdin < $T/term.md" "--body-file /dev/stdin is blocked"
+priv 2 "gh issue create --title x --body \"\$(cat $T/term.md)\"" "a body from \$(...) is blocked"
+priv 2 "gh issue comment 3 --body \"\`cat $T/term.md\`\"" "a body from backticks is blocked"
+priv 0 $'gh issue create --title x -F - <<\'EOF\'\n機種を確かめる。`make verify` を流した。\nEOF' "a quoted heredoc body passes, backticks and all"
+priv 2 $'gh issue create --title x -F - <<\'EOF\'\n連絡は Tanukiyama さんへ\nEOF' "a heredoc body is scanned"
+priv 2 $'gh issue create --title x -F - <<EOF\n$(cat '"$T"$'/term.md)\nEOF' "an unquoted heredoc that runs \$(...) is blocked"
+priv 2 "GH_REPO=a/b gh issue create --title x --body-file $T/term.md" "a VAR=value prefix does not hide gh"
+priv 2 "gh -R a/b issue create --title x --body-file $T/term.md" "gh -R before issue does not hide the write"
+priv 2 "gh --repo a/b pr comment 3 --body-file $T/term.md" "gh --repo before pr does not hide the write"
+# Words inside quotes are text, not flags.
+priv 0 "gh issue create --title x --body 'use -F or --body-file to pass a file'" "flag names inside the body text are not body files"
+priv 0 "git commit -m 'drop the -n flag'" "-n inside a commit message is not --no-verify"
+priv 0 "git commit -qm 'x -n'" "a message after -qm is not a flag"
+priv 2 "git commit -nm x" "-n inside a cluster of short flags is blocked"
+priv 2 "git commit -m x -n" "-n after the message is blocked"
+priv 2 "git commit --no-verif -m x" "an abbreviated --no-verify is blocked"
+# Forms the word reading must not lose: compound commands and commands run through another command.
+priv 2 "{ git commit --no-verify -m x; }" "a commit inside { } is checked"
+priv 2 "if true; then git commit --no-verify -m x; fi" "a commit inside if ... then is checked"
+priv 2 "env git commit --no-verify -m x" "a commit after env falls back to the text check"
+priv 2 "bash -c \"git commit --no-verify -m x\"" "a commit inside bash -c falls back to the text check"
+priv 2 "bash -c \"cd /tmp; gh issue create --title x --body-file $T/term.md\"" "a gh write inside bash -c is blocked"
+priv 2 $'bash <<"E"\ngh issue create --title x --body-file '"$T"$'/term.md\nE' "a gh write fed to bash by a heredoc is blocked"
+priv 2 "gh issue create --title x \$'--body-file' $T/term.md" "an ANSI-C quoted flag in a gh write is blocked"
+priv 2 "git commit \$'--no-verify' -m x" "an ANSI-C quoted --no-verify is blocked"
+priv 2 "git commit \$'\\x2d-no-verify' -m x" "an ANSI-C escaped --no-verify is blocked"
+priv 2 $'echo $((1<<2))\ngit commit --no-verify -m x' "an arithmetic shift is not a heredoc"
+priv 2 "read -rd '' X < $T/term.md; gh issue create --title x --body \"\$X\"" "a body from a variable is blocked"
+priv 2 "gh issue create --title x --body-file \"\$HOME/x.md\"" "a body file named through a variable is blocked"
+priv 2 "gh issue create --title x -F - <<<x < $T/term.md" "a redirection after a here-string replaces the body"
+priv 0 $'cat <<\'E\' | gh issue create --title x -F -\n機種を確かめる。\nE' "a heredoc piped through cat into -F - passes"
+priv 2 $'cat <<\'E\' '"$T"$'/term.md | gh issue create --title x -F -\nx\nE' "cat with a file next to the heredoc is blocked"
+priv 2 "cd $T/Tanukiyama && gh issue create --title x -F clean.md" "a relative body file after cd is blocked"
+priv 0 "git commit -m 'x'; echo done" "a plain commit passes"
+out=$(jq -nc --arg c "gh issue create --title x --body-file $T/term.md" '{tool_name:"Bash",tool_input:{command:$c}}' | "$H/guard-private.sh" 2>&1)
+[[ "$out" == *"term.md line 2: private term"* && "$out" != *[Tt][Aa][Nn][Uu][Kk][Ii]* ]] ||
+  { echo "hook test failed: guard-private names the place and the rule, never the term"; fail=1; }
+jq -e '[.hooks.PreToolUse[].hooks[] | select(.command | endswith("guard-private.sh")) | select(.onFailure == "block")] | length == 1' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: guard-private.sh must be registered once with onFailure block"; fail=1; }
+
+# pre-commit and the worktree lookup, in a throwaway repository with a worktree. scan-private.sh and the
+# git hooks are copied in, so the lists they find there are the throwaway main tree's, not the author's.
+R=$T/repo
+git init -q -b main "$R" && mkdir -p "$R/scripts" "$R/.githooks" "$R/.claude" "$R/server/test" "$R/docs"
+cp scripts/scan-private.sh "$R/scripts/" && cp .githooks/pre-commit .githooks/commit-msg "$R/.githooks/"
+r() { git -c user.name=test -c user.email=test@localhost -c commit.gpgsign=false -C "$R" "$@"; }
+r add -A && r commit -q --no-verify -m base
+staged() { # <expected exit> <file> <line 2> <label>
+  printf '%s\n' 'first line' "$3" >"$R/$2"
+  r add "$2"
+  local out; out=$(cd "$R" && .githooks/pre-commit 2>&1); local got=$?
+  r reset -q "$2"; rm -f "$R/$2"
+  if [[ $got -ne $1 ]]; then echo "pre-commit test failed: $4 (expected $1, got $got)"; fail=1; fi
+  if [[ $got -ne 0 && ( "$out" != *"$2:2"* || "$out" == *[Tt]anukiyama* || "$out" == *"$ph"* ) ]]; then
+    echo "pre-commit test failed: $4 (the output must name $2:2 and never the matched text)"; fail=1
+  fi
+}
+staged 1 docs/a.md 'Tanukiyama の家' "a staged line with a private term is refused"
+staged 1 docs/a.md "連絡先 $ph" "a staged phone number is refused"
+staged 0 docs/a.md '返信は noreply@anthropic.com から' "the Claude address passes"
+staged 0 server/test/a.test.ts "sender: \"$ph\"" "phone shapes in test data pass"
+staged 1 server/test/a.test.ts 'たぬき山ぽん太' "private terms are refused in test data too"
+staged 0 docs/a.md 'ふつうの文' "a clean line passes"
+# The phone rules and the reviewers' raw reports quote phone and email shapes on purpose (a test
+# number, a company's published address); there only the private terms are checked (author, 2026-11-04).
+mkdir -p "$R/server/src/rules" "$R/docs/audits/raw"
+staged 0 server/src/rules/a.ts "const sample = \"$ph\"" "phone shapes in the rules pass"
+staged 0 docs/audits/raw/a.md '窓口は support@example.com と書いてある' "an email address in a raw report passes"
+staged 1 docs/audits/raw/a.md 'Tanukiyama に聞いた' "private terms are refused in raw reports too"
+staged 1 server/src/a.ts "const sample = \"$ph\"" "phone shapes elsewhere in server/src are still refused"
+# In a git worktree the lists are found in the main tree (--git-common-dir), without the test variables.
+printf '%s\n' 'Kitsunezaka' >"$R/.claude/private-terms.local"
+printf '%s\n' '/tmp/mm-test/fox-dummy-app' >"$R/.claude/prior-work.local"
+r worktree add -q "$T/wt" -b wt 2>/dev/null
+printf '%s\n' 'x' 'Kitsunezaka' >"$T/wt/note.md" && git -C "$T/wt" add note.md
+(cd "$T/wt" && env -u MM_PRIVATE_TERMS_FILE -u MM_PRIOR_WORK_FILE .githooks/pre-commit >/dev/null 2>&1) &&
+  { echo "pre-commit test failed: in a worktree the main tree's term list is not found"; fail=1; }
+printf '%s\n' 'docs: 記録を足す' '' 'fox-dummy-app の書き方を見た' >"$T/msg"
+(cd "$T/wt" && env -u MM_PRIVATE_TERMS_FILE -u MM_PRIOR_WORK_FILE .githooks/commit-msg "$T/msg" >/dev/null 2>&1) &&
+  { echo "commit-msg test failed: in a worktree the main tree's earlier-project list is not found"; fail=1; }
+# A session that started in a worktree still saves raw reports in the main tree, where /mm-task step 6 reads them.
+hand mm-reviewer "$report" | env -u MM_RAW_REPORT_DIR CLAUDE_PROJECT_DIR="$T/wt" "$H/save-report.sh"
+ls "$R/docs/audits/raw"/*-mm-reviewer-a4d2c8f1.md >/dev/null 2>&1 && [[ ! -d "$T/wt/docs/audits/raw" ]] ||
+  { echo "hook test failed: save-report writes raw reports into the main tree, also from a worktree"; fail=1; }
+# /mm-task step 6.1 as written: run it twice from the worktree (a failed post is retried).
+tpl=$(awk '/^   name=<YYYYMMDD-HHMM>-mm-reviewer-<id>.md$/,/review-comment.md"$/' .claude/skills/mm-task/SKILL.md | sed 's/^   //')
+rname=$(basename "$(ls "$R/docs/audits/raw"/*-mm-reviewer-a4d2c8f1.md | head -1)")
+mkdir -p "$T/sp"
+tpl=${tpl//<YYYYMMDD-HHMM>-mm-reviewer-<id>.md/$rname}
+tpl=${tpl//<round>/1}
+tpl=${tpl//<commit>/abc1234}
+tpl=${tpl//<scratchpad>/$T/sp}
+# Run it only when it is the block we expect: seven lines, and no gh (the real gh is on PATH here).
+if [[ $(wc -l <<<"$tpl") -eq 7 && "$tpl" != *gh\ * ]]; then
+  for round in 1 2; do
+    (cd "$T/wt" && bash -c "$tpl") >/dev/null 2>&1 || { echo "skill test failed: the step 6.1 template fails on run $round"; fail=1; }
+  done
+else
+  echo "skill test failed: the step 6.1 template is not the seven-line block this test expects"; fail=1
+fi
+[[ -s "$T/wt/docs/audits/raw/$rname" && ! -e "$R/docs/audits/raw/$rname" ]] && grep -q 'Status: changes needed' "$T/sp/review-comment.md" &&
+  [[ "$(head -1 "$T/sp/review-comment.md")" == "## mm-reviewer の報告(原文)" ]] ||
+  { echo "skill test failed: the step 6.1 template moves the report into the worktree and builds the comment"; fail=1; }
+
+# scan-private.sh history applies the same scope: shapes in the rules and in raw reports pass, private
+# terms do not. A fake gh lists no issues and no PRs.
+mkdir -p "$T/histbin" && printf '#!/bin/sh\necho "[]"\n' >"$T/histbin/gh" && chmod +x "$T/histbin/gh"
+history() { (cd "$R" && PATH="$T/histbin:$PATH" scripts/scan-private.sh history >/dev/null 2>&1); }
+printf 'const sample = "%s"\n' "$ph" >"$R/server/src/rules/b.ts" && printf '窓口は support@example.com\n' >"$R/docs/audits/raw/b.md"
+r add server/src/rules/b.ts docs/audits/raw/b.md && r commit -q --no-verify -m "rules and a raw report"
+history || { echo "scan test failed: history skips phone and email shapes in server/src/rules and docs/audits/raw"; fail=1; }
+printf 'Tanukiyama\n' >"$R/docs/audits/raw/c.md" && r add docs/audits/raw/c.md && r commit -q --no-verify -m "a term"
+history && { echo "scan test failed: history still finds private terms in docs/audits/raw"; fail=1; }
+
+# Merging main in: pre-commit checks only the lines the branch adds, not the lines main already has.
+r worktree add -q "$T/mg" -b mg 2>/dev/null
+mg() { git -c user.name=test -c user.email=test@localhost -c commit.gpgsign=false -C "$T/mg" "$@"; }
+printf 'ok\n' >"$T/mg/side.md" && mg add side.md && mg commit -q --no-verify -m side
+printf '連絡先 %s\n' "$ph" >"$R/docs/on-main.md" && r add docs/on-main.md && r commit -q --no-verify -m "on main"
+mg merge -q --no-ff --no-commit main >/dev/null 2>&1
+(cd "$T/mg" && .githooks/pre-commit >/dev/null 2>&1) ||
+  { echo "pre-commit test failed: a merge is refused for a line main already has"; fail=1; }
+printf '連絡先 %s\n' "$ph" >"$T/mg/resolved.md" && mg add resolved.md
+(cd "$T/mg" && .githooks/pre-commit >/dev/null 2>&1) &&
+  { echo "pre-commit test failed: a merge lets through a line that only the merge adds"; fail=1; }
+mg merge --abort 2>/dev/null
+
+# The holdout unlock lives in the main tree. `make eval-holdout` and guard-holdout.sh look there,
+# also from a worktree. A fake npx stands in for the measurement.
+M=$T/mk
+git init -q -b main "$M" && cp Makefile "$M/" && mkdir -p "$T/fakebin" "$M/.claude/state"
+printf '#!/bin/sh\nexit 0\n' >"$T/fakebin/npx" && chmod +x "$T/fakebin/npx"
+git -C "$M" add Makefile && git -C "$M" -c user.name=test -c user.email=test@localhost -c commit.gpgsign=false commit -q -m base
+git -C "$M" worktree add -q "$T/mkwt" -b mkwt 2>/dev/null && mkdir -p "$T/mkwt/server" "$T/mkwt/.claude/state"
+hold() { (cd "$T/mkwt" && PATH="$T/fakebin:$PATH" make -s eval-holdout >/dev/null 2>&1); }
+hold && { echo "make test failed: eval-holdout runs while locked"; fail=1; }
+touch "$T/mkwt/.claude/state/holdout.unlock"
+hold && { echo "make test failed: eval-holdout takes an unlock file in the worktree, which the author never makes"; fail=1; }
+rm -f "$T/mkwt/.claude/state/holdout.unlock" && touch "$M/.claude/state/holdout.unlock"
+hold || { echo "make test failed: eval-holdout from a worktree finds the author's unlock in the main tree"; fail=1; }
+jq -nc --arg d "$T/mkwt" '{tool_name:"Bash",tool_input:{command:"make eval-holdout"},cwd:$d}' |
+  CLAUDE_PROJECT_DIR="$T/mkwt" "$H/guard-holdout.sh" >/dev/null 2>&1 ||
+  { echo "hook test failed: guard-holdout finds the unlock in the main tree from a worktree session"; fail=1; }
+
 # commit-msg: the convention and the personal-data check
 cm() { # <expected exit> <message> <label>
   local f; f=$(mktemp); printf '%s\n' "$2" >"$f"
@@ -53,4 +461,11 @@ cm 1 $'docs: 連絡先を書く\n\nsomeone@example.com' "an email address is ref
 cm 0 $'docs: 記録を足す\n\nCo-Authored-By: Claude <noreply@anthropic.com>' "the Claude trailer passes"
 cm 1 $'docs: 記録を足す\n\nClaude-Session: https://claude.ai/code/x' "a Claude-Session line is refused"
 cm 0 'Merge pull request #3 from sagochiko/issue-3-x' "merge commits pass"
+cm 1 $'docs: 記録を足す\n\ntanukiyama さんに聞いた' "a private term is refused, whatever its case"
+cm 1 $'Merge branch \'main\'\n\nたぬき山ぽん太' "merge messages are checked for personal data too"
+cm 0 $'docs: 記録を足す\n\nCo-Authored-By: someone <12345+someone@users.noreply.github.com>' "a GitHub noreply address passes"
+cm 1 $'docs: 記録を足す\n\nold-dummy-app から写した' "an earlier project's name is refused"
+out=$(printf '%s\n' 'docs: 記録を足す' '' 'Tanukiyama に聞いた' >"$T/msg2" && .githooks/commit-msg "$T/msg2" 2>&1)
+[[ "$out" == *"commit message line 3: private term"* && "$out" != *Tanukiyama* ]] ||
+  { echo "commit-msg test failed: the hit names the line and the rule, never the term"; fail=1; }
 exit $fail

@@ -10,5 +10,5 @@ paths:
 - 画面の文言は最小限にする。残すのは固有名詞、数値、1語の動詞のボタン、数値や切り替えの意味を伝える名札。説明文、補足、選択肢の上の見出し、空の状態の2行目は置かない。消した説明は `accessibilityLabel` と `accessibilityHint` に残す
 - 母の画面は大きなマイクのボタン1つと、家族からの笑顔と知らせだけにする。母に操作を覚えさせる画面を足さない
 - コードはすべて期間中に一から書く。作者が以前に作ったコードは開かない
-- シミュレータで確かめられない拡張機能(Message Filter、DNS の設定、Safari の拡張、Call Directory)は、実機の確認を `docs/human-queue.md` に積む
+- シミュレータで確かめられない拡張機能(Message Filter、DNS の設定、Safari の拡張、Call Directory)は、実機の確認を「作者: 」の Issue にする(`/mm-human-queue`)
 - 鍵(`deviceKey`)はキーチェーン、拡張と共有するものは App Group に置く。家族の印(`familyToken`)はログに出さない
