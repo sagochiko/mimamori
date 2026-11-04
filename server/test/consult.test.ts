@@ -266,6 +266,13 @@ describe("fake police consultation", () => {
     ["someone from the National Police Agency", "警察庁の人から電話で、口座が犯罪に使われてるって"],
     ["someone who says he is a detective", "刑事を名乗る人から電話で、口座が犯罪に使われてるって"],
     ["a call that says 'this is the police'", "警察ですって電話で、口座が犯罪に使われてるって"],
+    // #78: speech recognition (or her own way of talking) drops a particle.
+    ["a call that says it is the police, without が", "警察を名乗る電話きて潔白を証明してって"],
+    ["a call that says it is the police, without を", "警察名乗る電話が来て、潔白を証明してって"],
+    ["someone who says he is the police, without を", "警察名乗る人から電話で、口座が犯罪に使われてるって"],
+    // PR #80 review: the past tense and the passive she may use.
+    ["someone who said he was the police", "警察を名乗った人から、口座が犯罪に使われてるって"],
+    ["someone who claimed to be the police, in the passive", "警察を名乗られて、潔白を証明してって"],
   ])("is level 1 by the rules alone when a caller from the police tells %s, with the fixed answer", async (_label, text) => {
     const fam = await setupFamily();
     const deps = fakes(scam({ level: 2 }));
@@ -282,6 +289,11 @@ describe("fake police consultation", () => {
     ["only a lost wallet, without the comma", "警察から電話があって落とし物が届いてるって"],
     // Moving money counts only next to one of the script's own parts: "振り込め詐欺" says 振り込.
     ["only a warning that names transfer scams", "警察署の人から、振り込め詐欺に気をつけてって電話があった"],
+    // PR #80 review: "警察を名乗る詐欺" is how warnings say it; told second-hand, it is not the script.
+    ["a warning seen on TV", "テレビで警察を名乗る詐欺が増えてるって。口座が犯罪に使われてるって言われるらしい"],
+    ["a warning on the neighborhood board", "回覧板に、警察を名乗る詐欺に注意、逮捕状が出ていると言われても信じないでって書いてあった"],
+    ["a warning mail from the bank", "銀行から、警察を名乗る電話に注意、口座が犯罪に使われてると言われたら詐欺ですってメールが来た"],
+    ["a warning heard at the police box", "警察を名乗る電話に気をつけてって、誰にも言わないでと言われたら詐欺だって交番で聞いた"],
   ])("asks Claude when a caller from the police tells %s, which is not the script", async (_label, text) => {
     const fam = await setupFamily();
     const deps = fakes(scam({ level: 3, reasons: ["お金や暗証番号の話は出ていない"], basis: "", action: "お金や暗証番号を聞かれたら止めて" }));
