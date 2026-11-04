@@ -1,11 +1,19 @@
 #!/bin/bash
 # PreToolUse: keep secrets out of Claude's context. permissions.deny covers the file tools;
-# this also catches grep -r, Glob patterns, and commands that print credentials.
+# this also catches grep -r, Glob patterns, and commands that print credentials. The gh token lives
+# in ~/.config/gh/hosts.yml, so that directory is on the list next to `gh auth token`, and so is
+# `gh auth status` with --show-token or -t, which prints it ("Display the auth token", gh auth status
+# --help) under the allow rule for gh auth status.
 source "$(dirname "$0")/lib.sh"
 in=$(cat)
 targets=$(tool_targets "$in")
 targets=${targets//.dev.vars.example/}
-pat='(\.dev\.vars|\.p8([^a-zA-Z0-9]|$)|\.p12([^a-zA-Z0-9]|$)|client_secret[^ ]*\.json|AuthKey_[A-Z0-9]+|\.wrangler/config|security[[:space:]]+find-|gh[[:space:]]+auth[[:space:]]+token|printenv)'
+# A backslash at the end of a line continues the command, as the shell reads it (PR #96 review 3).
+targets=${targets//\\$'\n'/ }
+# The gh auth status branch stops at the end of its own command (; & | or a newline), and a short-flag
+# cluster with t ends at anything that is not a letter, so -t;true and -t|pbcopy count (PR #96 review 2).
+nl=$'\n'
+pat='(\.dev\.vars|\.p8([^a-zA-Z0-9]|$)|\.p12([^a-zA-Z0-9]|$)|client_secret[^ ]*\.json|AuthKey_[A-Z0-9]+|\.wrangler/config|\.config/gh/|security[[:space:]]+find-|gh[[:space:]]+auth[[:space:]]+token|gh[[:space:]]+auth[[:space:]]+status[^;&|'"$nl"']*(--show-token|[[:space:]]-[[:alpha:]]*t[[:alpha:]]*([^[:alnum:]_-]|$))|printenv)'
 if [[ "$targets" =~ $pat ]]; then
   block guard-secrets "blocked: this touches a secret (${BASH_REMATCH[1]}). Keys live in Workers secrets and .dev.vars, and only the author handles them. Use .dev.vars.example for the shape.$MENTION_HINT"
 fi
