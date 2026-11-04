@@ -104,7 +104,7 @@ mimamori/
 | `families` | `id`、`token`、`created_at` |
 | `members` | `id`、`family_id`、`role`(`protected` か `family`)、`display_name`、`device_key_hash`、`apns_token`、`apns_env` |
 | `invites` | `code`(6桁)、`family_id`、`expires_at`、`used_at` |
-| `alerts` | `id`、`family_id`、`source`(`sms`、`gmail`、`dns`、`page`、`call`、`consult`)、`level`(1、2、3)、`reasons`(JSON)、`summary`、`rule_level`、`claude_level`、`created_at` |
+| `alerts` | `id`、`family_id`、`source`(`sms`、`gmail`、`dns`、`page`、`call`、`consult`)、`level`(1、2、3)、`reasons`(JSON)、`summary`、`rule_level`、`claude_level`、`created_at`、`sender_key` と `domain_key`(送り主とドメインを家族の ID と合わせた SHA-256。1時間に1回にまとめるために使う)、`notified`(家族と母に知らせる行なら1。3段階と、まとめて知らせなかった行は0)、`protected_notified_at`(母への通知が届いた時刻。届くまでは空) |
 | `cases` | `id`、`family_id`、`alert_id`、`state`(`notified`、`accepted`、`resolved`)、`assignee_member_id`、`agent_session_id`、`notified_at`、`accepted_at`、`resolved_at`、`renotified_at`、`ai_reply`(引き受けより前に AI が母に答えたこと)、`family_notified_at`(家族に最初の知らせが届いた時刻。届くまでは空) |
 | `relays` | `id`、`case_id`、`from_member_id`、`body`、`created_at` |
 | `smiles` | `id`、`family_id`、`member_id`、`r2_key`、`score`、`created_at` |
