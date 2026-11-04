@@ -48,7 +48,8 @@ apple-skills:
 # Mac the iOS 27.1 runtime supports only iPhone Duo (iPhone 18 Pro fails with "Incompatible device"),
 # and a folding phone's outer display is not what the mother's iPhone looks like. The app targets
 # iOS 26.0, so 26.5 runs it; what only iOS 27 changes is checked on the real iPhone. The author chose
-# this on 2026-11-04. An older "mimamori iPhone" of another type is reported, not deleted.
+# this on 2026-11-04. An older "mimamori iPhone" of another type stops the target with its udid; it
+# is not deleted, so a screenshot is never taken on the wrong device.
 SIM_RUNTIME := com.apple.CoreSimulator.SimRuntime.iOS-26-5
 SIM_TYPE := com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro
 simulator:
@@ -56,7 +57,9 @@ simulator:
 	  xcrun simctl create "mimamori iPhone" $(SIM_TYPE) $(SIM_RUNTIME) >/dev/null || { \
 	    echo "could not create $(SIM_TYPE) on $(SIM_RUNTIME) (xcrun simctl list runtimes)"; exit 1; }; \
 	  echo "created mimamori iPhone"; }
-	@xcrun simctl list devices available -j | jq -e --arg t "$(SIM_TYPE)" \
-	  '[.devices[][] | select(.name == "mimamori iPhone")] | all(.deviceTypeIdentifier == $$t)' >/dev/null || \
-	  echo "a \"mimamori iPhone\" of another device type exists; delete it with xcrun simctl delete <udid> and run make simulator again"
+	@other=$$(xcrun simctl list devices available -j | jq -r --arg t "$(SIM_TYPE)" \
+	  '.devices[][] | select(.name == "mimamori iPhone" and .deviceTypeIdentifier != $$t) | "\(.udid) \(.deviceTypeIdentifier)"') || { \
+	  echo "could not read the simulator list (jq and xcrun simctl list devices -j)"; exit 1; }; \
+	  [ -z "$$other" ] || { echo "a \"mimamori iPhone\" of another device type exists; delete it with xcrun simctl delete <udid> and run make simulator again:"; \
+	    echo "$$other"; exit 1; }
 	@xcrun simctl list devices available | grep "mimamori iPhone"
