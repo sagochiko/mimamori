@@ -1,0 +1,3 @@
+{"id":"p-sc-05","source":"page","sender":"","domain":"trial-app.example","text":"3日間無料。その後は毎週1,500円。いつでもキャンセル可能 (設定から)。まず無料で始める","url":"https://trial-app.example/","expected_level":2,"is_scam":true,"note":"self-written; subscription trap screen"}
+{"id":"p-sc-06","source":"page","sender":"","domain":"photo-premium.example","text":"今だけ3日間無料トライアル。トライアル終了後は週額1,500円で自動更新されます。","url":"https://photo-premium.example/","expected_level":2,"is_scam":true,"note":"self-written; subscription trap screen"}
+{"id":"p-sc-12","source":"page","sender":"","domain":"calendar-spam.example","text":"購読を確認するには「許可」をタップしてください。カレンダーに予定が追加されます。(ウイルス駆除の通知)","url":"https://calendar-spam.example/","expected_level":2,"is_scam":true,"note":"self-written; calendar spam subscription lure"}

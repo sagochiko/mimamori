@@ -1,0 +1,34 @@
+{
+  "consult/genuine": {
+    "dev": 20,
+    "holdout": 21
+  },
+  "consult/scam": {
+    "dev": 25,
+    "holdout": 26
+  },
+  "gmail/genuine": {
+    "dev": 8,
+    "holdout": 8
+  },
+  "gmail/scam": {
+    "dev": 8,
+    "holdout": 8
+  },
+  "page/genuine": {
+    "dev": 7,
+    "holdout": 8
+  },
+  "page/scam": {
+    "dev": 8,
+    "holdout": 8
+  },
+  "sms/genuine": {
+    "dev": 8,
+    "holdout": 12
+  },
+  "sms/scam": {
+    "dev": 12,
+    "holdout": 12
+  }
+}

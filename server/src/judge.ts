@@ -1,0 +1,382 @@
+// The judge queue (task 6 in docs/plan.md). Routes that answer at once with the rules (SMS, pages,
+// consultations) put a job here with enqueueJudge; this consumer lays Claude's judgment over the
+// rule result, writes the alerts row, tells the mother, and opens a case. The family is told only by
+// openCase (src/cases.ts), so every notice they get carries the case they can accept.
+//
+// Who gets told depends only on the level and the family's members, never on Claude's answer or the
+// received text (.claude/rules/server.md).
+//
+// A notice that did not get through is retried with the queue message: the message id is the alert
+// id, and a redelivered message whose alert row exists only does what is left (the mother's push,
+// opening the case), without asking Claude again or telling anyone twice.
+
+import { ExternalBudget } from "./budget";
+import { CaseNoticeDeferred, openCase } from "./cases";
+import {
+  ALERT_SOURCES,
+  decide,
+  requestClaudeJudgment,
+  type AlertSource,
+  type ClaudeJudgment,
+  type Level,
+} from "./claude";
+import { sendPush, type PushPayload } from "./push";
+import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
+
+export interface JudgePayload {
+  sender?: string;
+  domain?: string;
+  text?: string;
+  url?: string;
+}
+
+export interface JudgeJob {
+  familyId: string;
+  source: AlertSource;
+  payload: JudgePayload;
+}
+
+export interface JudgeDeps {
+  judgeByRules(input: RuleInput): RuleResult;
+  /** Returns null for any failure; a throw is treated the same way. */
+  askClaude(env: Env, input: RuleInput, rule: RuleResult): Promise<ClaudeJudgment | null>;
+  /** Opens the case and tells the family; throws CaseNoticeDeferred when the family was not told yet. */
+  openCase(env: Env, alertId: string, budget: ExternalBudget): Promise<unknown>;
+  now(): number;
+}
+
+export const defaultJudgeDeps: JudgeDeps = {
+  judgeByRules,
+  askClaude: (env, input, rule) => requestClaudeJudgment(env, input, rule),
+  openCase,
+  now: () => Date.now(),
+};
+
+/** Queues messages can be 128 KB; the page route sends the first 5,000 characters too (task 8). */
+export const JUDGE_TEXT_MAX_CHARS = 5000;
+const FIELD_MAX_CHARS = 500;
+export const DEDUPE_WINDOW_MS = 3600_000;
+const RETRY_DELAY_SECONDS = 30;
+
+const MOTHER_TITLE = "開かないで";
+const CHECKING = "確かめ中";
+const FALLBACK_REASON = "家族に確かめるまで待って";
+
+const SOURCE_LABELS: Record<AlertSource, string> = {
+  sms: "SMS",
+  gmail: "メール",
+  dns: "サイト",
+  page: "ページ",
+  call: "電話",
+  consult: "相談",
+};
+const SUMMARY_EXCERPT_CHARS = 30;
+
+function cut(text: string, max: number): string {
+  const c = [...text];
+  return c.length > max ? c.slice(0, max).join("") : text;
+}
+
+function optionalString(value: unknown, max: number): string | undefined | null {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") return null;
+  return cut(value, max);
+}
+
+function parseJob(body: unknown): JudgeJob | null {
+  if (typeof body !== "object" || body === null) return null;
+  const { familyId, source, payload } = body as Record<string, unknown>;
+  if (typeof familyId !== "string" || familyId === "") return null;
+  if (!ALERT_SOURCES.includes(source as AlertSource)) return null;
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return null;
+  const p = payload as Record<string, unknown>;
+  const out: JudgePayload = {};
+  for (const [key, max] of [
+    ["sender", FIELD_MAX_CHARS],
+    ["domain", FIELD_MAX_CHARS],
+    ["url", FIELD_MAX_CHARS * 4],
+    ["text", JUDGE_TEXT_MAX_CHARS],
+  ] as const) {
+    const value = optionalString(p[key], max);
+    if (value === null) return null;
+    if (value !== undefined) out[key] = value;
+  }
+  return { familyId, source: source as AlertSource, payload: out };
+}
+
+/** Puts a judgment job on JUDGE_QUEUE. Throws on a job of the wrong shape. */
+export async function enqueueJudge(env: Env, job: JudgeJob): Promise<void> {
+  const parsed = parseJob(job);
+  if (!parsed) throw new Error("invalid judge job");
+  await env.JUDGE_QUEUE.send(parsed);
+}
+
+function normalizeDomain(job: JudgeJob): string | null {
+  let host = job.payload.domain;
+  if (!host && job.payload.url) {
+    try {
+      host = new URL(job.payload.url).hostname;
+    } catch {
+      host = undefined;
+    }
+  }
+  if (!host) return null;
+  const d = host.trim().toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
+  return d === "" ? null : d;
+}
+
+function normalizeSender(sender: string | undefined): string | null {
+  if (!sender) return null;
+  const s = sender.trim().toLowerCase().replace(/[\s-]/g, "");
+  return s === "" ? null : s;
+}
+
+async function keyFor(familyId: string, kind: "sender" | "domain", value: string | null): Promise<string | null> {
+  if (value === null) return null;
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${familyId}\n${kind}\n${value}`));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** What arrived, for the family's card. The sender's number is left out; the domain stays. */
+function summarize(job: JudgeJob, domain: string | null): string {
+  const raw = (job.payload.text ?? job.payload.url ?? "").replace(/\s+/g, " ").trim();
+  const excerpt = [...raw].length > SUMMARY_EXCERPT_CHARS ? `${cut(raw, SUMMARY_EXCERPT_CHARS)}…` : raw;
+  return [SOURCE_LABELS[job.source], domain ?? "", excerpt ? `「${excerpt}」` : ""].filter((s) => s !== "").join(" ");
+}
+
+interface Recipient {
+  id: string;
+  role: "protected" | "family";
+}
+
+type Outcome = "done" | "retry";
+
+async function reachableMembers(env: Env, familyId: string): Promise<Recipient[]> {
+  const rows = await env.DB.prepare("SELECT id, role FROM members WHERE family_id = ? AND apns_token IS NOT NULL")
+    .bind(familyId)
+    .all<Recipient>();
+  return rows.results;
+}
+
+interface Notice {
+  level: Level;
+  reasons: string[];
+  checking: boolean;
+}
+
+function toMother(alertId: string, notice: Notice): PushPayload {
+  const reason = notice.reasons[0] ?? FALLBACK_REASON;
+  return {
+    title: MOTHER_TITLE,
+    body: notice.checking ? `${reason}\n${CHECKING}` : reason,
+    data: { alertId, level: notice.level, checking: notice.checking },
+    threadId: alertId,
+  };
+}
+
+/**
+ * The mother's push, at most once per alert. protected_notified_at is the claim, set before sending so
+ * two deliveries of the same message never both send, and cleared again when none of her devices took
+ * the push, so the retry sends it. A mother with no device counts as told.
+ */
+async function tellMother(
+  env: Env,
+  alertId: string,
+  motherIds: string[],
+  notice: Notice,
+  budget: ExternalBudget,
+  now: number,
+): Promise<boolean> {
+  const claimed = await env.DB.prepare(
+    "UPDATE alerts SET protected_notified_at = ? WHERE id = ? AND protected_notified_at IS NULL",
+  )
+    .bind(now, alertId)
+    .run();
+  if (claimed.meta.changes !== 1) return true;
+  if (motherIds.length === 0) return true;
+
+  let told = false;
+  try {
+    const results = await sendPush(env, motherIds, toMother(alertId, notice), budget);
+    told = results.some((r) => r.status === "sent");
+  } catch (error) {
+    // Only the error name: a message could carry the received text.
+    console.error("mother notification failed", error instanceof Error ? error.name : typeof error);
+  }
+  if (told) return true;
+  await env.DB.prepare("UPDATE alerts SET protected_notified_at = NULL WHERE id = ? AND protected_notified_at = ?")
+    .bind(alertId, now)
+    .run();
+  return false;
+}
+
+/**
+ * What is left of telling people about an alert that notifies: the mother's push and opening the case,
+ * each only when it has not got through yet. Both are tried even when the first fails, and the message
+ * is retried when either did not get through. The outside calls are checked up front: the mother's
+ * devices plus the family's devices that openCase will send to.
+ */
+async function finishNotices(
+  env: Env,
+  alertId: string,
+  notice: Notice,
+  pending: { mother: boolean; family: boolean },
+  members: Recipient[],
+  budget: ExternalBudget,
+  deps: JudgeDeps,
+): Promise<Outcome> {
+  const motherIds = members.filter((m) => m.role === "protected").map((m) => m.id);
+  const familyCount = members.filter((m) => m.role === "family").length;
+  const needed = (pending.mother ? motherIds.length : 0) + (pending.family ? familyCount : 0);
+  if (budget.remaining < needed) return "retry";
+
+  let allThrough = true;
+  if (pending.mother && !(await tellMother(env, alertId, motherIds, notice, budget, deps.now()))) {
+    allThrough = false;
+  }
+  if (pending.family) {
+    try {
+      await deps.openCase(env, alertId, budget);
+    } catch (error) {
+      // Any other failure is thrown on and retried by handleJudgeBatch as well.
+      if (!(error instanceof CaseNoticeDeferred)) throw error;
+      allThrough = false;
+    }
+  }
+  return allThrough ? "done" : "retry";
+}
+
+interface StoredAlert {
+  level: Level;
+  reasons: string;
+  claude_level: Level | null;
+  notified: number;
+  protected_notified_at: number | null;
+  case_id: string | null;
+  family_notified_at: number | null;
+}
+
+function storedReasons(text: string): string[] {
+  try {
+    const value: unknown = JSON.parse(text);
+    return Array.isArray(value) ? value.filter((r): r is string => typeof r === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+async function judgeOne(
+  env: Env,
+  message: Message<unknown>,
+  budget: ExternalBudget,
+  deps: JudgeDeps,
+): Promise<Outcome> {
+  const job = parseJob(message.body);
+  if (!job) return "done";
+  // The queue message id doubles as the alert id, so a redelivered message writes nothing twice.
+  const alertId = message.id;
+  const stored = await env.DB.prepare(
+    `SELECT a.level, a.reasons, a.claude_level, a.notified, a.protected_notified_at,
+            c.id AS case_id, c.family_notified_at
+       FROM alerts a LEFT JOIN cases c ON c.alert_id = a.id WHERE a.id = ?`,
+  )
+    .bind(alertId)
+    .first<StoredAlert>();
+  if (stored) {
+    // A redelivery: Claude is not asked again, and what already got through is not sent again.
+    if (stored.notified !== 1) return "done";
+    const pending = {
+      mother: stored.protected_notified_at === null,
+      family: stored.case_id === null || stored.family_notified_at === null,
+    };
+    if (!pending.mother && !pending.family) return "done";
+    const notice = { level: stored.level, reasons: storedReasons(stored.reasons), checking: stored.claude_level === null };
+    return finishNotices(env, alertId, notice, pending, await reachableMembers(env, job.familyId), budget, deps);
+  }
+  // "Delete everything" may have run since the job was queued.
+  if (!(await env.DB.prepare("SELECT 1 FROM families WHERE id = ?").bind(job.familyId).first())) return "done";
+
+  const members = await reachableMembers(env, job.familyId);
+  // One Claude call, then one push per device: the mother's from here, the family's from openCase.
+  // A job starts only when all of it fits.
+  if (budget.remaining < 1 + members.length) return "retry";
+
+  const input: RuleInput = { source: job.source, ...job.payload };
+  const rule = deps.judgeByRules(input);
+  budget.take();
+  let claude: ClaudeJudgment | null;
+  try {
+    claude = await deps.askClaude(env, input, rule);
+  } catch {
+    claude = null;
+  }
+  // When neither the rules nor Claude decided, this is level 2 with 確かめ中 at once, like any other
+  // time Claude gives nothing: a consultation from the mother must not wait on Claude coming back.
+  const decision = decide(rule, claude);
+  const level = decision.level;
+
+  const now = deps.now();
+  const domain = normalizeDomain(job);
+  const senderKey = await keyFor(job.familyId, "sender", normalizeSender(job.payload.sender));
+  const domainKey = await keyFor(job.familyId, "domain", domain);
+
+  // Levels 1 and 2 notify; level 3 is only listed in the app (docs/design.md, データの扱い).
+  let notify = level <= 2;
+  if (notify && (senderKey !== null || domainKey !== null)) {
+    const recent = await env.DB.prepare(
+      `SELECT 1 FROM alerts WHERE family_id = ? AND notified = 1 AND created_at > ? AND level <= ?
+         AND (sender_key = ? OR domain_key = ?) LIMIT 1`,
+    )
+      .bind(job.familyId, now - DEDUPE_WINDOW_MS, level, senderKey, domainKey)
+      .first();
+    if (recent) notify = false;
+  }
+
+  const inserted = await env.DB.prepare(
+    `INSERT INTO alerts (id, family_id, source, level, reasons, summary, rule_level, claude_level, created_at,
+       sender_key, domain_key, notified)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING`,
+  )
+    .bind(
+      alertId,
+      job.familyId,
+      job.source,
+      level,
+      JSON.stringify(decision.reasons),
+      summarize(job, domain),
+      decision.ruleLevel,
+      decision.claudeLevel,
+      now,
+      senderKey,
+      domainKey,
+      notify ? 1 : 0,
+    )
+    .run();
+  // A concurrent delivery of the same message wrote the row first; it does the telling.
+  if (inserted.meta.changes === 0 || !notify) return "done";
+
+  const notice = { level, reasons: decision.reasons, checking: decision.checking };
+  return finishNotices(env, alertId, notice, { mother: true, family: true }, members, budget, deps);
+}
+
+/**
+ * The JUDGE_QUEUE consumer. Jobs run one after another so that two jobs from the same sender in one
+ * batch see each other for the one-an-hour rule. All jobs of a batch share one budget of outside calls.
+ */
+export async function handleJudgeBatch(
+  batch: MessageBatch<unknown>,
+  env: Env,
+  deps: JudgeDeps = defaultJudgeDeps,
+): Promise<void> {
+  const budget = new ExternalBudget();
+  for (const message of batch.messages) {
+    try {
+      const outcome = await judgeOne(env, message, budget, deps);
+      if (outcome === "retry") message.retry({ delaySeconds: RETRY_DELAY_SECONDS });
+      else message.ack();
+    } catch (error) {
+      console.error("judge failed", error instanceof Error ? error.name : typeof error);
+      message.retry({ delaySeconds: RETRY_DELAY_SECONDS });
+    }
+  }
+}

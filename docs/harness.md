@@ -70,6 +70,11 @@
 | `/mm-human-queue` | 作者にしかできない作業を「作者: 」の Issue にして待たずに次へ進む。結果を聞いたらコメントに残して閉じる |
 | `/mm-endgame` | コードを止めてから提出までの確認。公開の前に、全履歴と Issue、PR を個人の情報の規則で調べる |
 | `/mm-handoff` | コンテキストが埋まる前に、リポジトリの状態から引き継ぎの文書を作り、新しいターミナルで新しいセッションを立ち上げ、こちらは手を止める |
+| `/mm-device` | 作者の iPhone 向けに自動の署名でビルドし、入れて起動する。人が画面を見る確認は作者の Issue に回す |
+| `/mm-release` | ビルド番号を上げてアーカイブし、中身を確かめ、作者の承認のあと App Store Connect に送る。母と審査員のグループへの登録と審査用のメモは Claude in Chrome で入れ、作者には Submit Review を押すことだけを頼む |
+| `/mm-deploy` | 裏側を、遠隔の操作のたびに作者の確認を取りながら出す。出したあとの確かめ、ログ、アプリの宛先の切り替えまで |
+
+Apple Developer の登録(bundle ID、App Group、capability、端末)は、`/mm-device` と `/mm-release` の `xcodebuild -allowProvisioningUpdates` が確認なしで書き換え、何を登録したかをあとで報告する。作者が一度 `/mm-device` を通しているので、受け入れた運用だと読んでいる。作者の承認が要るのは App Store Connect への送信(`-exportArchive`)と、TestFlight の Submit Review から先だ。守り方は2つで違う。`-exportArchive` は `guard-prod.sh` と `ask` の規則で止まる。Submit Review は Claude in Chrome のクリックなのでフックを通らず、skill の指示と、押すのは作者という段取りで守っている。`/mm-release` は、ビルドの処理と Submit Review が終わったかを Claude in Chrome で App Store Connect の画面の状態の文字を読んで確かめ、5分おきに最大6回まで見る。App Store Connect API をシェルから読めばトークンを使わずに待てるが、署名に作者が期間の前に作ったコードを使うことになり、API の鍵のファイルを Claude が読むことにもなるので採らなかった。アプリはアプリの番号で直に開き、ほかのアプリが並ぶ一覧は開かない。
 
 ## MCP
 

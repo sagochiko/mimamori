@@ -1,6 +1,7 @@
 # 精度の記録
 
-`make eval` を走らせるたびに1行増える。測り方と、測る前に決めたことは [`.claude/rules/eval.md`](../.claude/rules/eval.md) と [`docs/design.md`](../docs/design.md) の「精度の測り方」にある。holdout は提出前に1回だけ測る。
+`make eval` を走らせるたびに1行増える。測り方と、測る前に決めた件数、分母、許容する失敗は [`eval/README.md`](README.md) にある。もとになる決まりは [`.claude/rules/eval.md`](../.claude/rules/eval.md) と [`docs/design.md`](../docs/design.md) の「精度の測り方」にある。holdout は提出前に1回だけ測る。
 
 | 日時 | セット | 方式 | 件数 | 見逃し率 | 誤判定率 | 要らない通知 | 中央値(ms) | 変えたこと |
 |---|---|---|---:|---:|---:|---:|---:|---|
+| 2026年11月4日 08:44 | dev | rules | 96 | 32.1% (17/53) | 0.0% (0/43) | 0 | 0.03 | - |
