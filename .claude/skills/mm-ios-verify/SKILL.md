@@ -14,7 +14,7 @@ make simulator
 xcrun simctl boot "mimamori iPhone" 2>/dev/null || true
 ```
 
-`make simulator` creates "mimamori iPhone" once, on the iOS 27.1 runtime, with the first iPhone device type that runtime supports. On 2026-11-03 that was iPhone Duo, the only one it listed; a type the runtime does not list fails with "Incompatible device". iPhone Duo folds, so say which display a screenshot shows.
+`make simulator` creates "mimamori iPhone" once, as an iPhone 17 Pro on iOS 26.5. On this Mac the iOS 27.1 runtime supports only iPhone Duo, whose folding outer display does not look like the mother's iPhone; the app targets iOS 26.0, so 26.5 runs it. The author chose this on 2026-11-04. Anything that only iOS 27 changes goes to the real-iPhone check. If `make simulator` stops because a "mimamori iPhone" of another device type exists, delete the udid it prints with `xcrun simctl delete <udid>` and run it again.
 
 ## Build, install, launch
 
