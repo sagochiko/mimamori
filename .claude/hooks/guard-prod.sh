@@ -1,46 +1,203 @@
 #!/bin/bash
 # PreToolUse (Bash|Monitor): since 2026-11-04 deploys, rollbacks, secret put, remote D1 migrations and
-# queries, and uploads to App Store Connect run without asking; only deleting and what cannot be undone
-# stays with the author. This hook keeps that part. It blocks wrangler commands that delete a resource
-# or restore D1 to a point in time, and asks before `wrangler secret delete`, before SQL on the remote D1
-# that holds DROP, DELETE, or TRUNCATE (in the command or in a --file), and before `gh api` with the
-# DELETE method. wrangler skips its own confirmation in a non-interactive shell, so nothing else would
-# stop these. The ask rules in settings.json cover the usual spellings; this hook also catches any case,
-# any quoting, and SQL inside a file, which a rule cannot read.
+# queries, git push, and uploads to App Store Connect run without asking; only deleting and what cannot
+# be undone stays with the author. This hook keeps that part.
+# It blocks wrangler commands that delete a resource or restore D1 to a point in time, and git push that
+# forces or mirrors (-f in any cluster of short flags, --force*, --mirror, a + refspec).
+# It asks before `wrangler secret delete`; before SQL on the remote D1 that holds DROP, DELETE, or
+# TRUNCATE (in the command, in a --file, or in a migration file outside its comments); before git push
+# that deletes or prunes a remote branch or lands on main; and before `gh api` that writes (a method
+# other than GET or HEAD, or fields without -X GET, which gh sends as POST, or a graphql mutation).
+# wrangler skips its own confirmation in a non-interactive shell, and the allow rules let git push and
+# gh api through, so nothing else would stop these. The command is split into shell words (shell_words
+# in lib.sh), so quotes do not hide a flag and a word inside quotes is not taken for one.
 source "$(dirname "$0")/lib.sh"
 in=$(cat)
 cmd=$(jq -r '.tool_input.command // empty' <<<"$in")
 cwd=$(jq -r '.cwd // empty' <<<"$in")
 cwd=${cwd:-$PWD}
-ask() {
-  log_event guard guard-prod "asked: $1"
-  jq -nc --arg r "$1" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
-  exit 0
+[[ -n "$cmd" ]] || exit 0
+# The first reason to ask is kept and answered at the end, so a block later in the command still wins.
+asked=""
+ask() { [[ -n "$asked" ]] || asked=$1; }
+
+shell_words "$cmd"
+m=${#WORDS[@]}
+command_starts
+starts=("${STARTS[@]}")
+# The words without their quotes, so "DE""LETE" reads as DELETE.
+text=$cmd$'\n'${WORDS[*]}
+
+# Where relative paths are looked up: the session's cwd and every cd or pushd target in the command,
+# each taken from the cwd and from the target before it.
+bases=("$cwd")
+add_base() {
+  local d=${1/#\~/$HOME}
+  [[ -n "$d" ]] || return
+  if [[ "$d" == /* ]]; then bases+=("$d"); cur=$d; else bases+=("$cwd/$d" "$cur/$d"); cur=$cur/$d; fi
 }
+cur=$cwd
+for k in "${starts[@]}"; do
+  [[ "${WORDS[k]}" == cd || "${WORDS[k]}" == pushd ]] && ((k + 1 < m)) && ! is_op "${WORDS[k + 1]}" && add_base "${WORDS[k + 1]}"
+done
+# Also from the raw text, for a cd inside bash -c "...".
+while IFS= read -r d; do add_base "$d"; done < <(grep -oE '(^|[;&|[:space:]])(cd|pushd)[[:space:]]+[^;&|[:space:]]+' <<<"$cmd" | sed -E 's/^.*(cd|pushd)[[:space:]]+//' | tr -d "'\"")
+
+# --- git push -------------------------------------------------------------------------------------
+# prefix_of <abbreviation> <option>: git takes any unambiguous prefix of a long option (--mir is --mirror).
+prefix_of() { [[ -n "$1" && "$2" == "$1"* ]]; }
+# on_main <dir>: the branch checked out there, or where a bare push from it goes, is main.
+on_main() {
+  local b
+  b=$(git -C "$1" symbolic-ref --short -q HEAD 2>/dev/null) && [[ "$b" == main ]] && return 0
+  b=$(git -C "$1" rev-parse --symbolic-full-name '@{push}' 2>/dev/null) && [[ "$b" == refs/remotes/*/main ]] && return 0
+  return 1
+}
+force() { block guard-prod "blocked: git push that forces or mirrors ($1) rewrites or removes remote history. Push without it; if a rewrite is really needed, the author runs it by hand."; }
+for k in "${starts[@]}"; do
+  w=${WORDS[k]}
+  [[ "$w" == git || "$w" == */git ]] || continue
+  cdirs=()
+  ((k++))
+  while ((k < m)) && [[ "${WORDS[k]}" == -* ]]; do
+    case ${WORDS[k]} in
+      -C) cdirs+=("${WORDS[k + 1]}"); ((k += 2)) ;;
+      -c | --git-dir | --work-tree | --namespace | --config-env | --attr-source) ((k += 2)) ;;
+      *) ((k++)) ;;
+    esac
+  done
+  [[ "${WORDS[k]}" == push ]] || continue
+  ((k++))
+  pos=() dashdash=0 every=0
+  while ((k < m)) && ! is_op "${WORDS[k]}"; do
+    w=${WORDS[k]}
+    ((k++))
+    if is_redir "$w"; then ((k++)); continue; fi
+    if ((dashdash)) || [[ "$w" != -* || "$w" == - ]]; then pos+=("$w"); continue; fi
+    case $w in
+      --) dashdash=1 ;;
+      --repo | --receive-pack | --exec | --push-option | --recurse-submodules) ((k++)) ;;
+      --*)
+        name=${w#--} && name=${name%%=*}
+        for o in force force-with-lease force-if-includes mirror; do prefix_of "$name" "$o" && force "$w"; done
+        for o in delete prune; do prefix_of "$name" "$o" && ask "git push $w removes remote branches: confirm with the author"; done
+        for o in all branches; do prefix_of "$name" "$o" && every=1 && ask "git push $w pushes main too: confirm with the author"; done
+        ;;
+      *)
+        # A cluster of short flags (-fu, -uf); -o takes a value, the rest of the word or the next one.
+        f=${w#-}
+        while [[ -n "$f" ]]; do
+          case ${f:0:1} in
+            f) force "$w" ;;
+            d) ask "git push $w removes a remote branch: confirm with the author" ;;
+            o) [[ -n "${f:1}" ]] || ((k++)); break ;;
+          esac
+          f=${f:1}
+        done ;;
+    esac
+  done
+  # The first positional word is the remote; the rest are refspecs.
+  current=0
+  ((${#pos[@]} <= 1 && !every)) && current=1
+  for r in "${pos[@]:1}"; do
+    [[ "$r" == +* ]] && force "$r"
+    [[ "$r" == :* ]] && { ask "git push $r deletes a remote branch: confirm with the author"; continue; }
+    dst=${r##*:}
+    [[ "$r" != *:* && ("$r" == HEAD || "$r" == @) ]] && { current=1; continue; }
+    dst=${dst#refs/heads/}
+    [[ "$dst" == main || "$dst" == *'*'* ]] && ask "git push to main ($r): confirm with the author. Changes reach main through a reviewed PR."
+  done
+  if ((current)); then
+    for b in "${bases[@]}"; do
+      d=$b
+      for c in "${cdirs[@]}"; do [[ "$c" == /* ]] && d=$c || d=$d/$c; done
+      on_main "$d" && ask "git push from main: confirm with the author. Changes reach main through a reviewed PR." && break
+    done
+  fi
+done
+
+# --- gh api ---------------------------------------------------------------------------------------
+# Writing through gh api skips guard-private.sh and guard-merge.sh, which read gh issue, gh pr, and
+# gh pr merge, and it can make the repository public or move main.
+upper() { tr '[:lower:]' '[:upper:]' <<<"$1"; }
+field() { # <-f|-F> <name=value>: -F reads @file, -f takes the text as it is
+  fields=1
+  [[ "$1" == -F && "$2" == query=@* ]] && fromfile=1
+  [[ "$(upper "$2")" == *MUTATION* ]] && mutation=1
+}
+while read -r k _; do
+  [[ "${WORDS[k]}" == api ]] || continue
+  ((k++))
+  method="" fields=0 input=0 endpoint="" fromfile=0 mutation=0
+  while ((k < m)) && ! is_op "${WORDS[k]}"; do
+    w=${WORDS[k]}
+    ((k++))
+    if is_redir "$w"; then ((k++)); continue; fi
+    case $w in
+      -X | --method) method=${WORDS[k]}; ((k++)) ;;
+      --method=*) method=${w#--method=} ;;
+      -f | --raw-field) field -f "${WORDS[k]}"; ((k++)) ;;
+      -F | --field) field -F "${WORDS[k]}"; ((k++)) ;;
+      --raw-field=*) field -f "${w#--raw-field=}" ;;
+      --field=*) field -F "${w#--field=}" ;;
+      --input | --input=*) input=1; [[ "$w" == --input ]] && ((k++)) ;;
+      -H | --header | -p | --preview | -q | --jq | -t | --template | --cache | --hostname) ((k++)) ;;
+      --*) ;;
+      -?*)
+        # A cluster of short flags (-iX DELETE, -iXPOST); a flag that takes a value ends it.
+        f=${w#-}
+        while [[ -n "$f" ]]; do
+          c=${f:0:1} rest=${f:1}
+          case $c in
+            X) if [[ -n "$rest" ]]; then method=$rest; else method=${WORDS[k]}; ((k++)); fi; break ;;
+            f | F) if [[ -n "$rest" ]]; then field "-$c" "$rest"; else field "-$c" "${WORDS[k]}"; ((k++)); fi; break ;;
+            H | p | q | t) [[ -n "$rest" ]] || ((k++)); break ;;
+          esac
+          f=$rest
+        done ;;
+      *) [[ -n "$endpoint" ]] || endpoint=$w ;;
+    esac
+  done
+  if [[ "$endpoint" == graphql ]]; then
+    # graphql is always a POST; most calls only read, so only a mutation, or a query the hook cannot see, asks.
+    ((mutation)) && ask "gh api graphql mutation writes to GitHub: confirm with the author"
+    ((fromfile || input)) && ask "gh api graphql query read from a file or stdin, which this hook cannot check: confirm with the author"
+    ((HIDDEN || EXPANDS)) && ask "gh api graphql query built at run time, which this hook cannot check: confirm with the author"
+  elif [[ -n "$method" ]]; then
+    [[ "$(upper "$method")" =~ ^(GET|HEAD)$ ]] || ask "gh api -X $method writes to GitHub: confirm with the author. Write issues, PRs, and comments with gh issue and gh pr."
+  elif ((fields || input)); then
+    ask "gh api with fields sends a POST, which writes to GitHub: confirm with the author. Write issues, PRs, and comments with gh issue and gh pr."
+  fi
+done < <(gh_calls)
+
+# --- wrangler -------------------------------------------------------------------------------------
 shopt -s nocasematch
-if [[ "$cmd" =~ wrangler[[:space:]]+(delete|d1[[:space:]]+delete|queues[[:space:]]+delete|r2[[:space:]]+bucket[[:space:]]+delete|d1[[:space:]]+time-travel[[:space:]]+restore) ]]; then
+if [[ "$text" =~ wrangler[[:space:]]+(delete|d1[[:space:]]+delete|queues[[:space:]]+delete|r2[[:space:]]+bucket[[:space:]]+delete|d1[[:space:]]+time-travel[[:space:]]+restore) ]]; then
   block guard-prod "blocked: destructive wrangler command. The author runs these by hand if ever."
 fi
-if [[ "$cmd" =~ wrangler[[:space:]]+(versions[[:space:]]+)?secret[[:space:]]+delete ]]; then
+if [[ "$text" =~ wrangler[[:space:]]+(versions[[:space:]]+)?secret[[:space:]]+delete ]]; then
   ask "deleting a Workers secret: confirm with the author"
 fi
-if [[ "$cmd" =~ gh[[:space:]]+api && "$cmd" =~ (-X|--method)[[:space:]=]*[\'\"]?delete([^[:alnum:]]|$) ]]; then
+# Kept on the raw text as well, for a gh api inside bash -c "...".
+if [[ "$text" =~ gh[[:space:]]+api && "$text" =~ (-X|--method)[[:space:]=]*[\'\"]?delete([^[:alnum:]]|$) ]]; then
   ask "gh api DELETE: confirm with the author"
 fi
 
 # Remote D1 SQL. A word match, so a column such as deleted_at does not count.
 destructive='(^|[^[:alnum:]_])(drop|delete|truncate)([^[:alnum:]_]|$)'
-if [[ "$cmd" =~ wrangler[[:space:]]+d1[[:space:]]+execute && "$cmd" =~ --(remote|preview) ]]; then
-  [[ "$cmd" =~ $destructive ]] && ask "SQL with DROP, DELETE, or TRUNCATE on the remote D1: confirm with the author"
+if [[ "$text" =~ wrangler[[:space:]]+d1[[:space:]]+execute && "$text" =~ --(remote|preview) ]]; then
+  [[ "$text" =~ $destructive ]] && ask "SQL with DROP, DELETE, or TRUNCATE on the remote D1: confirm with the author"
   [[ "$cmd" == *'$'* || "$cmd" == *'`'* ]] && ask "remote D1 SQL built at run time, which this hook cannot read: confirm with the author"
-  # A relative --file is looked up from the session's cwd and from every `cd` target in the command.
-  bases=("$cwd")
-  while IFS= read -r d; do
-    [[ -n "$d" ]] || continue
-    d=${d/#\~/$HOME}
-    [[ "$d" == /* ]] && bases+=("$d") || bases+=("$cwd/$d")
-  done < <(grep -oE '(^|[;&|[:space:]])cd[[:space:]]+[^;&|[:space:]]+' <<<"$cmd" | sed -E 's/^.*cd[[:space:]]+//' | tr -d "'\"")
-  while IFS= read -r f; do
+  # Every --file, from the words and from the raw text; a relative one is looked up from every base.
+  files=()
+  for ((k = 0; k < m; k++)); do
+    case ${WORDS[k]} in
+      --file=*) files+=("${WORDS[k]#--file=}") ;;
+      --file) files+=("${WORDS[k + 1]}") ;;
+    esac
+  done
+  while IFS= read -r f; do files+=("$f"); done < <(grep -oE -- "--file[=[:space:]]+['\"]?[^'\"[:space:];&|]+" <<<"$cmd" | sed -E "s/^--file[=[:space:]]+['\"]?//")
+  for f in "${files[@]}"; do
     [[ -n "$f" ]] || continue
     f=${f/#\~/$HOME}
     found=0
@@ -51,6 +208,34 @@ if [[ "$cmd" =~ wrangler[[:space:]]+d1[[:space:]]+execute && "$cmd" =~ --(remote
       grep -Eiq "$destructive" "$c" && ask "SQL file with DROP, DELETE, or TRUNCATE on the remote D1: confirm with the author"
     done
     ((found)) || ask "remote D1 SQL file this hook cannot read: confirm with the author"
-  done < <(grep -oE -- "--file[=[:space:]]+['\"]?[^'\"[:space:];&|]+" <<<"$cmd" | sed -E "s/^--file[=[:space:]]+['\"]?//")
+  done
+fi
+
+# Remote D1 migrations: every migration file, outside its comments (-- to the end of the line and
+# /* ... */, but not inside a string), gets the same word check. Which files are still unapplied is
+# only known to the remote, so all of them are read. Decided on the safe side until the author
+# confirms (docs/harness.md).
+if [[ "$text" =~ wrangler[[:space:]]+d1[[:space:]]+migrations[[:space:]]+apply && "$text" =~ --(remote|preview) ]]; then
+  dirs=()
+  for b in "${bases[@]}"; do
+    [[ -d "$b/migrations" ]] && dirs+=("$b/migrations")
+    [[ -d "$b/server/migrations" ]] && dirs+=("$b/server/migrations")
+  done
+  top=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) && [[ -d "$top/server/migrations" ]] && dirs+=("$top/server/migrations")
+  if ((${#dirs[@]} == 0)) || ! command -v perl >/dev/null; then
+    ask "remote D1 migrations this hook cannot find or read: confirm with the author"
+  fi
+  for d in "${dirs[@]}"; do
+    for f in "$d"/*.sql; do
+      [[ -f "$f" ]] || continue
+      perl -0777 -pe 's{(\x27(?:[^\x27]|\x27\x27)*\x27|"(?:[^"]|"")*")|--[^\n]*|/\*.*?\*/}{defined $1 ? $1 : " "}gse' "$f" 2>/dev/null |
+        grep -Eiq "$destructive" && ask "remote D1 migration with DROP, DELETE, or TRUNCATE (${f##*/}): confirm with the author"
+    done
+  done
+fi
+
+if [[ -n "$asked" ]]; then
+  log_event guard guard-prod "asked: $asked"
+  jq -nc --arg r "$asked" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
 fi
 exit 0
