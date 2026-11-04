@@ -1,5 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "advisorModel": "fable",
   "attribution": {
     "commit": "Co-Authored-By: Claude <noreply@anthropic.com>",
     "sessionUrl": false
