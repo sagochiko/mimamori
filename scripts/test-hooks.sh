@@ -498,6 +498,80 @@ jq -e '.hooks.PreCompact[] | select(.matcher == "auto") | .hooks[] | select(.com
   { echo "settings test failed: compact-flag.sh runs on automatic compaction"; fail=1; }
 jq -e '.idleCompaction == false' .claude/settings.json >/dev/null || { echo "settings test failed: idleCompaction is off"; fail=1; }
 
+# Models and effort (#85). The main session answers in Japanese. Opus 5.5 (with the author) and Fable 5.1
+# (the autopilot) run at xhigh, each named under modelSettings, so an old top-level effortLevel in the
+# author's user settings, which still applies to Fable 5.1, cannot change the autopilot's level.
+jq -e '.language == "japanese"' .claude/settings.json >/dev/null || { echo "settings test failed: language is japanese"; fail=1; }
+jq -e '.modelSettings["claude-opus-5-5"].effortLevel == "xhigh" and .modelSettings["claude-fable-5-1"].effortLevel == "xhigh" and (has("effortLevel") | not)' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: Opus 5.5 and Fable 5.1 run at xhigh through modelSettings, with no top-level effortLevel"; fail=1; }
+grep -q '| 作者と話す主の会話と段取り | メインのセッション | Opus | xhigh |' CLAUDE.md &&
+  grep -q '| 作者がいないあいだの主 | `/mm-autopilot` のセッション | Fable | xhigh |' CLAUDE.md ||
+  { echo "agent test failed: the CLAUDE.md table gives the main sessions the levels in modelSettings"; fail=1; }
+# Each subagent's model and effort are the ones the two tables in CLAUDE.md and docs/harness.md give,
+# so a judge reading the reasons reads what actually runs.
+fm() { awk -v k="$2" 'NR == 1 && $0 == "---" { on = 1; next } on && $0 == "---" { exit } on && $1 == k":" { print $2 }' "$1"; }
+row() { awk -F'|' -v n="\`$2\`" -v m="$3" -v e="$4" '{ for (i = 2; i < NF - 1; i++) { a = $i; gsub(/ /, "", a); b = $(i + 1); gsub(/ /, "", b); c = $(i + 2); gsub(/ /, "", c); if (a == n && tolower(b) == m && c == e) found = 1 } } END { exit !found }' "$1"; }
+for f in .claude/agents/mm-*.md; do
+  name=$(basename "$f" .md) model=$(fm "$f" model) effort=$(fm "$f" effort)
+  case $model in opus | fable) ;; *) echo "agent test failed: $name runs on opus or fable, not '$model'"; fail=1 ;; esac
+  case $effort in high | xhigh) ;; *) echo "agent test failed: $name runs at high or xhigh, not '$effort' (max is prone to overthinking)"; fail=1 ;; esac
+  row CLAUDE.md "$name" "$model" "$effort" || { echo "agent test failed: the CLAUDE.md table row of $name says $model and $effort"; fail=1; }
+  row docs/harness.md "$name" "$model" "$effort" || { echo "agent test failed: the docs/harness.md table row of $name says $model and $effort"; fail=1; }
+done
+# The independent eyes (review, audit, judging) run on Fable; implementation stays on Opus.
+for name in mm-reviewer mm-auditor mm-judge; do
+  [[ "$(fm ".claude/agents/$name.md" model)" == fable ]] || { echo "agent test failed: $name runs on fable"; fail=1; }
+done
+# A new main session starts on the model its role needs: Opus with the author, Fable for the autopilot.
+grep -q 'exec "$(command -v claude)" --model "$model"' .claude/skills/mm-handoff/SKILL.md ||
+  { echo "skill test failed: mm-handoff starts the new session with --model"; fail=1; }
+grep -q -- '--model fable' .claude/skills/mm-autopilot/SKILL.md ||
+  { echo "skill test failed: mm-autopilot moves to a Fable main session"; fail=1; }
+# The handoff waits for the new window's first turn, not just its process: a Fable window can sit at the
+# consent prompt, or its first prompt may not run the skill, and the old session must not stop then.
+grep -q 'scripts/handoff-started.sh" before ' .claude/skills/mm-handoff/SKILL.md &&
+  grep -q 'scripts/handoff-started.sh" check ' .claude/skills/mm-handoff/SKILL.md &&
+  grep -q 'Base directory for this skill: $repo/.claude/skills/mm-autopilot' .claude/skills/mm-handoff/SKILL.md &&
+  ! grep -q 'pgrep -fl "mimamori-handoff-$stamp.md" && exit 0' .claude/skills/mm-handoff/SKILL.md ||
+  { echo "skill test failed: mm-handoff waits for the new session's first turn with scripts/handoff-started.sh"; fail=1; }
+# handoff-started.sh on made-up transcripts. The old session's own transcript holds the brief, Claude's
+# answers, and the skill line too, so only transcripts missing from the list taken before the launch count.
+# An API error is kept as an assistant line (isApiErrorMessage), so a first turn needs a tool call.
+hs=scripts/handoff-started.sh hp=$T/projects brief=$T/mimamori-handoff-X.md
+sk="Base directory for this skill: /r/.claude/skills/mm-autopilot"
+mkdir -p "$hp"
+u() { jq -nc --arg t "$1" '{type:"user",message:{role:"user",content:$t}}'; }
+a_tool='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"CONDITIONS.md"}}]}}'
+a_err='{"type":"assistant","isApiErrorMessage":true,"message":{"role":"assistant","content":[{"type":"text","text":"API Error: 500"}]}}'
+hsx() { # <expected exit> <label> <args...>
+  local want=$1 label=$2; shift 2
+  "$hs" "$@" >/dev/null 2>&1
+  local got=$?
+  [[ $got -eq $want ]] || { echo "handoff test failed: $label (expected $want, got $got)"; fail=1; }
+}
+"$hs" before "$T/no-such-folder" "$T/before-empty" && [[ -f "$T/before-empty" && ! -s "$T/before-empty" ]] ||
+  { echo "handoff test failed: the list before the launch is an empty file when there is no transcript yet"; fail=1; }
+hsx 1 "no transcript at all is not a start" check "$T/no-such-folder" "$T/before-empty" "$brief" "$sk"
+{ u "/mm-autopilot $brief"; u "$sk"; echo "$a_tool"; } >"$hp/old.jsonl"
+"$hs" before "$hp" "$T/before"
+hsx 1 "the old session's own transcript is not the new one" check "$hp" "$T/before" "$brief" "$sk"
+hsx 2 "without the list taken before the launch, nothing counts" check "$hp" "$T/before-missing" "$brief" "$sk"
+{ u "/mm-autopilot $brief"; u "$sk"; echo "$a_err"; } >"$hp/new.jsonl"
+hsx 1 "an API error is not a first turn" check "$hp" "$T/before" "$brief" "$sk"
+{ u "/mm-autopilot $brief"; echo "$a_tool"; } >"$hp/new.jsonl"
+hsx 1 "the autopilot window did not load its skill" check "$hp" "$T/before" "$brief" "$sk"
+{ u "/mm-autopilot $brief"; u "$sk"; echo "$a_err"; echo "$a_tool"; printf '{"type":"assis'; } >"$hp/new.jsonl"
+hsx 0 "a tool call after the skill line is a first turn, even next to a half-written line" check "$hp" "$T/before" "$brief" "$sk"
+[[ "$("$hs" check "$hp" "$T/before" "$brief" "$sk")" == "$hp/new.jsonl" ]] ||
+  { echo "handoff test failed: check prints the new transcript"; fail=1; }
+{ u "$brief を読んで"; echo "$a_tool"; } >"$hp/new.jsonl"
+hsx 0 "the Opus line needs no skill line" check "$hp" "$T/before" "$brief" ""
+{ u "another session"; echo "$a_tool"; } >"$hp/new.jsonl"
+hsx 1 "a new session that never read this brief is not the one" check "$hp" "$T/before" "$brief" ""
+# A session that a handoff started does not hand over again when it did not get Fable.
+grep -q 'do not hand over again' .claude/skills/mm-autopilot/SKILL.md ||
+  { echo "skill test failed: mm-autopilot does not chain handoffs"; fail=1; }
+
 # save-report: a subagent's handback is kept verbatim, marked as unchecked, and never blocked.
 export MM_RAW_REPORT_DIR=$T/raw
 report=$'- Status: changes needed\n- server/src/a.ts:12 の判定が逆\n\n`code` と "引用" もそのまま'
