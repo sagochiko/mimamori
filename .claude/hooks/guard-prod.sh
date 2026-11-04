@@ -11,8 +11,12 @@
 # wrangler skips its own confirmation in a non-interactive shell, and the allow rules let git push and
 # gh api through, so nothing else would stop these. The command is split into shell words (shell_words
 # in lib.sh), so quotes do not hide a flag and a word inside quotes is not taken for one.
+# It fails closed like the gates: without a working jq, a command that mentions gh, wrangler, or push
+# is stopped (need_jq in lib.sh), and settings.json registers it with onFailure "block", so a crash or
+# a timeout of this hook does not let the call through either.
 source "$(dirname "$0")/lib.sh"
 in=$(cat)
+need_jq guard-prod "$in" || exit 0
 cmd=$(jq -r '.tool_input.command // empty' <<<"$in")
 cwd=$(jq -r '.cwd // empty' <<<"$in")
 cwd=${cwd:-$PWD}

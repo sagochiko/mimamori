@@ -11,6 +11,11 @@
 // Columns kept from the earlier hand-off and no longer read or written: accepted_at, and the relays
 // table (still deleted with the case). assignee_member_id now holds who pressed "解決". A row left in
 // the old 'accepted' state counts as not resolved.
+//
+// family_notified_at is the one record that a family device took the case's first notice, and it is
+// written only after one did. Sending is claimed in family_notice_claimed_at, a column of its own, so
+// a notice still being sent is never read as told: not by her answer to a consultation, her screen,
+// or the 30-minute watch (#64).
 
 import { requireMember, type Role } from "./auth";
 import { ExternalBudget } from "./budget";
@@ -196,14 +201,27 @@ export class CaseNoticeDeferred extends Error {
 
 /** A day after the case opened, a first notice is no longer worth retrying, nor a reminder worth sending. */
 const FIRST_NOTICE_RETRY_MS = 24 * 3600_000;
+/**
+ * A claim on the first notice older than this is taken over by the next sender: the Worker that took
+ * it stopped mid-send and will not let go of it. Five minutes is the tick's interval, so the next tick
+ * or the one after it sends the notice; no send to APNs takes that long.
+ */
+export const CLAIM_TTL_MS = 5 * 60_000;
 const WATCH_MAX_AGE_MS = FIRST_NOTICE_RETRY_MS;
 const FIRST_NOTICE_BATCH = 20;
 
 /**
- * The first notice of a case to every family member. family_notified_at is the claim: set before
- * sending so two callers never both send, and cleared again when no family device took it, so the
- * next try sends it. A family with no device to send to is not told either (#60): the case waits,
- * and the 5-minute tick sends it once someone registers a device.
+ * The first notice of a case to every family member. family_notice_claimed_at is the claim: set
+ * before sending so two callers never both send, and let go of once the notice went out or no family
+ * device took it, so the next try sends it. family_notified_at is set only when a family device took
+ * it, in the same statement that lets go of the claim. "already" means told, or another caller is
+ * sending it right now; either way this call sends nothing, and the case reads as told only once
+ * family_notified_at is set. A family with no device to send to is not told either (#60): the case
+ * waits, and the 5-minute tick sends it once someone registers a device.
+ *
+ * When this call's claim was taken over (it ran past CLAIM_TTL_MS) and its notice still went out,
+ * family_notified_at stays NULL and the case keeps reading as not told until the newer claim's sender
+ * gets through: she hears NOT_REACHED although the family was told, never the other way round.
  */
 async function tellFamily(
   env: Env,
@@ -212,19 +230,27 @@ async function tellFamily(
 ): Promise<"told" | "already" | "no_budget" | "not_delivered"> {
   const claimedAt = Date.now();
   const claimed = await env.DB.prepare(
-    "UPDATE cases SET family_notified_at = ? WHERE id = ? AND family_notified_at IS NULL",
+    `UPDATE cases SET family_notice_claimed_at = ?
+      WHERE id = ? AND family_notified_at IS NULL
+        AND (family_notice_claimed_at IS NULL OR family_notice_claimed_at < ?)`,
   )
-    .bind(claimedAt, c.id)
+    .bind(claimedAt, c.id, claimedAt - CLAIM_TTL_MS)
     .run();
   if (claimed.meta.changes !== 1) return "already";
-  const unclaim = () =>
-    env.DB.prepare("UPDATE cases SET family_notified_at = NULL WHERE id = ? AND family_notified_at = ?")
-      .bind(c.id, claimedAt)
-      .run();
 
   const sent = await sendCaseNotice(env, c, budget);
-  if (sent === "told") return "told";
-  await unclaim();
+  // Each lets go of this call's own claim only: one taken over belongs to the newer sender.
+  if (sent === "told") {
+    await env.DB.prepare(
+      "UPDATE cases SET family_notified_at = ?, family_notice_claimed_at = NULL WHERE id = ? AND family_notice_claimed_at = ?",
+    )
+      .bind(Date.now(), c.id, claimedAt)
+      .run();
+  } else {
+    await env.DB.prepare("UPDATE cases SET family_notice_claimed_at = NULL WHERE id = ? AND family_notice_claimed_at = ?")
+      .bind(c.id, claimedAt)
+      .run();
+  }
   return sent;
 }
 
@@ -276,9 +302,12 @@ export async function tellFamilyHeavier(env: Env, caseId: string, budget: Extern
   if (!row) return false;
   const sent = await sendCaseNotice(env, { id: row.id, familyId: row.family_id, level: row.level, summary: row.summary }, budget);
   if (sent === "told") return true;
-  // Back on the first notice's retry: the 5-minute tick sends it again, with the heavier level.
+  // Back on the first notice's retry: the 5-minute tick sends it again, with the heavier level. No
+  // claim can be held while family_notified_at is set; it is cleared too, so none holds the retry back.
   console.error("case heavier notice deferred", sent);
-  await env.DB.prepare("UPDATE cases SET family_notified_at = NULL WHERE id = ?").bind(caseId).run();
+  await env.DB.prepare("UPDATE cases SET family_notified_at = NULL, family_notice_claimed_at = NULL WHERE id = ?")
+    .bind(caseId)
+    .run();
   return false;
 }
 
@@ -291,8 +320,10 @@ export async function tellFamilyHeavier(env: Env, caseId: string, budget: Extern
  * 30-minute watch see it whatever happens to the notice. When the shared budget cannot cover every
  * family device, or no family device took the notice (none registered counts too), the case stays
  * untold and CaseNoticeDeferred is thrown; calling again with the same alert tells the family, and a
- * call after they were told returns the case without notifying or taking tickets. When at least one family member was told, the
- * case counts as told and the watch covers the others.
+ * call after they were told returns the case without notifying or taking tickets. A call while another
+ * caller is sending the notice does the same and does not throw; the case reads as untold until that
+ * send gets through, and the tick retries it if it does not. When at least one family member was told,
+ * the case counts as told and the watch covers the others.
  */
 export async function openCase(env: Env, alertId: string, budget: ExternalBudget): Promise<CaseView | null> {
   const alert = await env.DB.prepare("SELECT id, family_id, level, summary FROM alerts WHERE id = ?")
@@ -327,7 +358,9 @@ export async function openCase(env: Env, alertId: string, budget: ExternalBudget
  * family was told about yet, as when the queue stopped retrying while APNs kept failing. Newest
  * first, for a day after the case opened, within the tick's shared budget. Only families with a
  * device to notify: a family that registered none would fill the batch and keep another family's
- * failed notice from being retried. Its cases are picked up once someone registers a device.
+ * failed notice from being retried. Its cases are picked up once someone registers a device. A case
+ * whose notice another caller is sending right now is left to it, unless that claim is older than
+ * CLAIM_TTL_MS (tellFamily).
  */
 export async function sendFirstNotices(env: Env, now: number, budget: ExternalBudget): Promise<void> {
   const due = await env.DB.prepare(
