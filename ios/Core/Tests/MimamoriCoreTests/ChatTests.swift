@@ -34,7 +34,7 @@ struct ChatLogTests {
     var log = ChatLog()
     log.append(.protected, "警察から電話があって", at: .t0)
     log.append(.ai, "詐欺で使われる説明と一致しています。", at: .t0 + 2)
-    let restored = ChatLog.restored(from: try log.encoded())
+    let restored = ChatLog.restored(from: try log.encoded(), at: .t0 + 3)
     #expect(restored == log)
   }
 
@@ -50,7 +50,7 @@ struct ChatLogTests {
       ChatMessage(id: UUID(), role: .protected, text: "話\($0)", at: .t0 + Double($0))
     }
     let data = try JSONEncoder().encode(["messages": many])
-    let restored = ChatLog.restored(from: data)
+    let restored = ChatLog.restored(from: data, at: .t0 + 60)
     #expect(restored.messages.count == 50)
     #expect(restored.messages.first?.text == "話10")
   }
@@ -131,6 +131,13 @@ final class MemoryChatStore: ChatLogStore, @unchecked Sendable {
     self.data = data
     saves += 1
   }
+
+  func remove() throws {
+    data = nil
+    removes += 1
+  }
+
+  var removes = 0
 }
 
 @Suite("履歴を端末に残す")
@@ -139,7 +146,7 @@ struct ChatKeeperTests {
   func sendGivesTheEarlierTurns() {
     let store = MemoryChatStore()
     var keeper = ChatKeeper(store: store)
-    keeper.load()
+    keeper.load(at: .t0)
     #expect(keeper.send("ストレージがいっぱいと出た", at: .t0).isEmpty)
     keeper.answered("設定の「一般」から", at: .t0 + 3)
     let history = keeper.send("それってどういうこと?", at: .t0 + 60)
@@ -152,12 +159,12 @@ struct ChatKeeperTests {
   func reloads() {
     let store = MemoryChatStore()
     var first = ChatKeeper(store: store)
-    first.load()
+    first.load(at: .t0)
     _ = first.send("警察から電話があって", at: .t0)
     first.answered("詐欺で使われる説明と一致しています。", at: .t0 + 2)
 
     var again = ChatKeeper(store: store)
-    again.load()
+    again.load(at: .t0 + 3)
     #expect(again.log == first.log)
   }
 
@@ -168,14 +175,14 @@ struct ChatKeeperTests {
     let store = MemoryChatStore(try saved.encoded())
     store.locked = true
     var keeper = ChatKeeper(store: store)
-    keeper.load()
+    keeper.load(at: .t0)
     #expect(!keeper.isLoaded)
 
     // Unlocked again: the next send reads the file first, so nothing is lost.
     store.locked = false
     _ = keeper.send("それってどういうこと?", at: .t0 + 60)
     #expect(keeper.log.messages.map(\.text) == ["前の相談", "それってどういうこと?"])
-    #expect(ChatLog.restored(from: store.data).messages.count == 2)
+    #expect(ChatLog.restored(from: store.data, at: .t0 + 61).messages.count == 2)
   }
 
   @Test("読めないまま送っても、ファイルには書かない")
@@ -190,6 +197,44 @@ struct ChatKeeperTests {
     #expect(store.saves == 0)
     #expect(store.data == before)
     #expect(keeper.log.messages.map(\.text) == ["いま"])
+  }
+}
+
+// Review of PR #79, finding 4: kept as long as the server keeps her consultations (30 days,
+// docs/design.md), and gone when this iPhone leaves the family.
+@Suite("会話を残す期間と消すとき")
+struct ChatRetentionTests {
+  @Test("30日より古いやり取りは読み込むときに落とす")
+  func dropsOlderThan30Days() throws {
+    var saved = ChatLog()
+    saved.append(.protected, "31日前", at: .t0)
+    saved.append(.ai, "30日ちょうど前", at: .t0 + 86_400)
+    saved.append(.protected, "昨日", at: .t0 + 86_400 * 30)
+    let now = Date.t0 + 86_400 * 31
+    #expect(ChatLog.keptFor == 86_400 * 30)
+    #expect(ChatLog.restored(from: try saved.encoded(), at: now).messages.map(\.text) == ["昨日"])
+
+    let store = MemoryChatStore(try saved.encoded())
+    var keeper = ChatKeeper(store: store)
+    keeper.load(at: now)
+    #expect(keeper.log.messages.map(\.text) == ["昨日"])
+  }
+
+  @Test("家族から外れたら、画面の会話もファイルも消す")
+  func clearRemovesEverything() throws {
+    let store = MemoryChatStore()
+    var keeper = ChatKeeper(store: store)
+    keeper.load(at: .t0)
+    _ = keeper.send("警察から電話があって", at: .t0)
+    keeper.answered("詐欺で使われる説明と一致しています。", at: .t0 + 2)
+    keeper.clear()
+    #expect(keeper.log.messages.isEmpty)
+    #expect(store.data == nil)
+    #expect(store.removes == 1)
+
+    // A new family on the same iPhone starts from nothing and is kept again.
+    _ = keeper.send("ストレージがいっぱい", at: .t0 + 60)
+    #expect(ChatLog.restored(from: store.data, at: .t0 + 61).messages.map(\.text) == ["ストレージがいっぱい"])
   }
 }
 

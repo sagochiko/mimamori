@@ -128,6 +128,7 @@
 
     func read() throws -> Data? { lock.withLock { data } }
     func write(_ data: Data) throws { lock.withLock { self.data = data } }
+    func remove() throws { lock.withLock { data = nil } }
   }
 
   /// Made-up cases for the screenshots: one just sent to the family, one that did not reach any family
