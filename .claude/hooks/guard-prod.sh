@@ -54,8 +54,18 @@ on_main() {
   return 1
 }
 force() { block guard-prod "blocked: git push that forces or mirrors ($1) rewrites or removes remote history. Push without it; if a rewrite is really needed, the author runs it by hand."; }
+# here: where the push runs, the cwd moved by every cd or pushd before it in the command.
+here=$cwd
 for k in "${starts[@]}"; do
   w=${WORDS[k]}
+  if [[ "$w" == cd || "$w" == pushd ]]; then
+    d=$HOME j=$((k + 1))
+    while ((j < m)) && [[ "${WORDS[j]}" == -[LPe@] ]]; do ((j++)); done
+    ((j < m)) && ! is_op "${WORDS[j]}" && d=${WORDS[j]/#\~/$HOME}
+    # cd - goes back to where the command started from, as far as this hook can tell.
+    if [[ "$d" == - ]]; then here=$cwd; elif [[ "$d" == /* ]]; then here=$d; else here=$here/$d; fi
+    continue
+  fi
   [[ "$w" == git || "$w" == */git ]] || continue
   cdirs=()
   ((k++))
@@ -104,15 +114,13 @@ for k in "${starts[@]}"; do
     [[ "$r" == :* ]] && { ask "git push $r deletes a remote branch: confirm with the author"; continue; }
     dst=${r##*:}
     [[ "$r" != *:* && ("$r" == HEAD || "$r" == @) ]] && { current=1; continue; }
-    dst=${dst#refs/heads/}
+    dst=${dst#refs/} && dst=${dst#heads/}
     [[ "$dst" == main || "$dst" == *'*'* ]] && ask "git push to main ($r): confirm with the author. Changes reach main through a reviewed PR."
   done
   if ((current)); then
-    for b in "${bases[@]}"; do
-      d=$b
-      for c in "${cdirs[@]}"; do [[ "$c" == /* ]] && d=$c || d=$d/$c; done
-      on_main "$d" && ask "git push from main: confirm with the author. Changes reach main through a reviewed PR." && break
-    done
+    d=$here
+    for c in "${cdirs[@]}"; do [[ "$c" == /* ]] && d=$c || d=$d/$c; done
+    on_main "$d" && ask "git push from main: confirm with the author. Changes reach main through a reviewed PR."
   fi
 done
 
@@ -213,8 +221,8 @@ fi
 
 # Remote D1 migrations: every migration file, outside its comments (-- to the end of the line and
 # /* ... */, but not inside a string), gets the same word check. Which files are still unapplied is
-# only known to the remote, so all of them are read. Decided on the safe side until the author
-# confirms (docs/harness.md).
+# only known to the remote, so all of them are read. A migration that drops a table asks, as decided
+# on 2026-11-04 (docs/harness.md).
 if [[ "$text" =~ wrangler[[:space:]]+d1[[:space:]]+migrations[[:space:]]+apply && "$text" =~ --(remote|preview) ]]; then
   dirs=()
   for b in "${bases[@]}"; do

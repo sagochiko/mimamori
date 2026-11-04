@@ -197,6 +197,21 @@ prod ask 'git push origin' "a push without a refspec from main asks" "$T/push-ma
 prod ask 'git push -u origin HEAD' "pushing HEAD from main asks" "$T/push-main"
 prod ask "git -C $T/push-main push" "a bare push into a main working tree named by -C asks" "$T/push-work"
 prod ask "cd $T/push-main && git push" "a bare push after cd into main asks" "$T/push-work"
+prod quiet "cd $T/push-work && git push -u origin HEAD" "a push after cd from the main checkout into a work tree passes" "$T/push-main"
+prod quiet "cd $T/push-main && cd $T/push-work && git push" "only the last cd before the push counts" "$T/push-work"
+prod ask 'git push origin x:heads/main' "heads/main is main"
+# Claude Code strips these wrappers before it matches the rules (permissions, "Wrappers"), so the
+# hooks look through them too.
+prod block 'timeout 60 git push -fu origin main' "push -fu after timeout is blocked"
+prod block 'timeout -k 5 --signal=TERM 60 git push -f origin x' "timeout with its options is looked through"
+prod block 'nohup git push --mirror' "push --mirror after nohup is blocked"
+prod block 'nice -n 10 git push -f origin x' "nice -n is looked through"
+prod block 'stdbuf -o L -eL git push -f origin x' "stdbuf and its modes are looked through"
+prod block 'time -p command builtin noglob git push -f origin x' "stacked wrappers are looked through"
+prod block 'echo origin | xargs git push --mirror' "push after a bare xargs is blocked"
+prod ask 'command gh api -X PUT repos/o/r/pulls/3/merge' "gh api after command asks"
+prod ask 'timeout 30 gh api -X PATCH repos/o/r -f private=false' "gh api after timeout asks"
+prod quiet 'command -v git push' "command -v only looks a command up"
 prod quiet 'git push -u origin fix-f' "a branch named fix-f is not a force push"
 prod quiet 'git push origin c++fix' "a branch with + inside is not a force push"
 prod quiet 'git push origin main-notes' "a branch that only starts with main passes"
@@ -362,6 +377,9 @@ merge 2 'for n in 42; do gh pr merge 42 --merge; done' "a merge inside for ... d
 merge 2 'if gh pr checks 42; then gh pr merge 42 --merge; fi' "a merge inside if ... then is checked"
 merge 2 '{ gh pr merge 42 --merge; }' "a merge inside { } is checked"
 merge 2 'time gh pr merge 42 --merge' "a merge after time is checked"
+merge 2 'timeout 30 gh pr merge 99999 --merge' "a merge after timeout is checked"
+merge 2 'nohup command gh pr merge 42 --merge' "a merge after nohup and command is checked"
+merge 2 'echo 42 | xargs gh pr merge --merge' "a merge after a bare xargs is checked"
 merge 2 '! gh pr merge 42 --merge' "a merge after ! is checked"
 merge 2 '"gh" pr merge 42 --merge' "a quoted gh is checked"
 merge 2 '\gh pr merge 42 --merge' "a backslashed gh is checked"
@@ -383,6 +401,9 @@ merge 2 'GH_REPO=x/y gh pr merge 41 --merge; gh -R x/y pr merge 42' "two merges 
 : >"$MM_FAKE_GH/calls.log"
 merge 0 'GH_REPO=other/repo gh pr merge 41 --merge' "a merge behind GH_REPO= is checked like any other"
 grep -q -- '-R other/repo' "$MM_FAKE_GH/calls.log" || { echo "hook test failed: the merge gate asks gh about the GH_REPO repository"; fail=1; }
+: >"$MM_FAKE_GH/calls.log"
+merge 0 'GH_REPO=other/repo timeout 30 gh pr merge 41 --merge' "a merge behind GH_REPO= and timeout is checked like any other"
+grep -q -- '-R other/repo' "$MM_FAKE_GH/calls.log" || { echo "hook test failed: the merge gate asks gh about the GH_REPO repository past a wrapper"; fail=1; }
 out=$(jq -nc --arg d "$T/work" '{tool_name:"Bash",tool_input:{command:"gh pr merge 44 --merge"},cwd:$d}' | "$H/guard-merge.sh" 2>&1)
 [[ "$out" == *"残りの画面"* && "$out" != *"実機の確認"* ]] || { echo "hook test failed: the merge gate lists exactly the open items without a follow-up"; fail=1; }
 # origin/main moves on GitHub after the last fetch of this clone. Only a gate that fetches sees it.
@@ -544,6 +565,7 @@ priv 2 "git commit -m x -n" "-n after the message is blocked"
 priv 2 "git commit --no-verif -m x" "an abbreviated --no-verify is blocked"
 # Forms the word reading must not lose: compound commands and commands run through another command.
 priv 2 "{ git commit --no-verify -m x; }" "a commit inside { } is checked"
+priv 2 "timeout 60 git commit --no-verify -m x" "a commit after timeout is checked"
 priv 2 "if true; then git commit --no-verify -m x; fi" "a commit inside if ... then is checked"
 priv 2 "env git commit --no-verify -m x" "a commit after env falls back to the text check"
 priv 2 "bash -c \"git commit --no-verify -m x\"" "a commit inside bash -c falls back to the text check"
