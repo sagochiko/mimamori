@@ -164,7 +164,14 @@ async function alertsOf(familyId: string) {
 async function casesOf(familyId: string) {
   const rows = await env.DB.prepare("SELECT * FROM cases WHERE family_id = ? ORDER BY notified_at, rowid")
     .bind(familyId)
-    .all<{ id: string; alert_id: string; state: string; ai_reply: string | null; family_notified_at: number | null }>();
+    .all<{
+      id: string;
+      alert_id: string;
+      state: string;
+      ai_reply: string | null;
+      family_notified_at: number | null;
+      family_notice_claimed_at: number | null;
+    }>();
   return rows.results;
 }
 
@@ -1326,6 +1333,44 @@ describe("when the notice does not reach the family", () => {
     );
     const answer = await consult(consultEnv, motherOf(fam), POLICE, new ExternalBudget(), fakes(null));
     expect(answer.reply).toBe(POLICE_REPLY);
+  });
+
+  // #64: the tick has claimed her open case's first notice and is still sending it when she consults
+  // again. Until a family device took it, it is not told, whatever happens to the tick's push later.
+  it("says 'not reached' while another caller is still sending the first notice, and sends nothing itself", async () => {
+    const fam = await setupFamily();
+    // The first notice could not go out: one ticket for two family devices.
+    await consult(consultEnv, motherOf(fam), POLICE, new ExternalBudget(1), fakes(null));
+    expect(familyPushes(fam)).toHaveLength(0);
+
+    // The tick's two pushes to the family hang until released, then fail. Any later push goes through.
+    let release = () => {};
+    const released = new Promise<void>((resolve) => (release = resolve));
+    let bothHeld = () => {};
+    const inFlight = new Promise<void>((resolve) => (bothHeld = resolve));
+    let held = 0;
+    network.use(
+      http.post(`${SANDBOX}/3/device/:token`, async ({ params }) => {
+        if (!fam.familyTokens.includes(String(params.token)) || held >= 2) return undefined;
+        if (++held === 2) bothHeld();
+        await released;
+        return new HttpResponse(null, { status: 500 });
+      }),
+    );
+    const tick = sendFirstNotices(consultEnv, Date.now(), new ExternalBudget());
+    await inFlight;
+
+    const budget = new ExternalBudget(40);
+    const answer = await consult(consultEnv, motherOf(fam), POLICE, budget, fakes(null, T0 + 5 * 60_000));
+    release();
+    await tick;
+
+    expect(answer.reply).toBe(`${POLICE_REPLY}。${NOT_REACHED}`);
+    expect(familyPushes(fam)).toHaveLength(0);
+    expect(budget.remaining).toBe(40);
+    expect(await casesOf(fam.familyId)).toEqual([
+      expect.objectContaining({ family_notified_at: null, family_notice_claimed_at: null, ai_reply: answer.reply }),
+    ]);
   });
 
   it("says 'not reached' when the heavier notice of her open case could not go out", async () => {

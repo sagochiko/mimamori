@@ -20,8 +20,8 @@
 // A later consultation that joins her open case tells the family again only when it makes the level
 // heavier, and sends the first notice if that one could not go out yet. When, after that, no family
 // device has taken the case's notice (cases.family_notified_at is still NULL: no budget, APNs failed
-// for every device, or no device registered), she hears NOT_REACHED in place of "家族に伝えました",
-// so she does not think the family knows (#60).
+// for every device, no device registered, or another caller is still sending it, #64), she hears
+// NOT_REACHED in place of "家族に伝えました", so she does not think the family knows (#60).
 //
 // Her screen is a chat (#73, decided by the author on 2026-11-04), so the app may send the turns
 // before this one in the same conversation (`history`, at most HISTORY_MAX_TURNS of
