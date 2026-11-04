@@ -210,6 +210,14 @@ struct ResolveConfirmationTests {
     #expect(confirmation.choose(.resolve) == nil)
   }
 
+  @Test("確かめの題はそのカードの要約の1行。無ければ「解決」")
+  func title() throws {
+    #expect(ResolveConfirmation.title(for: try decodeCase(caseJSON())) == "警察を名乗る電話の相談")
+    let bare = try decodeCase(
+      #"{"id":"c-1","alertId":null,"state":"notified","notifiedAt":"2026-11-03T00:00:00.000Z"}"#)
+    #expect(ResolveConfirmation.title(for: bare) == "解決")
+  }
+
   @Test("解決した相談には確かめを出さない")
   func resolvedIsNotAsked() throws {
     var confirmation = ResolveConfirmation()
@@ -305,6 +313,18 @@ struct ProtectedNoticeTests {
     let untold = try decodeCase(caseJSON(id: "c-2", family: .null))
     let notices = ProtectedNotice.notices(from: [told, untold], now: tenOClock.addingTimeInterval(60))
     #expect(notices.map(\.status) == [ProtectedNotice.notReached, ProtectedNotice.toldFamily])
+  }
+
+  @Test("要約の読み上げは、届いたときだけ「家族に伝えたこと」と言う")
+  func summaryLabel() throws {
+    let now = tenOClock.addingTimeInterval(60)
+    let told = ProtectedNotice.notices(from: [try decodeCase(caseJSON())], now: now)
+    #expect(told.first?.summaryLabel == "家族に伝えたこと、警察を名乗る電話の相談")
+    let untold = ProtectedNotice.notices(from: [try decodeCase(caseJSON(family: .null))], now: now)
+    #expect(untold.first?.summaryLabel == "相談、警察を名乗る電話の相談")
+    let late = ProtectedNotice.notices(
+      from: [try decodeCase(caseJSON())], now: tenOClock.addingTimeInterval(31 * 60))
+    #expect(late.first?.summaryLabel == "家族に伝えたこと、警察を名乗る電話の相談")
   }
 
   @Test("届いた欄が無い古い形は、今までどおり「家族に伝えました」")

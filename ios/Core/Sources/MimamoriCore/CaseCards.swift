@@ -71,6 +71,13 @@ public struct ResolveConfirmation: Equatable, Sendable {
     defer { asking = nil }
     return choice == .resolve ? asking : nil
   }
+
+  /// The question's title: the card's one line, so it is clear which case is being resolved, or
+  /// "解決" when the case has none. The question has no sentence of its own.
+  public static func title(for item: Case) -> String {
+    guard let summary = item.alert?.summary, !summary.isEmpty else { return CardAction.resolve.title }
+    return summary
+  }
 }
 
 /// One line on the protected person's screen.
@@ -90,6 +97,11 @@ public struct ProtectedNotice: Equatable, Sendable, Identifiable {
     self.id = id
     self.status = status
     self.summary = summary
+  }
+
+  /// What VoiceOver says for the summary line. "家族に伝えたこと" only when a family device took it.
+  public var summaryLabel: String? {
+    summary.map { status == Self.notReached ? "相談、\($0)" : "家族に伝えたこと、\($0)" }
   }
 
   public static let toldFamily = "家族に伝えました"

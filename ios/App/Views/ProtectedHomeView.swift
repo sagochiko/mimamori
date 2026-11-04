@@ -174,12 +174,12 @@ private struct NoticeView: View {
         .font(.title2.bold())
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityHint(hint)
-      if let summary = notice.summary {
+      if let summary = notice.summary, let label = notice.summaryLabel {
         Text(summary)
           .font(.title3)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
-          .accessibilityLabel("家族に伝えたこと、\(summary)")
+          .accessibilityLabel(label)
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)

@@ -3,8 +3,8 @@ import SwiftUI
 
 /// One case on a family member's screen: the level, the one line of what she is troubled by, what
 /// the AI told her, whether it was solved, and "電話する" and "解決". Every family member sees the same
-/// card. The reasons are read by VoiceOver only. "解決" asks first, with "解決にする" and "やめる" and no
-/// sentence of its own (#60).
+/// card. The reasons are read by VoiceOver only. "解決" asks first in an alert titled with the card's
+/// one line, with "解決にする" and "やめる" and no sentence of its own (#60).
 struct CaseCardView: View {
   let card: FamilyCard
   @Environment(AppModel.self) private var model
@@ -42,13 +42,14 @@ struct CaseCardView: View {
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(RoundedRectangle(cornerRadius: 20).fill(Color(.secondarySystemBackground)))
     .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(levelColor.opacity(0.6), lineWidth: 2))
-    .confirmationDialog(
-      CardAction.resolve.title,
+    // An alert, not a confirmation dialog: on iOS 26 the dialog is a popover over the next card that
+    // drops the cancel button, and both "解決にする" and "やめる" must be shown. No message line.
+    .alert(
+      ResolveConfirmation.title(for: item),
       isPresented: Binding(
         get: { confirmation.asking?.id == item.id },
         set: { shown in if !shown { _ = confirmation.choose(.cancel) } }
-      ),
-      titleVisibility: .hidden
+      )
     ) {
       ForEach(ResolveChoice.allCases, id: \.self) { choice in
         Button(choice.title, role: choice == .cancel ? .cancel : nil) {
