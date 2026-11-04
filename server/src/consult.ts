@@ -376,8 +376,11 @@ function allOf(said: Said): string[] {
 }
 
 // A question that only points back at what she said just before ("それってどうやるの?", "どうすればいい?",
-// "その消し方を教えて"): short, with a pointing or "how" word, and no word that opens a new topic.
-const POINTS_BACK = /それ|これ|あれ|その|この|あの|そう|どうやる|どうやって|どうすれば|どうしたら|どういう|やり方/;
+// "そのやり方を教えて"): short, with a pointing or "how" word, and no word that opens a new topic.
+// "この", "その", "あの" point back only before a word for the thing itself ("そのやり方", "この件"):
+// "このアプリの文字を大きくしたい" is a new topic (review of PR #79, second round).
+const POINTS_BACK =
+  /それ|これ|あれ|そう|どうやる|どうやって|どうすれば|どうしたら|どういう|やり方|(この|その|あの)(やり方|方法|こと|件|やつ|操作)/;
 const NEW_TOPIC = /それより|それと|それから|ところで|別の|ほかの|他の/;
 const POINTS_BACK_MAX_CHARS = 15;
 
@@ -595,7 +598,16 @@ function decidePlan(said: Said, rule: RuleResult, claude: ClaudeConsult | null, 
   const unanswered = claude === null && rule.level === null;
   // "それってどうやるの?" after "振込のやり方を教えて" is still about sending money (topicWords).
   const told = topicWords(said);
-  const sensitive = SENSITIVE.filter(({ pattern }) => told.some((t) => pattern.test(t))).map((s) => s.reason);
+  const ownSensitive = SENSITIVE.filter(({ pattern }) => told.some((t) => pattern.test(t))).map((s) => s.reason);
+  // Earlier in the conversation she asked about one of those topics, and her next words need not
+  // point back by any word ("次は何を押すの?"): Claude's phone guidance is then checked too, and
+  // guidance on one of them is not read out (review of PR #79, second round).
+  const askedEarlier = said.earlier.some((t) => SENSITIVE.some(({ pattern }) => pattern.test(normalize(t))));
+  const guided =
+    askedEarlier && claude !== null && claude.kind === "help"
+      ? SENSITIVE.filter(({ pattern }) => pattern.test(normalize(claude.action))).map((s) => s.reason)
+      : [];
+  const sensitive = [...new Set([...ownSensitive, ...guided])];
   const reasons = [...decision.reasons];
   const base = { ruleLevel: decision.ruleLevel, claudeLevel: decision.claudeLevel };
 
@@ -722,7 +734,12 @@ export async function consult(
     }
     // Text in her earlier words that tries to keep the family out: the rules judge all she said, as
     // if she had said it at once, and that is the floor (decidePlan).
-    const earlierKeepsOut = said.earlier.some((t) => matchSpans(INJECTION, normalize(t)).length > 0);
+    // Only for words that go on with it: a question that points back, one about a message or a call,
+    // or one the rules see something in. "Wi-Fi がつながらない" after it is answered as on its own
+    // (review of PR #79, second round). Her earlier words only: an "ai" turn is what the device kept
+    // of the server's answers, not hers.
+    const goesOn = pointsBack(text) || CONTACT.test(normalize(text)) || rule.reasons.length > 0;
+    const earlierKeepsOut = goesOn && said.earlier.some((t) => matchSpans(INJECTION, normalize(t)).length > 0);
     const floor = earlierKeepsOut ? deps.judgeByRules({ source: "consult", text: allOf(said).join("\n") }) : rule;
     p = plan(said, rule, claude, history, floor);
   }
