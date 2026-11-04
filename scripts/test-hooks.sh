@@ -498,11 +498,15 @@ jq -e '.hooks.PreCompact[] | select(.matcher == "auto") | .hooks[] | select(.com
   { echo "settings test failed: compact-flag.sh runs on automatic compaction"; fail=1; }
 jq -e '.idleCompaction == false' .claude/settings.json >/dev/null || { echo "settings test failed: idleCompaction is off"; fail=1; }
 
-# Models and effort (#85). The main session answers in Japanese and runs Opus 5.5 at xhigh. A top-level
-# effortLevel in project settings would apply to every model, so the level sits under modelSettings.
+# Models and effort (#85). The main session answers in Japanese. Opus 5.5 (with the author) and Fable 5.1
+# (the autopilot) run at xhigh, each named under modelSettings, so an old top-level effortLevel in the
+# author's user settings, which still applies to Fable 5.1, cannot change the autopilot's level.
 jq -e '.language == "japanese"' .claude/settings.json >/dev/null || { echo "settings test failed: language is japanese"; fail=1; }
-jq -e '.modelSettings["claude-opus-5-5"].effortLevel == "xhigh" and (has("effortLevel") | not)' .claude/settings.json >/dev/null ||
-  { echo "settings test failed: Opus 5.5 runs at xhigh through modelSettings, with no top-level effortLevel"; fail=1; }
+jq -e '.modelSettings["claude-opus-5-5"].effortLevel == "xhigh" and .modelSettings["claude-fable-5-1"].effortLevel == "xhigh" and (has("effortLevel") | not)' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: Opus 5.5 and Fable 5.1 run at xhigh through modelSettings, with no top-level effortLevel"; fail=1; }
+grep -q '| 作者と話す主の会話と段取り | メインのセッション | Opus | xhigh |' CLAUDE.md &&
+  grep -q '| 作者がいないあいだの主 | `/mm-autopilot` のセッション | Fable | xhigh |' CLAUDE.md ||
+  { echo "agent test failed: the CLAUDE.md table gives the main sessions the levels in modelSettings"; fail=1; }
 # Each subagent's model and effort are the ones the two tables in CLAUDE.md and docs/harness.md give,
 # so a judge reading the reasons reads what actually runs.
 fm() { awk -v k="$2" 'NR == 1 && $0 == "---" { on = 1; next } on && $0 == "---" { exit } on && $1 == k":" { print $2 }' "$1"; }
@@ -523,6 +527,15 @@ grep -q 'exec "$(command -v claude)" --model "$model"' .claude/skills/mm-handoff
   { echo "skill test failed: mm-handoff starts the new session with --model"; fail=1; }
 grep -q -- '--model fable' .claude/skills/mm-autopilot/SKILL.md ||
   { echo "skill test failed: mm-autopilot moves to a Fable main session"; fail=1; }
+# The handoff waits for the new window's first turn, not just its process: a Fable window can sit at the
+# consent prompt, or its first prompt may not run the skill, and the old session must not stop then.
+grep -q 'Base directory for this skill: $repo/.claude/skills/mm-autopilot' .claude/skills/mm-handoff/SKILL.md &&
+  grep -q '"type":"assistant"' .claude/skills/mm-handoff/SKILL.md &&
+  ! grep -q 'pgrep -fl "mimamori-handoff-$stamp.md" && exit 0' .claude/skills/mm-handoff/SKILL.md ||
+  { echo "skill test failed: mm-handoff waits for the new session's first turn in its transcript"; fail=1; }
+# A session that a handoff started does not hand over again when it did not get Fable.
+grep -q 'do not hand over again' .claude/skills/mm-autopilot/SKILL.md ||
+  { echo "skill test failed: mm-autopilot does not chain handoffs"; fail=1; }
 
 # save-report: a subagent's handback is kept verbatim, marked as unchecked, and never blocked.
 export MM_RAW_REPORT_DIR=$T/raw
