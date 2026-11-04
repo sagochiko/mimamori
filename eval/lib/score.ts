@@ -4,9 +4,10 @@
 // - genuine_at_level1 counts genuine cases at level 1 (junk folder, DNS block); the target is 0
 // No Node APIs here, so the server's Vitest (in workerd) can import this file.
 
+import { consultByRules, judgeConsult } from "../../server/src/consult-judge";
 import { judgeByRules, type RuleInput } from "../../server/src/rules/index";
 import type { CaseSource, EvalCase } from "./cases";
-import type { Judge } from "./judge";
+import type { ConsultJudge, Judge } from "./judge";
 
 export type Mode = "rules" | "rules+claude";
 type Level = 1 | 2 | 3 | null;
@@ -21,8 +22,16 @@ export interface ScoredCase {
   rule_level?: Level;
   confident?: boolean;
   reasons?: string[];
-  /** rules+claude only: false when Claude gave nothing usable and the rules stood alone. */
+  /** rules+claude only: false when Claude gave nothing usable and the rules stood alone. Absent when Claude was not asked. */
   claude_answered?: boolean;
+  /** Consultations only: the fake-police script decided it from the rules alone. */
+  consult_script?: boolean;
+}
+
+/** The two Claude calls of rules+claude: the judge queue's for messages and pages, and the consultation one. */
+export interface EvalClaude {
+  judge: Judge;
+  consult: ConsultJudge;
 }
 
 export interface SourceMetrics {
@@ -122,26 +131,66 @@ export function toRuleInput(c: EvalCase): RuleInput {
   return input;
 }
 
-/** Judges every case. The latency is the judging time only, not delivery to the family. */
+/**
+ * Judges every case. The latency is the judging time only, not delivery to the family.
+ * A consultation is judged on the path POST /consult takes (#74), with no earlier turns: the
+ * fake-police script is level 1 from the rules alone and Claude is not asked. Otherwise rules+claude
+ * asks the consultation Claude and judgeConsult decides, as for her; the rules row takes the rules'
+ * level on her words. That rules row is not POST /consult without Claude, which tells the family at
+ * level 2 when the rules do not decide (decidePlan in server/src/consult-judge.ts).
+ */
 export async function judgeCases(
   cases: readonly EvalCase[],
   mode: Mode,
-  judge: Judge,
+  claude: EvalClaude,
   now: () => number = () => performance.now(),
 ): Promise<ScoredCase[]> {
   const scored: ScoredCase[] = [];
   for (const c of cases) {
-    const input = toRuleInput(c);
+    const base = { id: c.id, source: c.source, is_scam: c.is_scam, expected_level: c.expected_level };
     const start = now();
+    if (c.source === "consult") {
+      const text = c.text ?? "";
+      if (mode === "rules") {
+        const { rule, script } = consultByRules(text);
+        const latency = now() - start;
+        scored.push({
+          ...base,
+          level: script ? 1 : rule.level,
+          latency_ms: latency,
+          rule_level: rule.level,
+          confident: rule.confident,
+          reasons: rule.reasons,
+          consult_script: script,
+        });
+        continue;
+      }
+      let answered: boolean | undefined;
+      const judged = await judgeConsult(text, [], async (rule) => {
+        const answer = await claude.consult(text, rule);
+        answered = answer !== null;
+        return answer;
+      });
+      const latency = now() - start;
+      scored.push({
+        ...base,
+        level: judged.level,
+        latency_ms: latency,
+        rule_level: judged.rule.level,
+        confident: judged.rule.confident,
+        reasons: judged.reasons,
+        consult_script: judged.script,
+        ...(answered === undefined ? {} : { claude_answered: answered }),
+      });
+      continue;
+    }
+    const input = toRuleInput(c);
     const rule = judgeByRules(input);
-    const combined = mode === "rules" ? null : await judge(input, rule);
+    const combined = mode === "rules" ? null : await claude.judge(input, rule);
     const level = combined === null ? rule.level : combined.level;
     const latency = now() - start;
     scored.push({
-      id: c.id,
-      source: c.source,
-      is_scam: c.is_scam,
-      expected_level: c.expected_level,
+      ...base,
       level,
       latency_ms: latency,
       rule_level: rule.level,
