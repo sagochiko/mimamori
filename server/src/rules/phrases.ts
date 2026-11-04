@@ -108,6 +108,10 @@ export const POLICE_CALLER: PhraseRule = {
     new RegExp(`${POLICE_NAME}(の|を名乗る|と名乗る|って名乗る|だと名乗る|って(いう|言う)?|という|と言う|だという|だって(いう|言う)?)(人|方|者|男性?|女性?|相手|電話)(から|が|で)`),
     // 警察署の人だって言う電話, 警察だという電話, 警察ですって電話
     new RegExp(`${POLICE_NAME}(の(人|方))?((だ|です)(って|と)(いう|言う|名乗る)?|(って|と)(いう|言う|名乗る))(電話|人|相手)`),
+    // 警察名乗る電話が来て, 警察を名乗る電話きて, 警察を名乗った人, 警察を名乗られて: saying he is the
+    // police is the caller, whatever particle speech recognition keeps or drops after it (#78). Not
+    // the words of a warning she passes on ("警察を名乗る詐欺", "警察を名乗る電話に注意"; PR #80 review).
+    new RegExp(`${POLICE_NAME}(を|と|って|だと)?名乗(る|って|り|った|られ)(?!詐欺|手口|.{0,2}に(注意|気をつけ|気を付け))`),
   ],
 };
 
