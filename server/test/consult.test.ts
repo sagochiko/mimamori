@@ -791,6 +791,15 @@ describe("consult.ts", () => {
     }
   });
 
+  // The first wall against "家族に伝えました" from Claude (#65); TOLD_CLAIM is the second.
+  it("tells Claude not to say the family was told, since the system decides that", () => {
+    const { system } = buildConsultRequest("x", { level: null, reasons: [], confident: false });
+    expect(system).toContain("家族に知らせた、伝えた、連絡した、とは書かないでください");
+    expect(system).toContain("知らせるかどうかは見守りの仕組みが決めます");
+    // Nor promise to (review 1 of #65): TOLD_CLAIM only catches the finished forms.
+    expect(system).toContain("「家族に知らせておきますね」「家族に伝えておきます」のような、これから知らせるという約束も書かないでください");
+  });
+
   it("uses the real Claude call by default", () => {
     expect(typeof defaultConsultDeps.askClaude).toBe("function");
   });
@@ -1090,6 +1099,44 @@ describe("a line from Claude that says the family was told", () => {
     ["家族に伝えたね"],
     ["家族に知らせてあるよ"],
     ["家族に伝えたので、待っていてね"],
+    // Rewordings the word list once let through (#65).
+    ["家族に通知を送りました"],
+    ["家族に連絡が行きました"],
+    ["家族に連絡済みです"],
+    ["家族の方に知らせました"],
+    ["家族にも伝わりました"],
+    ["ご家族の方にお知らせしました"],
+    ["家族に連絡を入れておきました"],
+    ["家族にメッセージを送っておいたよ"],
+    ["家族に知らせが届きました"],
+    ["家族に言っておきました"],
+    // Passive forms, an adverb in front, wider ways to name the family, and "と共有" (#65, review 1).
+    ["家族に通知されました"],
+    ["家族にも通知されています"],
+    ["家族に共有されました"],
+    ["家族に通知が送られました"],
+    ["家族に連絡が送られています"],
+    ["家族にすでに連絡しました"],
+    ["家族にはもう伝えました"],
+    ["家族に自動で知らせました"],
+    ["家族と共有しました"],
+    ["ご家族の皆様にお知らせしました"],
+    ["家族の方々に知らせました"],
+    ["家族に連絡が済んでいます"],
+    ["家族にも届けました"],
+    ["家族には連絡がいっているよ"],
+    // A reason after it is still a claim: "から", "ので" (#65, review 2).
+    ["家族に知らせているので待っていてね"],
+    ["家族に知らせているから待っていてね"],
+    ["家族に連絡しましたから待ってね"],
+    ["家族に連絡していますから待ってね"],
+    ["家族に通知されているから待ってね"],
+    ["家族に連絡が済んでいるから待ってね"],
+    ["家族と共有しているので待って"],
+    ["家族に連絡しているのです"],
+    ["家族に知らせている間、待っていてね"],
+    ["家族に連絡している途中なので待ってね"],
+    ["家族に連絡済みですから待ってね"],
   ];
 
   it.each(claims)("is not read out at level 3, where nobody is told: %s", async (claim) => {
@@ -1113,11 +1160,15 @@ describe("a line from Claude that says the family was told", () => {
     expect(familyPushes(fam)).toHaveLength(0);
   });
 
-  it("is not read out as phone guidance either", async () => {
+  // The guidance goes with the claim: she hears the fixed "could not answer" line, and the family is
+  // then really told, so "家族に伝えました" in it is true.
+  it("is not read out as phone guidance either: the family is told it went unanswered", async () => {
     const fam = await setupFamily();
     const said = help({ action: "家族に知らせました。設定の「一般」から「iPhone ストレージ」を開いてね" });
     const answer = await consult(consultEnv, motherOf(fam), "ストレージがいっぱいと出た", new ExternalBudget(), fakes(said));
-    expect(answer.reply).not.toContain("家族に知らせました");
+    expect(answer).toMatchObject({ reply: "うまく答えられませんでした。家族に伝えました", handoff: true });
+    expect(familyPushes(fam)).toHaveLength(2);
+    expect((await alertsOf(fam.familyId))[0]?.level).toBe(2);
   });
 
   // Advice to ask or tell the family is not a claim that they were told; only the finished forms are.
@@ -1130,6 +1181,30 @@ describe("a line from Claude that says the family was told", () => {
     // Not "…ほうが安心だよ": "安心" is a reassuring word that REASSURING keeps from being read out.
     ["家族に連絡しておいたほうがいいよ"],
     ["家族に連絡しましたか？"],
+    // The wider list (#65) must still let these through.
+    ["家族に確かめて"],
+    ["家族に電話して"],
+    ["家族に通知を送ってね"],
+    ["家族の方に知らせてください"],
+    ["家族にも伝えてね"],
+    ["家族に連絡済みですか？"],
+    ["家族に伝わるように連絡して"],
+    ["家族に連絡を入れてみて"],
+    ["家族に言ったほうがいいよ"],
+    ["家族に届いたか電話して聞いてみて"],
+    ["家族に連絡済みなら、そのまま待ってね"],
+    ["家族に連絡済みでなければ電話してね"],
+    // Counterparts of the passive, adverb, "ている", "済んで", and "と共有" forms.
+    ["家族に通知されるか確かめて"],
+    ["家族にもう一度確かめて"],
+    ["家族に知らせているか確かめて"],
+    ["家族に連絡が済んだら教えて"],
+    ["家族と共有してね"],
+    ["家族に連絡が済んでいる？"],
+    ["家族に連絡が済んでいるの？"],
+    ["家族に連絡が済んだ？"],
+    ["家族に連絡しているの？"],
+    ["家族に連絡しているのか教えて"],
   ];
 
   it.each(advice)("still lets Claude tell her to ask the family at level 3: %s", async (line) => {
