@@ -188,3 +188,15 @@ Claude Code には、毎回の指摘を親のセッションが試しの入力�
 直すたびに穴が減っていくと思っていた。規則は、本物を迷惑フォルダに回さない例外と、詐欺に下げられない守りが引っ張り合うので、例外を1つ足すたびに、詐欺の文面がその例外を狙える道が増えていた。
 
 3回目の直しは小さく、レビュー役が直し方まで示していた。作者は AskUserQuestion の3つの案(親が確かめてマージ、4回目のレビュー、止めたまま #7 を進める)から、親が確かめてマージする案を選んだ。親は、直す前と直したあとの規則にレビュー役の入力88件を流し、変わった11件がどれも段階の上がる側で、下がったものが0件であることを確かめてからマージした。公式のリンクを書き足した詐欺は迷惑フォルダに行かない、という引き換えは `eval/README.md` の許容する失敗に書いた。使ったのは mm-reviewer、mm-implementer、試しの入力の台本、AskUserQuestion。
+
+## 2026年11月4日 本番の操作を許可待ちから外した (ハーネス)
+
+作者が、開発中は削除と取り返しのつかない操作のほかは許可を待たずに進めてよいと決めたので、`.claude/settings.json` の permissions と `guard-prod.sh` を組み替えていた。デプロイ、秘密の登録、本番の D1、TestFlight へのアップロード、`gh api` の読み書き、`git push` が対象だった。
+
+Claude Code には「ask から上の4つにあたる規則を外し、聞き続けるものの規則を足す」「DELETE の ask が allow の `gh api *` より先に効くことを文書の文で確かめる」と頼んだ。
+
+permissions の文書には「Rules are evaluated in order: deny, then ask, then allow.」とあり、DELETE の ask は allow より先に当たる。ただ同じ文書の表では、`Bash(git push *)` は `git -c push.default=current push origin main` を止めない。allow に `git -c credential.helper= * push*` を足すと、その形の force push を今の deny の `git push*--force*` が拾わなかった。新しいテストの規則の照らし合わせでも、直す前の設定で `git -c ... push --force-with-lease` は deny ではなく none になった。テストの文字を Bash の heredoc で書いたら、その中の wrangler の削除のコマンドの文字を `guard-prod.sh` が、`gh pr merge` の文字を `guard-merge.sh` が拾って止めた。main には GitHub の保護の規則も掛かっていなかった(`gh api repos/sagochiko/mimamori/branches/main` で `"protected":false`)。
+
+allow を足すだけで済むと思っていた。実際は、allow で開いた別の書き方に deny が付いてこず、フックはファイルに書くだけの文字にも当たった。
+
+deny に `git -c * push*--force*` と、`-f`、`+` の形を足した。テストのファイルと設定は Edit で書いた。フックの注にある、名前に触れるだけの文書やテストは Edit か Write で書く、という道だ。`scripts/test-hooks.sh` には、文書の照らし方(`*` は任意の文字、末尾の ` *` は引数なしにも当たる)をまねて設定の規則を引く `rule` を足し、直す前の設定で22件、直す前のフックで20件が落ちるのを見てから直した。`gh api` の PUT でのマージと main への直の push は、作業の流れの決まりだけが止めている。これは [`docs/harness.md`](harness.md) の「残っている穴」に書いた。使ったのは WebFetch、Edit、`scripts/test-hooks.sh`。
