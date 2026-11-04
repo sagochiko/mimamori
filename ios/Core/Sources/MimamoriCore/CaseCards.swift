@@ -39,11 +39,53 @@ public struct FamilyCard: Equatable, Sendable {
   }
 }
 
+/// A button of the question that "解決" asks first. One verb each; the meaning goes to VoiceOver.
+public enum ResolveChoice: String, CaseIterable, Sendable {
+  case resolve, cancel
+
+  public var title: String {
+    switch self {
+    case .resolve: "解決にする"
+    case .cancel: "やめる"
+    }
+  }
+}
+
+/// "解決" asks before it sends (#60): a mistaken press would stop the 30-minute watch, take the case
+/// off the protected person's screen, and tell the rest of the family "(名前)が解決". Only
+/// "解決にする" sends, once; "やめる", or closing the question, sends nothing.
+public struct ResolveConfirmation: Equatable, Sendable {
+  /// The case being asked about, while the question is shown.
+  public private(set) var asking: Case?
+
+  public init() {}
+
+  /// "解決" was pressed on this case. A resolved case has no "解決" to ask about.
+  public mutating func ask(_ item: Case) {
+    guard item.state == .notified else { return }
+    asking = item
+  }
+
+  /// Closes the question. Returns the case to send `POST /cases/{id}/resolve` for, or nil to send nothing.
+  public mutating func choose(_ choice: ResolveChoice) -> Case? {
+    defer { asking = nil }
+    return choice == .resolve ? asking : nil
+  }
+
+  /// The question's title: the card's one line, so it is clear which case is being resolved, or
+  /// "解決" when the case has none. The question has no sentence of its own.
+  public static func title(for item: Case) -> String {
+    guard let summary = item.alert?.summary, !summary.isEmpty else { return CardAction.resolve.title }
+    return summary
+  }
+}
+
 /// One line on the protected person's screen.
 ///
 /// While the case is open, it says "家族に伝えました", and after 30 minutes "家族から返事がまだ。急ぐなら
 /// 電話して": never "解決" or a family member's name, so she does not stop calling for help when nobody
-/// has answered. A resolved case leaves her screen.
+/// has answered. While no family device took the notice, it says "家族に届いていません。急ぐなら電話して"
+/// instead of either, until a retry gets through (#60). A resolved case leaves her screen.
 public struct ProtectedNotice: Equatable, Sendable, Identifiable {
   /// The case id.
   public let id: String
@@ -57,8 +99,15 @@ public struct ProtectedNotice: Equatable, Sendable, Identifiable {
     self.summary = summary
   }
 
+  /// What VoiceOver says for the summary line. "家族に伝えたこと" only when a family device took it.
+  public var summaryLabel: String? {
+    summary.map { status == Self.notReached ? "相談、\($0)" : "家族に伝えたこと、\($0)" }
+  }
+
   public static let toldFamily = "家族に伝えました"
   public static let noReplyYet = "家族から返事がまだ。急ぐなら電話して"
+  /// Same as the server's NOT_REACHED (server/src/cases.ts): no family device took the notice yet.
+  public static let notReached = "家族に届いていません。急ぐなら電話して"
   /// Same as the server's watch (server/src/cases.ts, UNANSWERED_AFTER_MS).
   public static let unansweredAfter: TimeInterval = 30 * 60
   /// Open cases older than this leave the screen, so a case the family forgot does not stay forever.
@@ -75,10 +124,14 @@ public struct ProtectedNotice: Equatable, Sendable, Identifiable {
   }
 
   private static func notice(for item: Case, now: Date) -> ProtectedNotice? {
-    guard item.state == .notified, now.timeIntervalSince(item.notifiedAt) < openShownFor else { return nil }
+    guard item.state == .notified, now.timeIntervalSince(item.notifiedAt) < openShownFor else {
+      return nil
+    }
     let summary = item.alert.map(\.summary).flatMap { $0.isEmpty ? nil : $0 }
-    let waitedTooLong = item.renotifiedAt != nil || now.timeIntervalSince(item.notifiedAt) >= unansweredAfter
-    return ProtectedNotice(id: item.id, status: waitedTooLong ? noReplyYet : toldFamily, summary: summary)
+    let waitedTooLong =
+      item.renotifiedAt != nil || now.timeIntervalSince(item.notifiedAt) >= unansweredAfter
+    let status = !item.familyWasTold ? notReached : waitedTooLong ? noReplyYet : toldFamily
+    return ProtectedNotice(id: item.id, status: status, summary: summary)
   }
 }
 

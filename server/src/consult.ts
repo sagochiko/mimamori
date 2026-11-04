@@ -18,7 +18,10 @@
 // the reasons, and the last answer the AI gave her (cases.ai_reply). The AI always answers her; the
 // family only learns what she is troubled by, how dangerous it is, and whether it was solved.
 // A later consultation that joins her open case tells the family again only when it makes the level
-// heavier, and sends the first notice if that one could not go out yet.
+// heavier, and sends the first notice if that one could not go out yet. When, after that, no family
+// device has taken the case's notice (cases.family_notified_at is still NULL: no budget, APNs failed
+// for every device, or no device registered), she hears NOT_REACHED in place of "家族に伝えました",
+// so she does not think the family knows (#60).
 //
 // Request shape, checked 2026-11-04 with the claude-docs MCP:
 // - /docs/en/models/sonnet-5-5/overview: model ID claude-sonnet-5-5. Adaptive thinking is on by
@@ -30,7 +33,7 @@
 
 import { requireMember, type Member } from "./auth";
 import { ExternalBudget } from "./budget";
-import { CaseNoticeDeferred, openCase, recordAiReply, tellFamilyHeavier } from "./cases";
+import { CaseNoticeDeferred, NOT_REACHED, openCase, recordAiReply, tellFamilyHeavier } from "./cases";
 import { CLAUDE_TIMEOUT_MS, decide, PLACEHOLDER_REASON, soundsSafe, type Level } from "./claude";
 import { HttpError, json, readJson } from "./http";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
@@ -136,6 +139,15 @@ const REASSURING = new RegExp(
     "正規の(?![^。、]*か(どうか|[、。]|$))",
   ].join("|"),
 );
+
+// Lines saying the family was told. Whether anyone was told is decided here (openCase and
+// family_notified_at), never by Claude: on a path that tells nobody, or when the notice did not reach
+// them, such a line would make her think the family knows (#60). Only the finished forms count
+// ("ました", "た", "てある", "てあります", "ておきました", "ておいた", "ています"), and not when a
+// question or advice follows: "家族に確かめて", "連絡しましょう", "知らせたほうがいい",
+// "伝えておきましょう", "連絡しておいたほうが", "連絡しましたか？", "連絡していますか" are fine.
+const TOLD_CLAIM =
+  /家族(に|へ)(は|も)?(お?知らせ|お?伝え|ご?連絡|ご?報告|共有|通知)(し)?(ました(?!か)|た(?!ら|い|く|り|ほう|方|か(?!ら)|[?？])|てある|てあります(?!か)|ておきました(?!か)|ておいた(?!ほう|方|ら)|ています(?!か|[?？]))/;
 
 // What she asks about is a message, a call, a link, a page, or installing an app: then Claude's free
 // guidance is not read out (a "help" answer could still tell her it is fine), and she gets the fixed
@@ -336,7 +348,9 @@ function policeReasons(text: string): string[] {
 
 /** A line from Claude that may be read out to her. */
 function usable(line: string): boolean {
-  return line.trim() !== "" && !soundsSafe(line) && !BROAD_CLAIM.test(line) && !REASSURING.test(line);
+  return (
+    line.trim() !== "" && !soundsSafe(line) && !BROAD_CLAIM.test(line) && !REASSURING.test(line) && !TOLD_CLAIM.test(line)
+  );
 }
 
 /**
@@ -539,7 +553,10 @@ async function insertAlert(env: Env, familyId: string, p: Plan, now: number): Pr
   return id;
 }
 
-/** Opens the case and tells the family. A notice that could not go out now is retried by the tick. */
+/**
+ * Opens the case and tells the family. A notice that could not go out now is retried by the tick;
+ * whether it went out is read from the case afterwards (familyWasTold).
+ */
 async function openFor(env: Env, alertId: string, budget: ExternalBudget, deps: ConsultDeps): Promise<string | null> {
   try {
     await deps.openCase(env, alertId, budget);
@@ -548,6 +565,21 @@ async function openFor(env: Env, alertId: string, budget: ExternalBudget, deps: 
   }
   const row = await env.DB.prepare("SELECT id FROM cases WHERE alert_id = ?").bind(alertId).first<{ id: string }>();
   return row?.id ?? null;
+}
+
+/** Whether a family device took the case's notice. family_notified_at is the one record of that. */
+async function familyWasTold(env: Env, caseId: string | null): Promise<boolean> {
+  if (caseId === null) return false;
+  const row = await env.DB.prepare("SELECT family_notified_at FROM cases WHERE id = ?")
+    .bind(caseId)
+    .first<{ family_notified_at: number | null }>();
+  return row?.family_notified_at != null;
+}
+
+/** Her answer when the family was not told: NOT_REACHED in place of every "家族に伝えました", or after it. */
+export function notReachedReply(reply: string): string {
+  if (reply.includes(TOLD_FAMILY)) return reply.replaceAll(TOLD_FAMILY, NOT_REACHED);
+  return `${reply.replace(/[。、\s]+$/, "")}。${NOT_REACHED}`;
 }
 
 /**
@@ -599,9 +631,10 @@ export async function consult(
     const alertId = await insertAlert(env, member.familyId, p, now);
     if (p.toFamily) caseId = await openFor(env, alertId, budget, deps);
   }
+  const reply = p.toFamily && !(await familyWasTold(env, caseId)) ? notReachedReply(p.reply) : p.reply;
   // She hears the whole answer; the card gets a fixed line instead when the answer repeats her words.
-  if (caseId !== null) await recordAiReply(env, caseId, repeats(p.reply, [text]) ? AI_REPLY_ON_CARD : p.reply);
-  return answer(p.reply, p.toFamily);
+  if (caseId !== null) await recordAiReply(env, caseId, repeats(reply, [text]) ? AI_REPLY_ON_CARD : reply);
+  return answer(reply, p.toFamily);
 }
 
 /** POST /consult with { text }: only the protected person consults. */

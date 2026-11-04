@@ -20,6 +20,12 @@ import { sendPush } from "./push";
 export const UNANSWERED_AFTER_MS = 30 * 60_000;
 /** Shown to the protected person when the case was not resolved within 30 minutes. */
 export const NO_REPLY_YET = "家族から返事がまだ。急ぐなら電話して";
+/**
+ * Shown to the protected person in place of "家族に伝えました" while no family device took the case's
+ * notice (family_notified_at is NULL), and by the 30-minute watch in place of NO_REPLY_YET, so she
+ * does not think the family knows (#60).
+ */
+export const NOT_REACHED = "家族に届いていません。急ぐなら電話して";
 /** The title of the family's second notice, 30 minutes after the first. */
 export const NOT_RESOLVED_YET = "まだ解決していません";
 const AI_REPLY_MAX = 500;
@@ -40,6 +46,11 @@ export interface CaseView {
   resolvedBy: { memberId: string; displayName: string } | null;
   /** Set when the 30-minute watch told the protected person "家族から返事がまだ". */
   renotifiedAt: string | null;
+  /**
+   * When a family device first took the case's notice, or null while none did. Her screen says
+   * NOT_REACHED instead of "家族に伝えました" while it is null (#60).
+   */
+  familyNotifiedAt: string | null;
   /** The summary is one line made by the rules or Claude, never her words or the received text cut out. */
   alert: { level: 1 | 2 | 3; source: string; summary: string; reasons: string[] } | null;
   /** The last answer the AI gave the protected person in this case. */
@@ -55,6 +66,7 @@ interface CaseRow {
   notified_at: number;
   resolved_at: number | null;
   renotified_at: number | null;
+  family_notified_at: number | null;
   ai_reply: string | null;
   level: 1 | 2 | 3 | null;
   source: string | null;
@@ -104,7 +116,7 @@ async function loadViews(
   }
   const rows = await env.DB.prepare(
     `SELECT c.id, c.alert_id, c.state, c.assignee_member_id, m.display_name AS resolver_name,
-            c.notified_at, c.resolved_at, c.renotified_at, c.ai_reply,
+            c.notified_at, c.resolved_at, c.renotified_at, c.family_notified_at, c.ai_reply,
             a.level, a.source, a.summary, a.reasons
        FROM cases c
        LEFT JOIN alerts a ON a.id = c.alert_id
@@ -129,6 +141,7 @@ async function loadViews(
           ? { memberId: r.assignee_member_id, displayName: nameOf(r.resolver_name) }
           : null,
       renotifiedAt: iso(r.renotified_at),
+      familyNotifiedAt: iso(r.family_notified_at),
       alert:
         r.level === null
           ? null
@@ -189,7 +202,8 @@ const FIRST_NOTICE_BATCH = 20;
 /**
  * The first notice of a case to every family member. family_notified_at is the claim: set before
  * sending so two callers never both send, and cleared again when no family device took it, so the
- * next try sends it. "told" also covers a family with no device to send to.
+ * next try sends it. A family with no device to send to is not told either (#60): the case waits,
+ * and the 5-minute tick sends it once someone registers a device.
  */
 async function tellFamily(
   env: Env,
@@ -222,7 +236,7 @@ async function sendCaseNotice(
 ): Promise<"told" | "no_budget" | "not_delivered"> {
   const family = (await membersOf(env, c.familyId)).filter((m) => m.role === "family");
   const reachable = family.filter((m) => m.reachable).length;
-  if (reachable === 0) return "told";
+  if (reachable === 0) return "not_delivered";
   if (!budget.takeMany(reachable)) return "no_budget";
 
   let told = false;
@@ -270,13 +284,14 @@ export async function tellFamilyHeavier(env: Env, caseId: string, budget: Extern
 
 /**
  * Opens the case for an alert and tells every family member (not the protected person, whose screen
- * shows "家族に伝えました"). One case per alert. Returns null when the alert does not exist.
+ * shows "家族に伝えました", or NOT_REACHED while no family device took it). One case per alert.
+ * Returns null when the alert does not exist.
  *
  * The case row is kept from the start, so the protected person's screen, the family's list, and the
  * 30-minute watch see it whatever happens to the notice. When the shared budget cannot cover every
- * family device, or no family device took the notice, the case stays untold and CaseNoticeDeferred is
- * thrown; calling again with the same alert tells the family, and a call after they were told
- * returns the case without notifying or taking tickets. When at least one family member was told, the
+ * family device, or no family device took the notice (none registered counts too), the case stays
+ * untold and CaseNoticeDeferred is thrown; calling again with the same alert tells the family, and a
+ * call after they were told returns the case without notifying or taking tickets. When at least one family member was told, the
  * case counts as told and the watch covers the others.
  */
 export async function openCase(env: Env, alertId: string, budget: ExternalBudget): Promise<CaseView | null> {
@@ -310,12 +325,16 @@ export async function openCase(env: Env, alertId: string, budget: ExternalBudget
 /**
  * Every 5 minutes, before the 30-minute watch (src/cron.ts): the first notice of a case nobody in the
  * family was told about yet, as when the queue stopped retrying while APNs kept failing. Newest
- * first, for a day after the case opened, within the tick's shared budget.
+ * first, for a day after the case opened, within the tick's shared budget. Only families with a
+ * device to notify: a family that registered none would fill the batch and keep another family's
+ * failed notice from being retried. Its cases are picked up once someone registers a device.
  */
 export async function sendFirstNotices(env: Env, now: number, budget: ExternalBudget): Promise<void> {
   const due = await env.DB.prepare(
     `SELECT c.id, c.family_id, a.level, a.summary FROM cases c LEFT JOIN alerts a ON a.id = c.alert_id
       WHERE c.state != 'resolved' AND c.family_notified_at IS NULL AND c.notified_at > ?
+        AND EXISTS (SELECT 1 FROM members m
+                     WHERE m.family_id = c.family_id AND m.role = 'family' AND m.apns_token IS NOT NULL)
       ORDER BY c.notified_at DESC LIMIT ${FIRST_NOTICE_BATCH}`,
   )
     .bind(now - FIRST_NOTICE_RETRY_MS)
@@ -369,19 +388,20 @@ export async function recordAiReply(env: Env, caseId: string, text: string): Pro
 
 /**
  * Every 5 minutes (src/cron.ts). A case not resolved within 30 minutes: the protected person is told
- * "家族から返事がまだ。急ぐなら電話して" and every family member is notified again, once. The state
+ * "家族から返事がまだ。急ぐなら電話して" (NOT_REACHED instead while the family was never told) and
+ * every family member is notified again, once. The state
  * stays as it is, so nothing tells the protected person it is solved. A case whose whole family the
  * budget cannot cover is left for a later tick, unclaimed. A case more than a day old is not
  * reminded about any more, so rows that never got a reminder do not all come back at once.
  */
 export async function watchUnanswered(env: Env, now: number, budget: ExternalBudget): Promise<void> {
   const due = await env.DB.prepare(
-    `SELECT c.id, c.family_id, a.summary FROM cases c LEFT JOIN alerts a ON a.id = c.alert_id
+    `SELECT c.id, c.family_id, c.family_notified_at, a.summary FROM cases c LEFT JOIN alerts a ON a.id = c.alert_id
       WHERE c.state != 'resolved' AND c.renotified_at IS NULL AND c.notified_at <= ? AND c.notified_at > ?
       ORDER BY c.notified_at LIMIT ${WATCH_BATCH}`,
   )
     .bind(now - UNANSWERED_AFTER_MS, now - WATCH_MAX_AGE_MS)
-    .all<{ id: string; family_id: string; summary: string | null }>();
+    .all<{ id: string; family_id: string; family_notified_at: number | null; summary: string | null }>();
 
   for (const row of due.results) {
     const members = await membersOf(env, row.family_id);
@@ -399,7 +419,7 @@ export async function watchUnanswered(env: Env, now: number, budget: ExternalBud
     await notify(
       env,
       members.filter((m) => m.role === "protected").map((m) => m.id),
-      { body: NO_REPLY_YET, data: { caseId: row.id }, threadId },
+      { body: row.family_notified_at === null ? NOT_REACHED : NO_REPLY_YET, data: { caseId: row.id }, threadId },
       budget,
     );
     await notify(

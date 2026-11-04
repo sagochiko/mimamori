@@ -117,13 +117,17 @@ public struct Case: Codable, Hashable, Sendable, Identifiable {
     public let resolvedBy: CaseMember?
     /// Set when the server's 30-minute watch found the case not resolved.
     public let renotifiedAt: Date?
+    /// When a family device first took the case's notice; nil while none did (#60). A server from
+    /// before #60 sends no key, which is read as told at `notifiedAt`, so its screens stay as they were.
+    public let familyNotifiedAt: Date?
     public let alert: CaseAlert?
     /// The last answer the AI gave the protected person in this case.
     public let aiReply: String?
 
     public init(
         id: String, alertId: String?, state: CaseState, notifiedAt: Date, resolvedAt: Date? = nil,
-        resolvedBy: CaseMember? = nil, renotifiedAt: Date? = nil, alert: CaseAlert? = nil, aiReply: String? = nil
+        resolvedBy: CaseMember? = nil, renotifiedAt: Date? = nil, alert: CaseAlert? = nil, aiReply: String? = nil,
+        familyNotifiedAt: Date?
     ) {
         self.id = id
         self.alertId = alertId
@@ -132,6 +136,7 @@ public struct Case: Codable, Hashable, Sendable, Identifiable {
         self.resolvedAt = resolvedAt
         self.resolvedBy = resolvedBy
         self.renotifiedAt = renotifiedAt
+        self.familyNotifiedAt = familyNotifiedAt
         self.alert = alert
         self.aiReply = aiReply
     }
@@ -145,9 +150,16 @@ public struct Case: Codable, Hashable, Sendable, Identifiable {
         resolvedAt = try c.decodeIfPresent(Date.self, forKey: .resolvedAt)
         resolvedBy = try c.decodeIfPresent(CaseMember.self, forKey: .resolvedBy)
         renotifiedAt = try c.decodeIfPresent(Date.self, forKey: .renotifiedAt)
+        // A null is "not told yet"; no key at all is an older server, read as told.
+        familyNotifiedAt =
+            c.contains(.familyNotifiedAt)
+            ? try c.decodeIfPresent(Date.self, forKey: .familyNotifiedAt) : notifiedAt
         alert = try c.decodeIfPresent(CaseAlert.self, forKey: .alert)
         aiReply = try c.decodeIfPresent(String.self, forKey: .aiReply)
     }
+
+    /// Whether any family device took the case's notice.
+    public var familyWasTold: Bool { familyNotifiedAt != nil }
 }
 
 /// The answer of `POST /invites`. Valid for 24 hours.

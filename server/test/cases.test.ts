@@ -8,6 +8,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ExternalBudget } from "../src/budget";
 import {
   NO_REPLY_YET,
+  NOT_REACHED,
   NOT_RESOLVED_YET,
   openCase,
   recordAiReply,
@@ -270,17 +271,25 @@ describe("openCase", () => {
     expect(to(f.author)).toHaveLength(1);
   });
 
-  it("opens the case without throwing when no family member has a device to notify", async () => {
+  it("when no family member has a device to notify, keeps the case untold and throws, and the tick tells a device registered later", async () => {
     const f = await family();
     await env.DB.prepare("UPDATE members SET apns_token = NULL WHERE family_id = ? AND role = 'family'")
       .bind(f.familyId)
       .run();
+    const alertId = await newAlert(f.familyId);
 
-    const opened = await open(await newAlert(f.familyId), new ExternalBudget(0));
+    // Nobody was told, so it is not told (#60): the protected person must not hear "家族に伝えました".
+    await expect(open(alertId, new ExternalBudget(0))).rejects.toMatchObject({ name: "CaseNoticeDeferred", reason: "not_delivered" });
+    expect((await caseOf(alertId))?.state).toBe("notified");
+    expect((await caseOf(alertId))?.family_notified_at).toBeNull();
 
-    expect(opened?.state).toBe("notified");
-    // Nobody to tell is not "untold": the 5-minute tick does not keep retrying it.
-    expect((await caseOf(opened?.alertId ?? ""))?.family_notified_at).not.toBeNull();
+    await env.DB.prepare("UPDATE members SET apns_token = ?, apns_env = 'sandbox' WHERE id = ?")
+      .bind(f.sister.token, f.sister.memberId)
+      .run();
+    sent = [];
+    await tick(Date.now());
+    expect(to(f.sister)).toEqual([expect.objectContaining({ title: "1段階", body: "警察を名乗る電話の相談" })]);
+    expect((await caseOf(alertId))?.family_notified_at).not.toBeNull();
   });
 });
 
@@ -444,6 +453,39 @@ describe("GET /cases", () => {
     expect(typeof cases[0]?.notifiedAt).toBe("string");
   });
 
+  // #60: the protected person's screen says "家族に届いていません" while no family device took it, so
+  // every case carries when the family was first told, or null.
+  it("carries familyNotifiedAt: when the family was told, or null while no family device took it", async () => {
+    const f = await family();
+    const told = (await open(await newAlert(f.familyId)))?.id ?? "";
+    const untoldAlert = await newAlert(f.familyId);
+    const state = apnsFailsFor([f.author.token, f.sister.token]);
+    await expect(open(untoldAlert)).rejects.toMatchObject({ name: "CaseNoticeDeferred" });
+    const untold = (await caseOf(untoldAlert))?.id ?? "";
+
+    const read = async () => {
+      const res = await call("GET", "/cases", { deviceKey: f.mother.deviceKey, env: pushEnv });
+      return ((await res.json()) as { cases: Array<Record<string, unknown>> }).cases;
+    };
+    const before = await read();
+    const toldAt = before.find((c) => c.id === told)?.familyNotifiedAt;
+    expect(typeof toldAt).toBe("string");
+    expect(new Date(String(toldAt)).toISOString()).toBe(toldAt);
+    expect(before.find((c) => c.id === untold)).toHaveProperty("familyNotifiedAt", null);
+
+    // The 5-minute tick gets it through: the case reads as told again.
+    state.ok = true;
+    await tick(Date.now());
+    expect(typeof (await read()).find((c) => c.id === untold)?.familyNotifiedAt).toBe("string");
+  });
+
+  it("the case that resolve answers with has the same familyNotifiedAt", async () => {
+    const f = await family();
+    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
+    const res = await call("POST", `/cases/${caseId}/resolve`, { deviceKey: f.author.deviceKey, env: pushEnv });
+    expect(typeof ((await res.json()) as Record<string, unknown>).familyNotifiedAt).toBe("string");
+  });
+
   it("needs a device key", async () => {
     expect((await call("GET", "/cases")).status).toBe(401);
   });
@@ -587,7 +629,38 @@ describe("the 30-minute watch", () => {
     expect(sent).toHaveLength(0);
   });
 
-  it("an untold case is still watched: after 30 minutes the protected person hears, even while the family's devices fail", async () => {
+  it("cases of a family with no device do not crowd out another family's untold case from the retry", async () => {
+    // A family whose members registered no device: 25 untold cases, newer than the other family's.
+    const deviceless = await family();
+    await env.DB.prepare("UPDATE members SET apns_token = NULL WHERE family_id = ? AND role = 'family'")
+      .bind(deviceless.familyId)
+      .run();
+    const now = Date.now();
+    for (let i = 0; i < 25; i++) {
+      const alertId = await newAlert(deviceless.familyId);
+      await env.DB.prepare(
+        "INSERT INTO cases (id, family_id, alert_id, state, notified_at) VALUES (?, ?, ?, 'notified', ?)",
+      )
+        .bind(crypto.randomUUID(), deviceless.familyId, alertId, now - 60_000 + i)
+        .run();
+    }
+    // The other family's notice failed on APNs ten minutes ago.
+    const f = await family();
+    const alertId = await newAlert(f.familyId);
+    const apns = apnsFailsFor([f.author.token, f.sister.token]);
+    await expect(open(alertId)).rejects.toMatchObject({ name: "CaseNoticeDeferred" });
+    await backdate((await caseOf(alertId))?.id ?? "", 10);
+    apns.ok = true;
+    sent = [];
+
+    await tick(now);
+
+    expect(to(f.author)).toHaveLength(1);
+    expect(to(f.sister)).toHaveLength(1);
+    expect((await caseOf(alertId))?.family_notified_at).not.toBeNull();
+  });
+
+  it("an untold case is still watched: after 30 minutes the protected person hears it did not reach the family, even while the family's devices fail", async () => {
     const f = await family();
     const alertId = await newAlert(f.familyId);
     apnsFailsFor([f.author.token, f.sister.token]);
@@ -597,7 +670,9 @@ describe("the 30-minute watch", () => {
 
     await tick(Date.now());
 
-    expect(to(f.mother).map((s) => s.body)).toEqual([NO_REPLY_YET]);
+    // Not "家族から返事がまだ": the family never got it (#60).
+    expect(to(f.mother).map((s) => s.body)).toEqual([NOT_REACHED]);
+    expect(NOT_REACHED).toBe("家族に届いていません。急ぐなら電話して");
   });
 
   it("does not remind about a case older than a day", async () => {
