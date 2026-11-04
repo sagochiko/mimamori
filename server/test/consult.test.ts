@@ -1038,11 +1038,29 @@ describe("a line from Claude that says the family was told", () => {
     expect(answer.reply).not.toContain("家族に知らせました");
   });
 
-  it("still lets Claude tell her to ask the family", async () => {
+  // Advice to ask or tell the family is not a claim that they were told; only the finished forms are.
+  const advice = [
+    ["家族に連絡して確かめて"],
+    ["家族に連絡しましょう"],
+    ["家族に知らせたほうがいいよ"],
+    ["家族に伝えておきましょう"],
+    ["家族に連絡していますか"],
+  ];
+
+  it.each(advice)("still lets Claude tell her to ask the family at level 3: %s", async (line) => {
     const fam = await setupFamily();
-    const said = scam({ level: 3, basis: "", action: "家族に連絡して確かめて" });
+    const said = scam({ level: 3, basis: "", action: line });
     const answer = await consult(consultEnv, motherOf(fam), "知らない番号から荷物の連絡が来た", new ExternalBudget(), fakes(said));
-    expect(answer.reply).toContain("家族に連絡して確かめて");
+    expect(answer.reply).toContain(line);
+    expect(familyPushes(fam)).toHaveLength(0);
+  });
+
+  it.each(advice)("reads the phone guidance as it is, without telling the family: %s", async (line) => {
+    const fam = await setupFamily();
+    const action = `設定の「一般」から「iPhone ストレージ」を開いてね。困ったら${line}`;
+    const answer = await consult(consultEnv, motherOf(fam), "ストレージがいっぱいと出た", new ExternalBudget(), fakes(help({ action })));
+    expect(answer).toMatchObject({ reply: action, handoff: false });
+    expect(familyPushes(fam)).toHaveLength(0);
   });
 });
 
@@ -1110,14 +1128,21 @@ describe("when the notice does not reach the family", () => {
     expect(answer.reply).toBe(`急がせる話があります。電話を切って家族に確かめて。${NOT_REACHED}`);
   });
 
-  it("does not leave '家族に伝えました' from Claude's basis in her answer when the notice did not reach them", async () => {
-    const fam = await setupFamily();
-    const budget = await failing(fam, "device", 1);
-    const said = scam({ level: 2, basis: "家族に伝えました。急がせる話があります。", action: "電話を切って家族に確かめて" });
-    const answer = await consult(consultEnv, motherOf(fam), POLICE_CALL, budget, fakes(said));
-    expect(answer.reply).not.toContain("家族に伝えました");
-    expect(answer.reply).toContain(NOT_REACHED);
-  });
+  // The handoff answer is `${basis}${SCAM_ACTION}。家族に伝えました`: a basis from Claude that says the
+  // family was told is not used, so nothing but NOT_REACHED is said about the family.
+  it.each([["家族に知らせました。急がせる話があります。"], ["家族に伝えました。急がせる話があります。"]])(
+    "answers a handoff with the fixed basis and 'not reached' when Claude's basis says %s",
+    async (basis) => {
+      const fam = await setupFamily();
+      const budget = await failing(fam, "device", 1);
+      const said = scam({ level: 2, basis, handoff: true });
+      const answer = await consult(consultEnv, motherOf(fam), "写真を全部消したいんだけど、どうすればいい？", budget, fakes(said));
+      expect(answer).toMatchObject({
+        reply: `詐欺の手口と似ているところがあります。お金や暗証番号の話には応じず、家族に確かめて。${NOT_REACHED}`,
+        handoff: true,
+      });
+    },
+  );
 
   it("replaces every '家族に伝えました' in an answer, not only the first", () => {
     expect(notReachedReply("家族に伝えました。家族に伝えました")).toBe(`${NOT_REACHED}。${NOT_REACHED}`);
