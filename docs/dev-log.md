@@ -341,3 +341,15 @@ App Store Connect の検査で4つ断られた。「A value for the Info.plist k
 ここまでシミュレータと実機には何度も入れていたが、アイコンが無いことはどこでも止まらなかった。アーカイブの確かめにも、アイコンと拡張の manifest の項目が無かった。
 
 作者と相談し、今夜は仮のアイコン(地の色に「み」の1文字)を `ios/App/Assets.xcassets` に1枚置き、`manifest.json` に説明の1行とアイコン5枚を足して、同じビルド番号で上げ直した。2回目は「Uploaded Mimamori」で通り、作者が審査の申請を押してビルド2は「審査待ち」になった。今その場で本番のアイコンを作る案は、審査の申請が遅れるので採らなかった。使ったのは `/mm-release`、`xcodebuild`、mm-reviewer。
+
+## 2026年11月4日 22:34 会話の続きで、ニセ警察の決まった答えが繰り返されかけた (#73)
+
+母の画面をチャットにし、前のやり取りを `POST /consult` の `history` で裏側に渡すところを作っていた。Issue には「ニセ警察の筋書きは、今の言葉と履歴の母の言葉を合わせて数える」と書いてあった。
+
+Claude Code(mm-implementer)には、親のセッションから「2回に分けて話しても1段階と決まった答えになる」テストを先に書くよう頼まれていた。
+
+合わせて数えるだけにすると、筋書きを一度話したあとは、「それってどういうこと?」と聞いても「詐欺で使われる説明と一致しています。送金せず、いったん電話を切って家族に確かめて」が毎回返る。60分のあいだ、何を聞いても同じ1行になる。
+
+2回目の言葉で筋書きが完成する場面だけを考えていて、3回目の問いかけまでは Issue に書いていなかった。
+
+今の言葉に筋書きの部品が1つでもあるときだけ合わせて数え、部品の無い問いかけは前のやり取りごと Claude に渡す形にした(`tellsPoliceScript`)。テスト「asks Claude, with the turns, when her new words add nothing to a script she already told」で確かめている。もう1つ、`make eval` は判定(Haiku)の指示文しか測っておらず、相談の指示文の変更は数字に出ないことも分かった。この作業の木では `ANTHROPIC_API_KEY` が環境に無く、`rules+claude` は「nothing was measured or recorded」で止まり、規則だけの1行(見逃し 17/53、誤判定 0/43)が残った。使ったのは mm-implementer、Vitest、claude-docs の MCP。
