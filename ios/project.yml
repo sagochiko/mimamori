@@ -61,6 +61,9 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIBackgroundModes: [remote-notification]
         ITSAppUsesNonExemptEncryption: false
+        # The voice consultation (task 12). Speech is turned into text on the iPhone; only the text is sent.
+        NSMicrophoneUsageDescription: マイクに話しかけた声で、スマホの困りごとや気になる電話の相談に答えるために使います。
+        NSSpeechRecognitionUsageDescription: 話しかけた声を iPhone の中で文字にするために使います。声そのものは送りません。
     entitlements:
       path: App/Mimamori.entitlements
       properties:

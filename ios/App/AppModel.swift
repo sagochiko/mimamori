@@ -19,9 +19,21 @@ final class AppModel {
   /// "家族から返事がまだ") changes without a new answer from the server.
   private(set) var now = Date.now
 
+  /// The voice consultation on the protected person's screen.
+  private(set) var voice = VoiceConsult()
+  /// "さっきの電話、大丈夫だった？" while a long call waits for an answer.
+  private(set) var followUpPrompt: String?
+
   @ObservationIgnored private let session: Session
   @ObservationIgnored private let announcer = ReplyAnnouncer(store: UserDefaultsSpokenStore())
   @ObservationIgnored private lazy var speaker = ReplySpeaker()
+  @ObservationIgnored private lazy var listener: VoiceListener = {
+    let listener = VoiceListener()
+    listener.onEvent = { [weak self] event in self?.listened(event) }
+    return listener
+  }()
+  @ObservationIgnored private var silenceWatch: Task<Void, Never>?
+  @ObservationIgnored private let followUp = CallFollowUp(store: UserDefaultsCallFollowUpStore())
 
   init(
     store: any DeviceKeyStore = KeychainDeviceKeyStore(),
@@ -116,6 +128,100 @@ final class AppModel {
   func speakAgain(_ reply: ProtectedNotice.Reply) {
     speaker.stop()
     speaker.speak(["\(reply.from)。\(reply.body)"])
+  }
+
+  // MARK: Voice consultation
+
+  /// The big microphone: starts listening, or stops it.
+  func micTapped() {
+    if case .listening = voice.phase {} else {
+      followUp.consultStarted()
+      followUpPrompt = nil
+    }
+    apply(voice.micTapped(at: .now))
+  }
+
+  private func listened(_ event: VoiceListener.Event) {
+    switch event {
+    case .partial(let text): apply(voice.heard(text, isFinal: false, at: .now))
+    case .final(let text): apply(voice.heard(text, isFinal: true, at: .now))
+    case .failed(let failure): apply(voice.listeningFailed(failure))
+    }
+  }
+
+  private func apply(_ effects: [ConsultEffect]) {
+    for effect in effects {
+      switch effect {
+      case .stopSpeaking:
+        speaker.handOver()
+      case .startListening:
+        #if DEBUG
+          if ScreenshotStubTransport.isRequested, let heard = ScreenshotStubTransport.heardText {
+            apply(voice.heard(heard, isFinal: true, at: .now))
+            continue
+          }
+        #endif
+        watchSilence()
+        Task { await listener.start() }
+      case .stopListening:
+        listener.stop()
+      case .send(let text):
+        silenceWatch?.cancel()
+        Task { await send(text) }
+      case .speak(let text):
+        speaker.speak([text])
+      }
+    }
+    if case .listening = voice.phase {} else { silenceWatch?.cancel() }
+  }
+
+  /// Twice a second while listening, so listening ends on its own when she stops talking.
+  private func watchSilence() {
+    silenceWatch?.cancel()
+    silenceWatch = Task { [weak self] in
+      while !Task.isCancelled {
+        try? await Task.sleep(for: .milliseconds(500))
+        guard let self, !Task.isCancelled else { return }
+        self.apply(self.voice.tick(at: .now))
+      }
+    }
+  }
+
+  private func send(_ text: String) async {
+    do {
+      let answer = try await session.consult(text: text)
+      apply(voice.answered(answer))
+      // The family was told: "家族に伝えました" shows up with the case.
+      if answer.handoff { await loadCases() }
+    } catch {
+      voice.sendFailed()
+    }
+  }
+
+  // MARK: Call follow-up
+
+  /// The single entry for whatever learns that a call ended (#25 decides what that is).
+  func callEnded(_ call: EndedCall) async {
+    switch followUp.callEnded(call) {
+    case .notifyNow:
+      await CallFollowUpNotifier.post()
+      refreshFollowUp()
+    case .askOnNextOpen:
+      refreshFollowUp()
+    case .nothing:
+      break
+    }
+  }
+
+  /// When the screen appears or the app comes to the front.
+  func refreshFollowUp() {
+    followUpPrompt = followUp.promptToShow(at: .now)
+  }
+
+  /// "大丈夫": nothing else happens.
+  func followUpFine() {
+    followUp.answeredFine()
+    followUpPrompt = nil
   }
 
   func accept(_ item: Case) async {

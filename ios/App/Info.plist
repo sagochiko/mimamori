@@ -28,6 +28,10 @@
 	<false/>
 	<key>MimamoriAPIBaseURL</key>
 	<string>https://$(MIMAMORI_API_HOST)</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>マイクに話しかけた声で、スマホの困りごとや気になる電話の相談に答えるために使います。</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>話しかけた声を iPhone の中で文字にするために使います。声そのものは送りません。</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

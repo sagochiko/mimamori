@@ -45,6 +45,15 @@ final class ReplySpeaker: NSObject, AVSpeechSynthesizerDelegate {
     if session.stopped() { release() }
   }
 
+  /// Stops reading and leaves the audio session to the microphone, which sets it up itself. A release
+  /// still pending from an earlier line is cancelled, so it cannot switch the recording off.
+  func handOver() {
+    releasing?.cancel()
+    releasing = nil
+    synthesizer.stopSpeaking(at: .immediate)
+    _ = session.stopped()
+  }
+
   nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
     let id = ObjectIdentifier(utterance)
     Task { @MainActor in self.ended(id) }
