@@ -14,8 +14,27 @@
       guard let i = args.firstIndex(of: "-mimamori-stub-heard"), i + 1 < args.count else { return nil }
       return args[i + 1]
     }
+    /// With `-mimamori-stub-joined protected` (or `family`), the app starts on that home screen
+    /// instead of role selection, so a screen can be shot without tapping through joining.
+    static var joinedAs: Credentials? {
+      guard let role = value(after: "-mimamori-stub-joined").flatMap(Role.init(rawValue:)) else { return nil }
+      // The stub's key lives in memory; a missing marker would clear it on the first refresh.
+      _ = marker.mark()
+      return Credentials(deviceKey: "dk-stub", memberId: "m-stub", familyId: "f-stub", role: role)
+    }
+    /// With `-mimamori-stub-draft <text>`, the text field starts with that text, ready to send.
+    static var draftText: String? { value(after: "-mimamori-stub-draft") }
     /// The stub keeps the key in memory, so the real marker file is left alone.
     static let marker = FileInstallMarker(url: URL.temporaryDirectory.appending(path: "mimamori-stub-installed"))
+    /// The conversation stays in memory too, so her real one is left alone. With
+    /// `-mimamori-stub-chat police` it starts with the fake-police question asked a few minutes ago.
+    static let chatStore = StubChatStore(seed: value(after: "-mimamori-stub-chat"))
+
+    private static func value(after flag: String) -> String? {
+      let args = ProcessInfo.processInfo.arguments
+      guard let i = args.firstIndex(of: flag), i + 1 < args.count else { return nil }
+      return args[i + 1]
+    }
 
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
       try await Task.sleep(for: .milliseconds(300))
@@ -33,7 +52,7 @@
         case ("PUT", "/members/me/apns"):
           (204, "")
         case ("POST", "/consult"):
-          (200, Self.consultAnswer(to: Self.field("text", in: request) ?? ""))
+          (200, Self.consultAnswer(to: Self.field("text", in: request) ?? "", hasHistory: Self.hasHistory(request)))
         case ("GET", "/cases"):
           (200, StubCases.shared.list())
         case ("POST", let p) where p.hasPrefix("/cases/"):
@@ -43,6 +62,14 @@
         }
       let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
       return (Data(body.utf8), response)
+    }
+
+    private static func hasHistory(_ request: URLRequest) -> Bool {
+      guard let data = request.httpBody,
+        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        let history = json["history"] as? [Any]
+      else { return false }
+      return !history.isEmpty
     }
 
     private static func field(_ key: String, in request: URLRequest) -> String? {
@@ -56,14 +83,19 @@
       String(decoding: try! JSONSerialization.data(withJSONObject: value), as: UTF8.self)
     }
 
-    /// The fake-police answer for anything about the police, otherwise the storage guidance.
-    private static func consultAnswer(to text: String) -> String {
+    /// The fake-police answer for anything about the police, a follow-up answer for "どういうこと"
+    /// when earlier turns came along (the server reads them, #73), otherwise the storage guidance.
+    private static func consultAnswer(to text: String, hasHistory: Bool) -> String {
       let police = "詐欺で使われる説明と一致しています。送金せず、いったん電話を切って家族に確かめて"
+      let followUp = "警察を名乗る相手が、口座のことでビデオ通話や送金を求めるのは、詐欺で使われる説明と一致しています。電話を切って、家族に確かめて"
       let storage = "設定の「一般」から「iPhone ストレージ」を開くと、空きを作れます。広告の掃除アプリは入れなくていいよ"
-      let reply = text.contains("警察") ? police : storage
+      let (reply, handoff): (String, Bool) =
+        if text.contains("警察") { (police, true) }
+        else if hasHistory && text.contains("どういう") { (followUp, false) }
+        else { (storage, false) }
       return json([
         "reply": reply, "speak": reply.replacingOccurrences(of: "「", with: "").replacingOccurrences(of: "」", with: ""),
-        "handoff": text.contains("警察"),
+        "handoff": handoff,
       ])
     }
 
@@ -78,6 +110,25 @@
       let data = try! JSONSerialization.data(withJSONObject: answer)
       return String(decoding: data, as: UTF8.self)
     }
+  }
+
+  /// Her conversation for the screenshots, in memory only.
+  final class StubChatStore: ChatLogStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var data: Data?
+
+    init(seed: String?) {
+      guard seed == "police" else { return }
+      var log = ChatLog()
+      let now = Date.now
+      log.append(.protected, "警察から電話があって、口座が犯罪に使われてるって。ほかの人には言わないでって", at: now.addingTimeInterval(-180))
+      log.append(.ai, "詐欺で使われる説明と一致しています。送金せず、いったん電話を切って家族に確かめて", at: now.addingTimeInterval(-175))
+      data = try? log.encoded()
+    }
+
+    func read() throws -> Data? { lock.withLock { data } }
+    func write(_ data: Data) throws { lock.withLock { self.data = data } }
+    func remove() throws { lock.withLock { data = nil } }
   }
 
   /// Made-up cases for the screenshots: one just sent to the family, one that did not reach any family
