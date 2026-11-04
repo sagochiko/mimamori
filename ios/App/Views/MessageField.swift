@@ -36,7 +36,9 @@ struct MessageField: UIViewRepresentable {
       // Not yet in a window on the first update; the next run loop turn it is.
       DispatchQueue.main.async { _ = view.becomeFirstResponder() }
     } else if !isFocused, view.isFirstResponder {
-      view.resignFirstResponder()
+      // Resigning can make the keyboard accept a correction and end editing, which writes `text`
+      // and `isFocused`; that must not happen in the middle of this update.
+      DispatchQueue.main.async { _ = view.resignFirstResponder() }
     }
   }
 
