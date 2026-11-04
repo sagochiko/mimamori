@@ -4,11 +4,21 @@
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { parseCases, type EvalCase } from "../../eval/lib/cases";
-import { claudeJudge, JudgeUnavailableError, loadJudge, unavailableJudge } from "../../eval/lib/judge";
-import { countRunsOn, percentile, resultsRow, scoreRun } from "../../eval/lib/score";
+import {
+  claudeJudge,
+  type ConsultJudge,
+  type Judge,
+  JudgeUnavailableError,
+  loadConsultJudge,
+  loadJudge,
+  unavailableConsultJudge,
+  unavailableJudge,
+} from "../../eval/lib/judge";
+import { countRunsOn, judgeCases, percentile, resultsRow, scoreRun, toRuleInput } from "../../eval/lib/score";
 import { planSplit, type PatternFile } from "../../eval/lib/split-plan";
 import type { ClaudeJudgment } from "../src/claude";
-import type { RuleResult } from "../src/rules";
+import type { ClaudeConsult } from "../src/consult-judge";
+import { judgeByRules, type RuleResult } from "../src/rules";
 import { network } from "./network";
 
 function line(overrides: Partial<EvalCase> = {}): string {
@@ -248,5 +258,146 @@ describe("judge", () => {
     const judge = loadJudge("eval-test-key");
     expect(await judge({ source: "sms", text: "x" }, undecided)).toEqual({ level: 2, checking: false });
     expect(keys).toEqual(["eval-test-key"]);
+  });
+});
+
+// Consultations are scored on the path POST /consult takes (#74): the fake-police script from the
+// rules alone, otherwise the rules and the consultation Claude (Sonnet), not the judge queue's.
+describe("judgeCases", () => {
+  const evalCase = (overrides: Partial<EvalCase>): EvalCase => ({
+    id: "x-1",
+    source: "consult",
+    sender: null,
+    domain: null,
+    text: null,
+    url: null,
+    expected_level: 1,
+    is_scam: true,
+    note: "self-written",
+    ...overrides,
+  });
+  // A caller who says he is the police and the account part: the script, so level 1 without Claude.
+  // The rules alone put this text at 2, so only the consultation path makes it 1.
+  const SCRIPT = "警察から電話があって、口座が犯罪に使われてるって言われたの";
+  const NOTHING = "Wi-Fi がつながらないの";
+  const refuse: Judge = async () => {
+    throw new Error("the judge queue's Claude was asked");
+  };
+  const refuseConsult: ConsultJudge = async () => {
+    throw new Error("the consultation Claude was asked");
+  };
+  const scamAnswer: ClaudeConsult = {
+    kind: "scam",
+    level: 2,
+    reasons: ["知らない相手からの電話"],
+    basis: "詐欺の手口と似ているところがあります。",
+    action: "電話を切って家族に確かめて",
+    handoff: false,
+    injection_suspected: false,
+    topic: "電話の相談",
+  };
+
+  it("puts a consultation that tells the script at level 1 in the rules row, without Claude", async () => {
+    expect(judgeByRules({ source: "consult", text: SCRIPT }).level).toBe(2);
+    const [scored] = await judgeCases([evalCase({ text: SCRIPT })], "rules", { judge: refuse, consult: refuseConsult });
+    expect(scored).toMatchObject({ level: 1, rule_level: 2, consult_script: true });
+    expect(scored).not.toHaveProperty("claude_answered");
+  });
+
+  it("keeps the rules' level for other consultations in the rules row, not the level 2 sent when Claude fails", async () => {
+    const [scored] = await judgeCases([evalCase({ text: NOTHING, is_scam: false, expected_level: null })], "rules", {
+      judge: refuse,
+      consult: refuseConsult,
+    });
+    expect(scored).toMatchObject({ level: null, rule_level: null, consult_script: false });
+  });
+
+  it("scores SMS, mail, and pages by the rules alone as before, even when they tell the script", async () => {
+    const others = (["sms", "gmail", "page"] as const).map((source) => evalCase({ id: source, source, text: SCRIPT }));
+    const scored = await judgeCases(others, "rules", { judge: refuse, consult: refuseConsult });
+    for (const [i, c] of others.entries()) {
+      const rule = judgeByRules(toRuleInput(c));
+      expect(rule.level).not.toBe(1);
+      expect(scored[i]).toMatchObject({ level: rule.level, rule_level: rule.level, confident: rule.confident, reasons: rule.reasons });
+      expect(scored[i]).not.toHaveProperty("consult_script");
+    }
+  });
+
+  it("does not ask Claude for the script in rules+claude, as POST /consult does not", async () => {
+    const [scored] = await judgeCases([evalCase({ text: SCRIPT })], "rules+claude", { judge: refuse, consult: refuseConsult });
+    expect(scored).toMatchObject({ level: 1, consult_script: true });
+    expect(scored).not.toHaveProperty("claude_answered");
+  });
+
+  it("asks the consultation Claude, not the judge queue's, for other consultations in rules+claude", async () => {
+    const asked: unknown[] = [];
+    const consult: ConsultJudge = async (text, rule) => {
+      asked.push([text, rule]);
+      return scamAnswer;
+    };
+    const [scored] = await judgeCases([evalCase({ text: NOTHING })], "rules+claude", { judge: refuse, consult });
+    expect(scored).toMatchObject({ level: 2, consult_script: false, claude_answered: true });
+    expect(asked).toEqual([[NOTHING, judgeByRules({ source: "consult", text: NOTHING })]]);
+  });
+
+  it("combines the consultation answer as POST /consult does: level 3 help stays with her", async () => {
+    const help: ClaudeConsult = { ...scamAnswer, kind: "help", level: 3, reasons: [], basis: "", action: "設定を開いて Wi-Fi を選んで" };
+    const [scored] = await judgeCases([evalCase({ text: NOTHING, is_scam: false, expected_level: null })], "rules+claude", {
+      judge: refuse,
+      consult: async () => help,
+    });
+    expect(scored).toMatchObject({ level: 3, claude_answered: true });
+  });
+
+  it("counts level 2 when the consultation Claude gives nothing, since the family is told then", async () => {
+    const [scored] = await judgeCases([evalCase({ text: NOTHING })], "rules+claude", {
+      judge: refuse,
+      consult: async () => null,
+    });
+    expect(scored).toMatchObject({ level: 2, claude_answered: false });
+  });
+
+  it("keeps the judge queue's Claude for SMS, mail, and pages in rules+claude", async () => {
+    const seen: string[] = [];
+    const judge: Judge = async (input) => {
+      seen.push(input.source);
+      return { level: 2, checking: false };
+    };
+    const others = (["sms", "gmail", "page"] as const).map((source) => evalCase({ id: source, source, text: SCRIPT }));
+    const scored = await judgeCases(others, "rules+claude", { judge, consult: refuseConsult });
+    expect(seen).toEqual(["sms", "gmail", "page"]);
+    expect(scored.map((c) => c.level)).toEqual([2, 2, 2]);
+  });
+
+  it("stops clearly without an API key for consultations too", async () => {
+    for (const key of [undefined, ""]) {
+      await expect(loadConsultJudge(key)(NOTHING, judgeByRules({ source: "consult", text: NOTHING }))).rejects.toThrow(
+        JudgeUnavailableError,
+      );
+    }
+    await expect(
+      judgeCases([evalCase({ text: NOTHING })], "rules+claude", { judge: refuse, consult: unavailableConsultJudge }),
+    ).rejects.toThrow(JudgeUnavailableError);
+  });
+
+  it("calls the consultation model with the key it was given", async () => {
+    const seen: Array<{ key: string | null; model: unknown }> = [];
+    network.use(
+      http.post("https://api.anthropic.com/v1/messages", async ({ request }) => {
+        const body = (await request.json()) as { model: unknown };
+        seen.push({ key: request.headers.get("x-api-key"), model: body.model });
+        return HttpResponse.json({
+          id: "msg_test",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-5-5",
+          content: [{ type: "text", text: JSON.stringify(scamAnswer) }],
+          stop_reason: "end_turn",
+        });
+      }),
+    );
+    const answer = await loadConsultJudge("eval-test-key")(NOTHING, judgeByRules({ source: "consult", text: NOTHING }));
+    expect(answer).toEqual(scamAnswer);
+    expect(seen).toEqual([{ key: "eval-test-key", model: "claude-sonnet-5-5" }]);
   });
 });
