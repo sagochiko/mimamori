@@ -6,9 +6,15 @@
 // Who gets told depends only on the level and the family's members, never on Claude's answer or the
 // received text (.claude/rules/server.md).
 //
-// A notice that did not get through is retried with the queue message: the message id is the alert
-// id, and a redelivered message whose alert row exists only does what is left (the mother's push,
-// opening the case), without asking Claude again or telling anyone twice.
+// A notice that did not get through is retried with the queue message. enqueueJudge makes the alert
+// id and puts it in the message body, and a redelivered body whose alert row exists only does what is
+// left (the mother's push, opening the case), without asking Claude again or telling anyone twice.
+//
+// The alert id is not the queue message id. Cloudflare documents Message.id only as "A unique,
+// system-generated ID for the message" (Queues, JavaScript APIs) and, for pull consumers, as "a
+// unique, read-only ephemeral identifier for the message"; neither says it stays the same when the
+// message is retried. Queues "offers at-least once delivery" (Workers, Storage options), so the same
+// body can come more than once, and the id it carries is what makes that harmless.
 
 import { ExternalBudget } from "./budget";
 import { CaseNoticeDeferred, openCase } from "./cases";
@@ -36,6 +42,11 @@ export interface JudgeJob {
   familyId: string;
   source: AlertSource;
   payload: JudgePayload;
+}
+
+/** What enqueueJudge puts on JUDGE_QUEUE: the job and the id its alerts row will have. */
+export interface JudgeMessageBody extends JudgeJob {
+  alertId: string;
 }
 
 export interface JudgeDeps {
@@ -84,9 +95,15 @@ function optionalString(value: unknown, max: number): string | undefined | null 
   return cut(value, max);
 }
 
-function parseJob(body: unknown): JudgeJob | null {
+/** The form crypto.randomUUID() gives. Upper case is refused so one alert cannot have two spellings. */
+const ALERT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+function parseJob(body: unknown): JudgeMessageBody | null {
   if (typeof body !== "object" || body === null) return null;
-  const { familyId, source, payload } = body as Record<string, unknown>;
+  const { alertId, familyId, source, payload } = body as Record<string, unknown>;
+  // A body without an alert id is dropped rather than given one here: a redelivery of it would get a
+  // second id and so a second alert and second notices. Nothing of that older shape was ever deployed.
+  if (typeof alertId !== "string" || !ALERT_ID.test(alertId)) return null;
   if (typeof familyId !== "string" || familyId === "") return null;
   if (!ALERT_SOURCES.includes(source as AlertSource)) return null;
   if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return null;
@@ -102,12 +119,15 @@ function parseJob(body: unknown): JudgeJob | null {
     if (value === null) return null;
     if (value !== undefined) out[key] = value;
   }
-  return { familyId, source: source as AlertSource, payload: out };
+  return { alertId, familyId, source: source as AlertSource, payload: out };
 }
 
-/** Puts a judgment job on JUDGE_QUEUE. Throws on a job of the wrong shape. */
+/**
+ * Puts a judgment job on JUDGE_QUEUE with a new alert id, which the consumer uses for the alerts row.
+ * Throws on a job of the wrong shape.
+ */
 export async function enqueueJudge(env: Env, job: JudgeJob): Promise<void> {
-  const parsed = parseJob(job);
+  const parsed = parseJob({ ...job, alertId: crypto.randomUUID() });
   if (!parsed) throw new Error("invalid judge job");
   await env.JUDGE_QUEUE.send(parsed);
 }
@@ -279,9 +299,12 @@ async function judgeOne(
   deps: JudgeDeps,
 ): Promise<Outcome> {
   const job = parseJob(message.body);
-  if (!job) return "done";
-  // The queue message id doubles as the alert id, so a redelivered message writes nothing twice.
-  const alertId = message.id;
+  if (!job) {
+    console.error("judge job dropped", "bad_shape");
+    return "done";
+  }
+  // The id from the body, so a redelivered body writes nothing twice (see the top of this file).
+  const alertId = job.alertId;
   const stored = await env.DB.prepare(
     `SELECT a.level, a.reasons, a.claude_level, a.notified, a.protected_notified_at,
             c.id AS case_id, c.family_notified_at

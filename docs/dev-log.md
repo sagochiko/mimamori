@@ -236,3 +236,14 @@ Claude の待ちは最長15秒(`CLAUDE_TIMEOUT_MS`)。待っているあいだ�
 受け持ちを決めれば、家族が二重に動いたり誰も動かなかったりするのを防げると思っていた。でも詐欺の電話の最中に家族が本当にするのは母への電話で、アプリの中の1通の返事は電話より弱い。返事が来ると母は声で返したくなり、そこに穴が生まれていた。
 
 作者は2026年11月4日に、引き受けと返事を外し、家族は全員が同じカードを見て、電話で話した人が「解決」を押す形にすると決めた。`POST /cases/{id}/accept` と `/relay` は 404 にし、本番の D1 を変えないよう列と表は残した。母の言葉の抜粋は、決まった1行か Claude が書く20字以内の `topic`、SMS などは経路、理由、ドメインから作る1行に替え、Claude の行が元の文を8字続けて写していたら使わない。家族だけで無料なら届出は要らないと読んで返事を残す案もあったが、審査員の使い方に例が無く、電話より弱い機能のために心配を抱えないほうを選んだ。使ったのは mm-implementer、`npx vitest run`、`swift test`、WebSearch と WebFetch(マニュアルの確認)、pdftotext。
+## 2026年11月4日 キューのメッセージの ID を知らせの ID にしていた (#53)
+
+判定のキュー(`server/src/judge.ts`)で、家族への知らせが届かなかったときにメッセージをやり直し、同じ知らせを2回書かず2回送らない作りを直していた。それまでは受け手がキューのメッセージの ID をそのまま `alerts` の行の ID にしていた。
+
+PR #41 の2回目のレビューで、レビュー役(mm-reviewer)が Cloudflare の文書の MCP で `Message.id` の説明を引いた。実装役には「`enqueueJudge` が `crypto.randomUUID()` で知らせの ID を作って本文に入れ、受け手はそれを使う。Queues の再配送と ID の扱いは記憶で書かず文書で確かめる」と頼んだ。
+
+文書の Queues の JavaScript API は `id` を「A unique, system-generated ID for the message.」、Pull Consumers は「a unique, read-only ephemeral identifier for the message.」とだけ書いていて、やり直しで変わらないとはどこにも書いていない。一方で Queues は「at-least once delivery」とある。テストは `createMessageBatch` に自分で同じ ID を渡していたので、ID が変わる場合を一度も試していなかった。
+
+やり直しでは同じ ID で届くものと思って計画のタスク6にもそう書いていた。ID が変わると、やり直しが新しい知らせとして扱われ、Claude をもう一度呼び、母と家族に2回知らせうる。
+
+本文に ID を入れ、受け手は `parseJob` で UUID の形を確かめてから使う形にした。テストのやり直しはすべて新しいメッセージの ID で届くように変え、直す前のコードでは13件落ちた。ID の無い古い形の本文は、その場で ID を作るとやり直しのたびに別の知らせになるので、捨てることにした。デプロイ前でキューに古い形は無い。デプロイした Worker でわざとやり直させて ID を比べる案は、作者の手が要り、確かめても文書の保証にはならないので採らなかった。使ったのは mm-implementer、Cloudflare の文書の MCP、`npx vitest run`。
