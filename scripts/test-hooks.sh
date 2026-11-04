@@ -529,10 +529,45 @@ grep -q -- '--model fable' .claude/skills/mm-autopilot/SKILL.md ||
   { echo "skill test failed: mm-autopilot moves to a Fable main session"; fail=1; }
 # The handoff waits for the new window's first turn, not just its process: a Fable window can sit at the
 # consent prompt, or its first prompt may not run the skill, and the old session must not stop then.
-grep -q 'Base directory for this skill: $repo/.claude/skills/mm-autopilot' .claude/skills/mm-handoff/SKILL.md &&
-  grep -q '"type":"assistant"' .claude/skills/mm-handoff/SKILL.md &&
+grep -q 'scripts/handoff-started.sh" before ' .claude/skills/mm-handoff/SKILL.md &&
+  grep -q 'scripts/handoff-started.sh" check ' .claude/skills/mm-handoff/SKILL.md &&
+  grep -q 'Base directory for this skill: $repo/.claude/skills/mm-autopilot' .claude/skills/mm-handoff/SKILL.md &&
   ! grep -q 'pgrep -fl "mimamori-handoff-$stamp.md" && exit 0' .claude/skills/mm-handoff/SKILL.md ||
-  { echo "skill test failed: mm-handoff waits for the new session's first turn in its transcript"; fail=1; }
+  { echo "skill test failed: mm-handoff waits for the new session's first turn with scripts/handoff-started.sh"; fail=1; }
+# handoff-started.sh on made-up transcripts. The old session's own transcript holds the brief, Claude's
+# answers, and the skill line too, so only transcripts missing from the list taken before the launch count.
+# An API error is kept as an assistant line (isApiErrorMessage), so a first turn needs a tool call.
+hs=scripts/handoff-started.sh hp=$T/projects brief=$T/mimamori-handoff-X.md
+sk="Base directory for this skill: /r/.claude/skills/mm-autopilot"
+mkdir -p "$hp"
+u() { jq -nc --arg t "$1" '{type:"user",message:{role:"user",content:$t}}'; }
+a_tool='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"CONDITIONS.md"}}]}}'
+a_err='{"type":"assistant","isApiErrorMessage":true,"message":{"role":"assistant","content":[{"type":"text","text":"API Error: 500"}]}}'
+hsx() { # <expected exit> <label> <args...>
+  local want=$1 label=$2; shift 2
+  "$hs" "$@" >/dev/null 2>&1
+  local got=$?
+  [[ $got -eq $want ]] || { echo "handoff test failed: $label (expected $want, got $got)"; fail=1; }
+}
+"$hs" before "$T/no-such-folder" "$T/before-empty" && [[ -f "$T/before-empty" && ! -s "$T/before-empty" ]] ||
+  { echo "handoff test failed: the list before the launch is an empty file when there is no transcript yet"; fail=1; }
+hsx 1 "no transcript at all is not a start" check "$T/no-such-folder" "$T/before-empty" "$brief" "$sk"
+{ u "/mm-autopilot $brief"; u "$sk"; echo "$a_tool"; } >"$hp/old.jsonl"
+"$hs" before "$hp" "$T/before"
+hsx 1 "the old session's own transcript is not the new one" check "$hp" "$T/before" "$brief" "$sk"
+hsx 2 "without the list taken before the launch, nothing counts" check "$hp" "$T/before-missing" "$brief" "$sk"
+{ u "/mm-autopilot $brief"; u "$sk"; echo "$a_err"; } >"$hp/new.jsonl"
+hsx 1 "an API error is not a first turn" check "$hp" "$T/before" "$brief" "$sk"
+{ u "/mm-autopilot $brief"; echo "$a_tool"; } >"$hp/new.jsonl"
+hsx 1 "the autopilot window did not load its skill" check "$hp" "$T/before" "$brief" "$sk"
+{ u "/mm-autopilot $brief"; u "$sk"; echo "$a_err"; echo "$a_tool"; printf '{"type":"assis'; } >"$hp/new.jsonl"
+hsx 0 "a tool call after the skill line is a first turn, even next to a half-written line" check "$hp" "$T/before" "$brief" "$sk"
+[[ "$("$hs" check "$hp" "$T/before" "$brief" "$sk")" == "$hp/new.jsonl" ]] ||
+  { echo "handoff test failed: check prints the new transcript"; fail=1; }
+{ u "$brief を読んで"; echo "$a_tool"; } >"$hp/new.jsonl"
+hsx 0 "the Opus line needs no skill line" check "$hp" "$T/before" "$brief" ""
+{ u "another session"; echo "$a_tool"; } >"$hp/new.jsonl"
+hsx 1 "a new session that never read this brief is not the one" check "$hp" "$T/before" "$brief" ""
 # A session that a handoff started does not hand over again when it did not get Fable.
 grep -q 'do not hand over again' .claude/skills/mm-autopilot/SKILL.md ||
   { echo "skill test failed: mm-autopilot does not chain handoffs"; fail=1; }
