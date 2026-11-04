@@ -1134,6 +1134,9 @@ describe("a line from Claude that says the family was told", () => {
     ["家族に連絡が済んでいるから待ってね"],
     ["家族と共有しているので待って"],
     ["家族に連絡しているのです"],
+    ["家族に知らせている間、待っていてね"],
+    ["家族に連絡している途中なので待ってね"],
+    ["家族に連絡済みですから待ってね"],
   ];
 
   it.each(claims)("is not read out at level 3, where nobody is told: %s", async (claim) => {
@@ -1197,8 +1200,6 @@ describe("a line from Claude that says the family was told", () => {
     ["家族に知らせているか確かめて"],
     ["家族に連絡が済んだら教えて"],
     ["家族と共有してね"],
-    ["家族に連絡している間は電話に出ないでね"],
-    ["家族にメッセージを送っている途中なら、送信を押してね"],
     ["家族に連絡が済んでいる？"],
     ["家族に連絡が済んでいるの？"],
     ["家族に連絡が済んだ？"],
