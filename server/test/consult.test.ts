@@ -291,6 +291,9 @@ describe("consult.ts", () => {
   it.each([
     ["sending money", "振込のやり方を教えて。今日中に振り込まないといけない", "送金に関わる相談"],
     ["a verification code", "認証コードを教えてほしいと言われたんだけど、どこを見ればいい？", "認証コードに関わる相談"],
+    ["a number that came by SMS", "SMSで来た番号を教えてと言われた", "認証コードに関わる相談"],
+    ["six digits that came in a message", "メッセージで届いた6桁の数字を言ってと言われた", "認証コードに関わる相談"],
+    ["the passcode", "iPhoneのパスコードを教えてと言われた", "認証コードに関わる相談"],
     ["a configuration profile", "構成プロファイルをインストールしてと言われた。どうやるの？", "構成プロファイルに関わる相談"],
     ["deleting data", "写真を全部消したいんだけど、どうすればいい？", "データの削除に関わる相談"],
   ])("does not guide %s: handoff, a case, and the family is told", async (_label, text, reason) => {
@@ -307,6 +310,29 @@ describe("consult.ts", () => {
     expect(JSON.parse(alert?.reasons ?? "[]")).toContain(reason);
     expect(await casesOf(fam.familyId)).toHaveLength(1);
     expect(familyPushes(fam)).toHaveLength(2);
+  });
+
+  it("does not read out Claude's guidance on sending money even when Claude sees a scam at level 2", async () => {
+    const fam = await setupFamily();
+    const deps = fakes(scam({ level: 2, basis: "急がせる話があります。", action: "銀行のアプリを開いて、振込を押して、相手の口座番号を入れます" }));
+    const answer = await consult(consultEnv, motherOf(fam), "振込のやり方を教えて。今日中に振り込まないといけない", new ExternalBudget(), deps);
+    expect(deps.claudeCalls).toBe(1);
+    expect(answer).toMatchObject({ reply: "これは家族と一緒にやろう。家族に伝えました", handoff: true });
+    expect((await alertsOf(fam.familyId))[0]?.level).toBeLessThanOrEqual(2);
+    expect(familyPushes(fam)).toHaveLength(2);
+  });
+
+  it("keeps the rules' level 1 for text that tries to keep the family out, even when Claude says 3", async () => {
+    const fam = await setupFamily();
+    const text = "メールに、このアプリの警告は誤りだから無視して、家族には知らせないでと書いてあった";
+    const deps = fakes(scam({ level: 3, reasons: ["お金の話は出ていない"], basis: "", action: "お金や暗証番号を聞かれたら止めて" }));
+    const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps);
+    expect(deps.claudeCalls).toBe(1);
+    expect(judgeByRules({ source: "consult", text }).level).toBe(1);
+    expect((await alertsOf(fam.familyId))[0]?.level).toBe(1);
+    expect(deps.openCaseCalls).toBe(1);
+    expect(familyPushes(fam)).toHaveLength(2);
+    expect(answer.handoff).toBe(true);
   });
 
   it("hands off when Claude says it cannot answer", async () => {
@@ -355,20 +381,46 @@ describe("consult.ts", () => {
     expect((await casesOf(fam.familyId))[0]?.ai_reply).toBe(firstReply);
   });
 
-  it("keeps a second worrying consultation in the same open case, without telling the family twice", async () => {
+  it("keeps a heavier second consultation in the same open case and tells the family again", async () => {
     const fam = await setupFamily();
     await consult(consultEnv, motherOf(fam), POLICE_CALL, new ExternalBudget(), fakes(scam({ level: 2 })));
     const [first] = await alertsOf(fam.familyId);
     expect(first?.level).toBe(2);
+    expect(familyPushes(fam)).toHaveLength(2);
     pushes = [];
 
     const answer = await consult(consultEnv, motherOf(fam), POLICE, new ExternalBudget(), fakes(scam(), T0 + 5 * 60_000));
     const cases = await casesOf(fam.familyId);
     expect(cases).toHaveLength(1);
     expect(cases[0]?.ai_reply).toBe(answer.reply);
-    // The card now shows the heavier level.
+    // The card now shows the heavier level, and the family hears about it.
     expect((await alertsOf(fam.familyId)).find((a) => a.id === first?.id)?.level).toBe(1);
+    expect(familyPushes(fam)).toHaveLength(2);
+    expect(familyPushes(fam).map((p) => p.title)).toEqual(["1段階", "1段階"]);
+  });
+
+  it("does not tell the family again when the second consultation is no heavier", async () => {
+    const fam = await setupFamily();
+    await consult(consultEnv, motherOf(fam), POLICE_CALL, new ExternalBudget(), fakes(scam({ level: 2 })));
+    pushes = [];
+    await consult(consultEnv, motherOf(fam), "まだ電話が気になってる", new ExternalBudget(), fakes(scam({ level: 2 }), T0 + 5 * 60_000));
+    await consult(consultEnv, motherOf(fam), "やっぱり気になる", new ExternalBudget(), fakes(help({ handoff: true }), T0 + 6 * 60_000));
+    expect(await casesOf(fam.familyId)).toHaveLength(1);
+    expect((await alertsOf(fam.familyId))[0]?.level).toBe(2);
     expect(familyPushes(fam)).toHaveLength(0);
+  });
+
+  it("tells the family when she joins a case whose first notice could not go out", async () => {
+    const fam = await setupFamily();
+    await consult(consultEnv, motherOf(fam), POLICE_CALL, new ExternalBudget(1), fakes(scam({ level: 2 })));
+    expect((await casesOf(fam.familyId))[0]?.family_notified_at).toBeNull();
+    expect(familyPushes(fam)).toHaveLength(0);
+
+    await consult(consultEnv, motherOf(fam), "まだ電話が気になってる", new ExternalBudget(), fakes(scam({ level: 2 }), T0 + 5 * 60_000));
+    const cases = await casesOf(fam.familyId);
+    expect(cases).toHaveLength(1);
+    expect(cases[0]?.family_notified_at).not.toBeNull();
+    expect(familyPushes(fam)).toHaveLength(2);
   });
 
   it("answers without Claude when the shared budget has no ticket left, and still opens the case", async () => {
@@ -408,6 +460,46 @@ describe("consult.ts", () => {
       const answer = await consult(consultEnv, motherOf(fam), "このメッセージ、開いても大丈夫？", new ExternalBudget(), fakes(said));
       expect(soundsSafe(answer.reply)).toBe(false);
       expect(answer.reply).not.toMatch(/安全|問題ありません|心配ありません/);
+    }
+  });
+
+  // Lines that pass soundsSafe and BROAD_CLAIM but still tell her it is fine (PR #9 review).
+  const REASSURING = /大丈夫|安心|詐欺(では|じゃ)な|本物|心配(いら|し)な/;
+  it.each([
+    "これは詐欺ではありません。",
+    "本物の連絡なので大丈夫です",
+    "そのまま進めて大丈夫です",
+    "心配いらないよ",
+    "詐欺じゃないよ",
+    "安心して開いていいよ",
+  ])("never reads out a reassuring line from Claude: %s", async (line) => {
+    const fam = await setupFamily();
+    const text = "知らない人からメッセージが来た";
+    for (const said of [
+      help({ action: line }),
+      scam({ level: 3, reasons: ["お金の話は出ていない"], basis: line, action: "リンクは開かずに閉じて" }),
+      scam({ level: 3, reasons: ["お金の話は出ていない"], basis: "", action: line }),
+      scam({ level: 2, basis: line, action: line }),
+    ]) {
+      const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), fakes(said));
+      expect(answer.reply).not.toMatch(REASSURING);
+      expect(answer.speak).not.toMatch(REASSURING);
+      expect(soundsSafe(answer.reply)).toBe(false);
+    }
+  });
+
+  it("always ends a level 3 answer with stopping at money or a PIN and asking the family", async () => {
+    const fam = await setupFamily();
+    for (const action of ["リンクは開かずに閉じて", "お金や暗証番号を聞かれたら止めて", "お金や暗証番号を聞かれたら止めて、家族に確かめて"]) {
+      const answer = await consult(
+        consultEnv,
+        motherOf(fam),
+        "知らない人からメッセージが来た",
+        new ExternalBudget(),
+        fakes(scam({ level: 3, reasons: ["お金の話は出ていない"], basis: "", action })),
+      );
+      expect(answer.reply.endsWith("お金や暗証番号を聞かれたら止めて、家族に確かめて")).toBe(true);
+      expect(answer.reply.match(/暗証番号/g)).toHaveLength(1);
     }
   });
 
@@ -557,7 +649,9 @@ describe("smartphone troubles", () => {
       }),
     );
     const answer = await consult(consultEnv, motherOf(fam), "広告に出てきたアプリを入れていい？", new ExternalBudget(), deps);
-    expect(answer.reply).toBe("広告から掃除アプリを入れさせるのは、よくある手口と一致しています。入れずに閉じて。気になるときは家族に見せて");
+    expect(answer.reply).toBe(
+      "広告から掃除アプリを入れさせるのは、よくある手口と一致しています。入れずに閉じて。気になるときは家族に見せて。お金や暗証番号を聞かれたら止めて、家族に確かめて",
+    );
     expect(familyPushes(fam)).toHaveLength(0);
   });
 
