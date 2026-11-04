@@ -304,7 +304,19 @@ deny を足していけば塞がると思っていた。短いフラグは `-fu`
 
 ハーネスは Claude Code が自分で直してきたので、この書き換えも同じように通ると思っていた。緩める変更(ask を消す)と強める変更(main への push を止める)が混ざった書き換えは、分類器から見ると自分を縛る仕組みをほどく操作に見えた。
 
-3回目のレビューまでの形(デプロイ、秘密の登録、本番の D1 のマイグレーション、`gh api` の読み取りは確認なし)を先にマージし、方針の切り替えは作者が手で当てることにした。途中までの差分はリポジトリの外に保存した。手動のモードに切り替えて書き換えを1つずつ承認する案もあったが、作者がその間 PC の前にいる必要があるので採らなかった。GitHub のブランチの保護で main を守る案は、非公開のリポジトリでは「Upgrade to GitHub Pro or make this repository public to enable this feature.」と返って使えず、公開のときに入れることにした。使ったのは mm-implementer、mm-reviewer、auto mode、PreToolUse フック。
+3回目のレビューまでの形(デプロイ、秘密の登録、本番の D1 のマイグレーション、`gh api` の読み取りは確認なし)を先にマージし、方針の切り替えはあとで手で当てることにした。途中までの差分はリポジトリの外に保存した。手動のモードに切り替えて書き換えを1つずつ承認する案もあったが、作者がその間 PC の前にいる必要があるので採らなかった。GitHub のブランチの保護で main を守る案は、非公開のリポジトリでは「Upgrade to GitHub Pro or make this repository public to enable this feature.」と返って使えず、公開のときに入れることにした。使ったのは mm-implementer、mm-reviewer、auto mode、PreToolUse フック。
+
+## 2026年11月4日 19:40 母を App Store Connect に招待すると Apple のサーバーが 500 を返した (#26)
+
+母を TestFlight の内部テスターにするため、App Store Connect のユーザーとして招待していた。内部テストなら Apple の審査を待たずに配れる。
+
+Claude Code には、招待の画面を開いて役割を Marketing、見られるアプリを mimamori だけにするところまで進めてもらい、作者が名前と母のアドレスを入れた。
+
+「招待」を押すと、3回とも「エラーが発生しました。しばらくしてからもう一度お試しください。」で止まった。21時ごろにもう一度押してブラウザの通信を見ると、`POST /iris/v1/userInvitations` は 500 で、本文は `"code": "UNEXPECTED_ERROR"`、「An unexpected error occurred on the server side.」だった。送っている中身(役割 `MARKETING`、`allAppsVisible: false`、見られるアプリ1つ)は正しい形で、Apple のシステムの状況にも障害は出ていなかった。
+
+招待は名前とアドレスを入れれば通ると思っていた。母の Apple アカウントには、サインインに使えるアドレスが3つあり、送り先は主要のアドレスではない。これが関係しているかもしれないが、確かめていない。主要のアドレスは母が読んでいないので、通ると読めない場所に招待が届く。
+
+母も審査員と同じ外部テストのグループに入れ、メールで招待した。外部テストのテスターは App Store Connect のユーザーでなくてよいが、最初のビルドの Beta App Review が通るまでは届かない。内部の招待は、同じ中身を30分おきに送り直している。使ったのは Claude in Chrome(ページの中で通信を記録する JavaScript)、`/mm-release`。
 
 ## 2026年11月4日 19:50 最初のデプロイで Cron だけが登録できなかった
 
@@ -314,21 +326,9 @@ deny を足していけば塞がると思っていた。短いフラグは `-fu`
 
 Worker、D1(マイグレーション3つ)、R2、キューはどれも通り、`https://mimamori.sago3.workers.dev` で答えた。Cron だけは「This account has reached the Workers Free limit of 5 cron triggers per account. Upgrade to Workers Paid to increase this limit to 1,000」で失敗した。アカウントの5つの枠は、作者の別のプロジェクトの Worker が使い切っていた。動作の確かめでは、招待のコードの試行を23回続けて送っても 429 が出ず、回数制限が効いていないことも分かった(#67)。
 
-Cron の上限は Worker ごとだと思っていた。上限はアカウント全体で数えるので、ほかのプロジェクトの Worker の状態が mimamori の動きを決めていた。Cron が無いと、知らせの送り直し、30分の見張り、30日の自動削除がどれも動かない。
+Cron がアカウント全体で5つまでなのは分かっていて、mimamori の Cron は1つにまとめていた(`docs/plan.md`)。ただ、その5つがもう埋まっているかは、デプロイの前に見ていなかった。Cron が無いと、知らせの送り直し、30分の見張り、30日の自動削除がどれも動かない。
 
-作者が、もう動かしていない別の Worker の Cron を外すと決め、Claude が Cloudflare の API で3つ外してから `npx wrangler triggers deploy` で mimamori の `*/5 * * * *` を登録した。有料プランに上げる案と、Cron を使わずキューの遅延メッセージで見張りを予約する案もあった。前者はお金がかかり、後者は実装とレビューで数時間かかるので採らなかった。使ったのは `/mm-deploy`、`wrangler`、Claude in Chrome。
-
-## 2026年11月4日 19:40 母を App Store Connect に招待すると Apple のサーバーが 500 を返した (#26)
-
-母を TestFlight の内部テスターにするため、App Store Connect のユーザーとして招待していた。内部テストなら Apple の審査を待たずに配れる。
-
-Claude Code には、招待の画面を開いて役割を Marketing、見られるアプリを mimamori だけにするところまで進めてもらい、作者が名前と母のアドレスを入れた。
-
-「招待」を押すと、3回とも「エラーが発生しました。しばらくしてからもう一度お試しください。」で止まった。ブラウザの通信を見ると、`POST /iris/v1/userInvitations` は 500 で、本文は `"code": "UNEXPECTED_ERROR"`、「An unexpected error occurred on the server side.」だった。送っている中身(役割 `MARKETING`、`allAppsVisible: false`、見られるアプリ1つ)は正しい形で、Apple のシステムの状況にも障害は出ていなかった。
-
-招待は名前とアドレスを入れれば通ると思っていた。母の Apple アカウントには、サインインに使えるアドレスが3つあり、送り先は主要のアドレスではない。これが関係しているかもしれないが、確かめていない。主要のアドレスは母が読んでいないので、通ると読めない場所に招待が届く。
-
-母も審査員と同じ外部テストのグループに入れ、メールで招待した。外部テストのテスターは App Store Connect のユーザーでなくてよいが、最初のビルドの Beta App Review が通るまでは届かない。内部の招待は、同じ中身を30分おきに送り直している。使ったのは Claude in Chrome(ページの中で通信を記録する JavaScript)、`/mm-release`。
+作者が、もう動かしていない別の Worker の Cron を外すと決め、Claude がログイン中の Cloudflare のダッシュボードのページの中から Cloudflare の API を呼んで3つ外し、 `npx wrangler triggers deploy` で mimamori の `*/5 * * * *` を登録した。有料プランに上げる案と、Cron を使わずキューの遅延メッセージで見張りを予約する案もあった。前者はお金がかかり、後者は実装とレビューで数時間かかるので採らなかった。使ったのは `/mm-deploy`、`wrangler`、Claude in Chrome。
 
 ## 2026年11月4日 20:58 最初のアップロードは、アプリのアイコンが無くて断られた
 
