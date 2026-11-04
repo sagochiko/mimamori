@@ -75,7 +75,7 @@ Start the `mm-reviewer` subagent with the issue number, the working tree, and th
    { printf '## mm-reviewer の報告(原文)\n\n%s回目、%s を読んだもの。保存した原文は `%s`。\n\n' "<round>" "<commit>" "$raw" && cat "$raw"; } >"<scratchpad>/review-comment.md"
    ```
 
-   Post it as a command of its own. `guard-private.sh` stops a gh write in a command that also runs `$(...)`, because it cannot see what that adds to the body:
+   Post it as a command of its own, with the file's absolute path written out as text. `guard-private.sh` stops a gh write in a command that also runs `$(...)` or expands a variable (`$name`, `${...}`, `$'...'`), because it cannot see what that adds to the body; a path kept in a variable from an earlier command, such as `$raw` above, counts too:
 
    ```sh
    gh pr comment <pr> --body-file "<scratchpad>/review-comment.md"
@@ -104,7 +104,7 @@ Anything only a real device or the Apple portal can check becomes a "作者:" is
 ## 8. Before merging
 
 1. Bring in main: `git fetch origin && git merge origin/main`. If anything came in, run `make verify` again and push. The merge gate refuses a PR whose head lacks the current `origin/main`, so a PR is verified again after another one lands.
-2. Update the issue's checkboxes. Tick (`- [x]`) each line this PR finished. Append to each line left open where it continues, such as `→ #30` (an author issue, a follow-up issue, or a later task's issue). Write the new body with the Write tool and pass it with `gh issue edit $ARGUMENTS --body-file <file>`. The merge gate refuses the merge while an open line names no other issue.
+2. Update the issue's checkboxes. Tick (`- [x]`) each line this PR finished. Append to each line left open where it continues, such as `→ #30` (an author issue, a follow-up issue, or a later task's issue). Write the new body with the Write tool and pass it with `gh issue edit $ARGUMENTS --body-file <file>`, the file's absolute path as text, not a variable. The merge gate refuses the merge while an open line names no other issue.
 3. `gh pr ready <pr>`.
 
 ## 9. Merge

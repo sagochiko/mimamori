@@ -17,7 +17,7 @@ gh issue list --label needs-human --state open --json number,title -q '.[] | sel
 
 ## Open the issue
 
-1. Write the body with the Write tool to a file in this session's scratchpad directory, for example `<scratchpad>/author-step.md`. Do not put the body on the command line: `guard-secrets.sh` and `guard-holdout.sh` read the Bash command text, so a body that names `.dev.vars` or the holdout unlock file is blocked there. The author approved `--body-file` for this on 2026-11-03, for bodies that name secret files and never hold their contents. Never write a key, a token, or anything about the family in the body; the repository and its issues become public.
+1. Write the body with the Write tool to a file in this session's scratchpad directory, for example `<scratchpad>/author-step.md`. Do not put the body on the command line: `guard-secrets.sh` and `guard-holdout.sh` read the Bash command text, so a body that names `.dev.vars` or the holdout unlock file is blocked there. In the gh command, write the file's absolute path as text: `guard-private.sh` stops a gh write whose command expands a variable or `$(...)`, because it cannot see what that adds to the body. The author approved `--body-file` for this on 2026-11-03, for bodies that name secret files and never hold their contents. Never write a key, a token, or anything about the family in the body; the repository and its issues become public.
 
    The body, in Japanese, says what to do and where, so the author can do it from the phone in one go, why it is needed, what to report back, and which issue it belongs to:
 
