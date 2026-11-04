@@ -112,10 +112,13 @@ author_waiting() {
 # just exited 0 would let everything through (onFailure "block" only covers a crash or a timeout). So
 # a call whose raw input mentions gh, wrangler, push, --no-verify, or core.hooksPath (what the gates
 # and guard-prod.sh check) is stopped; anything else returns 1 and the caller lets it through, so
-# ordinary Bash keeps working. push is a whole word, so pushd is not one.
+# ordinary Bash keeps working. push is a whole word, so pushd is not one. The input is raw JSON, where a
+# newline or a tab before the word is the two characters \n or \t; those count as a word boundary too,
+# so a gh on the second line of a command is seen (PR #96 review).
 need_jq() {
+  local word='(^|[^[:alnum:]_.-]|\\[ntr])(gh|wrangler|push)([^[:alnum:]_.-]|$)'
   jq -e 'type == "object"' >/dev/null 2>&1 <<<"$2" && return 0
-  if [[ "$2" =~ (^|[^[:alnum:]_.-])(gh|wrangler|push)([^[:alnum:]_.-]|$) || "$2" == *no-verify* || "$2" =~ hooks[Pp]ath ]]; then
+  if [[ "$2" =~ $word || "$2" == *no-verify* || "$2" =~ hooks[Pp]ath ]]; then
     echo "blocked ($1): this gate needs jq to read the command and jq is missing or failed, so a command with gh, wrangler, git push, --no-verify, or core.hooksPath does not go through. Install jq (brew install jq) and run it again." >&2
     exit 2
   fi
