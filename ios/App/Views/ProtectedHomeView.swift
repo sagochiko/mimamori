@@ -1,11 +1,12 @@
 import MimamoriCore
 import SwiftUI
 
-/// The protected person's screen, a chat like the messaging apps she already uses (#73, decided by
-/// the author on 2026-11-04): what the family was told at the top, the conversation in the middle
-/// (her words on the right, the AI's on the left, oldest first, opening at the newest), and a text
-/// field with a microphone at the bottom. Voice and writing go into the same conversation; only an
-/// answer to her voice is read aloud. Explanations live in VoiceOver only.
+/// The protected person's screen, a chat like the AI chat apps (#73, #86): what the family was told in
+/// one thin strip at the top that opens on a tap, the conversation in the middle (the AI's answers as
+/// plain text across the width, her words in small bubbles on the right, oldest first, opening at the
+/// newest), and one slim field at the bottom with the microphone inside it. Voice and writing go into
+/// the same conversation; only an answer to her voice is read aloud. Text follows Dynamic Type.
+/// Explanations live in VoiceOver only.
 struct ProtectedHomeView: View {
   @Environment(AppModel.self) private var model
   @Environment(\.scenePhase) private var scenePhase
@@ -15,37 +16,23 @@ struct ProtectedHomeView: View {
   /// Keeps the answer in view while the notices above it change after a handoff. Scrolling herself
   /// stops it.
   @State private var followsConsult = false
+  @State private var noticesOpen = false
   @State private var noticesHeight: CGFloat = 0
   @State private var screenHeight: CGFloat = 0
 
   private static let liveID = "live"
+  private let look = ChatLook.current
 
   var body: some View {
     let notices = model.protectedNotices
     VStack(spacing: 0) {
       if model.followUpPrompt != nil || !notices.isEmpty {
-        // At most 40% of the screen, so the conversation always has room; scrolls beyond that.
-        ScrollView {
-          VStack(spacing: 12) {
-            if let prompt = model.followUpPrompt {
-              FollowUpView(prompt: prompt)
-            }
-            ForEach(notices) { notice in
-              NoticeView(notice: notice)
-            }
-          }
-          .padding(.horizontal, 20)
-          .padding(.vertical, 12)
-          .onGeometryChange(for: CGFloat.self, of: \.size.height) { noticesHeight = $0 }
-        }
-        .scrollBounceBehavior(.basedOnSize)
-        .frame(height: min(noticesHeight, max(screenHeight * 0.4, 120)))
-        Divider()
+        top(notices: notices)
       }
       conversation(notices: notices)
       inputBar
     }
-    .background(Color(.systemGroupedBackground))
+    .background(Color(.systemBackground))
     .onGeometryChange(for: CGFloat.self, of: \.size.height) { screenHeight = $0 }
     .task { await model.keepCasesFresh() }
     .onAppear {
@@ -53,6 +40,7 @@ struct ProtectedHomeView: View {
       model.refreshFollowUp()
       #if DEBUG
         if draft.isEmpty, let text = ScreenshotStubTransport.draftText { draft = text }
+        if ScreenshotStubTransport.noticesOpen { noticesOpen = true }
       #endif
     }
     .onChange(of: scenePhase) { _, phase in
@@ -62,17 +50,38 @@ struct ProtectedHomeView: View {
     }
   }
 
+  /// The follow-up question and the family notices. Closed, it is one line; open, at most 40% of the
+  /// screen, scrolling beyond that, so the conversation always has room.
+  private func top(notices: [ProtectedNotice]) -> some View {
+    ScrollView {
+      VStack(spacing: 8) {
+        if let prompt = model.followUpPrompt {
+          FollowUpView(prompt: prompt)
+        }
+        if !notices.isEmpty {
+          NoticeStrip(notices: notices, open: $noticesOpen)
+        }
+      }
+      .padding(.horizontal, 16)
+      .padding(.vertical, 8)
+      .onGeometryChange(for: CGFloat.self, of: \.size.height) { noticesHeight = $0 }
+    }
+    .scrollBounceBehavior(.basedOnSize)
+    .frame(height: min(noticesHeight, max(screenHeight * 0.4, 120)))
+    .animation(.snappy, value: noticesOpen)
+  }
+
   private func conversation(notices: [ProtectedNotice]) -> some View {
     ScrollViewReader { proxy in
       ScrollView {
-        VStack(spacing: 12) {
+        VStack(spacing: look.turnSpacing) {
           ForEach(model.chat.log.messages) { message in
-            ChatBubble(message: message).id(message.id)
+            ChatTurn(message: message, look: look).id(message.id)
           }
           // Always there, even while idle, so it can be scrolled to in the same update that shows
           // the first words heard.
           VStack(spacing: 0) {
-            LiveView(phase: model.voice.phase)
+            LiveView(phase: model.voice.phase, look: look)
           }
           .frame(maxWidth: .infinity)
           .id(Self.liveID)
@@ -116,31 +125,40 @@ struct ProtectedHomeView: View {
     }
   }
 
-  private var canSend: Bool {
-    model.voice.acceptsText && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  private var hasDraft: Bool {
+    !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
+  private var canSend: Bool { model.voice.acceptsText && hasDraft }
+
+  private var listening: Bool {
+    if case .listening = model.voice.phase { return true }
+    return false
+  }
+
+  /// One slim field. The button inside it is the microphone while the field is empty (or while
+  /// listening) and the send button once she has written something, as in the AI chat apps.
   private var inputBar: some View {
-    HStack(alignment: .bottom, spacing: 8) {
+    HStack(alignment: .bottom, spacing: 4) {
       TextField("メッセージ", text: $draft, axis: .vertical)
-        .font(.title3)
-        .lineLimit(1...5)
+        .font(.body)
+        .lineLimit(1...6)
         .focused($writing)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 16)
-        .background(
-          RoundedRectangle(cornerRadius: 20).fill(Color(.secondarySystemGroupedBackground))
-        )
+        .padding(.leading, 16)
+        .padding(.vertical, 11)
         .accessibilityHint("スマホの困りごとや気になる電話のことを書いて、送るボタンを押してください。答えは読み上げません")
-      if !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-        sendButton
+      Group {
+        if hasDraft && !listening { sendButton } else { microphone }
       }
-      microphone
+      .padding(.trailing, 4)
+      .padding(.bottom, 4)
     }
-    .padding(.horizontal, 16)
+    .background(Capsule().fill(Color(.secondarySystemBackground)))
+    .overlay(Capsule().strokeBorder(Color(.separator), lineWidth: 0.5))
+    .padding(.horizontal, 12)
     .padding(.vertical, 8)
-    .background(.bar)
-    .animation(.default, value: draft.isEmpty)
+    .background(Color(.systemBackground))
+    .animation(.snappy, value: hasDraft)
   }
 
   private var sendButton: some View {
@@ -151,65 +169,107 @@ struct ProtectedHomeView: View {
       model.sendTyped(text)
     } label: {
       Image(systemName: "arrow.up")
-        .font(.title2.bold())
+        .font(.body.weight(.bold))
         .foregroundStyle(.white)
-        .frame(width: 48, height: 48)
+        .frame(width: 34, height: 34)
         .background(Circle().fill(canSend ? Color.accentColor : Color.secondary))
+        .frame(width: 44, height: 44)
         .contentShape(Circle())
     }
     .buttonStyle(.plain)
-    .padding(.bottom, 8)
     .disabled(!canSend)
     .transition(.scale.combined(with: .opacity))
     .accessibilityLabel("送る")
     .accessibilityHint(model.voice.acceptsText ? "書いた言葉を送ります" : "答えを待っています")
   }
 
-  /// Bigger than the send button: talking is the easiest way in.
   private var microphone: some View {
-    let listening: Bool = {
-      if case .listening = model.voice.phase { return true }
-      return false
-    }()
-    return Button {
+    Button {
       writing = false
       model.micTapped()
     } label: {
       Image(systemName: listening ? "waveform" : "mic.fill")
-        .font(.system(size: 30, weight: .semibold))
+        .font(.body.weight(.semibold))
         .foregroundStyle(.white)
         .symbolEffect(.variableColor.iterative, isActive: listening)
-        .frame(width: 64, height: 64)
+        .frame(width: 34, height: 34)
         .background(Circle().fill(listening ? Color.red : Color.accentColor))
+        .frame(width: 44, height: 44)
         .contentShape(Circle())
     }
     .buttonStyle(.plain)
+    .transition(.scale.combined(with: .opacity))
     .accessibilityLabel(model.voice.micLabel)
     .accessibilityHint(model.voice.micHint)
   }
 }
 
-/// One turn of the conversation: hers on the right, the AI's on the left.
-private struct ChatBubble: View {
+/// How the conversation is drawn. Debug builds can show the message-app look with
+/// `-mimamori-look-bubbles`, to compare the two for #86; the choice then stays and the other goes.
+enum ChatLook {
+  /// The AI's answers as plain text across the width, her words in small grey bubbles.
+  case plain
+  /// Both in bubbles, hers in the accent color on the right, the AI's grey on the left.
+  case bubbles
+
+  static var current: ChatLook {
+    #if DEBUG
+      if ProcessInfo.processInfo.arguments.contains("-mimamori-look-bubbles") { return .bubbles }
+    #endif
+    return .plain
+  }
+
+  var turnSpacing: CGFloat { self == .plain ? 24 : 12 }
+}
+
+/// One turn of the conversation.
+private struct ChatTurn: View {
   let message: ChatMessage
+  let look: ChatLook
 
   var body: some View {
-    let mine = message.role == .protected
-    HStack(spacing: 0) {
-      if mine { Spacer(minLength: 48) }
-      Text(message.text)
-        .font(.title3)
-        .foregroundStyle(mine ? Color.white : Color.primary)
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(
-          RoundedRectangle(cornerRadius: 20)
-            .fill(mine ? Color.accentColor : Color(.secondarySystemGroupedBackground)))
-      if !mine { Spacer(minLength: 48) }
+    Group {
+      if message.role == .protected {
+        HStack(spacing: 0) {
+          Spacer(minLength: 56)
+          Bubble(
+            text: message.text,
+            fill: look == .plain ? Color(.secondarySystemBackground) : .accentColor,
+            foreground: look == .plain ? .primary : .white)
+        }
+      } else if look == .plain {
+        Text(message.text)
+          .font(.body)
+          .lineSpacing(3)
+          .textSelection(.enabled)
+          .fixedSize(horizontal: false, vertical: true)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      } else {
+        HStack(spacing: 0) {
+          Bubble(text: message.text, fill: Color(.secondarySystemBackground), foreground: .primary)
+          Spacer(minLength: 56)
+        }
+      }
     }
     .accessibilityElement(children: .combine)
-    .accessibilityLabel(mine ? "あなた、\(message.text)" : "答え、\(message.text)")
+    .accessibilityLabel(message.role == .protected ? "あなた、\(message.text)" : "答え、\(message.text)")
+  }
+}
+
+private struct Bubble: View {
+  let text: String
+  let fill: Color
+  let foreground: Color
+
+  var body: some View {
+    Text(text)
+      .font(.body)
+      .foregroundStyle(foreground)
+      .textSelection(.enabled)
+      .fixedSize(horizontal: false, vertical: true)
+      .padding(.horizontal, 14)
+      .padding(.vertical, 10)
+      .background(RoundedRectangle(cornerRadius: 18).fill(fill))
   }
 }
 
@@ -217,6 +277,7 @@ private struct ChatBubble: View {
 /// wait for an answer, or why it stopped. Nothing while idle or once answered (the answer is a turn).
 private struct LiveView: View {
   let phase: ConsultPhase
+  let look: ChatLook
 
   var body: some View {
     switch phase {
@@ -225,14 +286,8 @@ private struct LiveView: View {
     case .listening(let heard):
       if !heard.isEmpty {
         HStack(spacing: 0) {
-          Spacer(minLength: 48)
-          Text(heard)
-            .font(.title3)
-            .foregroundStyle(Color.primary)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(RoundedRectangle(cornerRadius: 20).fill(Color.accentColor.opacity(0.18)))
+          Spacer(minLength: 56)
+          Bubble(text: heard, fill: Color.accentColor.opacity(0.15), foreground: .primary)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("聞き取っている言葉、\(heard)")
@@ -240,18 +295,20 @@ private struct LiveView: View {
     case .thinking:
       HStack(spacing: 0) {
         ProgressView()
-          .controlSize(.large)
-          .padding(.horizontal, 24)
-          .padding(.vertical, 16)
-          .background(
-            RoundedRectangle(cornerRadius: 20).fill(Color(.secondarySystemGroupedBackground)))
-        Spacer(minLength: 48)
+          .padding(.horizontal, look == .plain ? 0 : 18)
+          .padding(.vertical, look == .plain ? 4 : 12)
+          .background {
+            if look == .bubbles {
+              RoundedRectangle(cornerRadius: 18).fill(Color(.secondarySystemBackground))
+            }
+          }
+        Spacer(minLength: 56)
       }
       .accessibilityElement(children: .ignore)
       .accessibilityLabel("答えを考えています")
     case .failed(let failure):
       Text(failure.text)
-        .font(.headline)
+        .font(.subheadline)
         .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity)
         .fixedSize(horizontal: false, vertical: true)
@@ -266,43 +323,122 @@ private struct FollowUpView: View {
   @Environment(AppModel.self) private var model
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
+    HStack(spacing: 12) {
       Text(prompt)
-        .font(.title3.bold())
+        .font(.subheadline.weight(.semibold))
         .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityHint("さっきの長い電話で気になることがあれば、マイクを押して話すか、下の欄に書いてください")
       Button("大丈夫") { model.followUpFine() }
-        .font(.title3.bold())
+        .font(.subheadline.weight(.semibold))
         .buttonStyle(.bordered)
-        .controlSize(.large)
         .accessibilityHint("押すと、この声かけを閉じます。家族には何も知らせません")
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(16)
-    .background(RoundedRectangle(cornerRadius: 20).fill(Color(.secondarySystemGroupedBackground)))
+    .padding(.horizontal, 16)
+    .padding(.vertical, 10)
+    .background(RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground)))
   }
 }
 
-private struct NoticeView: View {
+/// The family notices in one line: the most pressing one, how many there are, and a chevron. A tap
+/// opens every notice with what was passed to the family.
+private struct NoticeStrip: View {
+  let notices: [ProtectedNotice]
+  @Binding var open: Bool
+
+  var body: some View {
+    let first = Self.mostPressing(notices)
+    VStack(alignment: .leading, spacing: 0) {
+      Button {
+        open.toggle()
+      } label: {
+        HStack(spacing: 8) {
+          Image(
+            systemName: Self.urgent(first) ? "exclamationmark.circle.fill" : "checkmark.circle.fill"
+          )
+          .foregroundStyle(Self.urgent(first) ? Color.orange : Color.accentColor)
+          Text(first.status)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.primary)
+            .lineLimit(open ? nil : 1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+          if notices.count > 1 {
+            Text("\(notices.count)")
+              .font(.caption.weight(.semibold))
+              .monospacedDigit()
+              .foregroundStyle(.secondary)
+              .padding(.horizontal, 8)
+              .padding(.vertical, 2)
+              .background(Capsule().fill(Color(.tertiarySystemFill)))
+          }
+          Image(systemName: "chevron.down")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .rotationEffect(.degrees(open ? 180 : 0))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel(
+        notices.count > 1 ? "\(first.status)、ほか\(notices.count - 1)件" : first.status
+      )
+      .accessibilityHint(open ? "押すと閉じます" : "押すと、家族に伝えたことを全部見られます")
+      if open {
+        Divider().padding(.leading, 16)
+        VStack(alignment: .leading, spacing: 12) {
+          ForEach(notices) { notice in
+            NoticeRow(notice: notice)
+          }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .transition(.opacity)
+      }
+    }
+    .background(
+      RoundedRectangle(cornerRadius: 12)
+        .fill(Self.urgent(first) ? Color.orange.opacity(0.12) : Color(.secondarySystemBackground)))
+  }
+
+  static func urgent(_ notice: ProtectedNotice) -> Bool {
+    notice.status != ProtectedNotice.toldFamily
+  }
+
+  /// Not reached first, then no reply yet, then told; newest first within each.
+  static func mostPressing(_ notices: [ProtectedNotice]) -> ProtectedNotice {
+    func rank(_ n: ProtectedNotice) -> Int {
+      switch n.status {
+      case ProtectedNotice.notReached: 0
+      case ProtectedNotice.noReplyYet: 1
+      default: 2
+      }
+    }
+    return notices.enumerated().min {
+      (rank($0.element), $0.offset) < (rank($1.element), $1.offset)
+    }!.element
+  }
+}
+
+private struct NoticeRow: View {
   let notice: ProtectedNotice
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 4) {
+    VStack(alignment: .leading, spacing: 2) {
       Text(notice.status)
-        .font(.title3.bold())
+        .font(.subheadline.weight(.semibold))
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityHint(hint)
       if let summary = notice.summary, let label = notice.summaryLabel {
         Text(summary)
-          .font(.body)
+          .font(.subheadline)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
           .accessibilityLabel(label)
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(16)
-    .background(RoundedRectangle(cornerRadius: 20).fill(Color(.secondarySystemGroupedBackground)))
   }
 
   private var hint: String {
