@@ -1,6 +1,5 @@
 // Settings every target shares. Generated project: edit ios/project.yml or this file, never the .pbxproj.
 
-// PLACEHOLDER: the Workers host is not deployed yet. Replace with the real host (no scheme, no path)
-// once `wrangler deploy` has run. Used for the API base URL (Info.plist MimamoriAPIBaseURL) and the
-// Associated Domains entitlement (messagefilter:). `.invalid` never resolves, so a stale build fails loudly.
-MIMAMORI_API_HOST = mimamori-api.placeholder.invalid
+// The Workers host (no scheme, no path). Used for the API base URL (Info.plist MimamoriAPIBaseURL) and the
+// Associated Domains entitlement (messagefilter:). Deployed on 2026-11-04.
+MIMAMORI_API_HOST = mimamori.sago3.workers.dev
