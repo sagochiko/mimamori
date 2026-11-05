@@ -9,7 +9,7 @@ This Mac has Xcode 27.1 at `/Applications/Xcode-27.1.0.app`. There is no Simulat
 
 ## Simulator
 
-Check screens on a simulator that is not in the production family: "mimamori mother" (iPhone 17 Pro, iOS 26.5), the mother's sample, or one you create for this check and delete afterwards. Never shoot or check screens on "mimamori iPhone": it is the family role and is joined to the production family, so its screens can show family names, smiles, and real consultations (`docs/harness.md`, "設定の範囲"). Use it only to check the family side against production, and then the main session moves the mobilebuildmcp defaults to it and back.
+Check screens on a simulator that is not in the production family: "mimamori mother" (iPhone 17 Pro, iOS 26.5), the mother's sample, or one you create for this check and delete afterwards. Never shoot or check screens on "mimamori iPhone": it is the family role and is joined to the production family, so its screens can show family names, smiles, and real consultations (`docs/harness.md`, "設定の範囲"). Use it only to check the family side against production: the main session moves the mobilebuildmcp defaults to it with `session_set_defaults` (never `persist`), and when that check ends it sets them back to "mimamori mother" (`simulatorName` and `simulatorId`) before any other work. Never join "mimamori mother" to the production family; check the joining flow with the stub or on a simulator you create and delete.
 
 ```sh
 xcrun simctl list devices available | grep -q "mimamori mother" || \
@@ -40,7 +40,7 @@ xcrun simctl launch --terminate-running-process "$SIM" com.sagochiko.mimamori \
 
 There is no demo family yet. Two walls keep screenshots away from the real family: the simulator is outside the production family, and `-mimamori-stub` (Debug only) answers every API call with made-up data and keeps the device key in memory. Use both. `-mimamori-stub-joined protected` or `family` starts on that home screen. Put a screen into the state you need with the other launch arguments in `ios/App/Debug/ScreenshotStubTransport.swift` (`-mimamori-stub-chat police`, `-mimamori-stub-draft <text>`, `-mimamori-stub-notices-open`, `-mimamori-stub-camera-open`, and others) rather than by tapping.
 
-For taps and the UI tree, use the `mobilebuildmcp` MCP (`ui-automation`). Its default simulator is "mimamori mother" (`.mobilebuildmcp/config.yaml`). On 2026-11-06 the main session saw its taps and scrolls not reach the app on "mimamori mother"; when that happens, reach the state with launch arguments and shoot with `xcrun simctl`.
+For taps and the UI tree, use the `mobilebuildmcp` MCP (`ui-automation`). The repository's default is "mimamori mother" (`.mobilebuildmcp/config.yaml`), but the main session may have moved it. Before the first mobilebuildmcp call, run `session_show_defaults`. If its `simulatorName` is not the simulator you use (above all, "mimamori iPhone"), never call a tool without a simulator: pass your simulator's udid as `simulatorId` on every call, or stop and report it. A `screenshot` or `snapshot_ui` on the family role puts family names and smiles into the context. A subagent cannot change the defaults (`guard-mcp.sh`), so on a simulator you created it passes the udid the same way. On 2026-11-06 the main session saw its taps and scrolls not reach the app on "mimamori mother"; when that happens, reach the state with launch arguments and shoot with `xcrun simctl`.
 
 ## Screenshot
 
