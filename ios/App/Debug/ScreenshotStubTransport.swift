@@ -29,6 +29,7 @@
     /// With `-mimamori-stub-camera-open`, the home screen opens the smile camera at once.
     static var cameraOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-camera-open") }
     /// With `-mimamori-stub-note-open`, the home screen opens the set words ("ひと言") at once.
+    static var gmailButton: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-gmail") }
     static var noteOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-note-open") }
     /// With `-mimamori-stub-camera-hold`, the stand-in camera never "sees" the smile, so the camera
     /// screen itself can be shot.
@@ -73,6 +74,11 @@
           (200, StubSmiles.shared.list())
         case ("POST", "/smiles"):
           StubSmiles.shared.add(Self.body(of: request))
+        case ("GET", "/gmail/connect"):
+          // The button shows only with -mimamori-stub-gmail, so other screenshots of her screen stay as they were.
+          Self.gmailButton
+            ? (200, #"{"url":"https://accounts.google.com/o/oauth2/v2/auth","grantedAt":null}"#)
+            : (503, #"{"error":"gmail_not_configured"}"#)
         case ("PUT", "/families/me/smile-deadline"):
           StubSmiles.shared.setHour(Self.body(of: request)["hour"] as? Int)
         default:

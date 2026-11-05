@@ -4,6 +4,7 @@ import { listCases, resolveRoute } from "./cases";
 import { consultRoute } from "./consult";
 import { runScheduled } from "./cron";
 import { createFamily, createInvite, deleteEverything, joinInvite, leaveFamily, registerApns } from "./families";
+import { callbackRoute, connectRoute } from "./gmail";
 import { errorResponse, HttpError } from "./http";
 import { handleJudgeBatch } from "./judge";
 import { pageRoute } from "./page";
@@ -30,6 +31,8 @@ const routes: Array<[method: string, pattern: RegExp, handler: Handler]> = [
   ["GET", /^\/smiles$/, (req, env) => listSmiles(req, env)],
   ["GET", /^\/smiles\/([^/]+)\/photo$/, (req, env, [id]) => smilePhoto(req, env, id ?? "")],
   ["PUT", /^\/families\/me\/smile-deadline$/, (req, env) => setSmileDeadline(req, env)],
+  ["GET", /^\/gmail\/connect$/, (req, env) => connectRoute(req, env)],
+  ["GET", /^\/gmail\/callback$/, (req, env) => callbackRoute(req, env)],
 ];
 
 export async function route(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

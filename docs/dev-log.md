@@ -647,3 +647,14 @@ Apple の [Messaging between the app and JavaScript in a Safari web extension](h
 ページの中のスクリプトから自分のサーバーへ直に問い合わせ、5秒なら Claude を待てると思っていた。
 
 ページ、background、ネイティブ側、`POST /page` の順に渡し、端末の鍵はネイティブ側だけが読むようにした。鍵はアプリと拡張が共有する App Group の名前のキーチェーンの場所に移した(Apple の [Sharing access to keychain items](https://developer.apple.com/documentation/security/sharing-access-to-keychain-items-among-a-collection-of-apps) に「You can use app group names as keychain access group names」)。Claude は待たず、規則が印を見たページだけをキューに回す。家の中のアドレス(192.168 などと .local)のページは送らず、裏側でも判定しない。計画の `judgeNow` は作らず、計画の書き換えは親に回した。使ったのは mm-implementer、advisor、Vitest、Swift Testing、XcodeGen、`wrangler dev`、`xcrun simctl`。
+## 2026年11月6日 Gmail の2つの知らせを、表を変えずに1回ずつにした (#15)
+
+母の受信箱を5分ごとに読む Gmail の見張りを作っていた。
+
+親のセッションからは「期限切れや取り消された許可の扱い(expired_notified_at)も計画どおり」と頼まれた。計画には、`invalid_grant` で家族に「取り直しが要る」を1回だけ知らせることと、許可から6日で前もって知らせることの2つがあるが、`gmail_auth` の知らせの列は `expired_notified_at` の1つしか無い。
+
+列を足すマイグレーションは作らず、6日の知らせを送った時刻を `expired_notified_at` に置き、`invalid_grant` では家族に知らせてから行を消す形にした。行が無ければ見張りもしないので、2回目は送らない。Google の [OAuth の文書](https://developers.google.com/identity/protocols/oauth2/web-server) を読むと、`access_type=offline` の refresh token は「only returned on the first authorization」とあり、7日ごとの取り直しで token が返らなくなるので、同意の URL に `prompt=consent` を付けた。テスト用の受信箱は msw で作り、33件のテストを書いた。`prompt=consent` を外す、同じメールの重複を見ない、印の無いメールも回す、などをわざと入れると、それぞれのテストが落ちた。
+
+知らせごとに列が1つずつ要ると思っていた。日本語のメールは ISO-2022-JP が多く、Workers の `TextDecoder` で読めるかも心配だったが、手元の workerd では `iso-2022-jp`、`shift_jis`、`euc-jp` のどれも作れた。
+
+列を足す案は、#16 と同時に動いていてマイグレーションの番号を分け合うことと、知らせ1つのために本番の D1 を変えることになるので採らなかった。メールは SMS と同じ関門を通し、印の無いメールは Claude に回さない。Claude が落ちると決まらないメールは2段階で家族に知らせるので、ふつうのお知らせのメールで家族に通知が飛ばないようにするためだ。この関門は SMS と共通の [`server/src/inbound.ts`](../server/src/inbound.ts) に移した。Google のクライアントの2つの名前は、はじめ `wrangler.jsonc` の `secrets.required` に足したが、Cloudflare の [設定の文書](https://developers.cloudflare.com/workers/wrangler/configuration/#secrets-configuration-property) に、足りない秘密があると `wrangler deploy` が失敗するとあった。作者が Google Cloud でクライアントを作るまで裏側の全部がデプロイできなくなるので、名前を `secrets.required` から外し、無いあいだは Gmail の呼び出しが503を返し、見張りは何もしない形にした。使ったのは mm-implementer、advisor、WebFetch(Google の文書)、Vitest、@msw/cloudflare。

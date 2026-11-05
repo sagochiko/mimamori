@@ -111,6 +111,8 @@ mimamori/
 | `gmail_auth` | `family_id`、`refresh_token_enc`、`granted_at`、`last_history_id`、`expired_notified_at` |
 | `usage_daily` | `date`、`doh_requests` |
 
+`gmail_auth` の `expired_notified_at` は、許可から6日たって「Gmail の許可がもうすぐ切れます」を家族に送った時刻にする。Google が `invalid_grant` を返したら「Gmail の許可の取り直しが要ります」を家族に1回送り、その行を消して見張りを止める。行が無ければ2回目は送らない。知らせ1つに表の列を足さずに済むため、2026年11月6日に #15 の実装の中で主のセッションがこの形にし、作者には PR #143 で伝える。許可を取り直すと行を上書きし、`expired_notified_at` を空に戻す
+
 相談(`source` が `consult`)の行は、同じ会話の相談が加わってカードを動かすたびに、`level`、`reasons`、`summary` と一緒に `rule_level` と `claude_level` も書き替える。この2列は、相談を開いたときの判定ではなく、最後にカードを動かした判定を指す(2026年11月5日、#114)。
 
 ### 決まった規則の判定
@@ -151,7 +153,7 @@ Structured Outputs で次の形だけを受け取る。
 | `POST /smiles`、`GET /smiles` | 笑顔の写真の登録と一覧(写真は R2)。家族の誰でも送れる。`POST` の本文は `{ photo?, score?, note? }` で、`photo` は base64 の JPEG(500KB まで、超えると413)、`score` は0〜1、`note` はひと言で、決まった5つの語(`good-morning` おはよう、`nice-smile` いい笑顔、`thanks` ありがとう、`doing-fine` 元気だよ、`see-you` またね)の ID か語そのものだけを受け付け、外れたら400 `note_not_allowed`。自由な文は運ばない(2026年11月5日に作者が決めた。design.md の「毎朝の笑顔」)。写真かひと言のどちらかが要る(無ければ400 `smile_empty`)。送ると本人のほかの家族全員に、音を鳴らさない通知(`interruption-level` が `passive`)が届く。`GET` は家族全員の最近7日の笑顔を新しい順に `{ smiles: [{ id, memberId, displayName, role, score, note, hasPhoto, createdAt }], deadlineHour }` で返す。抜けた人の行は `displayName` が「家族」、`role` が `null` |
 | `GET /smiles/{id}/photo` | 写真の JPEG。同じ家族の端末だけに返し、別の家族の `deviceKey` には403、無い笑顔と写真の無いひと言には404。R2 のバインディングからは署名つきの URL を作れない([Cloudflare の Presigned URLs](https://developers.cloudflare.com/r2/api/s3/presigned-urls/) の「The R2 Workers API binding cannot generate presigned URLs」)。S3 の鍵を足すより秘密が増えないので、Worker が R2 から読んで流す(#14) |
 | `PUT /families/me/smile-deadline` | `{ hour }` で母の笑顔を待つ時刻(日本時間の5〜12時の整数)を変える。家族の役だけで、母の端末からは403。その時刻までに母の笑顔の写真がその日に無ければ(写真の無いひと言は数えない)、家族の役の全員に1日1回、音を鳴らさない通知で知らせる。家族の笑顔は数えず、母には送らない(#14) |
-| `GET /gmail/connect`、`GET /gmail/callback` | Gmail の許可 |
+| `GET /gmail/connect`、`GET /gmail/callback` | Gmail の許可。`connect` は見守られる人の端末だけが呼べ(家族の役は403 `protected_only`、Google のクライアントが未設定なら503 `gmail_not_configured`)、`{ url, grantedAt }` を返す。`url` は Google の同意の画面で、範囲は `gmail.readonly` だけ、`access_type=offline` と `prompt=consent` をつけ、`state` は家族の ID と作った時刻を `TOKEN_ENC_KEY` で封じたもの(15分有効)。`grantedAt` は今の許可の時刻で、無ければ `null`。アプリは `url` を `ASWebAuthenticationSession` で開く。`callback` は Google から戻る先で、refresh token を封じて `gmail_auth` に置き、そのときの受信箱の `historyId` から読み始める。答えは `mimamori://gmail?result=connected`(断られたら `denied`、ほかの失敗は `failed`)への302。2026年11月6日に #15 の実装の中で主のセッションが決め、作者には PR #143 で伝える |
 
 ## 作る順番
 

@@ -138,6 +138,11 @@ public final class APIClient: Sendable {
     return Member(id: answer.memberId, familyId: answer.familyId, role: answer.role, displayName: displayName)
   }
 
+  /// A GET with the device key, for calls defined outside this file.
+  func get<Answer: Decodable>(_ path: String) async throws -> Answer {
+    try await send("GET", path, body: Empty?.none, auth: true)
+  }
+
   private func send<Body: Encodable, Answer: Decodable>(
     _ method: String, _ path: String, body: Body?, auth: Bool
   ) async throws -> Answer {

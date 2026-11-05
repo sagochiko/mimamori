@@ -15,7 +15,8 @@
 
 import { HttpError, json, readJson } from "./http";
 import { enqueueJudge, normalizeDomain, summarize, type JudgeJob } from "./judge";
-import { CODE_ONLY_REASON, FOREIGN_SENDER_REASON, judgeByRules, type RuleResult } from "./rules";
+import { firstLink, worthAsking } from "./inbound";
+import { judgeByRules, type RuleResult } from "./rules";
 
 /** The judges' build uses this token. It tells no family; the reply carries the card instead (docs/design.md). */
 export const DEMO_TOKEN = "demo";
@@ -74,29 +75,6 @@ async function readQuery(request: Request): Promise<{ sender?: string; text: str
   };
 }
 
-/** The first https or http link in the text, for the one-an-hour grouping and the card's domain. */
-function firstLink(text: string): string | undefined {
-  const match = /https?:\/\/[^\s"'<>「」『』（）()、。]+/i.exec(text);
-  if (!match) return undefined;
-  try {
-    return new URL(match[0]).toString();
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Whether Claude should look. A level from the rules, or a sign too weak for a level, means unsure. A
- * message with no sign at all, one whose only sign is the overseas number (genuine services abroad send
- * bookings and codes), or one the rules read as only a verification code, is not queued: when Claude fails, the queue treats an undecided
- * message as level 2 and tells the family, which a genuine code or delivery notice must not cause.
- */
-function unsure(rule: RuleResult): boolean {
-  if (rule.level !== null) return true;
-  if (rule.reasons.includes(CODE_ONLY_REASON)) return false;
-  return rule.reasons.some((r) => r !== FOREIGN_SENDER_REASON);
-}
-
 function demoCard(job: JudgeJob, rule: RuleResult): DemoCard | null {
   if (rule.level !== 1 && rule.level !== 2) return null;
   return {
@@ -129,7 +107,7 @@ export async function smsRoute(request: Request, env: Env, ctx: ExecutionContext
   const family = await env.DB.prepare("SELECT id FROM families WHERE token = ?").bind(token).first<{ id: string }>();
   if (!family) return json(none);
 
-  if (unsure(rule)) {
+  if (worthAsking(rule)) {
     // After the reply, so Apple is not kept waiting on the queue. A failed send loses Claude's look and
     // the notices for this one message; the reply by the rules stands.
     ctx.waitUntil(
