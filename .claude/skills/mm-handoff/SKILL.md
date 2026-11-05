@@ -42,7 +42,7 @@ Write it with the Write tool to `$HOME/tmp/mimamori-handoff-<YYYYMMDD-HHMM>.md`.
 4. 作者を待っているもの: the open "作者:" issues
 5. 決めたこと: decisions made in this session, each with where it is written
 6. まだ決めていないこと: open decisions, and the options dropped with why
-7. 次に回す Issue: the number, and why it comes next
+7. 次に回す Issue: the number, and why it comes next. Say which of them can run at the same time in separate worktrees (`/mm-task`, "Several issues at once"): issues that touch different parts and do not wait on each other. A plain numbered list reads as one at a time; on 2026-11-05 the new session ran #14 and #10 one after the other until the author asked why they were not in parallel
 8. やり直さないこと: work that is done or was tried and dropped, so the new session does not repeat it
 
 No keys, tokens, or family data go in the brief, as anywhere else.
