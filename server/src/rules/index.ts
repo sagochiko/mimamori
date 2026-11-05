@@ -59,6 +59,11 @@ interface NamedHost extends HostTrust {
   address: boolean;
   /** Only written in the text without https://, as in "【Amazon.co.jp】". A name more than a link. */
   bare: boolean;
+  /**
+   * The page's own address (its URL or domain, not a link nested in its query): where she already
+   * is, not a link she is led to. Only for pages.
+   */
+  own: boolean;
 }
 
 const SUSPICIOUS_TLDS = new Set([
@@ -126,25 +131,30 @@ function nestedUrls(url: URL): string[] {
 /** Every host the input names: the domain, the URL, the sender's mail domain, and links in the text. */
 function hostsOf(input: RuleInput, text: string): NamedHost[] {
   const hosts = new Map<string, NamedHost>();
-  const put = (host: string, address: boolean, trust: HostTrust, bare = false) => {
+  const put = (host: string, address: boolean, trust: HostTrust, bare = false, own = false) => {
     const key = `${address}:${host}:${trust.trust}`;
-    // The same host named both bare and as a link counts as a link.
-    if (host.includes(".") && !(bare && hosts.has(key))) hosts.set(key, { host, address, bare, ...trust });
+    // The same host named both bare and as a link counts as a link. A page's own host stays its own
+    // when the page links to itself.
+    const before = hosts.get(key);
+    if (host.includes(".") && !(bare && before)) {
+      hosts.set(key, { host, address, bare, own: own || (before?.own ?? false), ...trust });
+    }
   };
   const addAddress = (domain: string | undefined) => {
     const url = domain ? parseUrl(domain) : null;
     if (url) put(normalizeHost(url.hostname), true, trustOf(url.hostname, true));
   };
-  const addLink = (value: string | undefined, depth = 0, bare = false) => {
+  const addLink = (value: string | undefined, depth = 0, bare = false, own = false) => {
     const url = value ? parseUrl(value) : null;
     if (!url) return;
     const inner = depth < 2 ? nestedUrls(url) : [];
     // A link that only passes the reader on is not the brand speaking, whoever runs the redirect.
-    put(normalizeHost(url.hostname), false, trustOf(url.hostname, false, url.pathname, inner.length > 0), bare);
+    put(normalizeHost(url.hostname), false, trustOf(url.hostname, false, url.pathname, inner.length > 0), bare, own);
     for (const next of inner) addLink(next, depth + 1);
   };
-  addLink(input.domain);
-  addLink(input.url);
+  const page = input.source === "page";
+  addLink(input.domain, 0, false, page);
+  addLink(input.url, 0, false, page);
   const sender = normalizeText(input.sender ?? "");
   if (sender.includes("@")) addAddress(sender.split("@").pop());
   else if (/^[a-z0-9.-]+\.[a-z]{2,}$/.test(sender)) addLink(sender);
@@ -245,19 +255,25 @@ export function judgeByRules(input: RuleInput): RuleResult {
     if (spans.length > 0) add(rule.kind, rule.strength, rule.reason, spans);
   };
 
-  for (const { host, trust } of unofficial) {
+  for (const { host, trust, own } of unofficial) {
     // A free mail address or a user page belongs to the brand that runs the domain, so it is no
     // look-alike; it only stops counting as the brand speaking.
     if (trust !== "other") continue;
     if (imitatedBrandOf(host)) add("lookalike", "strong", `公式に似せたドメイン ${short(host)}`);
-    if (isSuspiciousHost(host)) add("suspicious_host", "medium", `見慣れない形のリンク先 ${short(host)}`);
+    // A page's own unusual host is the site she opened, not a link to an unusual place (#16): shops
+    // on .shop, sites on new TLDs, and Japanese domain names are ordinary pages. Unless it also
+    // imitates a brand, as amazon-co-jp.top does: then the odd shape is part of the fake.
+    const lookalike = imitatedBrandOf(host) !== null;
+    if ((!own || lookalike) && isSuspiciousHost(host)) add("suspicious_host", "medium", `見慣れない形のリンク先 ${short(host)}`);
   }
   const named = new Set(
     Object.entries(BRAND_WORDS)
       .filter(([, words]) => words.some((word) => text.includes(word)))
       .map(([brand]) => brand),
   );
-  const elsewhere = unofficial.some((h) => !h.brand || !named.has(h.brand));
+  // A page that names a brand is not leading anywhere by its own address: a news article on a company,
+  // a blog about a bank. Only links in its text count (#16).
+  const elsewhere = unofficial.some((h) => !h.own && (!h.brand || !named.has(h.brand)));
   if (named.size > 0 && elsewhere && !signals.has("lookalike")) {
     add("brand_mismatch", "medium", "名乗る会社と違うドメインへ誘っている");
   }

@@ -7,6 +7,7 @@ import { createFamily, createInvite, deleteEverything, joinInvite, leaveFamily, 
 import { callbackRoute, connectRoute } from "./gmail";
 import { errorResponse, HttpError } from "./http";
 import { handleJudgeBatch } from "./judge";
+import { pageRoute } from "./page";
 import { siteAssociation } from "./site-association";
 import { listSmiles, postSmile, setSmileDeadline, smilePhoto } from "./smiles";
 import { smsRoute } from "./sms";
@@ -21,6 +22,7 @@ const routes: Array<[method: string, pattern: RegExp, handler: Handler]> = [
   ["DELETE", /^\/members\/([^/]+)$/, (req, env, [id]) => leaveFamily(req, env, id ?? "")],
   ["DELETE", /^\/families\/me$/, (req, env) => deleteEverything(req, env)],
   ["POST", /^\/sms\/([^/]+)$/, (req, env, [token], ctx) => smsRoute(req, env, ctx, token ?? "")],
+  ["POST", /^\/page$/, (req, env, _, ctx) => pageRoute(req, env, ctx)],
   ["GET", /^\/\.well-known\/apple-app-site-association$/, async () => siteAssociation()],
   ["POST", /^\/consult$/, (req, env) => consultRoute(req, env)],
   ["GET", /^\/cases$/, (req, env) => listCases(req, env)],

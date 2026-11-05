@@ -636,6 +636,17 @@ SQLite では列の NOT NULL を外すのに表を作り直すしかなく、本
 
 本物の R2 が空の鍵をどう扱うかは手元で確かめられないので、[`server/src/families.ts`](../server/src/families.ts) と [`server/src/retention.ts`](../server/src/retention.ts) の R2 を消す問い合わせで `r2_key != ''` の行だけを読むようにした。この確かめはテストでは落とせず、コードを読んで確かめる。写真の URL は、Cloudflare の文書に「The R2 Workers API binding cannot generate presigned URLs」とあったので、S3 の鍵を秘密に足す案は採らず、`GET /smiles/{id}/photo` で Worker から流す形にした。使ったのは mm-implementer、advisor、Cloudflare の文書の MCP、Vitest。
 
+## 2026年11月6日 Safari の拡張はページから直に裏側へ問い合わせられなかった (#16)
+
+母が開いたページに、Safari の拡張が警告を重ねるところを作っていた。
+
+親のセッションから実装役へ「返事は規則で即答し、Claude はリクエストの中で待たず Queues に回す」「拡張の決まりは記憶で書かず、Apple の公式文書を確かめる」と頼んだ。[`docs/plan.md`](plan.md) のタスク9には、Claude に聞いて5秒を過ぎたら規則で返す `judgeNow` と書いてあった。
+
+Apple の [Messaging between the app and JavaScript in a Safari web extension](https://developer.apple.com/documentation/safariservices/messaging-between-the-app-and-javascript-in-a-safari-web-extension) に「Content scripts that are injected into web content cannot send messages to the native app extension.」とあった。ページに入るスクリプトは裏の background を通してしか拡張のネイティブ側に話せない。端末の鍵はアプリのキーチェーンの自分だけの場所にあり、拡張からは読めなかった。手元の `wrangler dev` に試験用の3つのページを送ると、ふつうのページも「見慣れない形のリンク先 127.0.0.1」で2段階になった。数字だけのアドレスを規則が印に数えるためで、家のルーターの管理画面でも同じことが起きる。
+
+ページの中のスクリプトから自分のサーバーへ直に問い合わせ、5秒なら Claude を待てると思っていた。
+
+ページ、background、ネイティブ側、`POST /page` の順に渡し、端末の鍵はネイティブ側だけが読むようにした。鍵はアプリと拡張が共有する App Group の名前のキーチェーンの場所に移した(Apple の [Sharing access to keychain items](https://developer.apple.com/documentation/security/sharing-access-to-keychain-items-among-a-collection-of-apps) に「You can use app group names as keychain access group names」)。Claude は待たず、規則が印を見たページだけをキューに回す。家の中のアドレス(192.168 などと .local)のページは送らず、裏側でも判定しない。計画の `judgeNow` は作らず、計画の書き換えは親に回した。使ったのは mm-implementer、advisor、Vitest、Swift Testing、XcodeGen、`wrangler dev`、`xcrun simctl`。
 ## 2026年11月6日 Gmail の2つの知らせを、表を変えずに1回ずつにした (#15)
 
 母の受信箱を5分ごとに読む Gmail の見張りを作っていた。

@@ -11,9 +11,12 @@
 		0BF172D7871C60E0E2839660 /* VoiceListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF3C946C7E291506723FB25A /* VoiceListener.swift */; };
 		0EF3336DAE22D85DA0D64FE7 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95CDB77E0372A19FBBE234F4 /* RootView.swift */; };
 		1161F819AB32E399D288B285 /* DebugLaunch.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE4C837922E7E96E84700660 /* DebugLaunch.swift */; };
+		1B161776BF5548417FDFFD1F /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = 6EAB06D5C7D50051E2A0E31C /* background.js */; };
+		2536EB74FBC231130877C3C7 /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = 595E3EEE100503E1A05992D1 /* content.js */; };
 		2A32CC4EF4852D2CC9816BBC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0FA418C9775218D6E44586BB /* Assets.xcassets */; };
 		3108313EAA90F72D86124356 /* JoinView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D71E050B6AB7E4A2CC31D69 /* JoinView.swift */; };
 		31980380ADC3240C7EE281BC /* MimamoriApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E45414D046D363FD33D0A71A /* MimamoriApp.swift */; };
+		35E41EAE5E4C4DD981E1041E /* KeychainDeviceKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B78E521DD07930F33B780261 /* KeychainDeviceKeyStore.swift */; };
 		3792C21DC96CFB08E303BF69 /* ProtectedHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC84E1DC90613B9EB0164B49 /* ProtectedHomeView.swift */; };
 		38A272F7AE944C9DF6A7E596 /* FamilyHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 516788DAB13E4B039651659A /* FamilyHomeView.swift */; };
 		3B224EED8B6094CD0792121D /* icon-48.png in Resources */ = {isa = PBXBuildFile; fileRef = 37FA4151507E2DD9222D61D8 /* icon-48.png */; };
@@ -29,6 +32,7 @@
 		56FEB594CFB85A1BCA209BE5 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BDA3D10727E119E0680CB3C /* AppModel.swift */; };
 		5AB286F4D233C69A78E81661 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6347632638B2BBB1D921BC29 /* ShareViewController.swift */; };
 		623BFA36F797A841D73BCCCA /* MimamoriCore in Frameworks */ = {isa = PBXBuildFile; productRef = 7E983F62499436B4FE715598 /* MimamoriCore */; };
+		6F95C519EA092FABCAAE9890 /* KeychainDeviceKeyStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A5992A9AA59868FE51BFDE1 /* KeychainDeviceKeyStoreTests.swift */; };
 		6FEF03D086E951C0928C1667 /* SmileCamera.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE03DFD3ED761E36F6E29C2B /* SmileCamera.swift */; };
 		71BE124743C22D542CE5194E /* CallDirectoryHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECDC69D9559207B1E43D992A /* CallDirectoryHandler.swift */; };
 		7C3ACF594C1E220440463051 /* FileChatLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 419E10C36BDE538278F82BD1 /* FileChatLogStore.swift */; };
@@ -38,6 +42,7 @@
 		89FAA146B103F89E0CA95418 /* MessageFieldTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FE0A1F8B5B0B0C8F791B5C8 /* MessageFieldTests.swift */; };
 		8E20FA15796EE2391F3A9DC1 /* SafariExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 09B99954C58F5BB6B8E7061C /* SafariExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8FD99978F33E656FE68E8612 /* MessageFilterExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = B441389511B639CF9457DFD2 /* MessageFilterExtension.swift */; };
+		901BC82A168B1CF41248032D /* MimamoriCore in Frameworks */ = {isa = PBXBuildFile; productRef = 7603F2C0182E79199321802C /* MimamoriCore */; };
 		A47056C1598ECDB8501B26E2 /* ReplySpeaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84BA38ED727FD076C6B3DDD6 /* ReplySpeaker.swift */; };
 		A6C56C492741A879A53F09EC /* KeychainDeviceKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B78E521DD07930F33B780261 /* KeychainDeviceKeyStore.swift */; };
 		A88C6E7E05120734010F81B5 /* SmilePlaceholder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 549C7E4F7E97FDCD15723C10 /* SmilePlaceholder.swift */; };
@@ -115,6 +120,7 @@
 		1BDA3D10727E119E0680CB3C /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		1F9B0F681A88B43BA14AE240 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = manifest.json; sourceTree = "<group>"; };
 		269A9FC1AFAA472457732ED0 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		2A5992A9AA59868FE51BFDE1 /* KeychainDeviceKeyStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainDeviceKeyStoreTests.swift; sourceTree = "<group>"; };
 		358E9B4A2B3429F153B655CB /* icon-96.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-96.png"; sourceTree = "<group>"; };
 		37FA4151507E2DD9222D61D8 /* icon-48.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-48.png"; sourceTree = "<group>"; };
 		3A6A9A0EF7199C388B1E5887 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -126,6 +132,7 @@
 		4EDF58AC7BF0B880A61FAE9D /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		516788DAB13E4B039651659A /* FamilyHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FamilyHomeView.swift; sourceTree = "<group>"; };
 		549C7E4F7E97FDCD15723C10 /* SmilePlaceholder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmilePlaceholder.swift; sourceTree = "<group>"; };
+		595E3EEE100503E1A05992D1 /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = content.js; sourceTree = "<group>"; };
 		5A5DCBCDB127D92299354AAC /* CallEndWatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallEndWatcherTests.swift; sourceTree = "<group>"; };
 		5B1160E3057AE1DBB06229E3 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		6347632638B2BBB1D921BC29 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
@@ -134,6 +141,7 @@
 		6739C49E1B0EA3024DC91B5F /* CallFollowUpNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallFollowUpNotifier.swift; sourceTree = "<group>"; };
 		6857C3950869A3E22C6DC8CE /* Mimamori.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Mimamori.entitlements; sourceTree = "<group>"; };
 		6DA060794DBBAA1CFCB3847D /* icon-128.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-128.png"; sourceTree = "<group>"; };
+		6EAB06D5C7D50051E2A0E31C /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = background.js; sourceTree = "<group>"; };
 		712562C323E2A51682DDF23D /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		7C21EE2A82C9D0DAFA79176F /* ScreenshotStubTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotStubTransport.swift; sourceTree = "<group>"; };
 		82D66AF2F38B7CBCD40033EE /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -174,6 +182,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		26B7B87339CB95D49BF328C8 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				901BC82A168B1CF41248032D /* MimamoriCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		854866FC2DE9B7897B6B43F3 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -263,6 +279,7 @@
 			isa = PBXGroup;
 			children = (
 				5A5DCBCDB127D92299354AAC /* CallEndWatcherTests.swift */,
+				2A5992A9AA59868FE51BFDE1 /* KeychainDeviceKeyStoreTests.swift */,
 				8FE0A1F8B5B0B0C8F791B5C8 /* MessageFieldTests.swift */,
 			);
 			path = AppTests;
@@ -335,6 +352,8 @@
 		ECD53E3044157CEC7D843B17 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				6EAB06D5C7D50051E2A0E31C /* background.js */,
+				595E3EEE100503E1A05992D1 /* content.js */,
 				37FA4151507E2DD9222D61D8 /* icon-48.png */,
 				358E9B4A2B3429F153B655CB /* icon-96.png */,
 				6DA060794DBBAA1CFCB3847D /* icon-128.png */,
@@ -427,6 +446,7 @@
 			buildPhases = (
 				C69E7CF0AF1B28D7C99D81B0 /* Sources */,
 				D8302586C50255E757E4CBA4 /* Resources */,
+				26B7B87339CB95D49BF328C8 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -434,6 +454,7 @@
 			);
 			name = SafariExtension;
 			packageProductDependencies = (
+				7603F2C0182E79199321802C /* MimamoriCore */,
 			);
 			productName = SafariExtension;
 			productReference = 09B99954C58F5BB6B8E7061C /* SafariExtension.appex */;
@@ -578,6 +599,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				542AC95379E9D9FC5C6A6632 /* InfoPlist.strings in Resources */,
+				1B161776BF5548417FDFFD1F /* background.js in Resources */,
+				2536EB74FBC231130877C3C7 /* content.js in Resources */,
 				7DAE002F56540796C0D2E798 /* icon-128.png in Resources */,
 				D9FE1BC560296394E1FBC071 /* icon-256.png in Resources */,
 				3B224EED8B6094CD0792121D /* icon-48.png in Resources */,
@@ -650,6 +673,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				42D563BF82AF5DBCD95A0ECC /* CallEndWatcherTests.swift in Sources */,
+				6F95C519EA092FABCAAE9890 /* KeychainDeviceKeyStoreTests.swift in Sources */,
 				89FAA146B103F89E0CA95418 /* MessageFieldTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -658,6 +682,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				35E41EAE5E4C4DD981E1041E /* KeychainDeviceKeyStore.swift in Sources */,
 				D25B0DFFB4B0A2D9778F1F00 /* SafariWebExtensionHandler.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1141,6 +1166,10 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		7603F2C0182E79199321802C /* MimamoriCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MimamoriCore;
+		};
 		7E983F62499436B4FE715598 /* MimamoriCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = MimamoriCore;
