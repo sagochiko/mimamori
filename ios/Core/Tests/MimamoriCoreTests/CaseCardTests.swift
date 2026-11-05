@@ -349,13 +349,100 @@ struct ProtectedNoticeTests {
     #expect(notices.isEmpty)
   }
 
-  @Test("並ぶのは新しい3件まで")
+  @Test("同じ文言の知らせは、新しい3件まで")
   func atMostThree() throws {
     let cases = try (0..<5).map { i in
       try decodeCase(caseJSON(id: "c-\(i)", notifiedAt: "2026-11-03T10:0\(i):00.000Z"))
     }
     let notices = ProtectedNotice.notices(from: cases, now: tenOClock.addingTimeInterval(600))
     #expect(notices.map(\.id) == ["c-4", "c-3", "c-2"])
+  }
+}
+
+// #86: the notices sit in one strip at the top of her screen. Closed, it shows one of them; that one
+// must be the line that asks her to call, never "家族に伝えました" while another says nobody knows.
+@Suite("母の画面の上の帯")
+struct NoticeStripTests {
+  private func notice(_ id: String, _ status: String) -> ProtectedNotice {
+    ProtectedNotice(id: id, status: status, summary: "スマホの相談")
+  }
+
+  @Test("届いていない知らせを、返事がまだと伝えたより先に出す")
+  func notReachedFirst() {
+    let notices = [
+      notice("c-3", ProtectedNotice.toldFamily),
+      notice("c-2", ProtectedNotice.noReplyYet),
+      notice("c-1", ProtectedNotice.notReached),
+    ]
+    #expect(ProtectedNotice.mostPressing(notices)?.id == "c-1")
+  }
+
+  @Test("届いていない知らせが無ければ、返事がまだを伝えたより先に出す")
+  func noReplyYetBeforeTold() {
+    let notices = [notice("c-2", ProtectedNotice.toldFamily), notice("c-1", ProtectedNotice.noReplyYet)]
+    #expect(ProtectedNotice.mostPressing(notices)?.id == "c-1")
+  }
+
+  @Test(
+    "同じ文言なら、並びの先(新しいほう)を出す",
+    arguments: [ProtectedNotice.notReached, ProtectedNotice.noReplyYet, ProtectedNotice.toldFamily])
+  func newestWithinTheSameLine(status: String) {
+    let notices = [notice("c-2", status), notice("c-1", status), notice("c-0", status)]
+    #expect(ProtectedNotice.mostPressing(notices)?.id == "c-2")
+  }
+
+  @Test("知らせが無ければ、帯に出すものも無い")
+  func noneWhenEmpty() {
+    #expect(ProtectedNotice.mostPressing([]) == nil)
+  }
+
+  @Test("相談から作った知らせでも、急ぐ1件を出す")
+  func fromCases() throws {
+    // Told 1 minute ago, and one the family left for 40 minutes: the older one comes first.
+    let told = try decodeCase(caseJSON(id: "c-new", notifiedAt: "2026-11-03T10:39:00.000Z"))
+    let late = try decodeCase(caseJSON(id: "c-old"))
+    let notices = ProtectedNotice.notices(from: [told, late], now: tenOClock.addingTimeInterval(40 * 60))
+    #expect(notices.map(\.id) == ["c-old", "c-new"])
+    let first = try #require(ProtectedNotice.mostPressing(notices))
+    #expect(first.id == "c-old")
+    #expect(first.status == ProtectedNotice.noReplyYet)
+  }
+
+  // Review of PR #89: cut to three newest first, an old case no family device took fell off the
+  // screen behind three told ones, and the strip said "家族に伝えました". The server stops resending
+  // the first notice after 24 hours, so such a case can stay for the three days it is shown.
+  @Test("届いている新しい3件と届いていない古い1件なら、帯にも開いた一覧の先頭にも届いていない1件")
+  func notReachedIsNotPushedOff() throws {
+    let untold = try decodeCase(caseJSON(id: "c-untold", family: .null))
+    let told = try (1...3).map { i in
+      try decodeCase(caseJSON(id: "c-\(i)", notifiedAt: "2026-11-03T10:0\(i):00.000Z"))
+    }
+    let notices = ProtectedNotice.notices(from: told + [untold], now: tenOClock.addingTimeInterval(5 * 60))
+    #expect(notices.map(\.id) == ["c-untold", "c-3", "c-2"])
+    #expect(notices.first?.status == ProtectedNotice.notReached)
+    #expect(ProtectedNotice.mostPressing(notices)?.id == "c-untold")
+  }
+
+  @Test("3件に切る前に、届いていない、返事がまだ、伝えたの順に並べ、同じ中では新しい順")
+  func pressingOrderBeforeTheCut() throws {
+    let cases = try [
+      decodeCase(caseJSON(id: "told-39", notifiedAt: "2026-11-03T10:39:00.000Z")),
+      decodeCase(caseJSON(id: "late-00")),
+      decodeCase(caseJSON(id: "untold-20", notifiedAt: "2026-11-03T10:20:00.000Z", family: .null)),
+      decodeCase(caseJSON(id: "told-38", notifiedAt: "2026-11-03T10:38:00.000Z")),
+      decodeCase(caseJSON(id: "untold-10", notifiedAt: "2026-11-03T10:10:00.000Z", family: .null)),
+    ]
+    let now = tenOClock.addingTimeInterval(40 * 60)
+    #expect(ProtectedNotice.notices(from: cases, now: now).map(\.id) == ["untold-20", "untold-10", "late-00"])
+    let two = Array(cases.prefix(2)) + [cases[3]]
+    #expect(ProtectedNotice.notices(from: two, now: now).map(\.id) == ["late-00", "told-39", "told-38"])
+  }
+
+  @Test("電話を促すのは、届いていないと返事がまだの2つ")
+  func asksToCall() {
+    #expect(notice("c-1", ProtectedNotice.notReached).asksToCall)
+    #expect(notice("c-1", ProtectedNotice.noReplyYet).asksToCall)
+    #expect(!notice("c-1", ProtectedNotice.toldFamily).asksToCall)
   }
 }
 

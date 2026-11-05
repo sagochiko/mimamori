@@ -24,6 +24,8 @@
     }
     /// With `-mimamori-stub-draft <text>`, the text field starts with that text, ready to send.
     static var draftText: String? { value(after: "-mimamori-stub-draft") }
+    /// With `-mimamori-stub-notices-open`, the family notices at the top start opened.
+    static var noticesOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-notices-open") }
     /// The stub keeps the key in memory, so the real marker file is left alone.
     static let marker = FileInstallMarker(url: URL.temporaryDirectory.appending(path: "mimamori-stub-installed"))
     /// The conversation stays in memory too, so her real one is left alone. With
@@ -117,12 +119,18 @@
     private let lock = NSLock()
     private var data: Data?
 
+    /// `police` is the fake-police question and its answer; `followup` adds "それってどういうこと?" and
+    /// its answer after them.
     init(seed: String?) {
-      guard seed == "police" else { return }
+      guard seed == "police" || seed == "followup" else { return }
       var log = ChatLog()
       let now = Date.now
       log.append(.protected, "警察から電話があって、口座が犯罪に使われてるって。ほかの人には言わないでって", at: now.addingTimeInterval(-180))
       log.append(.ai, "詐欺で使われる説明と一致しています。送金せず、いったん電話を切って家族に確かめて", at: now.addingTimeInterval(-175))
+      if seed == "followup" {
+        log.append(.protected, "それってどういうこと?", at: now.addingTimeInterval(-120))
+        log.append(.ai, "警察を名乗る相手が、口座のことでビデオ通話や送金を求めるのは、詐欺で使われる説明と一致しています。電話を切って、家族に確かめて", at: now.addingTimeInterval(-115))
+      }
       data = try? log.encoded()
     }
 
