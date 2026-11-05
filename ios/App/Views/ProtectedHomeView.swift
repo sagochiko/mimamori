@@ -37,7 +37,11 @@ struct ProtectedHomeView: View {
     .task { await model.keepCasesFresh() }
     .fullScreenCover(isPresented: $camera) { SmileCaptureView() }
     .sheet(isPresented: $choosingNote) {
-      NoteSheet().presentationDetents([.medium, .large])
+      // Full height, and a swipe scrolls the words before it moves the sheet: at the medium height the
+      // fifth word was cut off, and at the largest text size a swipe could not reach it.
+      NoteSheet()
+        .presentationDetents([.large])
+        .presentationContentInteraction(.scrolls)
     }
     .onAppear {
       model.loadChat()
@@ -46,6 +50,7 @@ struct ProtectedHomeView: View {
         if draft.isEmpty, let text = ScreenshotStubTransport.draftText { draft = text }
         if ScreenshotStubTransport.noticesOpen { noticesOpen = true }
         if ScreenshotStubTransport.cameraOpen { camera = true }
+        if ScreenshotStubTransport.noteOpen { choosingNote = true }
       #endif
     }
     .onChange(of: scenePhase) { _, phase in

@@ -62,11 +62,16 @@ private struct SmileSection: View {
     }
     .fullScreenCover(isPresented: $camera) { SmileCaptureView() }
     .sheet(isPresented: $writing) {
-      NoteSheet().presentationDetents([.medium, .large])
+      // Full height, and a swipe scrolls the words before it moves the sheet: at the medium height the
+      // fifth word was cut off, and at the largest text size a swipe could not reach it.
+      NoteSheet()
+        .presentationDetents([.large])
+        .presentationContentInteraction(.scrolls)
     }
     .onAppear {
       #if DEBUG
         if ScreenshotStubTransport.cameraOpen { camera = true }
+        if ScreenshotStubTransport.noteOpen { writing = true }
       #endif
     }
   }
