@@ -130,7 +130,8 @@ describe("POST /sms/{familyToken}", () => {
   it("answers none for an unknown familyToken and records nothing", async () => {
     const { sent, queueEnv } = fakeQueue();
     const before = await alertCount();
-    const { res, body } = await ask("0".repeat(32), SCAM_TAX, queueEnv);
+    // A message the rules send to junk, so answering by the rules for an unknown token would show.
+    const { res, body } = await ask("0".repeat(32), SCAM_PARCEL, queueEnv);
     expect(res.status).toBe(200);
     expect(body).toEqual({ action: "none" });
     expect(sent).toHaveLength(0);
