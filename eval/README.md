@@ -111,6 +111,8 @@ cd server && npx tsc --noEmit -p ../eval/tsconfig.json  # eval/ の型検査
 
 `rules+claude` は、判定のキューと同じ [`server/src/claude.ts`](../server/src/claude.ts) の `requestClaudeJudgment` と `decide` で段階を決め(声の相談だけは母の相談と同じ道で決める。下の「相談の測り方」)、1と2を家族に届くものとして数える。鍵は環境変数 `ANTHROPIC_API_KEY` から読む。鍵が無ければ、Claude を呼ばず何も記録せずに止まる。`make eval` は流す前に鍵の有無を見て、無ければ `rules` の行も書かずに止まる。鍵の無いところで規則の変更を見るときは `make eval-rules` を流す。Claude が形の合う答えを返さなかった例文は規則だけで数え(相談は本番と同じく、規則が決められなければ2段階)、その件数を `results.jsonl` の `claude_unanswered` と画面に出す。この数が多い回は、ほとんど規則だけの数字になっている。
 
+SMS、メール、ページの例文は、2026年11月6日の #137 から本番の問い合わせ先と同じ関門を通す。`rules+claude` は、本番がキューに積まないもの(規則が認証コードとだけ読んだ SMS、[`server/src/inbound.ts`](../server/src/inbound.ts) の `worthAsking`)では Claude を呼ばず、規則の段階で数える。キューの受け手と同じ `decideFor` で段階を決めるので、Claude が答えず規則も決めなかった SMS、メール、ページは3段階になり、家族に届かないものとして数える(相談は今までどおり2段階)。家の中のアドレスのページと家族の端末のページは本番では回さないが、dev にその例文は無く、ここでは見ていない。それより前の `rules+claude` の行は、規則の結果に関わらずすべての SMS、メール、ページを Claude に渡していた。本番は印の無いもの(dev では SMS 8件、メール8件、ページ8件。ページの1件 p-sc-12 は詐欺)を Claude に見せていなかったので、前の行の見逃しは本番より少なく出ている。今の dev では関門で外れる例文が無く、Claude に渡す例文は前の行と同じになる。
+
 ## 相談の測り方
 
 声の相談(`consult`)の例文は、母の相談(`POST /consult`)と同じ道で段階を決める。判定の中身は [`server/src/consult-judge.ts`](../server/src/consult-judge.ts) にあり、本番の [`server/src/consult.ts`](../server/src/consult.ts) と [`eval/lib/score.ts`](lib/score.ts) が同じ関数を呼ぶ。前のやり取りは付けず、1回の相談として測る。

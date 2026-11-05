@@ -267,6 +267,14 @@ describe("judge", () => {
     expect(await judge({ source: "consult", text: "x" }, undecided)).toEqual({ level: 2, checking: true });
   });
 
+  it("keeps an SMS, a mail or a page neither decided out of the family's count, as the queue does (#137)", async () => {
+    const judge = claudeJudge(async () => null);
+    for (const source of ["sms", "gmail", "page"] as const) {
+      expect(await judge({ source, text: "x" }, undecided)).toEqual({ level: 3, checking: true });
+      expect(await judge({ source, text: "x" }, notConfident)).toEqual({ level: 2, checking: true });
+    }
+  });
+
   it("calls the Claude API with the key it was given and parses the answer", async () => {
     const keys: Array<string | null> = [];
     network.use(
@@ -417,6 +425,25 @@ describe("judgeCases", () => {
     const scored = await judgeCases(others, "rules+claude", { judge, consult: refuseConsult });
     expect(seen).toEqual(["sms", "gmail", "page"]);
     expect(scored.map((c) => c.level)).toEqual([2, 2, 2]);
+  });
+
+  it("asks Claude about an SMS only where the SMS route queues it: not for a verification code (#137)", async () => {
+    const CODE = "認証コードは 482913 です。このコードを誰にも教えないでください。";
+    const BROKEN_PHONE = "お母さん、携帯が壊れて番号が変わった。新しい番号に連絡して";
+    const seen: Array<string | undefined> = [];
+    const judge: Judge = async (input) => {
+      seen.push(input.text);
+      return { level: 2, checking: false };
+    };
+    const sms = (id: string, text: string) => evalCase({ id, source: "sms", text, is_scam: false, expected_level: null });
+    const [code, broken] = await judgeCases([sms("code", CODE), sms("broken", BROKEN_PHONE)], "rules+claude", {
+      judge,
+      consult: refuseConsult,
+    });
+    expect(seen).toEqual([BROKEN_PHONE]);
+    expect(code).toMatchObject({ level: null, rule_level: null });
+    expect(code?.claude_answered).toBeUndefined();
+    expect(broken).toMatchObject({ level: 2, rule_level: null, claude_answered: true });
   });
 
   // #109: which false alarms the family gets by design, and what Claude itself answered.

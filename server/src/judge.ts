@@ -20,7 +20,7 @@ import { ExternalBudget } from "./budget";
 import { CaseNoticeDeferred, openCase } from "./cases";
 import {
   ALERT_SOURCES,
-  decide,
+  decideFor,
   PLACEHOLDER_REASON,
   requestClaudeJudgment,
   type AlertSource,
@@ -366,9 +366,11 @@ async function judgeOne(
   } catch {
     claude = null;
   }
-  // When neither the rules nor Claude decided, this is level 2 with 確かめ中 at once, like any other
-  // time Claude gives nothing: a consultation from the mother must not wait on Claude coming back.
-  const decision = decide(rule, claude);
+  // When neither the rules nor Claude decided, a consultation is level 2 with 確かめ中 at once, like
+  // any other time Claude gives nothing: one from the mother must not wait on Claude coming back. An
+  // SMS, a mail, or a page is level 3 and tells no one, since those routes queue genuine ones the
+  // rules found no sign in (decideFor, #137).
+  const decision = decideFor(job.source, rule, claude);
   const level = decision.level;
   const steered = rule.reasons.includes(INJECTION.reason) || (claude?.injection_suspected ?? false);
   const reasons = cardReasons(job, rule, decision.reasons, steered);

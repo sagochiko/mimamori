@@ -156,7 +156,8 @@ export interface Decision {
 /**
  * Neither the rules nor Claude decided, because Claude gave nothing usable (a failure, a timeout, a
  * broken answer): level 2 with 確かめ中, so the mother and the family still hear of it. This is not
- * what Claude is told to do when it answers; then doubt alone is level 3 (#109).
+ * what Claude is told to do when it answers; then doubt alone is level 3 (#109). The judge queue
+ * keeps SMS, mail, and pages quiet instead (decideFor, #137).
  */
 export const UNDECIDED_LEVEL: Level = 2;
 
@@ -190,6 +191,28 @@ export function decide(rule: RuleResult, claude: ClaudeJudgment | null): Decisio
   const kept = claude.reasons.filter((r) => !soundsSafe(r));
   const reasons = kept.length > 0 ? kept : rule.reasons.length > 0 ? rule.reasons : [PLACEHOLDER_REASON];
   return { level, reasons, ruleLevel: rule.level, claudeLevel: claude.level, checking: false };
+}
+
+/**
+ * The routes that queue what the rules find no sign in (#137): SMS, mail, and pages. Most of what
+ * they carry is genuine, so when neither the rules nor Claude decided there, no one is told.
+ */
+export const QUIET_WHEN_UNDECIDED: readonly RuleSource[] = ["sms", "gmail", "page"];
+
+/**
+ * decide() for a job of the judge queue. On SMS, mail, and pages, what neither the rules nor Claude
+ * decided is level 3, which is only listed, still marked as checking: these routes queue genuine
+ * messages the rules found nothing in, and a Claude failure must not send the family a level 2 for
+ * each of them. alerts.level cannot be empty (docs/plan.md), so the row says 3 with neither the rule
+ * level nor Claude's. Every other route, the consultation above all, keeps decide()'s level 2: the
+ * mother herself asked and must hear back.
+ */
+export function decideFor(source: RuleSource, rule: RuleResult, claude: ClaudeJudgment | null): Decision {
+  const decision = decide(rule, claude);
+  if (claude === null && rule.level === null && QUIET_WHEN_UNDECIDED.includes(source)) {
+    return { ...decision, level: 3 };
+  }
+  return decision;
 }
 
 const SOURCE_NAMES: Record<RuleSource, string> = {

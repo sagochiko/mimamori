@@ -8,6 +8,7 @@
 // No Node APIs here, so the server's Vitest (in workerd) can import this file.
 
 import { consultByRules, judgeConsult } from "../../server/src/consult-judge";
+import { worthAsking } from "../../server/src/inbound";
 import { judgeByRules, type RuleInput } from "../../server/src/rules/index";
 import type { CaseSource, EvalCase } from "./cases";
 import type { ClaudeSeen, ConsultJudge, Judge } from "./judge";
@@ -209,7 +210,9 @@ export async function judgeCases(
     }
     const input = toRuleInput(c);
     const rule = judgeByRules(input);
-    const combined = mode === "rules" ? null : await claude.judge(input, rule);
+    // The SMS, mail, and page routes queue everything but a verification code (worthAsking, #137), so
+    // rules+claude asks Claude about the same cases and leaves a code at the rules' level.
+    const combined = mode === "rules" || !worthAsking(rule) ? null : await claude.judge(input, rule);
     const level = combined === null ? rule.level : combined.level;
     const latency = now() - start;
     scored.push({

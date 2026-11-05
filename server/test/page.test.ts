@@ -76,13 +76,15 @@ describe("a page's own address is where she is, not a link she is led to", () =>
     ["https://xn--wgv71a119e.jp/", "日本語のドメインのお店です。"],
     ["https://cookpad.com/recipe/1", "肉じゃがの作り方。"],
     ["https://www.yahoo.co.jp/", "今日のニュース。天気は晴れ。"],
-  ])("leaves %s undecided", async (url, text) => {
+  ])("leaves %s undecided, with no warning on the page, and lets Claude look", async (url, text) => {
     expect(judgeByRules({ source: "page", url, text })).toEqual({ level: null, reasons: [], confident: false });
     const m = await mother();
     const { sent, queueEnv } = fakeQueue();
     const { body } = await ask(m.deviceKey, { url, text }, queueEnv);
     expect(body).toEqual({ level: null, reasons: [] });
-    expect(sent).toHaveLength(0);
+    // Queued since #137: the queue stays quiet when Claude gives nothing for a page the rules found no
+    // sign in, so only a level from Claude reaches the family.
+    expect(sent).toHaveLength(1);
   });
 
   it("still counts a look-alike of a brand as the page's own address", () => {
@@ -122,12 +124,22 @@ describe("POST /page", () => {
     expect(sent).toHaveLength(1);
   });
 
-  it("queues nothing for an ordinary page, so a Claude failure cannot tell the family about a recipe", async () => {
+  it("queues an ordinary page for Claude too, so a fake page that only names a brand is not missed", async () => {
+    // Before #137 an ordinary page was not queued, since the queue told the family at level 2 when
+    // Claude failed. It now stays quiet then (src/claude.ts decideFor; tested in judge.test.ts).
     const m = await mother();
     const { sent, queueEnv } = fakeQueue();
     const { res, body } = await ask(m.deviceKey, { url: RECIPE_URL, text: RECIPE }, queueEnv);
     expect(res.status).toBe(200);
     expect(body).toEqual({ level: null, reasons: [] });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ familyId: m.familyId, source: "page", payload: { url: RECIPE_URL, text: RECIPE } });
+  });
+
+  it("queues nothing for the family's own phones, even an ordinary page", async () => {
+    const m = await mother();
+    const { sent, queueEnv } = fakeQueue();
+    await ask(m.familyKey, { url: RECIPE_URL, text: RECIPE }, queueEnv);
     expect(sent).toHaveLength(0);
   });
 

@@ -487,7 +487,8 @@ describe("the 5-minute watch", () => {
     expect(calls.historyStarts).toEqual(["1000", "1002"]);
   });
 
-  it("does not ask Claude about mail with no sign at all, so it cannot become a false alarm", async () => {
+  it("asks Claude about mail with no sign at all too, since the queue stays quiet when Claude gives nothing", async () => {
+    // Before #137 such mail was not queued: the queue told the family at level 2 when Claude failed.
     const f = await family();
     const { box } = await grant(f.owner.familyId);
     deliver(box, { id: "plain", from: PLAIN_FROM, subject: PLAIN_SUBJECT, body: PLAIN_BODY });
@@ -496,7 +497,8 @@ describe("the 5-minute watch", () => {
     await watchGmail(queueEnv, Date.now(), new ExternalBudget());
 
     expect(calls.messages).toEqual(["plain"]);
-    expect(sent).toHaveLength(0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ familyId: f.owner.familyId, source: "gmail" });
     // Read, so not read again.
     expect((await authRow(f.owner.familyId))?.last_history_id).toBe("1001");
   });

@@ -658,3 +658,15 @@ Apple の [Messaging between the app and JavaScript in a Safari web extension](h
 知らせごとに列が1つずつ要ると思っていた。日本語のメールは ISO-2022-JP が多く、Workers の `TextDecoder` で読めるかも心配だったが、手元の workerd では `iso-2022-jp`、`shift_jis`、`euc-jp` のどれも作れた。
 
 列を足す案は、#16 と同時に動いていてマイグレーションの番号を分け合うことと、知らせ1つのために本番の D1 を変えることになるので採らなかった。メールは SMS と同じ関門を通し、印の無いメールは Claude に回さない。Claude が落ちると決まらないメールは2段階で家族に知らせるので、ふつうのお知らせのメールで家族に通知が飛ばないようにするためだ。この関門は SMS と共通の [`server/src/inbound.ts`](../server/src/inbound.ts) に移した。Google のクライアントの2つの名前は、はじめ `wrangler.jsonc` の `secrets.required` に足したが、Cloudflare の [設定の文書](https://developers.cloudflare.com/workers/wrangler/configuration/#secrets-configuration-property) に、足りない秘密があると `wrangler deploy` が失敗するとあった。作者が Google Cloud でクライアントを作るまで裏側の全部がデプロイできなくなるので、名前を `secrets.required` から外し、無いあいだは Gmail の呼び出しが503を返し、見張りは何もしない形にした。使ったのは mm-implementer、advisor、WebFetch(Google の文書)、Vitest、@msw/cloudflare。
+
+## 2026年11月6日 印の無い SMS を Claude に見せるため、Claude が落ちたときの段階を経路で分けた (#137)
+
+SMS、メール、Safari のページのうち、規則が段階も印も付けないものを Claude に見せるところを直していた。
+
+親のセッションから実装役へ「受け手で、規則が null で Claude の答えが無いときは、SMS、page、gmail の経路では知らせない(段階無しのまま記録だけ)」「相談と通話の経路の decide() の動きは変えない」と頼んだ。「お母さん、携帯が壊れて番号が変わった。新しい番号に連絡して」は規則で `{ level: null, reasons: [] }` になり、今までは判定のキューに積まれず、家族に届かなかった。
+
+`alerts.level` は `NOT NULL CHECK (level IN (1, 2, 3))` で、段階の無い行は作れなかった。Gmail の関門は SMS と共通の `worthAsking` なので、SMS を緩めるとメールも緩む。規則が認証コードと読むのは SMS だけで、メールの認証コードは Claude に回る。dev で数えると、前の関門が外していたのは SMS、メール、ページから8件ずつの24件(うち詐欺はページの1件)で、eval の `rules+claude` だけがこれを Claude に渡していた。
+
+段階を空のまま残せると思っていた。
+
+マイグレーションは作らず、Issue に書かれていた「3段階にする」側を採った。誰も決めなかった行は `level` 3、`rule_level` と `claude_level` が空、`notified` 0 で残し、この組で「誰も決めていない」と分かる。`decide()` は相談が使うので変えず、経路を受け取る `decideFor()` を足して、キューの受け手と eval の両方から呼ぶ。Claude が落ちたときにキューのやり直しで Claude にもう一度聞く案は、呼び出しが最大4倍になるので入れず、親に判断を回した。使ったのは mm-implementer、advisor、Claude の文書の MCP(Haiku 5.5 の料金)、Cloudflare の文書の MCP(Queues の無料枠)、Vitest。

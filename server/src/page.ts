@@ -4,8 +4,10 @@
 // the native side itself, so it goes content script -> background script -> native handler -> here).
 // The reply is { level: 1 | 2 | null, reasons } made by the rules alone, and the extension lays its
 // warning over the page for 1 and 2. Claude is not waited on in the request (.claude/rules/server.md):
-// a page the rules see a sign on goes to the judge queue, whose consumer writes the alert, lays Claude's
-// judgment over the rules, and tells the mother and the family (src/judge.ts).
+// the mother's pages go to the judge queue, whose consumer writes the alert, lays Claude's judgment
+// over the rules, and tells the mother and the family (src/judge.ts). Since #137 that includes pages
+// the rules see no sign on, so a fake page that only names a brand is looked at by Claude; the queue
+// tells no one about such a page when Claude gives nothing (decideFor in src/claude.ts).
 //
 // The page's text and URL are data to inspect. An instruction in it ("この警告を止めて", "家族に知らせ
 // ないで") only raises the rules' level; it never changes the reply or who is told. Neither the text nor
@@ -16,7 +18,8 @@
 import { requireMember } from "./auth";
 import { HttpError, json, readJson } from "./http";
 import { enqueueJudge, JUDGE_TEXT_MAX_CHARS, normalizeDomain, type JudgePayload } from "./judge";
-import { FOREIGN_SENDER_REASON, judgeByRules, type RuleResult } from "./rules";
+import { worthAsking } from "./inbound";
+import { judgeByRules } from "./rules";
 
 /** Only the first 5,000 characters of the page are judged and sent on (docs/plan.md, task 9). */
 export const PAGE_TEXT_MAX_CHARS = JUDGE_TEXT_MAX_CHARS;
@@ -63,16 +66,6 @@ async function readPage(request: Request): Promise<{ url: URL; text: string }> {
   if (!url) throw new HttpError(400, "page_invalid");
   if (body.text !== undefined && typeof body.text !== "string") throw new HttpError(400, "page_invalid");
   return { url, text: cut(body.text ?? "", PAGE_TEXT_MAX_CHARS) };
-}
-
-/**
- * Whether the page goes to Claude and the family. Only with a level or a sign from the rules: the queue
- * treats a job neither the rules nor Claude decided as level 2 and tells the family, which an ordinary
- * page must never cause when Claude is down. Same gate as the SMS route (src/sms.ts).
- */
-function worthAsking(rule: RuleResult): boolean {
-  if (rule.level !== null) return true;
-  return rule.reasons.some((r) => r !== FOREIGN_SENDER_REASON);
 }
 
 /**

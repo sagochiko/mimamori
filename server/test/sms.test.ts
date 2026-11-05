@@ -25,6 +25,8 @@ const UNSURE_PARCEL = "お荷物のお届けにあがりましたが不在のた
 const UNSURE_WEAK = "未払い料金があります。本日中にご連絡ください。";
 const CODE = "認証コードは 482913 です。このコードを誰にも教えないでください。";
 const PARCEL_GENUINE = "【ヤマト運輸】お荷物のお届け予定のお知らせです。https://www.kuronekoyamato.co.jp/";
+/** A scam with no sign the rules know: a family member's new number (#137). */
+const BROKEN_PHONE = "お母さん、携帯が壊れて番号が変わった。新しい番号に連絡して";
 
 function appleBody(text: string, sender = SENDER) {
   return { _version: 1, query: { sender, message: { text } }, app: { version: "0.1.0" } };
@@ -65,6 +67,7 @@ describe("the examples are what the rules say they are", () => {
     [UNSURE_WEAK, null, false],
     [CODE, null, false],
     [PARCEL_GENUINE, null, false],
+    [BROKEN_PHONE, null, false],
   ])("%s", (text, level, confident) => {
     const rule = judgeByRules({ source: "sms", sender: SENDER, text });
     expect(rule.level).toBe(level);
@@ -107,17 +110,33 @@ describe("POST /sms/{familyToken}", () => {
     expect(sent[0]?.payload.domain).toBe("parcel-info.example");
   });
 
-  it.each([CODE, PARCEL_GENUINE])("delivers a verification code or a genuine notice and queues nothing: %s", async (text) => {
+  it("delivers a verification code and queues nothing", async () => {
+    // Codes come often and the rules read them well; Claude's look is kept for the rest.
     const family = await createFamily();
     const { sent, queueEnv } = fakeQueue();
-    const { body } = await ask(family.familyToken, text, queueEnv);
+    const { body } = await ask(family.familyToken, CODE, queueEnv);
     expect(body.action).toBe("none");
     expect(sent).toHaveLength(0);
   });
 
+  it.each([PARCEL_GENUINE, BROKEN_PHONE])(
+    "delivers an SMS the rules find no sign in as usual and still queues it for Claude: %s",
+    async (text) => {
+      // Before #137 these were not queued, since the queue told the family at level 2 when Claude
+      // failed. The queue now stays quiet then (src/claude.ts decideFor), so the broken-phone scam,
+      // which carries no sign the rules know, reaches Claude.
+      const family = await createFamily();
+      const { sent, queueEnv } = fakeQueue();
+      const { body } = await ask(family.familyToken, text, queueEnv);
+      expect(body.action).toBe("none");
+      expect(sent).toHaveLength(1);
+      expect(sent[0]).toMatchObject({ familyId: family.familyId, source: "sms", payload: { text } });
+    },
+  );
+
   it("queues nothing for a verification code from an overseas number either", async () => {
-    // Overseas services send codes from +1 numbers. The weak sign for the number must not make the code
-    // unsure: with Claude down, an undecided job becomes level 2 and the family would be told.
+    // Overseas services send codes from +1 numbers. The weak sign for the number must not take the
+    // code out of the codes the rules settle without Claude.
     const overseas = "+14150000100";
     expect(judgeByRules({ source: "sms", sender: overseas, text: CODE }).level).toBeNull();
     const family = await createFamily();
@@ -127,8 +146,9 @@ describe("POST /sms/{familyToken}", () => {
     expect(sent).toHaveLength(0);
   });
 
-  it("queues nothing for a genuine SMS whose only sign is the overseas number", async () => {
-    // With Claude down, an undecided job becomes level 2: the family would be told about a booking.
+  it("queues an SMS whose only sign is the overseas number for Claude", async () => {
+    // Before #137 this was not queued: with Claude down, an undecided job became level 2 and the
+    // family would have been told about a booking. The queue now stays quiet then.
     const overseas = "+14150000100";
     const text = "Your table is booked for 7pm tonight.";
     expect(judgeByRules({ source: "sms", sender: overseas, text })).toMatchObject({
@@ -139,7 +159,7 @@ describe("POST /sms/{familyToken}", () => {
     const { sent, queueEnv } = fakeQueue();
     const res = await call("POST", `/sms/${family.familyToken}`, { body: appleBody(text, overseas), env: queueEnv });
     expect(await res.json()).toEqual({ action: "none" });
-    expect(sent).toHaveLength(0);
+    expect(sent).toHaveLength(1);
   });
 
   it.each([UNSURE_WEAK, UNSURE_PARCEL, SCAM_TAX])(

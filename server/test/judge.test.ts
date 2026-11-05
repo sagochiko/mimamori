@@ -362,6 +362,81 @@ describe("judge consumer", () => {
     await expectNothingSaysSafe(fam.familyId);
   });
 
+  describe("a message, mail or page with no sign from the rules (#137)", () => {
+    // A genuine one the rules find nothing in now goes to Claude too, so when Claude gives nothing
+    // these routes must stay quiet: a delivery notice, a newsletter, or a recipe page must not reach
+    // the family as level 2 just because Claude was down.
+    const BROKEN_PHONE = "お母さん、携帯が壊れて番号が変わった。新しい番号に連絡して";
+    const GENUINE = "【ヤマト運輸】お荷物のお届け予定のお知らせです。https://www.kuronekoyamato.co.jp/";
+    const undecided: RuleResult = { level: null, reasons: [], confident: false };
+    const jobs = (familyId: string): Array<[string, JudgeJob]> => [
+      ["sms", smsJob(familyId, { text: GENUINE, url: "https://www.kuronekoyamato.co.jp/" })],
+      ["gmail", { familyId, source: "gmail", payload: { sender: "news@shop.example", text: "今週のおすすめ" } }],
+      ["page", { familyId, source: "page", payload: { url: "https://cookpad.com/recipe/1", text: "肉じゃがの作り方" } }],
+    ];
+
+    it.each(["sms", "gmail", "page"])(
+      "tells neither the mother nor the family when Claude gives nothing for an unmarked %s",
+      async (source) => {
+        const fam = await setupFamily();
+        const job = jobs(fam.familyId).find(([s]) => s === source)?.[1];
+        const deps = fakes({ rule: undecided, claude: null });
+        const { result } = await run([job], deps);
+
+        expect(deps.claudeCalls).toBe(1);
+        expect(pushes).toHaveLength(0);
+        expect(deps.opened).toHaveLength(0);
+        // Kept only as a row no one is told about, with neither the rules' nor Claude's level.
+        const rows = await env.DB.prepare("SELECT level, rule_level, claude_level, notified FROM alerts WHERE family_id = ?")
+          .bind(fam.familyId)
+          .all();
+        expect(rows.results).toEqual([{ level: 3, rule_level: null, claude_level: null, notified: 0 }]);
+        expect(result.explicitAcks).toHaveLength(1);
+        expect(result.retryMessages).toHaveLength(0);
+        await expectNothingSaysSafe(fam.familyId);
+      },
+    );
+
+    it.each([
+      ["the Claude call fails", () => Promise.reject(new Error("network"))],
+      ["Claude's answer is broken", () => Promise.resolve(parseClaudeJudgment({ level: "2" }))],
+    ])("stays quiet for an unmarked SMS when %s", async (_label, claude) => {
+      const fam = await setupFamily();
+      const deps = fakes({ rule: undecided, claude });
+      await run([smsJob(fam.familyId, { text: GENUINE })], deps);
+      expect(pushes).toHaveLength(0);
+      expect(deps.opened).toHaveLength(0);
+    });
+
+    it("tells the family about the broken-phone scam the rules find nothing in, once Claude gives it a level", async () => {
+      // The real rules, so this breaks if they start to see a sign and the test no longer covers #137.
+      const text = BROKEN_PHONE;
+      expect(judgeByRules({ source: "sms", sender: "+819000000001", text })).toEqual(undecided);
+      const fam = await setupFamily();
+      const deps = {
+        ...fakes({ claude: claudeSays({ level: 2, reasons: ["家族を名乗り新しい番号へ誘う"] }) }),
+        judgeByRules,
+      };
+      await run([smsJob(fam.familyId, { sender: "+819000000001", text, url: undefined })], deps);
+
+      expect(await alertsOf(fam.familyId)).toMatchObject([{ level: 2, rule_level: null, claude_level: 2 }]);
+      expect(pushesTo(fam.tokens.family)).toHaveLength(2);
+      const [toMother] = pushesTo([fam.tokens.mother]);
+      expect(toMother?.body).toBe("家族を名乗り新しい番号へ誘う");
+      expect(toMother?.data).toMatchObject({ level: 2, checking: false });
+      expect(deps.opened).toHaveLength(1);
+    });
+
+    it("still tells everyone with 確かめ中 when Claude gives nothing but the rules saw a level", async () => {
+      const fam = await setupFamily();
+      const deps = fakes({ rule: { level: 2, reasons: ["急がせる言い回しがある"], confident: false }, claude: null });
+      await run([jobs(fam.familyId)[2]?.[1]], deps);
+      expect(await alertsOf(fam.familyId)).toMatchObject([{ level: 2, rule_level: 2, claude_level: null }]);
+      expect(pushesTo([fam.tokens.mother])[0]?.body).toContain("確かめ中");
+      expect(pushesTo(fam.tokens.family)).toHaveLength(2);
+    });
+  });
+
   it("keeps Claude's level and injection step when a reason says 安全, and replaces only the wording", async () => {
     const fam = await setupFamily();
     const raw = {
