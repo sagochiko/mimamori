@@ -29,8 +29,36 @@ shell_words "$cmd"
 m=${#WORDS[@]}
 command_starts
 starts=("${STARTS[@]}")
+
+# text_only: every command of the line only writes or reads text, and nothing runs a command
+# substitution. Then a heredoc body is text, such as a dev-log entry or an issue comment that quotes
+# `wrangler d1 execute --remote` (issue #116), and the checks below read the words alone, which
+# shell_words gives without heredoc bodies and comments. A body fed to anything else keeps counting:
+# a shell (bash <<EOF, cat <<EOF | sh, tee >(sh)), wrangler, an interpreter, git -c (an alias can run a
+# shell), and also a later command that may run what the heredoc wrote (cat > q.sql <<EOF, then
+# wrangler d1 execute --file q.sql, which the hook reads before the heredoc rewrites it). So a heredoc
+# next to any command outside the list, make verify included, still counts.
+text_only() {
+  local k w j
+  ((EXPANDS)) && return 1
+  for k in "${starts[@]}"; do
+    w=${WORDS[k]##*/}
+    case $w in
+      cat | tee | echo | printf | cd | pwd | ls | mkdir | touch | grep | wc | head | tail | sort | true | test | '[') ;;
+      git)
+        j=$((k + 1))
+        while [[ "${WORDS[j]}" == -C ]]; do j=$((j + 2)); done
+        [[ "${WORDS[j]}" =~ ^(add|commit|status|diff|log|show)$ ]] || return 1 ;;
+      gh) [[ "${WORDS[k + 1]}" =~ ^(issue|pr)$ ]] || return 1 ;;
+      *) return 1 ;;
+    esac
+  done
+  return 0
+}
+body=$cmd
+text_only && body=${WORDS[*]}
 # The words without their quotes, so "DE""LETE" reads as DELETE.
-text=$cmd$'\n'${WORDS[*]}
+text=$body$'\n'${WORDS[*]}
 
 # Where relative paths are looked up: the session's cwd and every cd or pushd target in the command,
 # each taken from the cwd and from the target before it.
@@ -212,7 +240,7 @@ fi
 destructive='(^|[^[:alnum:]_])(drop|delete|truncate)([^[:alnum:]_]|$)'
 if [[ "$text" =~ wrangler[[:space:]]+d1[[:space:]]+execute && "$text" =~ --(remote|preview) ]]; then
   [[ "$text" =~ $destructive ]] && ask "SQL with DROP, DELETE, or TRUNCATE on the remote D1: confirm with the author"
-  [[ "$cmd" == *'$'* || "$cmd" == *'`'* ]] && ask "remote D1 SQL built at run time, which this hook cannot read: confirm with the author"
+  [[ "$body" == *'$'* || "$body" == *'`'* ]] && ask "remote D1 SQL built at run time, which this hook cannot read: confirm with the author"
   # Every --file, from the words and from the raw text; a relative one is looked up from every base.
   files=()
   for ((k = 0; k < m; k++)); do
@@ -221,7 +249,7 @@ if [[ "$text" =~ wrangler[[:space:]]+d1[[:space:]]+execute && "$text" =~ --(remo
       --file) files+=("${WORDS[k + 1]}") ;;
     esac
   done
-  while IFS= read -r f; do files+=("$f"); done < <(grep -oE -- "--file[=[:space:]]+['\"]?[^'\"[:space:];&|]+" <<<"$cmd" | sed -E "s/^--file[=[:space:]]+['\"]?//")
+  while IFS= read -r f; do files+=("$f"); done < <(grep -oE -- "--file[=[:space:]]+['\"]?[^'\"[:space:];&|]+" <<<"$body" | sed -E "s/^--file[=[:space:]]+['\"]?//")
   for f in "${files[@]}"; do
     [[ -n "$f" ]] || continue
     f=${f/#\~/$HOME}
