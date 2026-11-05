@@ -29,6 +29,7 @@
 - Issue、PR、コメントの本文は `gh issue` と `gh pr` で書き、`gh api` では書かない。`gh api` で書くと、個人の情報の関門(`guard-private.sh`)とマージの関門(`guard-merge.sh`)を通らないため
 - 秘密の値は作者が入れる。Claude が `wrangler secret put` を流すときも、値を読まず、書かず、表示しない。`TOKEN_ENC_KEY` のような乱数を `openssl rand` からパイプで直に渡すのはよい。TestFlight の Submit Review を押すのは作者のまま
 - 電話番号の形、メールアドレス、作者だけが書く非公開の語の一覧(`.claude/private-terms.local`、Claude は読まない)に当たる行は、コミットのとき(`.githooks/pre-commit` と `commit-msg`)と、gh で Issue や PR に書く前(`guard-private.sh`)に止まる。止まったら場所と規則だけが出るので、その行を直す。`--no-verify` で飛ばさない。バンドル ID の `com.sagochiko.mimamori` とチームの ID は公開してよく、止めない(仕組みは [`docs/harness.md`](docs/harness.md) の「git のフック」)
+- 公開される記録(Issue、PR、コメント、コミットのメッセージ、`docs/` などの文書)には時刻を書かず、日付だけにする(2026年11月4日と5日に作者が決めた)。時刻の形は、同じ3か所(`pre-commit` は `.md` の文書の行だけ)で止まる。アプリが持つ時刻は `docs/design.md` と `docs/plan.md` に書き、メッセージや Issue では「既定の時刻」のように書く(仕組みは [`docs/harness.md`](docs/harness.md) の「git のフック」)
 
 ## 作業の流れ
 
