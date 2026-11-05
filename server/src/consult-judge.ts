@@ -405,13 +405,16 @@ function tellsPoliceScript(said: Said): boolean {
   return police >= 1 && police + caller + money >= 2;
 }
 
-/** The parts of the script she told, as reasons for the family's card. Not those of a warning she passed on. */
-function policeReasons(said: Said): string[] {
-  const told = allOf(said)
-    .map(normalize)
-    .filter((t) => tellingOf(t) !== "passed_on");
+/**
+ * The parts of the script she told, as reasons for the family's card. `withoutPassedOn` leaves out a
+ * warning she passed on (#81), for the card of the script; the fixed lines keep every turn, since the
+ * rules' wording is never her words whichever turn it matched.
+ */
+function policeReasons(said: Said, withoutPassedOn = false): string[] {
+  const all = allOf(said).map(normalize);
+  const turns = withoutPassedOn ? all.filter((t) => tellingOf(t) !== "passed_on") : all;
   return [POLICE_CALLER, ...POLICE_SCRIPT, MONEY_MOVE]
-    .filter((rule) => told.some((t) => matchSpans(rule, t).length > 0))
+    .filter((rule) => turns.some((t) => matchSpans(rule, t).length > 0))
     .map((rule) => rule.reason);
 }
 
@@ -453,8 +456,8 @@ export interface Plan {
 function policePlan(said: Said, rule: RuleResult): Plan {
   // As before for one turn: the rules' reasons, or the parts she told when the rules have none. The
   // rules saw this turn only, so the parts told in earlier turns are added after them.
-  const now = rule.reasons.length > 0 ? rule.reasons : policeReasons({ text: said.text, earlier: [] });
-  const reasons = [...new Set([...now, ...(said.earlier.length > 0 ? policeReasons(said) : [])])];
+  const now = rule.reasons.length > 0 ? rule.reasons : policeReasons({ text: said.text, earlier: [] }, true);
+  const reasons = [...new Set([...now, ...(said.earlier.length > 0 ? policeReasons(said, true) : [])])];
   return {
     level: 1,
     reasons,
