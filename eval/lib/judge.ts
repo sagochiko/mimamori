@@ -11,11 +11,23 @@ import { type ClaudeJudgment, decide, requestClaudeJudgment } from "../../server
 import { type ClaudeConsult, requestClaudeConsult } from "../../server/src/consult-judge";
 import type { RuleInput, RuleResult } from "../../server/src/rules/index";
 
+/**
+ * What Claude itself answered, before the rules' floor and the injection step, kept in
+ * eval/out/dev-latest.json so a false alarm can be traced to Claude's level or to the code (#109).
+ */
+export interface ClaudeSeen {
+  level: 1 | 2 | 3;
+  reasons: string[];
+  injection_suspected: boolean;
+}
+
 /** The level the family and the mother would get once Claude's judgment is combined with the rules. */
 export interface CombinedJudgment {
   level: 1 | 2 | 3 | null;
   /** Claude gave nothing usable, so the rules stood alone (the mother would see "確かめ中"). */
   checking?: boolean;
+  /** Claude's own answer; absent when it gave nothing usable. */
+  claude?: ClaudeSeen;
 }
 
 export type Judge = (input: RuleInput, rule: RuleResult) => Promise<CombinedJudgment>;
@@ -43,8 +55,13 @@ export const unavailableConsultJudge: ConsultJudge = async () => {
 /** Lays Claude's answer over the rule result exactly as the judge queue does. */
 export function claudeJudge(ask: AskClaude): Judge {
   return async (input, rule) => {
-    const decision = decide(rule, await ask(input, rule));
-    return { level: decision.level, checking: decision.checking };
+    const answer = await ask(input, rule);
+    const decision = decide(rule, answer);
+    const combined: CombinedJudgment = { level: decision.level, checking: decision.checking };
+    if (answer !== null) {
+      combined.claude = { level: answer.level, reasons: answer.reasons, injection_suspected: answer.injection_suspected };
+    }
+    return combined;
   };
 }
 

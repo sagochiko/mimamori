@@ -481,6 +481,11 @@ export interface Plan {
   record: boolean;
   ruleLevel: Level | null;
   claudeLevel: Level | null;
+  /**
+   * Her words are on a topic the AI does not guide (SENSITIVE), so the family takes it whatever Claude
+   * answers. eval/ counts these false alarms apart from the ones Claude made (#109).
+   */
+  unguided: boolean;
 }
 
 /**
@@ -501,6 +506,7 @@ function policePlan(said: Said, rule: RuleResult): Plan {
     record: true,
     ruleLevel: rule.level,
     claudeLevel: null,
+    unguided: false,
   };
 }
 
@@ -596,7 +602,7 @@ function decidePlan(said: Said, rule: RuleResult, claude: ClaudeConsult | null, 
       : [];
   const sensitive = [...new Set([...ownSensitive, ...guided])];
   const reasons = [...decision.reasons];
-  const base = { ruleLevel: decision.ruleLevel, claudeLevel: decision.claudeLevel };
+  const base = { ruleLevel: decision.ruleLevel, claudeLevel: decision.claudeLevel, unguided: sensitive.length > 0 };
 
   // A topic the AI does not guide, or one Claude cannot answer: the family takes it, at any level, and
   // Claude's action is not read out (it may be the very guidance that is not given). At level 2 or

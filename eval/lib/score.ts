@@ -2,12 +2,15 @@
 // - a miss is a scam that does not reach the family: level null (the rules could not decide) or 3
 // - a false alarm is a genuine case at level 1 or 2, which sends the family a push it did not need
 // - genuine_at_level1 counts genuine cases at level 1 (junk folder, DNS block); the target is 0
+// - false_alarms_unguided counts the false alarms that are consultations on a topic the AI does not
+//   guide (sending money, codes, profiles, deleting data), which go to the family whatever Claude says
+//   (decidePlan in server/src/consult-judge.ts). They stay in false_alarms too (#109).
 // No Node APIs here, so the server's Vitest (in workerd) can import this file.
 
 import { consultByRules, judgeConsult } from "../../server/src/consult-judge";
 import { judgeByRules, type RuleInput } from "../../server/src/rules/index";
 import type { CaseSource, EvalCase } from "./cases";
-import type { ConsultJudge, Judge } from "./judge";
+import type { ClaudeSeen, ConsultJudge, Judge } from "./judge";
 
 export type Mode = "rules" | "rules+claude";
 type Level = 1 | 2 | 3 | null;
@@ -26,6 +29,13 @@ export interface ScoredCase {
   claude_answered?: boolean;
   /** Consultations only: the fake-police script decided it from the rules alone. */
   consult_script?: boolean;
+  /**
+   * Consultations in rules+claude only: her words are on a topic the AI does not guide, so the family
+   * takes it whatever Claude answers (#109). Absent for the script, where Claude is not asked.
+   */
+  unguided_topic?: boolean;
+  /** rules+claude only: what Claude itself answered (#109); absent when Claude gave nothing or was not asked. */
+  claude?: ClaudeSeen & { kind?: "scam" | "help"; handoff?: boolean };
 }
 
 /** The two Claude calls of rules+claude: the judge queue's for messages and pages, and the consultation one. */
@@ -43,6 +53,8 @@ export interface SourceMetrics {
   false_alarms: number;
   false_alarm_rate: number | null;
   genuine_at_level1: number;
+  /** Of false_alarms, the consultations on a topic the AI does not guide (#109). */
+  false_alarms_unguided: number;
 }
 
 // The first seven fields are the contract in docs/plan.md (task 4). The rest are what eval/README.md
@@ -59,6 +71,8 @@ export interface RunMetrics {
   genuine_at_level1: number;
   scam: number;
   genuine: number;
+  /** Of false_alarms, the consultations on a topic the AI does not guide (#109). */
+  false_alarms_unguided: number;
 }
 
 /** Level 1 and 2 reach the family (task 6 sends no push for level 3). */
@@ -85,16 +99,17 @@ function tally(cases: readonly ScoredCase[]): SourceMetrics {
   const scam = cases.filter((c) => c.is_scam);
   const genuine = cases.filter((c) => !c.is_scam);
   const misses = scam.filter((c) => !reachesFamily(c.level)).length;
-  const falseAlarms = genuine.filter((c) => reachesFamily(c.level)).length;
+  const falseAlarms = genuine.filter((c) => reachesFamily(c.level));
   return {
     n: cases.length,
     scam: scam.length,
     genuine: genuine.length,
     misses,
     miss_rate: rate(misses, scam.length),
-    false_alarms: falseAlarms,
-    false_alarm_rate: rate(falseAlarms, genuine.length),
+    false_alarms: falseAlarms.length,
+    false_alarm_rate: rate(falseAlarms.length, genuine.length),
     genuine_at_level1: genuine.filter((c) => c.level === 1).length,
+    false_alarms_unguided: falseAlarms.filter((c) => c.unguided_topic === true).length,
   };
 }
 
@@ -119,6 +134,7 @@ export function scoreRun(cases: readonly ScoredCase[]): RunMetrics {
     genuine_at_level1: all.genuine_at_level1,
     scam: all.scam,
     genuine: all.genuine,
+    false_alarms_unguided: all.false_alarms_unguided,
   };
 }
 
@@ -166,9 +182,14 @@ export async function judgeCases(
         continue;
       }
       let answered: boolean | undefined;
+      let seen: ScoredCase["claude"];
       const judged = await judgeConsult(text, [], async (rule) => {
         const answer = await claude.consult(text, rule);
         answered = answer !== null;
+        if (answer !== null) {
+          const { kind, level, reasons, handoff, injection_suspected } = answer;
+          seen = { kind, level, reasons, handoff, injection_suspected };
+        }
         return answer;
       });
       const latency = now() - start;
@@ -181,6 +202,8 @@ export async function judgeCases(
         reasons: judged.reasons,
         consult_script: judged.script,
         ...(answered === undefined ? {} : { claude_answered: answered }),
+        ...(judged.script ? {} : { unguided_topic: judged.unguided }),
+        ...(seen === undefined ? {} : { claude: seen }),
       });
       continue;
     }
@@ -197,6 +220,7 @@ export async function judgeCases(
       confident: rule.confident,
       reasons: rule.reasons,
       ...(combined === null ? {} : { claude_answered: combined.checking !== true }),
+      ...(combined?.claude === undefined ? {} : { claude: combined.claude }),
     });
   }
   return scored;
