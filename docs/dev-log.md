@@ -714,4 +714,4 @@ SMS、メール、Safari のページのうち、規則が段階も印も付け�
 
 消えた止めは、どれも auto mode の判定に回るだけだと思っていた。ところが permission-modes の文書には「Actions matching your allow, ask, or deny rules resolve immediately」とあり、allow に当たるものは判定も通らない。作者の「本当にヤバいのは Automode がいい感じに拒否してくれたから」という前提は、allow の外にあるものにしか当たらない。
 
-作者がフックを足さないと決めたので、ここではフックも allow の狭め方も変えず、`scripts/test-hooks.sh` の `rule allow` で今の当たり方を固定し、[`docs/harness.md`](harness.md) の「設定の範囲」に、フックで残るもの、判定に任せるもの、確認なしに走るものを分けて書いた。どうするかは親から作者に聞いてもらう。使ったのは mm-implementer、advisor、WebFetch、`scripts/test-hooks.sh`。
+作者がフックを足さないと決めたので、ここではフックも allow の狭め方も変えず、`scripts/test-hooks.sh` の `rule allow` で今の当たり方を固定し、[`docs/harness.md`](harness.md) の「設定の範囲」に、フックで残るもの、判定に任せるもの、確認なしに走るものを分けて書いた。どうするかは親から作者に聞いてもらった。作者は「許可の一覧から外す」を選び、allow の `gh issue *` と `gh pr *` をサブコマンドごとの規則に分けた。`*` は `--admin` も含めてどんな文字にも当たるので、`--admin` だけは外せず、`gh pr merge` を丸ごと判定に回した。使ったのは mm-implementer、advisor、AskUserQuestion、WebFetch、`scripts/test-hooks.sh`。

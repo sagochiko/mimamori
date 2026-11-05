@@ -299,6 +299,25 @@ rule() { # <deny|ask|allow|none> <command>
 }
 rule allow 'gh api repos/o/r/issues/1/comments -f body=x'
 rule allow 'gh api -X PATCH repos/o/r/issues/1 -f state=closed'
+# The gh issue and gh pr calls of the daily flow (/mm-task, /mm-human-queue) still run without a prompt.
+rule allow 'gh issue create --title t --body-file /tmp/b.md --milestone M2'
+rule allow 'gh issue view 12 --comments'
+rule allow 'gh issue list --milestone M2 --state open'
+rule allow 'gh issue list'
+rule allow 'gh issue comment 12 --body-file /tmp/b.md'
+rule allow 'gh issue edit 12 --add-label x'
+rule allow 'gh issue close 12 --comment done'
+rule allow 'gh issue reopen 12'
+rule allow 'gh pr create --base main --title t --body-file /tmp/b.md'
+rule allow 'gh pr view 41 --json body'
+rule allow 'gh pr list --state open'
+rule allow 'gh pr comment 41 --body-file /tmp/b.md'
+rule allow 'gh pr edit 41 --body-file /tmp/b.md'
+rule allow 'gh pr checks 41'
+rule allow 'gh pr ready 41'
+rule allow 'gh pr diff 41'
+rule none 'gh issue transfer 12 o/other'
+rule none 'gh pr checkout 41'
 rule allow 'git push -u origin HEAD'
 rule allow 'git push -u origin fix-f'
 rule allow 'git push origin c++fix'
@@ -344,11 +363,16 @@ rule allow 'xcrun simctl delete unavailable'
 prod block 'npx wrangler delete' "wrangler delete is blocked without the deny rule"
 prod block 'npx wrangler d1 delete mimamori' "deleting the database is blocked without the deny rule"
 prod block 'npx wrangler d1 time-travel restore mimamori --timestamp=1' "time-travel restore is blocked without the deny rule"
-# No hook looks at these. Since 2026-11-06 they are left to the auto mode classifier (none) or, under an
-# allow rule, run with no check at all (allow): an allow match skips the classifier (permission-modes,
-# "Actions matching your allow, ask, or deny rules resolve immediately"). docs/harness.md lists them.
-rule allow 'gh issue delete 3'
-rule allow 'gh pr merge 3 --merge --admin'
+# No hook looks at these, so since 2026-11-06 the auto mode classifier judges them. None may match an allow
+# rule: an allow match skips the classifier (permission-modes, "Actions matching your allow, ask, or deny
+# rules resolve immediately"). The author chose on 2026-11-06 to split gh issue and gh pr in allow by
+# subcommand, so delete and merge fall to the classifier. A * cannot leave out --admin alone, so every
+# gh pr merge does; guard-merge.sh still gates it. docs/harness.md lists them.
+rule none 'gh issue delete 3'
+rule none 'gh issue delete 3 --yes'
+rule none 'gh pr merge 3 --merge --admin'
+rule none 'gh pr merge 3 --admin --merge'
+rule none 'gh pr merge 3 --merge'
 rule none 'git reset --hard origin/main'
 rule none 'gh repo delete sagochiko/x'
 rule none 'gh secret set X'

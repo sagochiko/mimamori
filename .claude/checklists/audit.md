@@ -44,7 +44,7 @@
 
 マイルストーンの終わりに、判断の見直しとは別にこの節だけで1回走らせる。Anthropic の文書は、CLAUDE.md と `.claude/rules/` を定期的に読み直し、古い指示と食い違う指示を消すよう勧めている(https://code.claude.com/docs/en/memory)。
 
-- `.claude/settings.json` の allow と、フックが止めるものが食い違っていないか。deny と ask は2026年11月6日に作者が消したので、止めるのはフックだけになる。allow に当たってフックも見ない操作(`gh issue delete` など)は auto mode の判定も通らずに走るので、[`docs/harness.md`](../../docs/harness.md) の「設定の範囲」の一覧と今の allow を見比べる
+- `.claude/settings.json` の allow と、フックが止めるものが食い違っていないか。deny と ask は2026年11月6日に作者が消したので、止めるのはフックだけになる。allow に当たってフックも見ない操作は auto mode の判定も通らずに走る(2026年11月6日に `gh issue delete` と `gh pr merge` を allow から外したのはこのため)ので、[`docs/harness.md`](../../docs/harness.md) の「設定の範囲」の一覧と今の allow を見比べる
 - CLAUDE.md、`.claude/rules/`、skill に書いた「必ず」「してはいけない」のうち、どのフックにもテスト(`scripts/test-hooks.sh`)にも守られていないものはどれか。破られたことがあるなら、フックに移したか(deny は作者の決めで使わない)
 - フックが正当な作業を止めた記録が `.claude/logs/usage.jsonl` と `docs/dev-log.md` にないか。止められた作業を別の書き方で通していないか
 - 古くなった指示、ほかと食い違う指示、もう無いファイルやコマンドを指す指示が残っていないか
