@@ -868,6 +868,36 @@ out=$(jq -nc --arg c "gh issue create --title x --body-file $T/term.md" '{tool_n
   { echo "hook test failed: guard-private names the place and the rule, never the term"; fail=1; }
 jq -e '[.hooks.PreToolUse[].hooks[] | select(.command | endswith("guard-private.sh")) | select(.onFailure == "block")] | length == 1' .claude/settings.json >/dev/null ||
   { echo "settings test failed: guard-private.sh must be registered once with onFailure block"; fail=1; }
+# A time of day in the author's weekday working hours (issue #116) stops a public write too; the date
+# alone or 午後 passes. The hit names the place and the rule, never the time.
+printf '%s\n' '審査が通った。' '2026年11月5日 15:04 に作者が押した' >"$T/time.md"
+priv 2 "gh issue comment 3 --body-file $T/time.md" "a work-hour time in a body file is blocked"
+priv 2 "gh pr comment 3 --body '作者が15時に試した'" "a work-hour time in --body is blocked"
+priv 2 "gh issue create --title '11:20 の測定' --body x" "a work-hour time in the title is blocked"
+priv 0 "gh issue comment 3 --body '2026年11月5日の午後に作者が試した'" "the date and 午後 pass"
+out=$(jq -nc --arg c "gh issue comment 3 --body-file $T/time.md" '{tool_name:"Bash",tool_input:{command:$c}}' | "$H/guard-private.sh" 2>&1)
+[[ "$out" == *"time.md line 2: work-hour time"* && "$out" == *"午後"* && "$out" != *"15:04"* ]] ||
+  { echo "hook test failed: guard-private names the line and the work-hour rule, says to write the date or 午後, and never shows the time"; fail=1; }
+# A reviewer's raw report that /mm-task step 6 posts as it was saved (a heading, then the file byte for
+# byte) keeps its times: reviews quote the app's own hours and log stamps. Only that tail is let through;
+# the heading is checked, a tail that differs from the saved file is checked, and personal data in the
+# report is still checked.
+mkdir -p "$T/rt/docs/audits/raw"
+rawname=20261105-0926-mm-reviewer-a0b1c2d3.md
+printf '%s\n' 'ステータス: 承認' '' '毎日の声かけの既定は18時で、15:04 のコミットを読んだ。' >"$T/rt/docs/audits/raw/$rawname"
+rawpost() { # <file> <round text> <raw file to append>
+  { printf '## mm-reviewer の報告(原文)\n\n%s回目、%s を読んだもの。保存した原文は `%s`。\n\n' "$2" abc1234 "docs/audits/raw/$rawname" && cat "$3"; } >"$1"
+}
+rawpost "$T/rt/comment.md" 1 "$T/rt/docs/audits/raw/$rawname"
+priv 0 "gh pr comment 3 --body-file $T/rt/comment.md" "a raw report posted as it was saved keeps its times" "$T/rt"
+rawpost "$T/rt/comment-head.md" "15:30 の1" "$T/rt/docs/audits/raw/$rawname"
+priv 2 "gh pr comment 3 --body-file $T/rt/comment-head.md" "a work-hour time in the heading above a raw report is blocked" "$T/rt"
+sed 's/承認/承認 /' "$T/rt/docs/audits/raw/$rawname" >"$T/rt/changed.md"
+rawpost "$T/rt/comment-changed.md" 1 "$T/rt/changed.md"
+priv 2 "gh pr comment 3 --body-file $T/rt/comment-changed.md" "a report that differs from the saved file by one byte is checked as a body" "$T/rt"
+printf '%s\n' '15:04 に Tanukiyama と話した' >>"$T/rt/docs/audits/raw/$rawname"
+rawpost "$T/rt/comment-term.md" 1 "$T/rt/docs/audits/raw/$rawname"
+priv 2 "gh pr comment 3 --body-file $T/rt/comment-term.md" "personal data in a raw report is still blocked" "$T/rt"
 
 # pre-commit and the worktree lookup, in a throwaway repository with a worktree. scan-private.sh and the
 # git hooks are copied in, so the lists they find there are the throwaway main tree's, not the author's.
@@ -899,6 +929,39 @@ staged 0 server/src/rules/a.ts "const sample = \"$ph\"" "phone shapes in the rul
 staged 0 docs/audits/raw/a.md '窓口は support@example.com と書いてある' "an email address in a raw report passes"
 staged 1 docs/audits/raw/a.md 'Tanukiyama に聞いた' "private terms are refused in raw reports too"
 staged 1 server/src/a.ts "const sample = \"$ph\"" "phone shapes elsewhere in server/src are still refused"
+# Times of day in the author's weekday working hours (author, 2026-11-04; issue #116): documents that go
+# public give the date alone or 午後. Code, test data, machine records, raw reports, and the documents
+# that describe the app's own hours keep their times.
+mkdir -p "$R/.claude/skills/x" "$R/eval"
+staged 1 docs/a.md '2026年11月5日 10:14 に実機で試した' "a work-hour time in a document is refused"
+staged 1 docs/a.md '審査は 15:00:01 に通った' "hh:mm:ss is refused"
+staged 1 docs/a.md '作者が15時に決めた' "15時 is refused"
+staged 1 docs/a.md '15時04分に押した' "15時04分 is refused"
+staged 1 docs/a.md '18時台に試した' "18時台 is refused"
+staged 1 docs/a.md '１５：３０に届いた' "full-width digits and colon are refused"
+staged 1 docs/a.md '午後3時に審査が通った' "午後3時 is refused"
+staged 1 docs/a.md '夕方5時に届いた' "夕方5時 is refused"
+staged 1 docs/a.md 'approved at 3:04 PM' "3:04 PM is refused"
+staged 1 docs/a.md 'tried it at 11am' "11am is refused"
+staged 1 .claude/skills/x/SKILL.md '## 2026年11月5日 13:20 見出し' "a skill file is a document too"
+staged 1 docs/dev-log.md '## 2026年11月7日 16:40 土曜の記録' "a weekend time stops too, since the hook cannot tell the day"
+staged 0 docs/a.md '2026年11月5日の午後に試した' "the date and 午後 pass"
+staged 0 docs/a.md '9:30、12:30、19:00、22:15 に見た' "times outside the hours pass"
+staged 0 docs/a.md '9時、12時、19時、夜8時、午後10時、夜11時、10:30 PM、11 pm' "hours outside the working hours pass, evening ones included"
+staged 1 docs/a.md '午前10時と午後10時' "午前10時 is refused next to an evening hour"
+staged 0 docs/a.md '15時間かかり、10時間待った' "a duration in 時間 passes"
+staged 0 docs/a.md 'submit_window: 2026-11-08T17:00:00+09:00' "an ISO time joined by T passes"
+staged 0 docs/a.md '`docs/x.md:13:45` を見た' "a line and column after a colon pass"
+staged 0 server/src/a.ts 'const at = "15:04"; // 15時に通知' "times in code pass"
+staged 0 eval/results.jsonl '{"ts":"2026-11-05T14:41:56+09:00","notes":"15:04"}' "the eval machine record keeps its times"
+staged 0 docs/audits/raw/a.md 'レビューは 15:04 のコミットを読んだ' "raw reports keep their times"
+staged 0 docs/design.md '毎日の声かけは既定で18時に出す' "the design keeps the app's own hours"
+staged 0 docs/plan.md '- [ ] 声かけの時刻を17時から21時で選ぶ' "the plan keeps the app's own hours"
+staged 0 README.md 'The daily check-in comes at 6 pm' "the README keeps the app's own hours"
+out=$(printf '%s\n' 'x' '作者が 15:04 に試した' >"$R/docs/b.md" && r add docs/b.md && cd "$R" && .githooks/pre-commit 2>&1)
+r reset -q docs/b.md && rm -f "$R/docs/b.md"
+[[ "$out" == *"docs/b.md:2: work-hour time"* && "$out" == *"午後"* && "$out" != *"15:04"* ]] ||
+  { echo "pre-commit test failed: a work-hour time names the line and the rule, says to write the date or 午後, and never shows the time"; fail=1; }
 # In a git worktree the lists are found in the main tree (--git-common-dir), without the test variables.
 printf '%s\n' 'Kitsunezaka' >"$R/.claude/private-terms.local"
 printf '%s\n' '/tmp/mm-test/fox-dummy-app' >"$R/.claude/prior-work.local"
@@ -1008,4 +1071,13 @@ cm 1 $'docs: 記録を足す\n\nold-dummy-app から写した' "an earlier proje
 out=$(printf '%s\n' 'docs: 記録を足す' '' 'Tanukiyama に聞いた' >"$T/msg2" && .githooks/commit-msg "$T/msg2" 2>&1)
 [[ "$out" == *"commit message line 3: private term"* && "$out" != *Tanukiyama* ]] ||
   { echo "commit-msg test failed: the hit names the line and the rule, never the term"; fail=1; }
+cm 1 $'docs: 記録を足す\n\n作者が 2026年11月5日 15:04 に実機で試した' "a work-hour time in a message is refused"
+cm 1 $'docs: 11時の測定を残す\n\n理由' "a work-hour time in the subject is refused"
+cm 0 $'docs: 記録を足す\n\n作者が2026年11月5日の午後に実機で試した。15時間待った' "the date, 午後, and a duration pass in a message"
+out=$(printf '%s\n' 'docs: Tanukiyama と11時に話した' '' 'x' >"$T/msg4" && .githooks/commit-msg "$T/msg4" 2>&1)
+[[ "$out" == *"commit message line 1: private term"* && "$out" == *"commit message line 1: work-hour time"* && "$out" != *[Tt]anukiyama* && "$out" != *"11時"* ]] ||
+  { echo "commit-msg test failed: a hit in the subject names the line and the rule, and the subject is not echoed back"; fail=1; }
+out=$(printf '%s\n' 'docs: 記録を足す' '' '作者が 15:04 に試した' >"$T/msg3" && .githooks/commit-msg "$T/msg3" 2>&1)
+[[ "$out" == *"commit message line 3: work-hour time"* && "$out" == *"午後"* && "$out" != *"15:04"* ]] ||
+  { echo "commit-msg test failed: a work-hour time names the line and the rule, says to write the date or 午後, and never shows the time"; fail=1; }
 exit $fail

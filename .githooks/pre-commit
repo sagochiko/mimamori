@@ -1,15 +1,21 @@
 #!/bin/bash
 # pre-commit: the repository becomes public at submission, so refuse added lines that carry
-# personal data (phone numbers, email addresses, terms of the author's private list). The rules live
-# in scripts/scan-private.sh. Only where and which rule are printed, never the matched text.
+# personal data (phone numbers, email addresses, terms of the author's private list), and, in
+# documents, a time of day in the author's weekday working hours. The rules live in
+# scripts/scan-private.sh. Only where and which rule are printed, never the matched text.
 root=$(git rev-parse --show-toplevel) || exit 1
 out=$("$root/scripts/scan-private.sh" staged)
 status=$?
 if ((status == 1)); then
   {
-    echo "pre-commit: the staged lines below look like personal data (the text itself is not shown):"
+    echo "pre-commit: the staged lines below look like personal data or a work-hour time (the text itself is not shown):"
     sed 's/^/  /' <<<"$out"
-    echo "Take it out of those lines. If it is meant to be public (a number from a published scam alert), ask the author."
+    if grep -q ': work-hour time$' <<<"$out"; then
+      echo "A work-hour time is a time of day from ten to noon or from one to seven in the afternoon, the author's weekday working hours. Public records give the date alone, or 午後, for what happened then; the hook cannot tell whose action or which day a time records, so it stops every such time. Write the date alone or 午後 in those lines."
+    fi
+    if grep -qv ': work-hour time$' <<<"$out"; then
+      echo "Take the personal data out of those lines. If it is meant to be public (a number from a published scam alert), ask the author."
+    fi
   } >&2
   exit 1
 fi
