@@ -74,12 +74,12 @@ struct VoiceConsultTests {
     #expect(flow.phase == .thinking(said: "警察から電話があって、口座が犯罪に使われてるって"))
   }
 
-  @Test("答えが来たら画面に出し、読み上げの文を読む")
+  @Test("答えが来たら画面に出し、読み上げがオンなら読み上げの文を読む")
   func answerIsSpoken() {
     var flow = VoiceConsult()
     _ = flow.micTapped(at: .t0)
     _ = flow.heard("警察から電話", isFinal: true, at: .t0 + 1)
-    #expect(flow.answered(Self.police) == [.speak(Self.police.speak)])
+    #expect(flow.answered(Self.police, readsAloud: true) == [.speak(Self.police.speak)])
     #expect(flow.phase == .answered(said: "警察から電話", answer: Self.police))
   }
 
