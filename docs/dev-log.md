@@ -635,3 +635,15 @@ SQLite では列の NOT NULL を外すのに表を作り直すしかなく、本
 空の鍵を渡せば R2 が断って、テストが落ちると思っていた。
 
 本物の R2 が空の鍵をどう扱うかは手元で確かめられないので、[`server/src/families.ts`](../server/src/families.ts) と [`server/src/retention.ts`](../server/src/retention.ts) の R2 を消す問い合わせで `r2_key != ''` の行だけを読むようにした。この確かめはテストでは落とせず、コードを読んで確かめる。写真の URL は、Cloudflare の文書に「The R2 Workers API binding cannot generate presigned URLs」とあったので、S3 の鍵を秘密に足す案は採らず、`GET /smiles/{id}/photo` で Worker から流す形にした。使ったのは mm-implementer、advisor、Cloudflare の文書の MCP、Vitest。
+
+## 2026年11月6日 Gmail の2つの知らせを、表を変えずに1回ずつにした (#15)
+
+母の受信箱を5分ごとに読む Gmail の見張りを作っていた。
+
+親のセッションからは「期限切れや取り消された許可の扱い(expired_notified_at)も計画どおり」と頼まれた。計画には、`invalid_grant` で家族に「取り直しが要る」を1回だけ知らせることと、許可から6日で前もって知らせることの2つがあるが、`gmail_auth` の知らせの列は `expired_notified_at` の1つしか無い。
+
+列を足すマイグレーションは作らず、6日の知らせを送った時刻を `expired_notified_at` に置き、`invalid_grant` では家族に知らせてから行を消す形にした。行が無ければ見張りもしないので、2回目は送らない。Google の [OAuth の文書](https://developers.google.com/identity/protocols/oauth2/web-server) を読むと、`access_type=offline` の refresh token は「only returned on the first authorization」とあり、7日ごとの取り直しで token が返らなくなるので、同意の URL に `prompt=consent` を付けた。テスト用の受信箱は msw で作り、33件のテストを書いた。`prompt=consent` を外す、同じメールの重複を見ない、印の無いメールも回す、などをわざと入れると、それぞれのテストが落ちた。
+
+知らせごとに列が1つずつ要ると思っていた。日本語のメールは ISO-2022-JP が多く、Workers の `TextDecoder` で読めるかも心配だったが、手元の workerd では `iso-2022-jp`、`shift_jis`、`euc-jp` のどれも作れた。
+
+列を足す案は、#16 と同時に動いていてマイグレーションの番号を分け合うことと、知らせ1つのために本番の D1 を変えることになるので採らなかった。メールは SMS と同じ関門を通し、印の無いメールは Claude に回さない。Claude が落ちると決まらないメールは2段階で家族に知らせるので、ふつうのお知らせのメールで家族に通知が飛ばないようにするためだ。この関門は SMS と共通の [`server/src/inbound.ts`](../server/src/inbound.ts) に移した。使ったのは mm-implementer、advisor、WebFetch(Google の文書)、Vitest、@msw/cloudflare。

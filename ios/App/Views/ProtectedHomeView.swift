@@ -35,6 +35,7 @@ struct ProtectedHomeView: View {
     .background(Color(.systemBackground))
     .onGeometryChange(for: CGFloat.self, of: \.size.height) { screenHeight = $0 }
     .task { await model.keepCasesFresh() }
+    .task { await model.loadGmail() }
     .fullScreenCover(isPresented: $camera) { SmileCaptureView() }
     .sheet(isPresented: $choosingNote) {
       // Full height, and a swipe scrolls the words before it moves the sheet: at the medium height the
@@ -57,6 +58,7 @@ struct ProtectedHomeView: View {
       guard phase == .active else { return }
       model.loadChat()
       model.refreshFollowUp()
+      Task { await model.loadGmail() }
     }
   }
 
@@ -73,6 +75,16 @@ struct ProtectedHomeView: View {
         }
         // The family's smiles and replies, and her own (#14).
         SmileStrip(onCamera: { camera = true }, onNote: { choosingNote = true })
+        // Only with no grant or one about to run out (Google ends it after 7 days); the family guides her.
+        if model.offersGmail {
+          Button("Gmail") { Task { await model.connectGmail() } }
+            .font(.body)
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.capsule)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel("Gmail をつなぐ")
+            .accessibilityHint("Google の画面で許可すると、届いたメールに詐欺の疑いがないかをみまもりが見て、危ないときは家族に知らせます。許可は7日で切れるので、そのたびに取り直します")
+        }
       }
       .padding(.horizontal, 16)
       .padding(.vertical, 8)

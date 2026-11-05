@@ -73,6 +73,8 @@
           (200, StubSmiles.shared.list())
         case ("POST", "/smiles"):
           StubSmiles.shared.add(Self.body(of: request))
+        case ("GET", "/gmail/connect"):
+          (200, #"{"url":"https://accounts.google.com/o/oauth2/v2/auth","grantedAt":null}"#)
         case ("PUT", "/families/me/smile-deadline"):
           StubSmiles.shared.setHour(Self.body(of: request)["hour"] as? Int)
         default:

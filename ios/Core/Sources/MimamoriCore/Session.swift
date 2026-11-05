@@ -104,6 +104,10 @@ public final class Session {
     try await call { try await $0.setSmileDeadline(hour: hour) }
   }
 
+  public func gmailConnect() async throws -> GmailGrant? {
+    try await call { try await $0.gmailConnect() }
+  }
+
   /// Runs one call and then follows the Keychain: joining stores a key, a 401 clears it.
   private func call<T>(_ body: (APIClient) async throws -> T) async throws -> T {
     defer { route = AppRoute(store.load()) }

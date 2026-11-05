@@ -47,6 +47,7 @@
 		CA60F854809C86C96B2A956E /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04CE476A28DC68FEBBCCD33 /* AppConfig.swift */; };
 		CC53B3BFD66808AB9E8791E7 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 323881E1882ECFEB4C39DB1F /* InfoPlist.strings */; };
 		CDFD1C8B9D9F3A1A276E39B0 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = 1F9B0F681A88B43BA14AE240 /* manifest.json */; };
+		CFB485FADD66B88324489BDF /* GmailSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = B899B5927C255CF8923BD8B2 /* GmailSignIn.swift */; };
 		D25B0DFFB4B0A2D9778F1F00 /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5CA27DA8F58C1AD1C5641A2 /* SafariWebExtensionHandler.swift */; };
 		D4FEB6A01CEBEBF3F0492C40 /* SmileViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64D0F00724549A000A3A3B32 /* SmileViews.swift */; };
 		D5A915164C35F53A970D7704 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 01495D6F82DC6AD75CE163A4 /* InfoPlist.strings */; };
@@ -150,6 +151,7 @@
 		B441389511B639CF9457DFD2 /* MessageFilterExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageFilterExtension.swift; sourceTree = "<group>"; };
 		B4E2407A22C382C75C4FAAA0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		B78E521DD07930F33B780261 /* KeychainDeviceKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainDeviceKeyStore.swift; sourceTree = "<group>"; };
+		B899B5927C255CF8923BD8B2 /* GmailSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GmailSignIn.swift; sourceTree = "<group>"; };
 		BBDC1777B99CB151E280E4BF /* CallEndWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallEndWatcher.swift; sourceTree = "<group>"; };
 		BC84E1DC90613B9EB0164B49 /* ProtectedHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedHomeView.swift; sourceTree = "<group>"; };
 		C9A3D90DB810FD968F731C97 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -303,6 +305,7 @@
 				6739C49E1B0EA3024DC91B5F /* CallFollowUpNotifier.swift */,
 				D3066EF38E05327DBF8B6F57 /* DailyCheckInNotifier.swift */,
 				419E10C36BDE538278F82BD1 /* FileChatLogStore.swift */,
+				B899B5927C255CF8923BD8B2 /* GmailSignIn.swift */,
 				B4E2407A22C382C75C4FAAA0 /* Info.plist */,
 				B78E521DD07930F33B780261 /* KeychainDeviceKeyStore.swift */,
 				6857C3950869A3E22C6DC8CE /* Mimamori.entitlements */,
@@ -617,6 +620,7 @@
 				38A272F7AE944C9DF6A7E596 /* FamilyHomeView.swift in Sources */,
 				B30588DA403943E16C24E603 /* FamilyStartView.swift in Sources */,
 				7C3ACF594C1E220440463051 /* FileChatLogStore.swift in Sources */,
+				CFB485FADD66B88324489BDF /* GmailSignIn.swift in Sources */,
 				3108313EAA90F72D86124356 /* JoinView.swift in Sources */,
 				A6C56C492741A879A53F09EC /* KeychainDeviceKeyStore.swift in Sources */,
 				529376631A3456ECD5E7B916 /* MessageField.swift in Sources */,
