@@ -224,6 +224,9 @@ function levelOf(signs: Sign[]): 1 | 2 | null {
   return null;
 }
 
+/** The one reason a message that is only a verification code gets. Its level stays null. */
+export const CODE_ONLY_REASON = "認証コードの知らせに見える";
+
 export function judgeByRules(input: RuleInput): RuleResult {
   const text = normalizeText(input.text ?? "");
   const hosts = hostsOf(input, text);
@@ -290,7 +293,7 @@ export function judgeByRules(input: RuleInput): RuleResult {
   if (signals.size === 0) {
     return {
       level: null,
-      reasons: codeOnly && input.source === "sms" ? ["認証コードの知らせに見える"] : [],
+      reasons: codeOnly && input.source === "sms" ? [CODE_ONLY_REASON] : [],
       confident: false,
     };
   }

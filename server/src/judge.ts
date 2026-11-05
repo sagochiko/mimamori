@@ -133,7 +133,7 @@ export async function enqueueJudge(env: Env, job: JudgeJob): Promise<void> {
   await env.JUDGE_QUEUE.send(parsed);
 }
 
-function normalizeDomain(job: JudgeJob): string | null {
+export function normalizeDomain(job: JudgeJob): string | null {
   let host = job.payload.domain;
   if (!host && job.payload.url) {
     try {
@@ -186,7 +186,7 @@ function cardReasons(job: JudgeJob, rule: RuleResult, reasons: string[], steered
   return ownLines(steered ? reasons.filter((r) => fixed.includes(r)) : reasons, fixed, receivedOf(job), fallback);
 }
 
-function summarize(job: JudgeJob, domain: string | null, rule: RuleResult, reasons: string[]): string {
+export function summarize(job: JudgeJob, domain: string | null, rule: RuleResult, reasons: string[]): string {
   const received = receivedOf(job);
   const own = (r: string) => r !== PLACEHOLDER_REASON && (rule.reasons.includes(r) || !quotes(r, received));
   const reason = [...reasons, ...rule.reasons].map((r) => r.trim()).find((r) => r !== "" && own(r));
