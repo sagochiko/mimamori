@@ -329,7 +329,13 @@ final class AppModel {
       (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])) ?? false
     if granted { UIApplication.shared.registerForRemoteNotifications() }
     // Requests added before she allowed notifications may not have been kept.
-    if granted { scheduleDailyCheckIns() }
+    guard granted else { return }
+    #if DEBUG
+      // The Debug prompt may have been added while the permission sheet was still up; add it again
+      // (same identifier, so it replaces rather than doubles).
+      postedDebugCheckIn = false
+    #endif
+    scheduleDailyCheckIns()
   }
 
   /// No alert on failure: the token is sent again on the next launch. A 401 still ends at role
