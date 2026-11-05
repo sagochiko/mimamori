@@ -62,6 +62,39 @@ describe("the examples are what the rules say they are", () => {
   });
 });
 
+describe("a page's own address is where she is, not a link she is led to", () => {
+  // The rules were written for links inside an SMS or a mail. On a page, the page's own host named
+  // with a brand in the text, or an unusual host, is just the site she opened. Counting it put
+  // ordinary pages at level 2 and covered them with the warning (PR #142's review).
+  it.each([
+    ["https://www.nikkei.com/article/x", "楽天グループの決算が発表された。"],
+    ["https://myshop.base.shop/items/1", "手作りのかばんを売っています。"],
+    ["https://ja.wikipedia.org/wiki/Amazon", "Amazon.com はアメリカの通信販売の会社である。"],
+    ["https://example-blog.com/post/1", "三井住友銀行の支店で通帳を作った話。"],
+    ["https://example.xyz/", "家庭菜園の記録。トマトがよく育った。"],
+    ["https://203.0.113.5/", "社内の掲示板です。"],
+    ["https://xn--wgv71a119e.jp/", "日本語のドメインのお店です。"],
+    ["https://cookpad.com/recipe/1", "肉じゃがの作り方。"],
+    ["https://www.yahoo.co.jp/", "今日のニュース。天気は晴れ。"],
+  ])("leaves %s undecided", async (url, text) => {
+    expect(judgeByRules({ source: "page", url, text })).toEqual({ level: null, reasons: [], confident: false });
+    const m = await mother();
+    const { sent, queueEnv } = fakeQueue();
+    const { body } = await ask(m.deviceKey, { url, text }, queueEnv);
+    expect(body).toEqual({ level: null, reasons: [] });
+    expect(sent).toHaveLength(0);
+  });
+
+  it("still counts a look-alike of a brand as the page's own address", () => {
+    expect(judgeByRules({ source: "page", url: "https://amazon-co-jp.top/signin", text: "サインイン" }).level).not.toBeNull();
+  });
+
+  it("still counts a link in the page's text that leads elsewhere", () => {
+    const text = "楽天カードのご利用確認はこちら https://rakuten-check.example/login";
+    expect(judgeByRules({ source: "page", url: "https://www.nikkei.com/article/x", text }).level).toBe(2);
+  });
+});
+
 describe("POST /page", () => {
   it.each([
     [SUPPORT, SUPPORT_URL, 1],
