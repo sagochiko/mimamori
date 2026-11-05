@@ -15,8 +15,12 @@ import MimamoriCore
 /// background. A suspended app is told nothing, so keeping it costs nothing. Dropping it on the way
 /// to the background would lose the call she took from inside the app: iOS brings the app back right
 /// after the call screen closes, and whether an end that happened while suspended is delivered late
-/// on resume was not measured (#25). If it is, the call counts up to that moment, which can only make
-/// a call look longer than it was: she may be asked once too often, never too rarely.
+/// on resume was not measured (#25). The end of a call comes only from `callChanged`: when the app
+/// comes back, a call the list already shows as ended stays being timed (CallTracker.started), so a
+/// late `hasEnded` is still turned into an `EndedCall`, once. It then counts up to that moment, which
+/// can only make the call look longer than it was: she may be asked once too often, not too rarely.
+/// If no `hasEnded` ever comes, that call is not asked about, like any call the app never sees; the
+/// daily prompt (`DailyCheckInNotifier`) is there for those.
 /// The calls going on now: CXCallObserver's `calls`, or a fake in the tests.
 protocol CallList: AnyObject {
   var current: [(id: String, hasConnected: Bool, hasEnded: Bool)] { get }

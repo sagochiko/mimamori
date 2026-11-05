@@ -52,6 +52,17 @@ struct CallTrackerTests {
     #expect(tracker.changed(id: "a", hasConnected: true, hasEnded: true, at: Self.at(300))?.duration == 300)
   }
 
+  @Test("開き直したときにもう終わっていた通話は捨てず、そのあとの終わりの知らせで1回だけ返す")
+  func endedInSnapshotIsLeftToChange() {
+    var tracker = CallTracker()
+    _ = tracker.changed(id: "a", hasConnected: true, hasEnded: false, at: Self.at(0))
+    // Back in front after the call screen; the call is already over in the list.
+    tracker.started(with: [(id: "a", hasConnected: true, hasEnded: true)], at: Self.at(200))
+    let first = tracker.changed(id: "a", hasConnected: true, hasEnded: true, at: Self.at(201))
+    let second = tracker.changed(id: "a", hasConnected: true, hasEnded: true, at: Self.at(202))
+    #expect([first, second].compactMap { $0 } == [EndedCall(id: "a", duration: 201, endedAt: Self.at(201))])
+  }
+
   @Test("同じ通話の終わりが2回来ても、2回は返さない")
   func endedOnce() {
     var tracker = CallTracker()
