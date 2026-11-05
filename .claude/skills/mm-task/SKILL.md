@@ -128,7 +128,7 @@ After the merge, sort what went wrong in this issue into the four failure types 
 
 1. Missing information Claude cannot read from the repo: built something other than intended, or rediscovered the same fact. The fix goes in `CLAUDE.md` or `.claude/rules/`.
 2. No way to check its own work: said done when it was not. The fix is a test or a command to run.
-3. A must-always or must-never rule broken. The fix is a command hook or a deny rule, not more prose.
+3. A must-always or must-never rule broken. The fix is a command hook, not more prose (the author removed the deny and ask rules on 2026-11-06; docs/harness.md, "設定の範囲").
 4. Right result, but more time, tokens, or permission prompts than the task was worth. The fix is a changed default (model, effort, permission rule, which subagent).
 
 Change the harness only on one of the triggers in "When to add to CLAUDE.md" (https://code.claude.com/docs/en/memory): the same mistake happened a second time, a review caught something Claude should have known about this codebase, or a must rule was broken. Otherwise write down the observation and change nothing.
