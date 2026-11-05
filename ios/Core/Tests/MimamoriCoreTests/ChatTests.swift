@@ -454,12 +454,12 @@ struct SpeakOnlyByVoiceTests {
     #expect(flow.answered(Self.answer, readsAloud: true) == [.speak("設定の一般から")])
   }
 
-  @Test("文字で聞いたときは読み上げない(人前で急に声が出ないように)")
+  @Test("読み上げがオンでも、文字で聞いたときは読み上げない(人前で急に声が出ないように)")
   func typedIsNotSpoken() {
     var flow = VoiceConsult()
     #expect(flow.typed("  ストレージがいっぱい ", at: .t0) == [.stopSpeaking, .send("ストレージがいっぱい")])
     #expect(flow.phase == .thinking(said: "ストレージがいっぱい"))
-    #expect(flow.answered(Self.answer).isEmpty)
+    #expect(flow.answered(Self.answer, readsAloud: true).isEmpty)
     #expect(flow.phase == .answered(said: "ストレージがいっぱい", answer: Self.answer))
   }
 
