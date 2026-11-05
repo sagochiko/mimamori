@@ -2525,6 +2525,25 @@ describe("a question with nothing to point at, and a sign after a case without o
     expect(await alertsOf(fam.familyId)).toHaveLength(0);
   });
 
+  // Review 1 of PR #129: Claude may answer it as phone help with a question back of its own, and a
+  // line that may not be read out ("大丈夫") made it one the AI could not answer, for the family.
+  it("asks again instead of telling the family when Claude's phone answer to it cannot be read out", async () => {
+    const reassuring = () => help({ action: "大丈夫、何のことか教えてね", topic: "質問の意味の確認" });
+    const fam = await setupFamily();
+    const answer = await consult(consultEnv, motherOf(fam), UNCLEAR, new ExternalBudget(), fakes(reassuring()));
+    expect(answer).toEqual({ reply: ASK_AGAIN, speak: ASK_AGAIN, handoff: false });
+    expect(await alertsOf(fam.familyId)).toHaveLength(0);
+    expect(familyPushes(fam)).toHaveLength(0);
+
+    // When it points back at her trouble, that answer is still one the AI could not give.
+    const other = await setupFamily();
+    const named = await consult(consultEnv, motherOf(other), UNCLEAR, new ExternalBudget(), fakes(reassuring()), [
+      turn("protected", "ストレージがいっぱいと出た"),
+      turn("ai", "設定の「一般」から「iPhone ストレージ」を開くと、空きを作れます"),
+    ]);
+    expect(named).toMatchObject({ reply: "うまく答えられませんでした。家族に伝えました", handoff: true });
+  });
+
   it("still hands it to the family when Claude cannot answer a question that points back at her trouble", async () => {
     const fam = await setupFamily();
     const answer = await consult(consultEnv, motherOf(fam), UNCLEAR, new ExternalBudget(), fakes(cannotTell()), [
@@ -2984,6 +3003,8 @@ describe("words of the judgment in her answer (#121)", () => {
   // Checked by the line itself, as for the reassuring lines: these pass usable() as it was.
   it.each([
     "手口の印は聞き取れませんでした。",
+    "話の中に、詐欺で使われる手口の印は聞き取れませんでした。",
+    "手口の印が見えました。",
     "詐欺の手口の印は、このお話にはありません。",
     "印が一つも無いので、様子を見てね。",
     "見えた印はなかったよ。",
@@ -3017,16 +3038,25 @@ describe("words of the judgment in her answer (#121)", () => {
     "広告の右上の×印を押して閉じて",
     "青い目印のボタンを押して",
     "ハートの印を押すと、お気に入りに入ります",
-  ])("keeps guidance with 印 inside a word of its own: %s", async (line) => {
+    // Review 1 of PR #129: a badge, LINE's read mark, a pin. Stopped, a help answer went to the family.
+    "アプリの右上に赤い印が出ていたら、アプリを開くと消えます",
+    "相手が読むと既読の印が付きます",
+    "地図の印を押すと、お店の名前が出ます",
+    "お気に入りに印をつけておくと、あとで見つけやすいよ",
+    "アプリの右上に赤い印が無ければ、新しい通知はありません",
+    "印刷するときは、共有のボタンから選んで",
+  ])("keeps phone guidance with a 印 that is no word of the judgment: %s", async (line) => {
     const fam = await setupFamily();
     const own = await consult(
       consultEnv,
       motherOf(fam),
-      "Wi-Fiがつながらない",
+      "通知が消えない",
       new ExternalBudget(),
       fakes(help({ action: line })),
     );
-    expect(own.reply).toBe(line);
+    expect(own).toMatchObject({ reply: line, handoff: false });
+    expect(await alertsOf(fam.familyId)).toHaveLength(0);
+    expect(familyPushes(fam)).toHaveLength(0);
     const low = await consult(
       consultEnv,
       motherOf(fam),

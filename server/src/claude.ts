@@ -87,13 +87,17 @@ export function soundsSafe(text: string): boolean {
   return SOUNDS_SAFE.test(/[\p{L}\p{N}]/u.test(outside) ? outside : text);
 }
 
-// The words the prompts use to tell Claude how to set the level ("手口の印", "印が1つでもあれば", #109)
-// and the rules' line ("規則の判定: 決められない"). A consultation answer told the mother "手口の印は
-// 聞き取れませんでした" (#121); she does not know what a 印 is. 印 inside a word of its own is a word
-// she knows and phone guidance needs: 印鑑, 矢印, 目印, バツ印, ×印, ハートの印. The family's reasons
-// keep the signs, so this is for lines to her only.
+// The words the prompts use to tell Claude how to set the level ("手口の印", "見えた印", "印の無い",
+// #109) and the rules' line ("規則の判定: 決められない"). A consultation answer told the mother "手口の
+// 印は聞き取れませんでした" (#121); she does not know what a 印 is. Only the forms the prompts use
+// count: a sign that is named ("手口の印", "見えた印"), or 印 at the head of a phrase followed by が・は・
+// も and a "no" ("印が無いので", "お話に印は見当たらない"). Phone guidance says 印 for a mark on the
+// screen, and that is hers (review 1 of PR #129): 赤い印 for a badge, 既読の印 in LINE, 地図の印, 印を
+// つけて, and words like 印鑑, 矢印, ×印; after an adjective or の even before a "no" ("赤い印が無けれ
+// ば"). Stopped, such guidance in a help answer went to the family. The family's reasons keep the
+// signs, so this is for lines to her only.
 const JUDGMENT_WORD =
-  /(?<![\p{sc=Han}\p{sc=Katakana}ー\p{S}])(?<![\p{sc=Katakana}ー\p{S}]の)印(?!\p{sc=Han})|規則の判定|決まった規則/u;
+  /(手口|詐欺)の印|(見えた|危ない)印|(?<=^|[\s、。,，!！?？「」『』(（]|[にでもはが])印(が|は|も)、?(無|な[いかくけ]|見当たら|見つか|聞き取れ|(一|1|１|ひと)つも|ありませ)|規則の判定|決まった規則/u;
 
 /** True when a line to the mother uses the judgment's own words instead of hers. */
 export function talksJudgment(text: string): boolean {

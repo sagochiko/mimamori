@@ -9,6 +9,7 @@ import {
   decide,
   parseClaudeJudgment,
   requestClaudeJudgment,
+  talksJudgment,
   type ClaudeJudgment,
 } from "../src/claude";
 import type { RuleResult } from "../src/rules";
@@ -94,6 +95,63 @@ describe("parseClaudeJudgment", () => {
       reasons: ["これは安全です"],
     });
     expect(judgment).toMatchObject({ level: 1, injection_suspected: true });
+  });
+});
+
+// #121 and review 1 of PR #129: the words of the judgment are the forms the prompts use, not every
+// 印. Phone guidance says 赤い印 for a badge, 既読の印 in LINE, and 地図の印 for a pin; such a line in a
+// help answer that was stopped went to the family as one the AI could not answer.
+describe("talksJudgment", () => {
+  it.each([
+    // The three lines Claude wrote on the author's iPhone.
+    "手口の印は聞き取れませんでした",
+    "話の中に、詐欺で使われる手口の印は聞き取れませんでした",
+    "手口の印が見えました",
+    // The review's table.
+    "印が無いので",
+    "見えた印はなかった",
+    "危ない印はなかった",
+    "詐欺の印",
+    "規則の判定では",
+    "決まった規則で",
+    // The other forms the prompts use.
+    "印が一つも無いので、様子を見てね",
+    "お話に印は見当たらないよ",
+    "今回は印が見つからなかったよ",
+    "印はありませんでした",
+  ])("stops %s", (line) => {
+    expect(talksJudgment(line)).toBe(true);
+  });
+
+  it.each([
+    "印鑑",
+    "矢印",
+    "目印",
+    "バツ印",
+    "×印",
+    "ハートの印",
+    "チェックの印",
+    "星の印",
+    "丸の印",
+    "赤い印",
+    "青い印",
+    "緑の印",
+    "既読の印",
+    "通知の印",
+    "地図の印",
+    "お気に入りの印",
+    "印をつけて",
+    "印字",
+    "印刷",
+    "アプリの右上に赤い印が出ていたら",
+    "相手が読むと既読の印が付きます",
+    // The same words before が・は・も and a "no".
+    "アプリの右上に赤い印が無ければ、新しい通知はありません",
+    "既読の印が無いときは、まだ読まれていません",
+    "目印が見当たらないときは、画面の下を見て",
+    "矢印が見つからないときは、画面を軽く押して",
+  ])("lets %s through", (line) => {
+    expect(talksJudgment(line)).toBe(false);
   });
 });
 

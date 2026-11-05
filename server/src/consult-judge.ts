@@ -702,11 +702,13 @@ function decidePlan(
   // consultation into it and sees no sign (#121, on the author's iPhone: a level 3 answer, worded anew
   // each time). She is asked what she means, the same way each time. Claude's phone guidance is still
   // read out: a how-to question points back by its words ("どうやって文字を大きくするの") and still says
-  // what she wants. A sign Claude or the rules see (an injection flag makes it 2 first), a topic the AI
-  // does not guide, and no answer from Claude at all still go on below.
+  // what she wants. Guidance that cannot be read out ("大丈夫、何のことか教えてね") would make it one the
+  // AI could not answer, for the family, so she is asked again instead (review 1 of PR #129). A sign
+  // Claude or the rules see (an injection flag makes it 2 first), a topic the AI does not guide, and no
+  // answer from Claude at all still go on below.
   if (
     claude !== null &&
-    (claude.handoff || claude.kind === "scam") &&
+    (claude.handoff || claude.kind === "scam" || (claude.kind === "help" && !readable(claude.action))) &&
     sensitive.length === 0 &&
     level === 3 &&
     rule.level === null &&
