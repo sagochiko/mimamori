@@ -21,7 +21,6 @@ struct ProtectedHomeView: View {
   @State private var screenHeight: CGFloat = 0
 
   private static let liveID = "live"
-  private let look = ChatLook.current
 
   var body: some View {
     let notices = model.protectedNotices
@@ -50,8 +49,8 @@ struct ProtectedHomeView: View {
     }
   }
 
-  /// The follow-up question and the family notices. Closed, it is one line; open, at most 40% of the
-  /// screen, scrolling beyond that, so the conversation always has room.
+  /// The follow-up question and the family notices. Closed, the notices are one strip; open, the top
+  /// takes at most 40% of the screen, scrolling beyond that, so the conversation always has room.
   private func top(notices: [ProtectedNotice]) -> some View {
     ScrollView {
       VStack(spacing: 8) {
@@ -74,14 +73,14 @@ struct ProtectedHomeView: View {
   private func conversation(notices: [ProtectedNotice]) -> some View {
     ScrollViewReader { proxy in
       ScrollView {
-        VStack(spacing: look.turnSpacing) {
+        VStack(spacing: 24) {
           ForEach(model.chat.log.messages) { message in
-            ChatTurn(message: message, look: look).id(message.id)
+            ChatTurn(message: message).id(message.id)
           }
           // Always there, even while idle, so it can be scrolled to in the same update that shows
           // the first words heard.
           VStack(spacing: 0) {
-            LiveView(phase: model.voice.phase, look: look)
+            LiveView(phase: model.voice.phase)
           }
           .frame(maxWidth: .infinity)
           .id(Self.liveID)
@@ -160,6 +159,10 @@ struct ProtectedHomeView: View {
     .animation(.snappy, value: hasDraft)
   }
 
+  /// The glyphs in the field's 34pt circles grow with the text up to here; at the accessibility
+  /// sizes they would spill out of the circle, and a long press shows them large instead.
+  private static let largestButtonType = DynamicTypeSize.xxxLarge
+
   private var sendButton: some View {
     Button {
       guard canSend else { return }
@@ -169,6 +172,7 @@ struct ProtectedHomeView: View {
     } label: {
       Image(systemName: "arrow.up")
         .font(.body.weight(.bold))
+        .dynamicTypeSize(...Self.largestButtonType)
         .foregroundStyle(.white)
         .frame(width: 34, height: 34)
         .background(Circle().fill(canSend ? Color.accentColor : Color.secondary))
@@ -178,6 +182,7 @@ struct ProtectedHomeView: View {
     .buttonStyle(.plain)
     .disabled(!canSend)
     .transition(.scale.combined(with: .opacity))
+    .accessibilityShowsLargeContentViewer()
     .accessibilityLabel("送る")
     .accessibilityHint(model.voice.acceptsText ? "書いた言葉を送ります" : "答えを待っています")
   }
@@ -189,6 +194,7 @@ struct ProtectedHomeView: View {
     } label: {
       Image(systemName: listening ? "waveform" : "mic.fill")
         .font(.body.weight(.semibold))
+        .dynamicTypeSize(...Self.largestButtonType)
         .foregroundStyle(.white)
         .symbolEffect(.variableColor.iterative, isActive: listening)
         .frame(width: 34, height: 34)
@@ -198,56 +204,31 @@ struct ProtectedHomeView: View {
     }
     .buttonStyle(.plain)
     .transition(.scale.combined(with: .opacity))
+    .accessibilityShowsLargeContentViewer()
     .accessibilityLabel(model.voice.micLabel)
     .accessibilityHint(model.voice.micHint)
   }
 }
 
-/// How the conversation is drawn. Debug builds can show the message-app look with
-/// `-mimamori-look-bubbles`, to compare the two for #86; the choice then stays and the other goes.
-enum ChatLook {
-  /// The AI's answers as plain text across the width, her words in small grey bubbles.
-  case plain
-  /// Both in bubbles, hers in the accent color on the right, the AI's grey on the left.
-  case bubbles
-
-  static var current: ChatLook {
-    #if DEBUG
-      if ProcessInfo.processInfo.arguments.contains("-mimamori-look-bubbles") { return .bubbles }
-    #endif
-    return .plain
-  }
-
-  var turnSpacing: CGFloat { self == .plain ? 24 : 12 }
-}
-
-/// One turn of the conversation.
+/// One turn of the conversation: the AI's answer as plain text across the width, her words in a
+/// small grey bubble on the right, as in the AI chat apps (the author chose this on 2026-11-05, #87).
 private struct ChatTurn: View {
   let message: ChatMessage
-  let look: ChatLook
 
   var body: some View {
     Group {
       if message.role == .protected {
         HStack(spacing: 0) {
           Spacer(minLength: 56)
-          Bubble(
-            text: message.text,
-            fill: look == .plain ? Color(.secondarySystemBackground) : .accentColor,
-            foreground: look == .plain ? .primary : .white)
+          Bubble(text: message.text, fill: Color(.secondarySystemBackground), foreground: .primary)
         }
-      } else if look == .plain {
+      } else {
         Text(message.text)
           .font(.body)
           .lineSpacing(3)
           .textSelection(.enabled)
           .fixedSize(horizontal: false, vertical: true)
           .frame(maxWidth: .infinity, alignment: .leading)
-      } else {
-        HStack(spacing: 0) {
-          Bubble(text: message.text, fill: Color(.secondarySystemBackground), foreground: .primary)
-          Spacer(minLength: 56)
-        }
       }
     }
     .accessibilityElement(children: .combine)
@@ -276,7 +257,6 @@ private struct Bubble: View {
 /// wait for an answer, or why it stopped. Nothing while idle or once answered (the answer is a turn).
 private struct LiveView: View {
   let phase: ConsultPhase
-  let look: ChatLook
 
   var body: some View {
     switch phase {
@@ -294,13 +274,7 @@ private struct LiveView: View {
     case .thinking:
       HStack(spacing: 0) {
         ProgressView()
-          .padding(.horizontal, look == .plain ? 0 : 18)
-          .padding(.vertical, look == .plain ? 4 : 12)
-          .background {
-            if look == .bubbles {
-              RoundedRectangle(cornerRadius: 18).fill(Color(.secondarySystemBackground))
-            }
-          }
+          .padding(.vertical, 4)
         Spacer(minLength: 56)
       }
       .accessibilityElement(children: .ignore)
@@ -339,27 +313,37 @@ private struct FollowUpView: View {
   }
 }
 
-/// The family notices in one line: the most pressing one, how many there are, and a chevron. A tap
-/// opens every notice with what was passed to the family.
+/// The family notices in one strip: the most pressing one (`ProtectedNotice.mostPressing`), how many
+/// there are, and a chevron. A tap opens every notice with what was passed to the family.
 private struct NoticeStrip: View {
   let notices: [ProtectedNotice]
   @Binding var open: Bool
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
-    let first = Self.mostPressing(notices)
+    if let first = ProtectedNotice.mostPressing(notices) {
+      strip(first: first)
+    }
+  }
+
+  /// Closed, up to two lines: "家族に届いていません。急ぐなら電話して" fits in two up to the largest
+  /// standard text size (iPhone 17 Pro simulator, 2026-11-05). At the accessibility sizes it needs
+  /// three or more, so it wraps as far as it needs there and "電話して" is never cut off.
+  private var closedLineLimit: Int? { typeSize.isAccessibilitySize ? nil : 2 }
+
+  private func strip(first: ProtectedNotice) -> some View {
     VStack(alignment: .leading, spacing: 0) {
       Button {
         open.toggle()
       } label: {
         HStack(spacing: 8) {
-          Image(
-            systemName: Self.urgent(first) ? "exclamationmark.circle.fill" : "checkmark.circle.fill"
-          )
-          .foregroundStyle(Self.urgent(first) ? Color.orange : Color.accentColor)
+          Image(systemName: first.asksToCall ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+            .foregroundStyle(first.asksToCall ? Color.orange : Color.accentColor)
           Text(first.status)
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.primary)
-            .lineLimit(open ? nil : 1)
+            .lineLimit(open ? nil : closedLineLimit)
+            .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
           if notices.count > 1 {
             Text("\(notices.count)")
@@ -398,25 +382,7 @@ private struct NoticeStrip: View {
     }
     .background(
       RoundedRectangle(cornerRadius: 12)
-        .fill(Self.urgent(first) ? Color.orange.opacity(0.12) : Color(.secondarySystemBackground)))
-  }
-
-  static func urgent(_ notice: ProtectedNotice) -> Bool {
-    notice.status != ProtectedNotice.toldFamily
-  }
-
-  /// Not reached first, then no reply yet, then told; newest first within each.
-  static func mostPressing(_ notices: [ProtectedNotice]) -> ProtectedNotice {
-    func rank(_ n: ProtectedNotice) -> Int {
-      switch n.status {
-      case ProtectedNotice.notReached: 0
-      case ProtectedNotice.noReplyYet: 1
-      default: 2
-      }
-    }
-    return notices.enumerated().min {
-      (rank($0.element), $0.offset) < (rank($1.element), $1.offset)
-    }!.element
+        .fill(first.asksToCall ? Color.orange.opacity(0.12) : Color(.secondarySystemBackground)))
   }
 }
 
