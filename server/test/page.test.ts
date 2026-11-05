@@ -119,6 +119,21 @@ describe("pages sent to Claude though the rules see no sign (#137)", () => {
     expect(sent[0]).toMatchObject({ familyId: m.familyId, source: "page", payload: { url, text } });
   });
 
+  it.each([
+    ["a fake support page on Google Sites", "https://sites.google.com/view/help-desk", "サポート窓口 050-0000-0000 まで", false],
+    ["a form on Google Docs with a password field", "https://docs.google.com/forms/d/e/x/viewform", "ご本人様確認のお願い", true],
+    ["a fake support note shared from iCloud", "https://www.icloud.com/notes/0abc", "サポート窓口 050-0000-0000 まで", false],
+  ])("sends %s, since anyone can put a page there", async (_label, url, text, hasSecretField) => {
+    // These hosts are on a company's domain, but they are not the company speaking (USER_CONTENT_HOSTS
+    // and USER_CONTENT_PATHS in src/rules/domains.ts).
+    expect(judgeByRules({ source: "page", url, text })).toEqual(undecided);
+    const m = await mother();
+    const { sent, queueEnv } = fakeQueue();
+    const { body } = await ask(m.deviceKey, { url, text, hasSecretField }, queueEnv);
+    expect(body).toEqual({ level: null, reasons: [] });
+    expect(sent).toHaveLength(1);
+  });
+
   it("still sends the page the rules see a sign on: a suspended Amazon account on another host", async () => {
     const url = "https://secure-account-check.com/login";
     const text = "Amazon アカウントが一時停止されました";

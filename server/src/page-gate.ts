@@ -10,7 +10,7 @@
 //
 // No binding and no Node API, so eval/lib/score.ts can use it as well.
 
-import { BRAND_WORDS, officialBrandOf } from "./rules/domains";
+import { BRAND_WORDS, officialBrandOf, trustOf } from "./rules/domains";
 import { PHONE_NUMBER, URGENCY } from "./rules/phrases";
 import type { RuleResult } from "./rules";
 
@@ -38,6 +38,19 @@ function host(page: PageSeen): string {
     return new URL(page.url).hostname;
   } catch {
     return "";
+  }
+}
+
+/**
+ * The company itself speaks from this page's host. A host on its domain where anyone can put a page
+ * (sites.google.com, a shared iCloud note) is not, and a broken URL is not either.
+ */
+function onOfficialPage(page: PageSeen): boolean {
+  try {
+    const url = new URL(page.url);
+    return trustOf(url.hostname, false, url.pathname).trust === "official";
+  } catch {
+    return false;
   }
 }
 
@@ -83,13 +96,14 @@ export function callsForSupport(page: PageSeen): boolean {
 
 /**
  * Whether a page from the mother's phone goes to Claude: a level or a sign from the rules, as before
- * #137, or one of the shapes above. A field or a phone number counts only off the official domains. Pages on her own network and from the family's phones are left out
- * by the route (src/page.ts) before this.
+ * #137, or one of the shapes above. A field or a phone number counts only off the company's own pages;
+ * a page anyone can put up on its domain still counts. Pages on her own network and from the family's
+ * phones are left out by the route (src/page.ts) before this.
  */
 export function pageWorthAsking(rule: RuleResult, page: PageSeen): boolean {
   if (rule.level !== null || rule.reasons.length > 0) return true;
   if (speaksAsOtherBrand(page)) return true;
   // A company's own page asks for passwords and shows its phone number: its sign-in, its warnings.
-  if (officialBrandOf(host(page)) !== null) return false;
+  if (onOfficialPage(page)) return false;
   return page.hasSecretField === true || callsForSupport(page);
 }
