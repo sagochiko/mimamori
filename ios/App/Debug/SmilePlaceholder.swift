@@ -46,11 +46,16 @@
     private let jpeg = SmilePlaceholder.jpeg(variant: 0)
 
     var body: some View {
-      Group {
-        if let image = UIImage(data: jpeg) {
-          Image(uiImage: image).resizable().scaledToFill().ignoresSafeArea()
+      // The square picture fills the screen inside a frame of the screen's size. Filled on its own, it
+      // was wider than the screen and pushed "やめる" off its left edge.
+      Color.clear
+        .overlay {
+          if let image = UIImage(data: jpeg) {
+            Image(uiImage: image).resizable().scaledToFill()
+          }
         }
-      }
+        .clipped()
+        .ignoresSafeArea()
       .accessibilityLabel("前のカメラ")
       .task {
         guard !ScreenshotStubTransport.cameraHold else { return }
