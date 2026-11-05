@@ -534,7 +534,7 @@ out=$(gate_in "$T/work" | "$H/stop-gate.sh" 2>&1)
 [[ -z "$out" ]] || { echo "hook test failed: stop-gate counts commits already on origin/main as this branch's change"; fail=1; }
 printf 'export const x = 1\n' >"$T/work/server/x.ts"
 out=$(gate_in "$T/work" | "$H/stop-gate.sh" 2>&1)
-[[ "$out" == *'"decision":"block"'* && "$out" == *"npm ci in server/"* ]] ||
+[[ "$out" == *"$ASK"* && "$out" == *"npm ci in server/"* ]] ||
   { echo "hook test failed: stop-gate must block, not pass, when server/ changed and node_modules is missing"; fail=1; }
 [[ ! -f "$T/work/.claude/state/stop-gate.pass" ]] || { echo "hook test failed: stop-gate recorded a pass it did not test"; fail=1; }
 rm -f "$T/work/server/x.ts"
@@ -589,15 +589,19 @@ kg() { # <session> <cwd> <last message> [extra jq object merged into the input] 
 done_msg="Issue #12 を直してマージした。"
 next_msg=$'#12 をマージした。\n\n次に進めるもの\n- #133\n- #134'
 [[ -z "$(kg k1 "$T/k" "$done_msg")" ]] || { echo "hook test failed: keep-going lets a finished turn end when no work is left"; fail=1; }
+# It asks through additionalContext, not decision "block" (https://code.claude.com/docs/en/hooks, "Stop decision control").
+ASK='"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":'
 out=$(kg k2 "$T/k" "$next_msg")
-[[ "$out" == *'"decision":"block"'* && "$out" == *"次に進めるものの一覧で終わっている"* ]] ||
-  { echo "hook test failed: keep-going stops a turn that ends on a list of what to take next"; fail=1; }
+[[ "$out" == *"$ASK"* && "$out" == *"次に進めるものの一覧で終わっている"* && "$out" != *'"decision"'* ]] ||
+  { echo "hook test failed: keep-going asks through additionalContext when a turn ends on a list of what to take next"; fail=1; }
 [[ -z "$(kg k2 "$T/k" "$next_msg")" ]] || { echo "hook test failed: keep-going asks only once for the same state"; fail=1; }
-[[ "$(kg k2 "$T/k" "$next_msg"$'\n- #137')" == *'"decision":"block"'* ]] ||
-  { echo "hook test failed: keep-going asks again when a new list ends the turn"; fail=1; }
+[[ -z "$(kg k2 "$T/k" "$next_msg"$'\n- #137')" ]] ||
+  { echo "hook test failed: keep-going does not ask again when only the wording of the same list changed"; fail=1; }
+[[ "$(kg k2 "$T/k" $'#12 をマージした。\n\n#140 は後回しにした。')" == *"$ASK"* ]] ||
+  { echo "hook test failed: keep-going asks again when other words of a list hit"; fail=1; }
 k worktree add -q "$T/k/.claude/worktrees/issue-134-x" -b issue-134-x 2>/dev/null
 out=$(kg k3 "$T/k" "$done_msg")
-[[ "$out" == *'"decision":"block"'* && "$out" == *"作業中の木が残っている(issue-134-x)"* ]] ||
+[[ "$out" == *"$ASK"* && "$out" == *"作業中の木が残っている(issue-134-x)"* ]] ||
   { echo "hook test failed: keep-going stops a turn while a worktree under .claude/worktrees/ is left"; fail=1; }
 [[ "$(kg k4 "$T/k/.claude/worktrees/issue-134-x" "$done_msg")" == *"(issue-134-x)"* ]] ||
   { echo "hook test failed: keep-going finds the worktrees from inside one of them, naming it once"; fail=1; }
@@ -618,11 +622,28 @@ out=$(kg k3 "$T/k" "$done_msg")
 skill_line="Base directory for this skill: /x/.claude/skills/mm-"handoff
 jq -nc --arg l "$skill_line" '{type:"user",message:{role:"user",content:[{type:"text",text:$l}]}}' >"$T/k-handoff.jsonl"
 jq -nc --arg l "line 1: $skill_line" '{type:"user",message:{role:"user",content:[{type:"tool_result",content:$l}]}}' >"$T/k-quoted.jsonl"
-[[ "$(kg k6 "$T/k" "$next_msg" "$(jq -nc --arg t "$T/k-quoted.jsonl" '{transcript_path:$t}')")" == *'"decision":"block"'* ]] ||
+[[ "$(kg k6 "$T/k" "$next_msg" "$(jq -nc --arg t "$T/k-quoted.jsonl" '{transcript_path:$t}')")" == *"$ASK"* ]] ||
   { echo "hook test failed: keep-going is not turned off by a file read that quotes the handoff skill line"; fail=1; }
 [[ -z "$(kg k5 "$T/k" "$next_msg" "$(jq -nc --arg t "$T/k-handoff.jsonl" '{transcript_path:$t}')")" ]] ||
   { echo "hook test failed: keep-going lets the turn end after /mm-handoff ran in this session"; fail=1; }
-[[ "$(kg k5 "$T/k" "$next_msg")" == *'"decision":"block"'* ]] || { echo "hook test failed: keep-going still stops the same state once nothing exempts it"; fail=1; }
+[[ "$(kg k5 "$T/k" "$next_msg")" == *"$ASK"* ]] || { echo "hook test failed: keep-going still stops the same state once nothing exempts it"; fail=1; }
+[[ -z "$(kg k8 "$T/k" "$next_msg"$'\n\n残りは全部作者待ちなので返事を待つ。')" ]] ||
+  { echo "hook test failed: keep-going lets the turn end when the rest waits for the author"; fail=1; }
+[[ "$(kg k8 "$T/k" $'フックで止められる経路を足した。\n\n次に進めるもの\n- #140')" == *"$ASK"* ]] ||
+  { echo "hook test failed: keep-going is not turned off by an answer that only talks about a path a hook stops"; fail=1; }
+[[ -z "$(kg k9 "$T/k" $'auto mode の判定で止められたので、作者に聞く。\n次に進めるもの\n- #133')" ]] ||
+  { echo "hook test failed: keep-going lets the turn end when auto mode stopped Claude, said as a sentence"; fail=1; }
+[[ -z "$(kg k9 "$T/k" "$next_msg"$'\n\nどれから進める？\n\n```sh\n! gh auth login\n```')" ]] ||
+  { echo "hook test failed: keep-going reads the question before a code block at the end"; fail=1; }
+[[ -z "$(kg k9 "$T/k" "$next_msg"$'\n\n(どれにする？)')" && -z "$(kg k9 "$T/k" "$next_msg"$'\n\n「どれにする？」')" ]] ||
+  { echo "hook test failed: keep-going takes a question closed by ) or 」 for a question"; fail=1; }
+[[ "$(kg k9 "$T/k" "$next_msg"$'\n\n```sh\nmake verify?\n```')" == *"$ASK"* ]] ||
+  { echo "hook test failed: keep-going does not take a ? inside a code block for a question"; fail=1; }
+# At most 3 times in a session, whatever changes in between (k9 asked once just above).
+kg k9 "$T/k" "$next_msg"$'\n#140 は後回し' >/dev/null
+kg k9 "$T/k" "$next_msg"$'\n手を付けていない #141' >/dev/null
+[[ -z "$(kg k9 "$T/k" $'次の Issue は #142')" ]] || { echo "hook test failed: keep-going asks at most 3 times in a session"; fail=1; }
+[[ "$(grep -c . "$MM_STATE_DIR/keep-going-k9")" == 3 ]] || { echo "hook test failed: keep-going counted 3 asks for the session"; fail=1; }
 out=$(echo 'not json' | CLAUDE_PROJECT_DIR="$T/kp" "$H/keep-going.sh" 2>&1); got=$?
 [[ $got -eq 0 && -z "$out" ]] || { echo "hook test failed: keep-going lets the turn end on input it cannot read, never exit 2"; fail=1; }
 jq -e '.hooks.Stop[].hooks[] | select(.command | endswith("keep-going.sh")) | .timeout <= 20' .claude/settings.json >/dev/null ||
