@@ -3262,6 +3262,10 @@ describe("guidance and cautions after an earlier topic (#84)", () => {
     ["the PIN", MONEY, "暗証番号を入れて「確定」を押して"],
     ["a code from a message", MONEY, "SMSで届いた6桁の番号を入れて"],
     ["sending money despite a caution", MONEY, "暗証番号は人に見せないで、「振込」を押して口座番号を入れて"],
+    ["the PIN as a step to follow", MONEY, "暗証番号の入力に応じて進めて"],
+    ["sending money as the only way", MONEY, "振込を押して口座番号を入れるしかない"],
+    ["the PIN as needed to go on", MONEY, "暗証番号を入れないと進めない"],
+    ["the PIN as needed to go on, politely", MONEY, "暗証番号を入れないと進めません"],
     [
       "deleting after she asked to delete",
       [turn("protected", "LINE のトーク履歴を消したい"), turn("ai", HANDOFF)],

@@ -537,9 +537,10 @@ const ALWAYS_GUARDED = ["送金に関わる相談", "認証コードに関わる
 // A clause that keeps her away from a topic rather than walking her through it: "暗証番号は誰にも教え
 // ないでね", "送金はせず", "コードは入れずに", "お金や暗証番号を聞かれたら止めて", "振込先に問題ないか
 // 家族に確かめて". A word list, so it cannot be complete; a clause it misses counts as guidance, which
-// stops the line (the safe side).
+// stops the line (the safe side). Each form names what is not done: "応じて進めて", "入れるしかない",
+// "入れないと進めない", "入れないと進めません" are steps, not cautions.
 const CAUTION =
-  /(な|ん)いで|ないよう|ないこと|ないほうが|ない方が|ない$|(?<!ま)ず(に|$)|せず|ては?(いけ|だめ|ダメ)|ちゃ(いけ|だめ|ダメ)|禁止|厳禁|やめ|止め|応じ|ません$|家族に(確かめ|確認|相談|聞)/;
+  /ないで|ないよう|ないこと|ないほうが|ない方が|(教え|見せ|言わ|渡さ|送ら|払わ|入れ|押さ|開か|出さ|し)ない$|(?<!ま)ず(に|$)|せず|ては?(いけ|だめ|ダメ)|ちゃ(いけ|だめ|ダメ)|禁止|厳禁|やめ|止め|応じ(ない|ず|ません|るな)|(教え|言い|入れ|押し|渡し|送り|払い|聞き|し)ません$|ことは(ありません|ない)|家族に(確かめ|確認|相談|聞)/;
 
 /**
  * The topics the AI does not guide (SENSITIVE) that this line from Claude walks her through: a
