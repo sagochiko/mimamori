@@ -297,13 +297,16 @@ describe("a caller from the police, in more of her words", () => {
 });
 
 // #114: on the author's iPhone, speech recognition wrote 警察を名乗る as 警察を乗る (な dropped), and
-// the script was missed. 乗る right after を, と, or って is not how one rides anything ("車に乗る").
+// the script was missed. 乗る, or 載る for the same sound, right after を or って is not how one rides
+// anything ("車に乗る"). After と it is (review of PR #117: "警察官と乗った車で"), and 乗り越える is not 名乗る.
 describe("a caller from the police, with 名乗る heard as 乗る (#114)", () => {
   it.each([
     ["を乗る", "警察を乗る電話が来て潔白を証明してって"],
-    ["と乗る after 署の人", "警察署の人と乗る男から、逮捕状が出てるって"],
     ["を乗った", "警察を乗った人から電話で、口座が犯罪に使われてるって"],
+    ["を乗り with a pause", "警察を乗り、逮捕状が出てるって言われた"],
     ["って乗る", "警察って乗る人から、ほかの人には言わないでって言われた"],
+    ["を載る, the same sound in another kanji", "警察を載る電話が来て潔白を証明してって"],
+    ["署の人を載った", "警察署の人を載った男から、逮捕状が出てるって"],
   ])("makes %s next to a part of the script the script", (_label, text) => {
     expect(consultByRules(text).script).toBe(true);
   });
@@ -313,6 +316,11 @@ describe("a caller from the police, with 名乗る heard as 乗る (#114)", () =
     ["a bus to the police station", "警察署へ行くバスに乗って、口座が悪用されてないか聞いてきた"],
     ["riding with an officer", "警察官とパトカーに乗って、逮捕状のことを聞いた"],
     ["a warning about the scam", "警察を乗る詐欺が増えてて、潔白を証明しろって言うらしい"],
+    // Review of PR #117: riding with someone, and getting over something.
+    ["a car she rode in with an officer", "警察官と乗った車で、口座のことを聞かれた"],
+    ["riding home with an officer", "おまわりさんと乗って帰ってきた、口座が犯罪に使われてるって"],
+    ["getting over the police", "警察を乗り越えて潔白を証明"],
+    ["a lift with the station's staff", "警察署の人と乗るエレベーターで逮捕状の話を聞いた"],
   ])("does not make %s a caller", (_label, text) => {
     expect(matchSpans(POLICE_CALLER, text.normalize("NFKC").toLowerCase())).toEqual([]);
     expect(consultByRules(text).script).toBe(false);
