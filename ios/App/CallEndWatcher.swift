@@ -17,28 +17,46 @@ import MimamoriCore
 /// after the call screen closes, and whether an end that happened while suspended is delivered late
 /// on resume was not measured (#25). If it is, the call counts up to that moment, which can only make
 /// a call look longer than it was: she may be asked once too often, never too rarely.
+/// The calls going on now: CXCallObserver's `calls`, or a fake in the tests.
+protocol CallList: AnyObject {
+  var current: [(id: String, hasConnected: Bool, hasEnded: Bool)] { get }
+}
+
+extension CXCallObserver: CallList {
+  var current: [(id: String, hasConnected: Bool, hasEnded: Bool)] {
+    calls.map { (id: $0.uuid.uuidString, hasConnected: $0.hasConnected, hasEnded: $0.hasEnded) }
+  }
+}
+
 @MainActor
 final class CallEndWatcher: NSObject, CXCallObserverDelegate {
-  private var observer: CXCallObserver?
+  private var observer: (any CallList)?
   private var tracker = CallTracker()
   private let onEnded: (EndedCall) -> Void
+  private let makeObserver: (CallEndWatcher) -> any CallList
 
-  init(onEnded: @escaping (EndedCall) -> Void) {
+  /// `makeObserver` is only replaced in the tests.
+  init(
+    onEnded: @escaping (EndedCall) -> Void,
+    makeObserver: @escaping (CallEndWatcher) -> any CallList = { watcher in
+      let observer = CXCallObserver()
+      // Changes come on the main queue (callObserver(_:callChanged:)).
+      observer.setDelegate(watcher, queue: .main)
+      return observer
+    }
+  ) {
     self.onEnded = onEnded
+    self.makeObserver = makeObserver
   }
 
-  /// Safe to call every time the app comes to the front; only the first call makes the observer.
-  func start() {
-    guard observer == nil else { return }
-    let observer = CXCallObserver()
-    observer.setDelegate(self, queue: .main)
+  /// Every time the app comes to the front. Only the first call makes the observer, but every call
+  /// reads the calls going on now: she may have answered one while the app was suspended (no change
+  /// reached the app then) and opened the app in the middle of it, worried. That call counts from
+  /// now (CallTracker.started); one already being timed keeps its start.
+  func start(at now: Date = .now) {
+    let observer = self.observer ?? makeObserver(self)
     self.observer = observer
-    // A call already under way when she opened the app counts from now (CallTracker.started).
-    tracker.started(
-      with: observer.calls.map {
-        (id: $0.uuid.uuidString, hasConnected: $0.hasConnected, hasEnded: $0.hasEnded)
-      },
-      at: .now)
+    tracker.started(with: observer.current, at: now)
   }
 
   /// She is no longer the protected member.
@@ -52,12 +70,17 @@ final class CallEndWatcher: NSObject, CXCallObserverDelegate {
     let hasConnected = call.hasConnected
     let hasEnded = call.hasEnded
     let now = Date.now
-    // The delegate queue is the main queue (start()).
+    // The delegate queue is the main queue (makeObserver).
     MainActor.assumeIsolated {
-      guard observer != nil,
-        let ended = tracker.changed(id: id, hasConnected: hasConnected, hasEnded: hasEnded, at: now)
-      else { return }
-      onEnded(ended)
+      changed(id: id, hasConnected: hasConnected, hasEnded: hasEnded, at: now)
     }
+  }
+
+  /// One change of one call. Separate from the delegate method so the tests can drive it.
+  func changed(id: String, hasConnected: Bool, hasEnded: Bool, at now: Date) {
+    guard observer != nil,
+      let ended = tracker.changed(id: id, hasConnected: hasConnected, hasEnded: hasEnded, at: now)
+    else { return }
+    onEnded(ended)
   }
 }
