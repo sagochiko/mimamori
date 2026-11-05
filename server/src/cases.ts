@@ -247,7 +247,9 @@ async function tellFamily(
       .bind(Date.now(), c.id, claimedAt)
       .run();
   } else {
-    await env.DB.prepare("UPDATE cases SET family_notice_claimed_at = NULL WHERE id = ? AND family_notice_claimed_at = ?")
+    await env.DB.prepare(
+      "UPDATE cases SET family_notice_claimed_at = NULL WHERE id = ? AND family_notice_claimed_at = ?",
+    )
       .bind(c.id, claimedAt)
       .run();
   }
@@ -300,7 +302,11 @@ export async function tellFamilyHeavier(env: Env, caseId: string, budget: Extern
     .bind(caseId)
     .first<{ id: string; family_id: string; level: number; summary: string | null }>();
   if (!row) return false;
-  const sent = await sendCaseNotice(env, { id: row.id, familyId: row.family_id, level: row.level, summary: row.summary }, budget);
+  const sent = await sendCaseNotice(
+    env,
+    { id: row.id, familyId: row.family_id, level: row.level, summary: row.summary },
+    budget,
+  );
   if (sent === "told") return true;
   // Back on the first notice's retry: the 5-minute tick sends it again, with the heavier level. No
   // claim can be held while family_notified_at is set; it is cleared too, so none holds the retry back.
@@ -373,7 +379,11 @@ export async function sendFirstNotices(env: Env, now: number, budget: ExternalBu
     .bind(now - FIRST_NOTICE_RETRY_MS)
     .all<{ id: string; family_id: string; level: number | null; summary: string | null }>();
   for (const c of due.results) {
-    const result = await tellFamily(env, { id: c.id, familyId: c.family_id, level: c.level, summary: c.summary }, budget);
+    const result = await tellFamily(
+      env,
+      { id: c.id, familyId: c.family_id, level: c.level, summary: c.summary },
+      budget,
+    );
     if (result === "no_budget") break;
   }
 }

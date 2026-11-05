@@ -32,10 +32,10 @@ Commit on the given branch with Japanese messages that say why. Check `git diff 
 
 If a hook or a permission rule blocks an action, report what was blocked and why; do not retry it another way (another tool, another spelling of the command, another path).
 
-Report back in this shape:
-- Status: done / partly done / blocked
-- Commits: hashes and one line each
-- Verification: the commands you ran and their results (numbers, not "passed")
-- Concerns and unfinished items
-- Hand-off: what the reviewer and verifier should look at first
-- Steps that need the author (real device, Apple portal), if any
+Write the report in Japanese, in this shape (the table in `CLAUDE.md`, "作業の流れ"). The first line is exactly one of `ステータス: 完了`, `ステータス: 一部`, `ステータス: 止まった`, with nothing before it (no list marker, bold, or heading). A hook (`.claude/hooks/report-form.sh`) checks the first line when you hand the report back, and that most of the prose is Japanese; when either is off, it returns the reason in Japanese, and you fix only that and hand the same report back. Put commands, code, paths, and English quotes in backticks or code blocks. Then these sections, with these headings:
+
+- `## コミット`: hashes and one line each
+- `## 確かめたこと`: the commands you ran and their results (numbers, not "passed")
+- `## 懸念と未完了`
+- `## 引き継ぎ`: what the reviewer and verifier should look at first
+- `## 作者の手が要る作業`: steps that need the author (real device, Apple portal), if any

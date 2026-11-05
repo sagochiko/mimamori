@@ -22,7 +22,11 @@ export const OFFICIAL_DOMAINS: readonly OfficialDomain[] = [
   { domain: "icloud.com", brand: "apple", source: "https://www.icloud.com/" },
   { domain: "me.com", brand: "apple", source: "https://www.me.com/ (redirects to www.icloud.com)" },
   { domain: "docomo.ne.jp", brand: "docomo", source: "https://www.docomo.ne.jp/" },
-  { domain: "nttdocomo.co.jp", brand: "docomo", source: "https://www.nttdocomo.co.jp/ (redirects to www.docomo.ne.jp)" },
+  {
+    domain: "nttdocomo.co.jp",
+    brand: "docomo",
+    source: "https://www.nttdocomo.co.jp/ (redirects to www.docomo.ne.jp)",
+  },
   { domain: "au.com", brand: "au", source: "https://www.au.com/" },
   { domain: "kddi.com", brand: "au", source: "https://www.kddi.com/" },
   { domain: "uqwimax.jp", brand: "au", source: "https://www.uqwimax.jp/" },
@@ -116,22 +120,49 @@ export const BRAND_WORDS: Readonly<Record<string, readonly string[]>> = {
 // Mail domains where anyone can get an address. As the sender, or an address in the text, they say
 // nothing about who wrote the message. Matched exactly: email.apple.com is still Apple's.
 export const FREE_MAIL_DOMAINS: ReadonlySet<string> = new Set([
-  "gmail.com", "googlemail.com", "icloud.com", "me.com", "mac.com", "yahoo.co.jp", "ymail.ne.jp",
-  "outlook.com", "outlook.jp", "hotmail.com", "hotmail.co.jp", "live.jp",
-  "docomo.ne.jp", "ezweb.ne.jp", "au.com", "softbank.ne.jp", "i.softbank.jp", "ymobile.ne.jp",
+  "gmail.com",
+  "googlemail.com",
+  "icloud.com",
+  "me.com",
+  "mac.com",
+  "yahoo.co.jp",
+  "ymail.ne.jp",
+  "outlook.com",
+  "outlook.jp",
+  "hotmail.com",
+  "hotmail.co.jp",
+  "live.jp",
+  "docomo.ne.jp",
+  "ezweb.ne.jp",
+  "au.com",
+  "softbank.ne.jp",
+  "i.softbank.jp",
+  "ymobile.ne.jp",
 ]);
 
 // Hosts (and their subdomains) on a brand's domain where anyone can put up a page, a form, or a
 // LINE account. A link there is not the brand speaking.
 export const USER_CONTENT_HOSTS: readonly string[] = [
-  "sites.google.com", "docs.google.com", "drive.google.com", "groups.google.com", "script.google.com",
-  "line.me", "chiebukuro.yahoo.co.jp",
+  "sites.google.com",
+  "docs.google.com",
+  "drive.google.com",
+  "groups.google.com",
+  "script.google.com",
+  "line.me",
+  "chiebukuro.yahoo.co.jp",
 ];
 
 // Paths on an official host where anyone can share a file, an album, or a note.
 export const USER_CONTENT_PATHS: Readonly<Record<string, readonly string[]>> = {
   "www.icloud.com": [
-    "/iclouddrive/", "/sharedalbum/", "/photos/", "/notes/", "/pages/", "/numbers/", "/keynote/", "/attachment/",
+    "/iclouddrive/",
+    "/sharedalbum/",
+    "/photos/",
+    "/notes/",
+    "/pages/",
+    "/numbers/",
+    "/keynote/",
+    "/attachment/",
   ],
 };
 

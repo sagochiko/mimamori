@@ -39,7 +39,9 @@ async function readPatterns(pool: string): Promise<PatternFile[]> {
     if (cases.length === 0) throw new Error(`${name}: no cases`);
     const keys = new Set(cases.map((c) => groupKey({ source: c.source, isScam: c.is_scam })));
     if (keys.size !== 1) {
-      throw new Error(`${name}: a pattern file must hold one path and one of scam or genuine (found ${[...keys].join(", ")})`);
+      throw new Error(
+        `${name}: a pattern file must hold one path and one of scam or genuine (found ${[...keys].join(", ")})`,
+      );
     }
     for (const c of cases) {
       const other = seen.get(c.id);
@@ -55,14 +57,24 @@ function report(plan: SplitPlan, dryRun: boolean): string[] {
   const lines = [dryRun ? "dry run: nothing moved" : "moved from the pool:"];
   const width = Math.max(...plan.groups.map((g) => g.key.length));
   for (const g of plan.groups) {
-    const injection = g.dev.injection + g.holdout.injection > 0 ? `  injection dev ${g.dev.injection} / holdout ${g.holdout.injection}` : "";
+    const injection =
+      g.dev.injection + g.holdout.injection > 0
+        ? `  injection dev ${g.dev.injection} / holdout ${g.holdout.injection}`
+        : "";
     lines.push(
       `  ${g.key.padEnd(width)}  dev ${g.dev.cases} (${g.dev.files} files)  holdout ${g.holdout.cases} (${g.holdout.files} files)${injection}`,
     );
   }
   const total = (set: "dev" | "holdout") => plan.groups.reduce((sum, g) => sum + g[set].cases, 0);
   lines.push(`  total  dev ${total("dev")}  holdout ${total("holdout")}`);
-  lines.push(`dev files: ${plan.assignments.filter((a) => a.set === "dev").map((a) => a.name).join(", ") || "-"}`);
+  lines.push(
+    `dev files: ${
+      plan.assignments
+        .filter((a) => a.set === "dev")
+        .map((a) => a.name)
+        .join(", ") || "-"
+    }`,
+  );
   return lines;
 }
 
