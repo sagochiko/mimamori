@@ -19,6 +19,7 @@ struct MimamoriApp: App {
     .onChange(of: scenePhase) { _, phase in
       if phase == .active {
         delegate.model.refresh()
+        delegate.model.cameToFront()
         Task { await delegate.model.loadCases() }
       }
     }
@@ -44,6 +45,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     return [.banner, .list, .sound]
   }
 
+  /// A tap on any of them opens the app on its home screen. For the daily prompt and the call
+  /// follow-up that is her chat, where she can answer by talking or writing.
   nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
     await model.loadCases()
   }
