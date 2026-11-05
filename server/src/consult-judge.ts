@@ -408,9 +408,11 @@ export function allOf(said: Said): string[] {
 }
 
 // A question that only points back at what she said just before ("それってどうやるの?", "どうすればいい?",
-// "そのやり方を教えて"): short, beginning with a pointing or "how" word (after "ねえ" and the like), and
+// "そのやり方を教えて"): short, beginning with a pointing or "how" word (after "うん", "ねえ", "あの" and the
+// like, review 1 of PR #156; a closed list, so "おそれがある" stays a new topic), and
 // no word that opens a new topic. A word before it names the topic: "振込のやり方を教えて",
-// "Wi-Fi どうすればいい", and "おそれがある" or "だれそれ" are not about what came before (#124).
+// "Wi-Fi どうすればいい", and "おそれがある" or "だれそれ" are not about what came before (#124), but
+// "なにそれ" is.
 // "この", "その", "あの" point back only before a word for the thing itself ("そのやり方", "この件"), a
 // "how" word of a kanji, at most one kana, and 方 among them ("その消し方", "この使い方", #124):
 // "このアプリの文字を大きくしたい" is a new topic (review of PR #79, second round). "そう" only as
@@ -420,7 +422,7 @@ export function allOf(said: Said): string[] {
 // the conversation before, even from the day before, with exactly these words (#118). Both run
 // test/fixtures/points-back.json; change them together.
 const POINTS_BACK =
-  /^(ねえ|ねぇ|えっと|じゃあ|でも)?(それ|これ|あれ|そう(なの|なん|か|です|でしょ|いう|$)|どうやる|どうやって|どうすれば|どうしたら|どういう|やり方|(この|その|あの)(やり方|方法|こと|件|やつ|操作|\p{Script=Han}\p{Script=Hiragana}?方))/u;
+  /^(ねえ|ねぇ|えっと|ええと|じゃあ|でも|で|うん|はい|あのね|あの|あ|えっ|ちょっと)*((なに|何)?(それ|これ|あれ)|そう(なの|なん|か|です|でしょ|いう|$)|どうやる|どうやって|どうすれば|どうしたら|どういう|やり方|(この|その|あの)(やり方|方法|こと|件|やつ|操作|\p{Script=Han}\p{Script=Hiragana}?方))/u;
 const NEW_TOPIC = /それより|それと|それから|ところで|別の|ほかの|他の/;
 const POINTS_BACK_MAX_CHARS = 15;
 

@@ -47,5 +47,19 @@
   { "text": "そうか", "pointsBack": true },
   { "text": "そうだんしたい", "pointsBack": false },
   { "text": "Wi-Fi どうすればいい", "pointsBack": false },
-  { "text": "大丈夫そう?", "pointsBack": false }
+  { "text": "大丈夫そう?", "pointsBack": false },
+  { "text": "うん、それってどういうこと", "pointsBack": true },
+  { "text": "はい、それってなに", "pointsBack": true },
+  { "text": "あ、それってなに", "pointsBack": true },
+  { "text": "あの、それってどういうこと", "pointsBack": true },
+  { "text": "あのね、それどうやるの", "pointsBack": true },
+  { "text": "えっ、それ本当?", "pointsBack": true },
+  { "text": "ええと、どうすればいい?", "pointsBack": true },
+  { "text": "ちょっと、それ開いていい?", "pointsBack": true },
+  { "text": "で、それどうするの", "pointsBack": true },
+  { "text": "うん、それでいいの?", "pointsBack": true },
+  { "text": "なにそれ", "pointsBack": true },
+  { "text": "何それ?", "pointsBack": true },
+  { "text": "うん、Wi-Fi がつながらない", "pointsBack": false },
+  { "text": "あ、振込のやり方を教えて", "pointsBack": false }
 ]
