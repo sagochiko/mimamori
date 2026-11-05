@@ -97,7 +97,7 @@ export function soundsSafe(text: string): boolean {
 // ば"). Stopped, such guidance in a help answer went to the family. The family's reasons keep the
 // signs, so this is for lines to her only.
 const JUDGMENT_WORD =
-  /(手口|詐欺)の印|(見えた|危ない)印|(?<=^|[\s、。,，!！?？「」『』(（]|[にでもはが])印(が|は|も)、?(無|な[いかくけ]|見当たら|見つか|聞き取れ|(一|1|１|ひと)つも|ありませ)|規則の判定|決まった規則/u;
+  /(手口|詐欺)の印|(見えた|危ない)印|(?<=^|[\s、。,，!！?？「」『』(（]|[にでもはが])印(が|は|も)、?(無|な[いかくけ]|見当たら|見つか|聞き取れ|(一|1|１|ひと)つも|ありませ)|規則の判定|決まった規則による判定/u;
 
 /** True when a line to the mother uses the judgment's own words instead of hers. */
 export function talksJudgment(text: string): boolean {

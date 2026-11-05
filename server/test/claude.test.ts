@@ -113,7 +113,7 @@ describe("talksJudgment", () => {
     "危ない印はなかった",
     "詐欺の印",
     "規則の判定では",
-    "決まった規則で",
+    "決まった規則による判定では",
     // The other forms the prompts use.
     "印が一つも無いので、様子を見てね",
     "お話に印は見当たらないよ",
@@ -143,6 +143,8 @@ describe("talksJudgment", () => {
     "印をつけて",
     "印字",
     "印刷",
+    // 決まった規則 alone is an everyday phrase; the prompts say 決まった規則による判定.
+    "銀行の決まった規則で、暗証番号を電話で聞くことはありません",
     "アプリの右上に赤い印が出ていたら",
     "相手が読むと既読の印が付きます",
     // The same words before が・は・も and a "no".
