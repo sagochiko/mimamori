@@ -174,9 +174,10 @@ const CONTACT =
 
 // The phone's own sound or letters, named by the app they are in and made louder, bigger, or changed
 // ("電話の音を大きくしたい", "メールの文字を大きくしたい"): a setting, not a call or a message (#84).
-// Not after "その", "この", "あの", "さっきの": "その電話の音を大きくして聞いていい?" is about that call.
+// Only at the head of her words, or after a stop or a set filler: with anything before it
+// ("その電話の", "届いたメールの", "警察からの電話の", review 1 of PR #159) it is about that call or mail.
 const OWN_SETTING =
-  /(?<!その|この|あの|さっきの)(電話|メール|メッセージ|sms|ショートメール)の?(着信音|呼び出し音|通知音|音量|音|文字|字)(を|が|の|は)?(大き|小さ|上げ|下げ|変え|聞こえ|鳴ら)/g;
+  /(^|[\s\p{P}])((ねえ|ねぇ|えっと|えーと|ちょっと|うーん)[\s\p{P}]*)*(電話|メール|メッセージ|sms|ショートメール)の?(着信音|呼び出し音|通知音|音量|音|文字|字)(を|が|の|は)?(大き|小さ|上げ|下げ|変え|聞こえ|鳴ら)/gu;
 
 const KEYS = ["kind", "level", "reasons", "basis", "action", "handoff", "injection_suspected", "topic"] as const;
 
@@ -534,18 +535,23 @@ function policeReasons(said: Said, withoutPassedOn = false): string[] {
 // Guidance on these is stopped after she asked about any topic the AI does not guide (#84).
 const ALWAYS_GUARDED = ["送金に関わる相談", "認証コードに関わる相談"];
 
-// A clause that keeps her away from a topic rather than walking her through it: "暗証番号は誰にも教え
-// ないでね", "送金はせず", "コードは入れずに", "お金や暗証番号を聞かれたら止めて", "振込先に問題ないか
-// 家族に確かめて". A word list, so it cannot be complete; a clause it misses counts as guidance, which
-// stops the line (the safe side). Each form names what is not done: "応じて進めて", "入れるしかない",
-// "入れないと進めない", "入れないと進めません" are steps, not cautions.
-const CAUTION =
-  /ないで|ないよう|ないこと|ないほうが|ない方が|(教え|見せ|言わ|渡さ|送ら|払わ|入れ|押さ|開か|出さ|し)ない$|(?<!ま)ず(に|$)|せず|ては?(いけ|だめ|ダメ)|ちゃ(いけ|だめ|ダメ)|禁止|厳禁|やめ|止め|応じ(ない|ず|ません|るな)|(教え|言い|入れ|押し|渡し|送り|払い|聞き|し)ません$|ことは(ありません|ない)|家族に(確かめ|確認|相談|聞)/;
+// A clause that keeps her away from a topic rather than walking her through it, told by how it ends:
+// "暗証番号は誰にも教えないでね", "送金はせず", "お金や暗証番号を聞かれたら止めて", "振込先に問題ないか
+// 家族に確かめて". Only the end counts, since a step may follow a caution word in the same clause
+// ("家族に確かめてから暗証番号を入れて", "迷わずに振込を押して", review 1 of PR #159). "忘れないで",
+// "止めないで", "やめないで" ask her to do it, so they are steps. A word list, so it cannot be complete;
+// a clause it misses counts as guidance, which stops the line (the safe side).
+const CAUTION_END =
+  /((?<!忘れ|止め|やめ)ないで|ないように(して|しよう|しましょう)?|ないこと|ないほうがいい|ない方がいい|(教え|見せ|言わ|渡さ|送ら|払わ|入れ|押さ|開か|出さ|し|応じ|振り込ま|買わ|行か)ない|(?<!ま)ず|ずに|せず|せずに|ては?(いけない|いけません|だめ|ダメ)|ちゃ(いけない|いけません|だめ|ダメ)|禁止|厳禁|やめて|やめましょう|止めて|止めましょう|(教え|言い|入れ|押し|渡し|送り|払い|聞き|し)ません|ことは(ありません|ない)|か家族に(確かめ|確認|相談|聞)(て|いて|しましょう|きましょう)?)$/;
+
+function cautions(part: string): boolean {
+  return CAUTION_END.test(part.replace(/(ね|よ|ください)+$/, ""));
+}
 
 /**
  * The topics the AI does not guide (SENSITIVE) that this line from Claude walks her through: a
- * sentence, or a part of one that ends in "て、" or "ないで、" and the like, with such a word and no
- * caution (CAUTION) in it. A part that ends in a particle ("暗証番号は、") goes on into the next (#84).
+ * sentence, or a part of one that ends in "て、" or "ないで、" and the like, with such a word and not
+ * ending as a caution (CAUTION_END). A part that ends in a particle ("暗証番号は、") goes on into the next (#84).
  */
 function guidedIn(line: string): string[] {
   const parts = normalize(line)
@@ -562,7 +568,7 @@ function guidedIn(line: string): string[] {
       return carry === "" ? out : [...out, carry];
     })
     .map((part) => part.trim())
-    .filter((part) => part !== "" && !CAUTION.test(part));
+    .filter((part) => part !== "" && !cautions(part));
   return SENSITIVE.filter(({ pattern }) => parts.some((part) => pattern.test(part))).map((s) => s.reason);
 }
 

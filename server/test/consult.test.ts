@@ -3266,6 +3266,33 @@ describe("guidance and cautions after an earlier topic (#84)", () => {
     ["sending money as the only way", MONEY, "振込を押して口座番号を入れるしかない"],
     ["the PIN as needed to go on", MONEY, "暗証番号を入れないと進めない"],
     ["the PIN as needed to go on, politely", MONEY, "暗証番号を入れないと進めません"],
+    ["a step after a caution word: 家族に確かめてから暗証番号を入れて", MONEY, "家族に確かめてから暗証番号を入れて"],
+    ["a step after a caution word: 家族に確認しながら振込先を入力して", MONEY, "家族に確認しながら振込先を入力して"],
+    [
+      "a step after a caution word: わからないようなら暗証番号を入力して",
+      MONEY,
+      "わからないようなら暗証番号を入力して",
+    ],
+    ["a step after a caution word: 迷わずに振込を押して", MONEY, "迷わずに振込を押して"],
+    ["a step after a caution word: 画面を閉じずに暗証番号を入れて", MONEY, "画面を閉じずに暗証番号を入れて"],
+    ["a step after a caution word: 暗証番号は家族に聞いて入れて", MONEY, "暗証番号は家族に聞いて入れて"],
+    ["a step after a caution word: 暗証番号を入れるのを忘れないで", MONEY, "暗証番号を入れるのを忘れないで"],
+    ["a step after a caution word: 振込ボタンを押すのを忘れないでね", MONEY, "振込ボタンを押すのを忘れないでね"],
+    [
+      "a step after a caution word: 振り込む前に止めないで最後まで進めて",
+      MONEY,
+      "振り込む前に止めないで最後まで進めて",
+    ],
+    [
+      "a step after a caution word: ATMに行かないで済むように、ネットバンキングで振り込んで",
+      MONEY,
+      "ATMに行かないで済むように、ネットバンキングで振り込んで",
+    ],
+    [
+      "a step after a caution word: 振込先は家族に確認して、口座番号を入れて",
+      MONEY,
+      "振込先は家族に確認して、口座番号を入れて",
+    ],
     [
       "deleting after she asked to delete",
       [turn("protected", "LINE のトーク履歴を消したい"), turn("ai", HANDOFF)],
@@ -3310,6 +3337,13 @@ describe("guidance and cautions after an earlier topic (#84)", () => {
     ["その電話に出てもいい?"],
     ["電話して確かめていい?"],
     ["その電話の音を大きくして聞いていい?"],
+    ["かかってきた電話の音を大きくして聞いていい?"],
+    ["届いたメールの文字を大きくしたい"],
+    ["さっき来たメールの文字を大きくして読みたい"],
+    ["この前のメールの文字を大きくしたい"],
+    ["銀行からのメールの文字を大きくしたい"],
+    ["警察からの電話の音を大きくしたい"],
+    ["あの人からの電話の音を上げたい"],
   ])("still sets the floor from the steering text for %s", async (text) => {
     const fam = await setupFamily();
     const swayed = scam({ level: 3, reasons: [], basis: "", action: "様子を見て", topic: null });
@@ -3354,6 +3388,16 @@ describe("guidance and cautions after an earlier topic (#84)", () => {
     expect(answer.reply).toBe("詐欺の手口と似ているところがあります。お金や暗証番号の話には応じず、家族に確かめて");
     expect(answer.handoff).toBe(true);
   });
+
+  it.each([["家族に確かめてから振込先を入れて"], ["迷わずに振り込んで"]])(
+    "does not read out the step %s in a level 2 scam answer",
+    async (action) => {
+      const fam = await setupFamily();
+      const deps = fakes(scam({ level: 2, reasons: ["急がせている"], basis: "", action }));
+      const answer = await consult(consultEnv, motherOf(fam), POLICE_CALL, new ExternalBudget(), deps);
+      expect(answer.reply).toBe("詐欺の手口と似ているところがあります。お金や暗証番号の話には応じず、家族に確かめて");
+    },
+  );
 
   it.each([
     ["送金はせず、電話を切って家族に確かめて"],
