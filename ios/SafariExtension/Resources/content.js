@@ -1,5 +1,5 @@
-// Runs in every top-level http and https page. Sends the page's URL and the first 5,000 characters of
-// its text to the background script, and lays a warning over the page when the server's rules answer
+// Runs in every top-level http and https page. Sends the page's URL, the first 5,000 characters of
+// its text, and whether it has a password or card number field to the background script, and lays a warning over the page when the server's rules answer
 // level 1 or 2 (server/src/page.ts). No answer, or any other answer, draws nothing; that never means
 // the page is fine.
 //
@@ -47,6 +47,32 @@
     const raw = document.body ? document.body.innerText || "" : "";
     // Code points, as the server counts them; the slice first keeps Array.from cheap on long pages.
     return Array.from(raw.slice(0, TEXT_MAX * 2)).slice(0, TEXT_MAX).join("");
+  }
+
+  // Fields a fake sign-in page or shop asks her to fill (#137). Only whether one exists is sent, so the
+  // server can let Claude look at the page; what is typed in them is never read.
+  const SECRET_FIELDS =
+    'input[type="password" i], input[autocomplete~="cc-number" i], input[autocomplete~="cc-csc" i], input[autocomplete~="cc-exp" i]';
+  // Whole words in the field's name or id, so "postcard" and "discard" are not card fields, while
+  // "cardnumber", "card-number", "card_number", "cc-number" and "creditCardNumber" are.
+  const CARD_NAME =
+    /(^|[^a-z])(card(no|num|number|holder|cvc|cvv|exp)?|cc-?(num|number|csc|exp)|cvc|cvv|security-?code)([^a-z]|$)|カード/i;
+
+  /** "creditCardNumber" -> "credit-Card-Number", so a camel-case name splits into its words. */
+  function words(name) {
+    return (name || "").replace(/([a-z0-9])([A-Z])/g, "$1-$2");
+  }
+
+  function hasSecretField() {
+    try {
+      if (document.querySelector(SECRET_FIELDS)) return true;
+      for (const input of document.querySelectorAll("input")) {
+        if (CARD_NAME.test(words(input.name)) || CARD_NAME.test(words(input.id))) return true;
+      }
+    } catch {
+      // A page that breaks the query only loses this hint.
+    }
+    return false;
   }
 
   let shown = false;
@@ -128,7 +154,7 @@
   function ask(recheck) {
     const text = pageText();
     browser.runtime
-      .sendMessage({ type: "page", url: location.href, text, recheck })
+      .sendMessage({ type: "page", url: location.href, text, recheck, hasSecretField: hasSecretField() })
       .then((reply) => {
         if (reply && (reply.level === 1 || reply.level === 2)) show(reply.level);
       })

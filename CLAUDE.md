@@ -89,7 +89,13 @@ gh で Issue、PR、コメントに書くコマンドは、書き込み1つだ�
 | 審査員の立場での採点 | `mm-judge` | Fable | medium | 作った側と別の強い目で、審査の4基準から提出物の弱いところを探す |
 | 試験用の例文集め | `mm-eval-curator` | Opus | medium | 手順は決まっているが、詐欺と本物の境目の例と注入の例を見分けて形を揃える |
 
-主の Opus と Fable の effort は [`.claude/settings.json`](.claude/settings.json) の `modelSettings`、サブエージェントの model と effort は `.claude/agents/*.md` の frontmatter で決める。Agent ツールで呼ぶときは model を省くか、表と同じものを渡す。呼ぶときの model は定義より優先されるので、作者のグローバルの「単純な作業は Sonnet」の決まりはこの表の役には当てはめない。effort の `max` は使わない。理由は [`docs/harness.md`](docs/harness.md) の「サブエージェント」に書いた。
+主の Opus と Fable の effort は [`.claude/settings.json`](.claude/settings.json) の `modelSettings`、サブエージェントの model と effort は `.claude/agents/*.md` の frontmatter で決める。Agent ツールで呼ぶときは model を省くか、表と同じものを渡す。呼ぶときの model は定義より優先されるので、表の役に Sonnet を渡すのは、PR の差分が次の日付つきの記録だけのときに限る(2026年11月6日に作者が決めた。「軽めのレビューとか作業」は Sonnet に振る)。ビルド番号だけのコミット(`ios/project.yml` と `project.pbxproj` の番号の行)、`docs/audits/raw/` の原文、`docs/dev-log.md`、`docs/claude-usage.md`。そのときの `mm-reviewer` と `mm-verifier` に `sonnet` を渡してよい。`CLAUDE.md`、`CONDITIONS.md`、`.claude/` の下、`docs/design.md`、`docs/plan.md`、`docs/harness.md`、`eval/`、コードを1行でも変える PR は、行数にかかわらず表どおりにする。
+
+Sonnet で始めた役は、続きを頼むとそのまま Sonnet で動く([sub-agents](https://code.claude.com/docs/en/sub-agents) の「A per-invocation model parameter also applies when the subagent is resumed or sent a follow-up message」)。PR に上の一覧の外の変更が乗ったら、続きを頼まず、`model` を省いて新しく起動する。Sonnet の確かめが落ちたときも、原因は表どおりの `mm-verifier` を新しく起動して読ませる。
+
+表の役でない調べもの(`web-fetch`、`Explore`、`general-purpose`)は、作者のグローバルの決まりどおり Sonnet にする。
+
+effort の `max` は使わない。理由は [`docs/harness.md`](docs/harness.md) の「サブエージェント」に書いた。
 
 作品の中で使うモデルは別で、判定に `claude-haiku-5-5`、母との会話とスクショに `claude-sonnet-5-5`、急がない調べものと引き継ぎに Managed Agents を使う(`docs/design.md`)。モデル ID や API の形は記憶で書かず `claude-docs` の MCP か `/claude-api` で確かめる。
 

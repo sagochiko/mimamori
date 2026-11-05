@@ -7,6 +7,7 @@ import {
   buildClaudeRequest,
   CLAUDE_JUDGE_MODEL,
   decide,
+  decideFor,
   parseClaudeJudgment,
   requestClaudeJudgment,
   talksJudgment,
@@ -224,6 +225,48 @@ describe("decide", () => {
     // Claude gave nothing (failure path, "失敗したとき" in docs/design.md); not what Claude is told to
     // answer when it sees no sign of a scam, which is 3 (#109).
     expect(decide(undecided, null)).toMatchObject({ level: 2, ruleLevel: null, claudeLevel: null, checking: true });
+  });
+
+  describe("decideFor, the queue's decision for each route (#137)", () => {
+    it.each(["sms", "gmail", "page"] as const)(
+      "keeps %s quiet at level 3 when neither the rules nor Claude decided, still marked as checking",
+      (source) => {
+        // These routes queue what the rules find no sign in, so a Claude failure must not tell anyone.
+        expect(decideFor(source, undecided, null)).toEqual({
+          level: 3,
+          reasons: [],
+          ruleLevel: null,
+          claudeLevel: null,
+          checking: true,
+        });
+      },
+    );
+
+    it.each(["sms", "gmail", "page"] as const)(
+      "keeps %s at decide()'s level 2 when the rules saw a sign without a level and Claude gave nothing",
+      (source) => {
+        const weak: RuleResult = { level: null, reasons: ["急がせる言い回しがある"], confident: false };
+        expect(decideFor(source, weak, null)).toEqual(decide(weak, null));
+        expect(decideFor(source, weak, null)).toMatchObject({ level: 2, checking: true });
+      },
+    );
+
+    it("keeps an SMS whose only sign is the overseas number quiet, as one with no sign", () => {
+      const foreign: RuleResult = { level: null, reasons: ["海外の番号からの SMS"], confident: false };
+      expect(decideFor("sms", foreign, null).level).toBe(3);
+    });
+
+    it.each(["consult", "call", "dns"] as const)("keeps level 2 for %s when neither decided, as decide does", (source) => {
+      expect(decideFor(source, undecided, null)).toEqual(decide(undecided, null));
+      expect(decideFor(source, undecided, null).level).toBe(2);
+    });
+
+    it.each(["sms", "gmail", "page"] as const)("is decide itself for %s whenever the rules or Claude decided", (source) => {
+      const rule: RuleResult = { level: 2, reasons: ["急がせる言い回しがある"], confident: false };
+      expect(decideFor(source, rule, null)).toEqual(decide(rule, null));
+      expect(decideFor(source, undecided, valid)).toEqual(decide(undecided, valid));
+      expect(decideFor(source, undecided, { ...valid, level: 3, injection_suspected: true }).level).toBe(2);
+    });
   });
 
   it("takes the rule level as the floor before the injection step, even when the rule is not confident", () => {

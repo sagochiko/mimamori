@@ -7,7 +7,7 @@
 // No Node APIs here, so the server's Vitest (in workerd) can import this file; eval/run.ts passes the
 // key from the environment.
 
-import { type ClaudeJudgment, decide, requestClaudeJudgment } from "../../server/src/claude";
+import { type ClaudeJudgment, decideFor, requestClaudeJudgment } from "../../server/src/claude";
 import { type ClaudeConsult, requestClaudeConsult } from "../../server/src/consult-judge";
 import type { RuleInput, RuleResult } from "../../server/src/rules/index";
 
@@ -56,7 +56,8 @@ export const unavailableConsultJudge: ConsultJudge = async () => {
 export function claudeJudge(ask: AskClaude): Judge {
   return async (input, rule) => {
     const answer = await ask(input, rule);
-    const decision = decide(rule, answer);
+    // decideFor, as the queue: an SMS, a mail, or a page neither decided is 3 and reaches no one (#137).
+    const decision = decideFor(input.source, rule, answer);
     const combined: CombinedJudgment = { level: decision.level, checking: decision.checking };
     if (answer !== null) {
       combined.claude = {
