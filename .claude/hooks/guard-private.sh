@@ -165,7 +165,7 @@ check "the command (title and body)" - "$text"
 
 # raw_tail <body file>: the saved raw report (docs/audits/raw/*.md, named in the body) that the body
 # ends with byte for byte, as /mm-task step 6 posts a review: a heading, then the file as it is. That
-# part is checked as "raw report <file>", which the work-hour time rule skips (scripts/scan-private.sh),
+# part is checked as "raw report <file>", which the time of day rule skips (scripts/scan-private.sh),
 # since reviews quote log stamps and the app's own hours verbatim. Phone and email shapes pass there as
 # they do at commit time (docs/audits/raw/, author, 2026-11-04), so a「(伏せた)」never has to break the
 # tail; private terms are still checked, and are fixed in the saved file itself (/mm-task step 6).
@@ -198,8 +198,8 @@ done
 
 if [[ -n "$found" ]]; then
   hint="Take it out and run the command again. Public issues and PRs never carry family names, numbers, addresses, or real messages."
-  [[ "$found" == *": work-hour time$nl"* ]] &&
-    hint+=" A work-hour time is a time of day from ten to noon or from one to seven in the afternoon, the author's weekday working hours. Public records give the date alone, or 午後, for what happened then; the hook cannot tell whose action or which day a time records, so it stops every such time. Write the date alone or 午後 (for the app's own hours, 既定の時刻)."
-  block guard-private "blocked: this would publish what looks like personal data or a work-hour time (where and which rule; the text is not shown):$nl$found$hint"
+  [[ "$found" == *": time of day$nl"* ]] &&
+    hint+=" Public records give the date alone. Write the date alone in those lines."
+  block guard-private "blocked: this would publish what looks like personal data or a time of day (where and which rule; the text is not shown):$nl$found$hint"
 fi
 exit 0

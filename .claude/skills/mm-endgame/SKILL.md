@@ -1,6 +1,6 @@
 ---
 name: mm-endgame
-description: Final checklist for submitting mimamori to Built with Claude Japan 2026, from code freeze to the 20:00 deadline on 2026-11-08. Use when the pacer hook announces code freeze, or when asked to prepare the submission ("仕上げ", "提出の準備").
+description: Final checklist for submitting mimamori to Built with Claude Japan 2026, from code freeze to the deadline on 2026-11-08 (`deadline` in CONDITIONS.md). Use when the pacer hook announces code freeze, or when asked to prepare the submission ("仕上げ", "提出の準備").
 ---
 
 # Endgame

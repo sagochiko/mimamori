@@ -246,8 +246,8 @@ function percent(count: number, total: number): string {
 }
 
 /**
- * The date alone, "2026年11月5日". RESULTS.md is public, and a time of day in the author's weekday
- * working hours stays out of public records (issue #116); the full ts stays in results.jsonl.
+ * The date alone, "2026年11月5日". RESULTS.md is public, and public records give the date alone; the
+ * full ts stays in results.jsonl.
  */
 function japaneseDate(ts: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ts);

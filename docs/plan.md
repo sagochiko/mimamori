@@ -6,7 +6,7 @@
 
 目標は、母が何もしなくても詐欺から守り、声でスマホの相談に答え、毎朝の笑顔で家族とつなぐ iOS アプリとその裏側を、2026年11月8日 20時の提出までに作り、期間中に母に実際に使ってもらうこと。
 
-作りは iOS アプリ1つ(拡張機能つき)と Cloudflare Workers の裏側に分ける。即答は決まった規則で返し、Claude の判断はキューであとから重ねる。相談と解決の状態は D1 を正にし、Managed Agents は急がない3つの仕事だけに使う。
+作りは iOS アプリ1つ(拡張機能つき)と Cloudflare Workers の裏側に分ける。即答は決まった規則で返し、Claude の判断はキューであとから重ねる。相談と解決の状態は D1 を正にし、Managed Agents は急がない3つの用途だけに使う。
 
 使うものは、SwiftUI、AlarmKit、ARKit、IdentityLookup、NetworkExtension(NEDNSSettingsManager)、Safari Web Extension、CallKit、Speech、AVSpeechSynthesizer、Cloudflare Workers(TypeScript、D1、R2、Queues、Cron Triggers)、Claude API(Haiku 5.5、Sonnet 5.5、Structured Outputs)、Claude Managed Agents、Gmail API、APNs。
 
@@ -274,7 +274,7 @@ Safari の拡張機能、背面タップ、DNS のサーバーが止まったと
 **手順**
 
 - [ ] タスク1から移した確認。SMS の拡張がサーバーに問い合わせたとき、Apple がどれだけ返事を待つか。サーバーで 1秒、3秒、5秒と遅らせて、迷惑フォルダに回る境目を見る
-- [ ] テストを書く。はっきり危ない SMS(`confident: true` かつ1段階)は `junk`。迷う SMS は `none` で返し、判定の仕事をキューに積む。認証コードや本物の宅配の通知は `none` で、キューにも積まない。知らない `familyToken` なら `none` を返し、何も記録しない。`demo` なら本当の家族には知らせず、体験モードの端末に「家族に届くカード」を返す
+- [ ] テストを書く。はっきり危ない SMS(`confident: true` かつ1段階)は `junk`。迷う SMS は `none` で返し、判定のジョブをキューに積む。認証コードや本物の宅配の通知は `none` で、キューにも積まない。知らない `familyToken` なら `none` を返し、何も記録しない。`demo` なら本当の家族には知らせず、体験モードの端末に「家族に届くカード」を返す
 - [ ] 実装してテストを通す。返事は規則だけで作り、Claude を待たない(タスク1で測った待ち時間より十分短く)
 - [ ] Info.plist の `ILMessageFilterExtensionNetworkURL` に、母のビルドでは母の家族の URL を、審査員のビルドでは `demo` を入れる。ビルド設定で切り替える
 - [ ] 実機で、連絡先に無い番号から詐欺の例文と認証コードを送り、詐欺だけが迷惑フォルダに回ることを確かめる

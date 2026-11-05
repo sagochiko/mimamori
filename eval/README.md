@@ -107,7 +107,7 @@ cd server && npx tsc --noEmit -p ../eval/tsconfig.json  # eval/ の型検査
 
 1回ごとに `eval/results.jsonl` に1行(数字に `ts`、`set`、`mode`、`git_sha`、`n`、`notes` を足したもの)、[`RESULTS.md`](RESULTS.md) に表の1行が増える。dev の例文ごとの結果は `eval/out/dev-latest.json` に出る。`rules+claude` の回では、例文ごとに Claude 自身の答え(`claude`。段階、理由、`injection_suspected`、相談なら `kind` と `handoff`)と、相談が案内しない話題に当たったか(`unguided_topic`)も残す。最後の段階が Claude の段階なのか、規則の下限、仕込みの1段の上乗せ、相談の決まり(案内しない話題、`handoff`、読み上げられない答え)で変わったのかを、見比べて分けるためだ。2026年11月5日の最初の `rules+claude` の回(誤判定 36/54)にはこれが無く、SMS、メール、ページの誤判定20件は Claude の理由を見られなかった(#109)。
 
-`RESULTS.md` の表の日時の列は、2026年11月5日から日付だけになった(#116)。表は公開され、作者の勤務時間の時刻を公開の記録に残さない決まりがあるためだ。同じ日の回は、`results.jsonl` の `ts` と `git_sha` で見分ける。
+`RESULTS.md` の表の日時の列は、2026年11月5日から日付だけになった(#116)。表は公開され、公開の記録は日付だけにする決まりがあるためだ。同じ日の回は、`results.jsonl` の `ts` と `git_sha` で見分ける。
 
 `rules+claude` は、判定のキューと同じ [`server/src/claude.ts`](../server/src/claude.ts) の `requestClaudeJudgment` と `decide` で段階を決め(声の相談だけは母の相談と同じ道で決める。下の「相談の測り方」)、1と2を家族に届くものとして数える。鍵は環境変数 `ANTHROPIC_API_KEY` から読む。鍵が無ければ、Claude を呼ばず何も記録せずに止まる。`make eval` は流す前に鍵の有無を見て、無ければ `rules` の行も書かずに止まる。鍵の無いところで規則の変更を見るときは `make eval-rules` を流す。Claude が形の合う答えを返さなかった例文は規則だけで数え(相談は本番と同じく、規則が決められなければ2段階)、その件数を `results.jsonl` の `claude_unanswered` と画面に出す。この数が多い回は、ほとんど規則だけの数字になっている。
 
@@ -119,11 +119,11 @@ cd server && npx tsc --noEmit -p ../eval/tsconfig.json  # eval/ の型検査
 
 `rules+claude` の行では、筋書きに当たった相談は本番と同じく Claude を呼ばずに1段階にする。当たらない相談は、判定のキューの `requestClaudeJudgment` ではなく、相談用の `requestClaudeConsult`(Sonnet)に聞き、本番と同じ `judgeConsult` で段階を決める。相談用の Claude が形の合う答えを返さなかったときは、本番と同じく段階は規則の段階か、規則が決められなければ2になり、`claude_unanswered` に数える。筋書きで決まって Claude を呼ばなかった例文は `claude_unanswered` に数えない。`eval/out/dev-latest.json` の例文ごとの結果には、筋書きで決まったかを `consult_script` で残す。
 
-2026年11月5日に、この測り方に変えた(#74)。それまでは相談も `judgeByRules` と `requestClaudeJudgment` に通していて、本番の母の相談で起きることを測っていなかった。変えたのは数字を見る前で、2026年11月5日 00:39 までの `rules` の行の `consult` は、前の測り方の数字になっている。
+2026年11月5日に、この測り方に変えた(#74)。それまでは相談も `judgeByRules` と `requestClaudeJudgment` に通していて、本番の母の相談で起きることを測っていなかった。変えたのは数字を見る前で、測り方を変えた最初の回(99633ed、変えたことの列が #74 の行)より前の `rules` の行の `consult` は、前の測り方の数字になっている。
 
 ## 規則だけの数字(下書き)
 
-2026年11月4日 08:44 に main(a2ce26b)で `make eval` の `rules` を流した dev の結果。
+2026年11月4日に main(a2ce26b)で `make eval` の `rules` を流した dev の結果。
 
 | 経路 | 見逃し | 誤判定 | 本物を1段階 |
 |---|---:|---:|---:|
