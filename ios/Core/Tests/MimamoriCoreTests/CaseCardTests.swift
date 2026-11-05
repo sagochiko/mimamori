@@ -359,6 +359,63 @@ struct ProtectedNoticeTests {
   }
 }
 
+// #86: the notices sit in one strip at the top of her screen. Closed, it shows one of them; that one
+// must be the line that asks her to call, never "家族に伝えました" while another says nobody knows.
+@Suite("母の画面の上の帯")
+struct NoticeStripTests {
+  private func notice(_ id: String, _ status: String) -> ProtectedNotice {
+    ProtectedNotice(id: id, status: status, summary: "スマホの相談")
+  }
+
+  @Test("届いていない知らせを、返事がまだと伝えたより先に出す")
+  func notReachedFirst() {
+    let notices = [
+      notice("c-3", ProtectedNotice.toldFamily),
+      notice("c-2", ProtectedNotice.noReplyYet),
+      notice("c-1", ProtectedNotice.notReached),
+    ]
+    #expect(ProtectedNotice.mostPressing(notices)?.id == "c-1")
+  }
+
+  @Test("届いていない知らせが無ければ、返事がまだを伝えたより先に出す")
+  func noReplyYetBeforeTold() {
+    let notices = [notice("c-2", ProtectedNotice.toldFamily), notice("c-1", ProtectedNotice.noReplyYet)]
+    #expect(ProtectedNotice.mostPressing(notices)?.id == "c-1")
+  }
+
+  @Test(
+    "同じ文言なら、並びの先(新しいほう)を出す",
+    arguments: [ProtectedNotice.notReached, ProtectedNotice.noReplyYet, ProtectedNotice.toldFamily])
+  func newestWithinTheSameLine(status: String) {
+    let notices = [notice("c-2", status), notice("c-1", status), notice("c-0", status)]
+    #expect(ProtectedNotice.mostPressing(notices)?.id == "c-2")
+  }
+
+  @Test("知らせが無ければ、帯に出すものも無い")
+  func noneWhenEmpty() {
+    #expect(ProtectedNotice.mostPressing([]) == nil)
+  }
+
+  @Test("相談から作った知らせでも、急ぐ1件を出す")
+  func fromCases() throws {
+    // Newest first from notices(from:now:): told 1 minute ago, then one the family left for 40 minutes.
+    let told = try decodeCase(caseJSON(id: "c-new", notifiedAt: "2026-11-03T10:39:00.000Z"))
+    let late = try decodeCase(caseJSON(id: "c-old"))
+    let notices = ProtectedNotice.notices(from: [told, late], now: tenOClock.addingTimeInterval(40 * 60))
+    #expect(notices.map(\.id) == ["c-new", "c-old"])
+    let first = try #require(ProtectedNotice.mostPressing(notices))
+    #expect(first.id == "c-old")
+    #expect(first.status == ProtectedNotice.noReplyYet)
+  }
+
+  @Test("電話を促すのは、届いていないと返事がまだの2つ")
+  func asksToCall() {
+    #expect(notice("c-1", ProtectedNotice.notReached).asksToCall)
+    #expect(notice("c-1", ProtectedNotice.noReplyYet).asksToCall)
+    #expect(!notice("c-1", ProtectedNotice.toldFamily).asksToCall)
+  }
+}
+
 @Suite("電話番号")
 struct PhoneNumberTests {
   @Test(

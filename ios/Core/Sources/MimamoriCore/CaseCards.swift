@@ -135,6 +135,32 @@ public struct ProtectedNotice: Equatable, Sendable, Identifiable {
   }
 }
 
+/// The strip at the top of her screen (#86, chosen by the author on 2026-11-05 in #87): closed, it is
+/// one notice and how many there are; a tap opens them all.
+extension ProtectedNotice {
+  /// "家族に届いていません" and "家族から返事がまだ" end with "急ぐなら電話して"; "家族に伝えました" does not.
+  public var asksToCall: Bool { urgency < Self.toldUrgency }
+
+  /// The notice the closed strip shows: not reached first, so she never reads "家族に伝えました" there
+  /// while the family has not got another one; then no reply yet; then told. Within each, the first
+  /// in the list, which `notices(from:now:)` makes the newest. Nil when there is none.
+  public static func mostPressing(_ notices: [ProtectedNotice]) -> ProtectedNotice? {
+    // `min(by:)` keeps the first of equal ones.
+    notices.min { $0.urgency < $1.urgency }
+  }
+
+  private static let toldUrgency = 2
+
+  /// Lower is more pressing.
+  private var urgency: Int {
+    switch status {
+    case Self.notReached: 0
+    case Self.noReplyYet: 1
+    default: Self.toldUrgency
+    }
+  }
+}
+
 /// The protected person's number, entered once on a family member's iPhone for "電話する".
 /// It stays on that device and is never sent to the server.
 public struct PhoneNumber: Equatable, Sendable {
