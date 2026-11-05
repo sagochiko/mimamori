@@ -329,10 +329,19 @@ private struct NoticeStrip: View {
     }
   }
 
-  /// Closed, up to two lines: "家族に届いていません。急ぐなら電話して" fits in two up to the largest
-  /// standard text size (iPhone 17 Pro simulator, 2026-11-05). At the accessibility sizes it needs
-  /// three or more, so it wraps as far as it needs there and "電話して" is never cut off.
-  private var closedLineLimit: Int? { typeSize.isAccessibilitySize ? nil : 2 }
+  /// Closed, a line that ends with "急ぐなら電話して" wraps as far as it needs, so "電話して" is never
+  /// cut off on any width or text size: it took two lines on the iPhone 17 Pro simulator up to the
+  /// largest standard size and three at accessibility-large (2026-11-05), and a narrower iPhone can
+  /// need more. "家族に伝えました" stays within two lines below the accessibility sizes.
+  private func closedLineLimit(_ first: ProtectedNotice) -> Int? {
+    first.asksToCall || typeSize.isAccessibilitySize ? nil : 2
+  }
+
+  /// What a tap opens. "家族に伝えたこと" only when the most pressing one, and so every one, reached
+  /// the family.
+  private func closedHint(_ first: ProtectedNotice) -> String {
+    first.asksToCall ? "押すと、相談を全部見られます" : "押すと、家族に伝えたことを全部見られます"
+  }
 
   private func strip(first: ProtectedNotice) -> some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -345,7 +354,7 @@ private struct NoticeStrip: View {
           Text(first.status)
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.primary)
-            .lineLimit(open ? nil : closedLineLimit)
+            .lineLimit(open ? nil : closedLineLimit(first))
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
           if notices.count > 1 {
@@ -370,7 +379,7 @@ private struct NoticeStrip: View {
       .accessibilityLabel(
         notices.count > 1 ? "\(first.status)、ほか\(notices.count - 1)件" : first.status
       )
-      .accessibilityHint(open ? "押すと閉じます" : "押すと、家族に伝えたことを全部見られます")
+      .accessibilityHint(open ? "押すと閉じます" : closedHint(first))
       if open {
         Divider().padding(.leading, 16)
         VStack(alignment: .leading, spacing: 12) {
