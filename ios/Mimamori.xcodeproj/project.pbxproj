@@ -7,17 +7,21 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0045C4C82D418EC3D7D26FEE /* DailyCheckInNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3066EF38E05327DBF8B6F57 /* DailyCheckInNotifier.swift */; };
 		0BF172D7871C60E0E2839660 /* VoiceListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF3C946C7E291506723FB25A /* VoiceListener.swift */; };
 		0EF3336DAE22D85DA0D64FE7 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95CDB77E0372A19FBBE234F4 /* RootView.swift */; };
+		1161F819AB32E399D288B285 /* DebugLaunch.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE4C837922E7E96E84700660 /* DebugLaunch.swift */; };
 		2A32CC4EF4852D2CC9816BBC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0FA418C9775218D6E44586BB /* Assets.xcassets */; };
 		3108313EAA90F72D86124356 /* JoinView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D71E050B6AB7E4A2CC31D69 /* JoinView.swift */; };
 		31980380ADC3240C7EE281BC /* MimamoriApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E45414D046D363FD33D0A71A /* MimamoriApp.swift */; };
 		3792C21DC96CFB08E303BF69 /* ProtectedHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC84E1DC90613B9EB0164B49 /* ProtectedHomeView.swift */; };
 		38A272F7AE944C9DF6A7E596 /* FamilyHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 516788DAB13E4B039651659A /* FamilyHomeView.swift */; };
 		3B224EED8B6094CD0792121D /* icon-48.png in Resources */ = {isa = PBXBuildFile; fileRef = 37FA4151507E2DD9222D61D8 /* icon-48.png */; };
+		42D563BF82AF5DBCD95A0ECC /* CallEndWatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5DCBCDB127D92299354AAC /* CallEndWatcherTests.swift */; };
 		43B9311E811375C7729B1D8E /* CaseCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9CA9B42DD3FC3299CFAB648 /* CaseCardView.swift */; };
 		4799E09B550CE33AF47CF9CB /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = DE1A428163B195BBC1D9C552 /* InfoPlist.strings */; };
 		4B33968B0F409367195FDDED /* RoleSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06074B0D983CF3372440534D /* RoleSelectionView.swift */; };
+		4B42D2C621956B6F37A7E79F /* CallEndWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBDC1777B99CB151E280E4BF /* CallEndWatcher.swift */; };
 		50169A15AE96ACFDEC482643 /* icon-512.png in Resources */ = {isa = PBXBuildFile; fileRef = A3EEC19D183992192B7885F3 /* icon-512.png */; };
 		506A9F65B0840324B1E52A9E /* ScreenshotStubTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C21EE2A82C9D0DAFA79176F /* ScreenshotStubTransport.swift */; };
 		529376631A3456ECD5E7B916 /* MessageField.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3927374A99C57B608C75AEA /* MessageField.swift */; };
@@ -44,6 +48,7 @@
 		D5A915164C35F53A970D7704 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 01495D6F82DC6AD75CE163A4 /* InfoPlist.strings */; };
 		D6D36C1F5814E263377C9774 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 86C975201DC4D87FB98BBD52 /* InfoPlist.strings */; };
 		D9FE1BC560296394E1FBC071 /* icon-256.png in Resources */ = {isa = PBXBuildFile; fileRef = 0013C3033E612105301426FF /* icon-256.png */; };
+		F54F2613513BFFC99DF087AC /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = D732C4C84CB27B1B71752ACA /* Settings.bundle */; };
 		F7662858D9EEFCBA1B6DCD99 /* CallDirectory.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FE2AA537BD66CC913767D2DC /* CallDirectory.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -115,6 +120,7 @@
 		419E10C36BDE538278F82BD1 /* FileChatLogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileChatLogStore.swift; sourceTree = "<group>"; };
 		4EDF58AC7BF0B880A61FAE9D /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		516788DAB13E4B039651659A /* FamilyHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FamilyHomeView.swift; sourceTree = "<group>"; };
+		5A5DCBCDB127D92299354AAC /* CallEndWatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallEndWatcherTests.swift; sourceTree = "<group>"; };
 		5B1160E3057AE1DBB06229E3 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		6347632638B2BBB1D921BC29 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		6636D20FA1E1AADEB45C6CB1 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
@@ -138,15 +144,19 @@
 		B441389511B639CF9457DFD2 /* MessageFilterExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageFilterExtension.swift; sourceTree = "<group>"; };
 		B4E2407A22C382C75C4FAAA0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		B78E521DD07930F33B780261 /* KeychainDeviceKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainDeviceKeyStore.swift; sourceTree = "<group>"; };
+		BBDC1777B99CB151E280E4BF /* CallEndWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallEndWatcher.swift; sourceTree = "<group>"; };
 		BC84E1DC90613B9EB0164B49 /* ProtectedHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedHomeView.swift; sourceTree = "<group>"; };
 		C9A3D90DB810FD968F731C97 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		D3066EF38E05327DBF8B6F57 /* DailyCheckInNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyCheckInNotifier.swift; sourceTree = "<group>"; };
 		D3927374A99C57B608C75AEA /* MessageField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageField.swift; sourceTree = "<group>"; };
+		D732C4C84CB27B1B71752ACA /* Settings.bundle */ = {isa = PBXFileReference; lastKnownFileType = wrapper.cfbundle; path = Settings.bundle; sourceTree = "<group>"; };
 		E01211C64F467DD0EC1AA9C3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		E45414D046D363FD33D0A71A /* MimamoriApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MimamoriApp.swift; sourceTree = "<group>"; };
 		E5CA27DA8F58C1AD1C5641A2 /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
 		EC4358BDD5FA2EE8A3FB6021 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		ECDC69D9559207B1E43D992A /* CallDirectoryHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallDirectoryHandler.swift; sourceTree = "<group>"; };
 		ED5BA5FA26F250B07F3A7807 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		EE4C837922E7E96E84700660 /* DebugLaunch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLaunch.swift; sourceTree = "<group>"; };
 		F8469859BF8A09F6E12A30DD /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		F92B2D41F2C7B84131342EF1 /* MessageFilter.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MessageFilter.entitlements; sourceTree = "<group>"; };
 		FD7A8F57CDE97D7412DC8AF8 /* Core */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Core; path = Core; sourceTree = SOURCE_ROOT; };
@@ -203,6 +213,7 @@
 		4623E0F92491831EF284BE09 /* Debug */ = {
 			isa = PBXGroup;
 			children = (
+				EE4C837922E7E96E84700660 /* DebugLaunch.swift */,
 				7C21EE2A82C9D0DAFA79176F /* ScreenshotStubTransport.swift */,
 			);
 			path = Debug;
@@ -232,6 +243,7 @@
 		CAB1D113E56051C0633A3F33 /* AppTests */ = {
 			isa = PBXGroup;
 			children = (
+				5A5DCBCDB127D92299354AAC /* CallEndWatcherTests.swift */,
 				8FE0A1F8B5B0B0C8F791B5C8 /* MessageFieldTests.swift */,
 			);
 			path = AppTests;
@@ -270,13 +282,16 @@
 				A04CE476A28DC68FEBBCCD33 /* AppConfig.swift */,
 				1BDA3D10727E119E0680CB3C /* AppModel.swift */,
 				0FA418C9775218D6E44586BB /* Assets.xcassets */,
+				BBDC1777B99CB151E280E4BF /* CallEndWatcher.swift */,
 				6739C49E1B0EA3024DC91B5F /* CallFollowUpNotifier.swift */,
+				D3066EF38E05327DBF8B6F57 /* DailyCheckInNotifier.swift */,
 				419E10C36BDE538278F82BD1 /* FileChatLogStore.swift */,
 				B4E2407A22C382C75C4FAAA0 /* Info.plist */,
 				B78E521DD07930F33B780261 /* KeychainDeviceKeyStore.swift */,
 				6857C3950869A3E22C6DC8CE /* Mimamori.entitlements */,
 				E45414D046D363FD33D0A71A /* MimamoriApp.swift */,
 				84BA38ED727FD076C6B3DDD6 /* ReplySpeaker.swift */,
+				D732C4C84CB27B1B71752ACA /* Settings.bundle */,
 				AF3C946C7E291506723FB25A /* VoiceListener.swift */,
 				4623E0F92491831EF284BE09 /* Debug */,
 				86C975201DC4D87FB98BBD52 /* InfoPlist.strings */,
@@ -515,6 +530,7 @@
 			files = (
 				2A32CC4EF4852D2CC9816BBC /* Assets.xcassets in Resources */,
 				D6D36C1F5814E263377C9774 /* InfoPlist.strings in Resources */,
+				F54F2613513BFFC99DF087AC /* Settings.bundle in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -573,8 +589,11 @@
 			files = (
 				CA60F854809C86C96B2A956E /* AppConfig.swift in Sources */,
 				56FEB594CFB85A1BCA209BE5 /* AppModel.swift in Sources */,
+				4B42D2C621956B6F37A7E79F /* CallEndWatcher.swift in Sources */,
 				801E3FADFE057D756DE7D71E /* CallFollowUpNotifier.swift in Sources */,
 				43B9311E811375C7729B1D8E /* CaseCardView.swift in Sources */,
+				0045C4C82D418EC3D7D26FEE /* DailyCheckInNotifier.swift in Sources */,
+				1161F819AB32E399D288B285 /* DebugLaunch.swift in Sources */,
 				38A272F7AE944C9DF6A7E596 /* FamilyHomeView.swift in Sources */,
 				B30588DA403943E16C24E603 /* FamilyStartView.swift in Sources */,
 				7C3ACF594C1E220440463051 /* FileChatLogStore.swift in Sources */,
@@ -603,6 +622,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				42D563BF82AF5DBCD95A0ECC /* CallEndWatcherTests.swift in Sources */,
 				89FAA146B103F89E0CA95418 /* MessageFieldTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
