@@ -446,31 +446,31 @@ struct ChatLeftWhileLockedTests {
 struct SpeakOnlyByVoiceTests {
   static let answer = ConsultAnswer(reply: "設定の「一般」から", speak: "設定の一般から", tap: nil, handoff: false)
 
-  @Test("声で聞いたときは答えを読み上げる")
+  @Test("読み上げがオンなら、声で聞いたときは答えを読み上げる")
   func voiceIsSpoken() {
     var flow = VoiceConsult()
     _ = flow.micTapped(at: .t0)
     _ = flow.heard("ストレージがいっぱい", isFinal: true, at: .t0 + 1)
-    #expect(flow.answered(Self.answer) == [.speak("設定の一般から")])
+    #expect(flow.answered(Self.answer, readsAloud: true) == [.speak("設定の一般から")])
   }
 
-  @Test("文字で聞いたときは読み上げない(人前で急に声が出ないように)")
+  @Test("読み上げがオンでも、文字で聞いたときは読み上げない(人前で急に声が出ないように)")
   func typedIsNotSpoken() {
     var flow = VoiceConsult()
     #expect(flow.typed("  ストレージがいっぱい ", at: .t0) == [.stopSpeaking, .send("ストレージがいっぱい")])
     #expect(flow.phase == .thinking(said: "ストレージがいっぱい"))
-    #expect(flow.answered(Self.answer).isEmpty)
+    #expect(flow.answered(Self.answer, readsAloud: true).isEmpty)
     #expect(flow.phase == .answered(said: "ストレージがいっぱい", answer: Self.answer))
   }
 
-  @Test("文字で聞いたあとに声で聞けば、また読み上げる")
+  @Test("読み上げがオンなら、文字で聞いたあとに声で聞けば、また読み上げる")
   func voiceAfterTyped() {
     var flow = VoiceConsult()
     _ = flow.typed("ストレージ", at: .t0)
-    _ = flow.answered(Self.answer)
+    #expect(flow.answered(Self.answer, readsAloud: true).isEmpty)
     _ = flow.micTapped(at: .t0 + 5)
     _ = flow.heard("それってどういうこと", isFinal: true, at: .t0 + 6)
-    #expect(flow.answered(Self.answer) == [.speak("設定の一般から")])
+    #expect(flow.answered(Self.answer, readsAloud: true) == [.speak("設定の一般から")])
   }
 
   @Test("聞いているあいだと考えているあいだは文字を送らない")
