@@ -114,7 +114,7 @@ public struct ChatLog: Codable, Equatable, Sendable {
     guard kept.unicodeScalars.count <= pointsBackMaxCharacters else { return false }
     // POINTS_BACK and NEW_TOPIC on the server, matched on code points as JavaScript's u flag does.
     let pointing =
-      /^(ねえ|ねぇ|えっと|ええと|じゃあ|でも|で|うん|はい|あのね|あの|あ|えっ|ちょっと)*((なに|何)?(それ|これ|あれ)|そう(なの|なん|か|です|でしょ|いう|$)|どうやる|どうやって|どうすれば|どうしたら|どういう|やり方|(この|その|あの)(やり方|方法|こと|件|やつ|操作|\p{Script=Han}\p{Script=Hiragana}?方))/
+      /^(ねえ|ねぇ|えっと|ええと|えっ|えー|ええ|え|じゃあ|じゃ|でも|で|うーん|うん|はい|あのう|あのね|あの|あ|ちょっと)*((なに|何)?(それ|これ|あれ)|そう(なの|なん|か|です|でしょ|いう|$)|どうやる|どうやって|どうすれば|どうしたら|どういう|やり方|(この|その|あの)(やり方|方法|こと|件|やつ|操作|\p{Script=Han}\p{Script=Hiragana}?方))/
     let newTopic = /それより|それと|それから|ところで|別の|ほかの|他の/
     return kept.contains(pointing.matchingSemantics(.unicodeScalar))
       && !kept.contains(newTopic.matchingSemantics(.unicodeScalar))

@@ -61,5 +61,11 @@
   { "text": "なにそれ", "pointsBack": true },
   { "text": "何それ?", "pointsBack": true },
   { "text": "うん、Wi-Fi がつながらない", "pointsBack": false },
-  { "text": "あ、振込のやり方を教えて", "pointsBack": false }
+  { "text": "あ、振込のやり方を教えて", "pointsBack": false },
+  { "text": "え、それってなに", "pointsBack": true },
+  { "text": "えー、それってなに", "pointsBack": true },
+  { "text": "うーん、それってなに", "pointsBack": true },
+  { "text": "ええ、それってどういうこと", "pointsBack": true },
+  { "text": "あのう、それってなに", "pointsBack": true },
+  { "text": "じゃ、それってどうやるの", "pointsBack": true }
 ]
