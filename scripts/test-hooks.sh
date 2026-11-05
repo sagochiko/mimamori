@@ -672,15 +672,19 @@ fm() { awk -v k="$2" 'NR == 1 && $0 == "---" { on = 1; next } on && $0 == "---" 
 row() { awk -F'|' -v n="\`$2\`" -v m="$3" -v e="$4" '{ for (i = 2; i < NF - 1; i++) { a = $i; gsub(/ /, "", a); b = $(i + 1); gsub(/ /, "", b); c = $(i + 2); gsub(/ /, "", c); if (a == n && tolower(b) == m && c == e) found = 1 } } END { exit !found }' "$1"; }
 for f in .claude/agents/mm-*.md; do
   name=$(basename "$f" .md) model=$(fm "$f" model) effort=$(fm "$f" effort)
-  case $model in opus | fable) ;; *) echo "agent test failed: $name runs on opus or fable, not '$model'"; fail=1 ;; esac
+  case $model in opus) ;; *) echo "agent test failed: $name runs on opus, not '$model'"; fail=1 ;; esac
   case $effort in medium) ;; *) echo "agent test failed: $name runs at medium, not '$effort' (max is prone to overthinking)"; fail=1 ;; esac
   row CLAUDE.md "$name" "$model" "$effort" || { echo "agent test failed: the CLAUDE.md table row of $name says $model and $effort"; fail=1; }
   row docs/harness.md "$name" "$model" "$effort" || { echo "agent test failed: the docs/harness.md table row of $name says $model and $effort"; fail=1; }
 done
-# The independent eyes (review, audit, judging) run on Fable; implementation stays on Opus.
+# The independent eyes (review, audit, judging) run on Opus like the implementer, and Fable is left to the
+# advisor alone (the author, 2026-11-06: "AdvisorのみFable").
 for name in mm-reviewer mm-auditor mm-judge; do
-  [[ "$(fm ".claude/agents/$name.md" model)" == fable ]] || { echo "agent test failed: $name runs on fable"; fail=1; }
+  [[ "$(fm ".claude/agents/$name.md" model)" == opus ]] || { echo "agent test failed: $name runs on opus"; fail=1; }
 done
+jq -e '.advisorModel == "fable"' .claude/settings.json >/dev/null || { echo "settings test failed: the advisor stays on Fable"; fail=1; }
+! grep -q -i 'Fable of its definition\|reviewer off Fable' .claude/skills/mm-endgame/SKILL.md .claude/skills/mm-task/SKILL.md ||
+  { echo "skill test failed: mm-task and mm-endgame say the subagents run on Opus, not Fable"; fail=1; }
 # A new main session starts on Opus, with the author and for the autopilot alike (the author, 2026-11-06:
 # a handoff window launched on Fable surprised the author). No launch line names Fable any more.
 grep -q 'exec "$(command -v claude)" --model "$model"' .claude/skills/mm-handoff/SKILL.md &&
