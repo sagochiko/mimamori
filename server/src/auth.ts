@@ -64,9 +64,7 @@ function bearer(request: Request): string | null {
 export async function requireMember(request: Request, env: Env): Promise<Member> {
   const key = bearer(request);
   if (!key) throw new HttpError(401, "device_key_required");
-  const row = await env.DB.prepare(
-    "SELECT id, family_id, role, display_name FROM members WHERE device_key_hash = ?",
-  )
+  const row = await env.DB.prepare("SELECT id, family_id, role, display_name FROM members WHERE device_key_hash = ?")
     .bind(await hashDeviceKey(key))
     .first<{ id: string; family_id: string; role: Role; display_name: string }>();
   if (!row) throw new HttpError(401, "device_key_invalid");

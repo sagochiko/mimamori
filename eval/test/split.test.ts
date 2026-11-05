@@ -65,7 +65,10 @@ describe("splitPool", () => {
     const dev = await jsonl(dirs.dev);
     const holdout = await jsonl(dirs.holdout);
     assert.equal(dev.length + holdout.length, 6);
-    assert.deepEqual(dev.filter((f) => holdout.includes(f)), []);
+    assert.deepEqual(
+      dev.filter((f) => holdout.includes(f)),
+      [],
+    );
     const moved = dev.includes("sms-scam-a.jsonl") ? dirs.dev : dirs.holdout;
     assert.equal(await readFile(path.join(moved, "sms-scam-a.jsonl"), "utf8"), before);
     // .gitkeep and anything that is not a pattern file stay.
@@ -94,8 +97,7 @@ describe("splitPool", () => {
   });
 
   it("sends a group of one file to dev or holdout by its name, not always to the holdout", () => {
-    const sideOf = (name: string) =>
-      planSplit([{ name, source: "sms", isScam: true, count: 3 }]).assignments[0]!.set;
+    const sideOf = (name: string) => planSplit([{ name, source: "sms", isScam: true, count: 3 }]).assignments[0]!.set;
     const names = ["sms-scam-a.jsonl", "sms-scam-b.jsonl", "sms-scam-c.jsonl", "sms-scam-d.jsonl"];
     assert.deepEqual(names.map(sideOf), ["dev", "dev", "holdout", "holdout"]);
     // The same name always lands on the same side.
