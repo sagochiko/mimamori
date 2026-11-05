@@ -656,14 +656,15 @@ jq -e '.idleCompaction == false' .claude/settings.json >/dev/null || { echo "set
 jq -e '.enabledPlugins["codex@openai-codex"] == false and .enabledPlugins["pr-review-toolkit@claude-plugins-official"] == false' .claude/settings.json >/dev/null ||
   { echo "settings test failed: codex and pr-review-toolkit are turned off for this repository"; fail=1; }
 
-# Models and effort (#85). The main session answers in Japanese. Opus 5.5 (with the author) and Fable 5.1
-# (the autopilot) run at medium, each named under modelSettings, so an old top-level effortLevel in the
-# author's user settings, which still applies to Fable 5.1, cannot change the autopilot's level.
+# Models and effort (#85). The main session answers in Japanese. Both main sessions (with the author and
+# the autopilot) run on Opus 5.5 at medium since 2026-11-06; Fable 5.1 keeps its own medium under
+# modelSettings, so a main session switched to Fable by hand does not take an old top-level effortLevel
+# from the author's user settings, which still applies to Fable 5.1.
 jq -e '.language == "japanese"' .claude/settings.json >/dev/null || { echo "settings test failed: language is japanese"; fail=1; }
 jq -e '.modelSettings["claude-opus-5-5"].effortLevel == "medium" and .modelSettings["claude-fable-5-1"].effortLevel == "medium" and (has("effortLevel") | not)' .claude/settings.json >/dev/null ||
   { echo "settings test failed: Opus 5.5 and Fable 5.1 run at medium through modelSettings, with no top-level effortLevel"; fail=1; }
 grep -q '| 作者と話す主の会話と段取り | メインのセッション | Opus | medium |' CLAUDE.md &&
-  grep -q '| 作者がいないあいだの主 | `/mm-autopilot` のセッション | Fable | medium |' CLAUDE.md ||
+  grep -q '| 作者がいないあいだの主 | `/mm-autopilot` のセッション | Opus | medium |' CLAUDE.md ||
   { echo "agent test failed: the CLAUDE.md table gives the main sessions the levels in modelSettings"; fail=1; }
 # Each subagent's model and effort are the ones the two tables in CLAUDE.md and docs/harness.md give,
 # so a judge reading the reasons reads what actually runs.
@@ -680,13 +681,17 @@ done
 for name in mm-reviewer mm-auditor mm-judge; do
   [[ "$(fm ".claude/agents/$name.md" model)" == fable ]] || { echo "agent test failed: $name runs on fable"; fail=1; }
 done
-# A new main session starts on the model its role needs: Opus with the author, Fable for the autopilot.
-grep -q 'exec "$(command -v claude)" --model "$model"' .claude/skills/mm-handoff/SKILL.md ||
-  { echo "skill test failed: mm-handoff starts the new session with --model"; fail=1; }
-grep -q -- '--model fable' .claude/skills/mm-autopilot/SKILL.md ||
-  { echo "skill test failed: mm-autopilot moves to a Fable main session"; fail=1; }
-# The handoff waits for the new window's first turn, not just its process: a Fable window can sit at the
-# consent prompt, or its first prompt may not run the skill, and the old session must not stop then.
+# A new main session starts on Opus, with the author and for the autopilot alike (the author, 2026-11-06:
+# a handoff window launched on Fable surprised the author). No launch line names Fable any more.
+grep -q 'exec "$(command -v claude)" --model "$model"' .claude/skills/mm-handoff/SKILL.md &&
+  grep -q '^model=opus$' .claude/skills/mm-handoff/SKILL.md &&
+  ! grep -q -i 'model=fable\|--model fable' .claude/skills/mm-handoff/SKILL.md ||
+  { echo "skill test failed: mm-handoff starts every new main session with --model opus"; fail=1; }
+grep -q -- '--model opus "/mm-autopilot' .claude/skills/mm-autopilot/SKILL.md &&
+  ! grep -q -i -- '--model fable' .claude/skills/mm-autopilot/SKILL.md ||
+  { echo "skill test failed: mm-autopilot moves to an Opus main session"; fail=1; }
+# The handoff waits for the new window's first turn, not just its process: a window can sit at a permission
+# prompt, fail on an API error, or its first prompt may not run the skill, and the old session must not stop then.
 grep -q 'scripts/handoff-started.sh" before ' .claude/skills/mm-handoff/SKILL.md &&
   grep -q 'scripts/handoff-started.sh" check ' .claude/skills/mm-handoff/SKILL.md &&
   grep -q 'Base directory for this skill: $repo/.claude/skills/mm-autopilot' .claude/skills/mm-handoff/SKILL.md &&
@@ -776,7 +781,7 @@ hsx 1 "a new session that never read this brief is not the one" check "$hp" "$T/
 # Low review findings are sorted by the PR's goal before any follow-up issue is opened (#85, item 13).
 grep -q '^Sort each low finding' .claude/skills/mm-task/SKILL.md && grep -q '^- Not needed: .*採らなかった' .claude/skills/mm-task/SKILL.md ||
   { echo "skill test failed: mm-task sorts low findings by the PR's goal before opening issues"; fail=1; }
-# A session that a handoff started does not hand over again when it did not get Fable.
+# A session that a handoff started does not hand over again when it did not get Opus.
 grep -q 'do not hand over again' .claude/skills/mm-autopilot/SKILL.md ||
   { echo "skill test failed: mm-autopilot does not chain handoffs"; fail=1; }
 
