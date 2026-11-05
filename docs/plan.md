@@ -101,13 +101,13 @@ mimamori/
 
 | 表 | 主な列 |
 |---|---|
-| `families` | `id`、`token`、`created_at` |
+| `families` | `id`、`token`、`created_at`、`smile_deadline_hour`(母の笑顔を待つ時刻。日本時間の5〜12時で、既定は9)、`smile_missed_notified_on`(笑顔が無いと家族に知らせた日本時間の日付。1日1回にするため) |
 | `members` | `id`、`family_id`、`role`(`protected` か `family`)、`display_name`、`device_key_hash`、`apns_token`、`apns_env` |
 | `invites` | `code`(6桁)、`family_id`、`expires_at`、`used_at` |
 | `alerts` | `id`、`family_id`、`source`(`sms`、`gmail`、`dns`、`page`、`call`、`consult`)、`level`(1、2、3)、`reasons`(JSON)、`summary`、`rule_level`、`claude_level`、`created_at`、`sender_key` と `domain_key`(送り主とドメインを家族の ID と合わせた SHA-256。1時間に1回にまとめるために使う)、`notified`(家族と母に知らせる行なら1。3段階と、まとめて知らせなかった行は0)、`protected_notified_at`(母への通知が届いた時刻。届くまでは空) |
 | `cases` | `id`、`family_id`、`alert_id`、`state`(`notified`、`resolved`。前の版の `accepted` が残っていたら解決していないものとして扱う)、`assignee_member_id`(解決を押した家族)、`agent_session_id`、`notified_at`、`resolved_at`、`renotified_at`、`ai_reply`(AI が母に最後に答えたこと)、`family_notified_at`(家族に最初の知らせが届いた時刻。届くまでは空)、`family_notice_claimed_at`(最初の知らせを送る前に立て、届くか諦めたら空に戻す claim の時刻で、5分より古いものは次の送り手が引き継ぐ。#64)。`accepted_at` は残すが読み書きしない |
 | `relays` | `id`、`case_id`、`from_member_id`、`body`、`created_at`。家族から母への返事を外したので、読み書きせず、相談と一緒に消すだけにする(本番の D1 を変えないため、表は残す) |
-| `smiles` | `id`、`family_id`、`member_id`、`r2_key`、`score`、`created_at` |
+| `smiles` | `id`、`family_id`、`member_id`、`r2_key`、`score`、`note`(ひと言。決まった5つの語のどれかを語のまま入れる)、`created_at`。家族の誰の笑顔も入る。写真の無いひと言だけの行は `r2_key` を空の文字にし、「すべて消す」と30日の削除は R2 を消すときにその行を飛ばす(行は消す)。`note` と2つの `families` の列は2026年11月5日に #14 で足した(`0005`) |
 | `gmail_auth` | `family_id`、`refresh_token_enc`、`granted_at`、`last_history_id`、`expired_notified_at` |
 | `usage_daily` | `date`、`doh_requests` |
 
@@ -148,7 +148,9 @@ Structured Outputs で次の形だけを受け取る。
 | `POST /consult` | 母の相談(文字にした声か書いた言葉、スクショ)。答えの文字と、押す場所の座標が返る。本文は `{ text, history? }` で、`history` は同じ会話の前のやり取りを古い順に `[{ role: "protected" \| "ai", text }]` で6件まで、1件500字まで。7件以上、501字以上、ほかの role、空の文は 400(`consult_history_invalid`)。無ければ今までどおり。今の言葉が前を指すだけの問いかけなら、端末は60分を最後のやり取りから数えるので、前の日の会話の終わりが届くこともある(形と上限は同じ、#118)。前のやり取りは Claude に `<untrusted>` の中のデータとして渡し、`ai` の行を assistant の発言にしない。ニセ警察の筋書きは今の言葉と前の母の言葉を合わせて数える。2026年11月4日に #73 で足した |
 | `GET /alerts` | 最近の知らせ |
 | `GET /cases`、`POST /cases/{id}/resolve` | 家族への知らせと解決。相談は `{ id, alertId, state, notifiedAt, resolvedAt, resolvedBy, renotifiedAt, familyNotifiedAt, alert: { level, source, summary, reasons }, aiReply }`。`familyNotifiedAt` は家族の端末に最初の知らせが届いた時刻(`cases.family_notified_at`)で、どの端末にも届いていなければ `null`。母の画面が「家族に伝えました」の代わりに「家族に届いていません。急ぐなら電話して」と出せるよう、2026年11月4日に #60 で足した。キーが無い古い裏側の答えは届いた相談として読む(裏側はまだデプロイしておらず、古い裏側は実際には無い)。解決は家族の誰でも押せ、ほかの家族に「(名前)が解決」と知らせる。`POST /cases/{id}/accept` と `POST /cases/{id}/relay` は2026年11月4日に外し、404 を返す |
-| `POST /smiles`、`GET /smiles` | 笑顔の写真の登録と一覧(写真は R2) |
+| `POST /smiles`、`GET /smiles` | 笑顔の写真の登録と一覧(写真は R2)。家族の誰でも送れる。`POST` の本文は `{ photo?, score?, note? }` で、`photo` は base64 の JPEG(500KB まで、超えると413)、`score` は0〜1、`note` はひと言で、決まった5つの語(`good-morning` おはよう、`nice-smile` いい笑顔、`thanks` ありがとう、`doing-fine` 元気だよ、`see-you` またね)の ID か語そのものだけを受け付け、外れたら400 `note_not_allowed`。自由な文は運ばない(2026年11月5日に作者が決めた。design.md の「毎朝の笑顔」)。写真かひと言のどちらかが要る(無ければ400 `smile_empty`)。送ると本人のほかの家族全員に、音を鳴らさない通知(`interruption-level` が `passive`)が届く。`GET` は家族全員の最近7日の笑顔を新しい順に `{ smiles: [{ id, memberId, displayName, role, score, note, hasPhoto, createdAt }], deadlineHour }` で返す。抜けた人の行は `displayName` が「家族」、`role` が `null` |
+| `GET /smiles/{id}/photo` | 写真の JPEG。同じ家族の端末だけに返し、別の家族の `deviceKey` には403、無い笑顔と写真の無いひと言には404。R2 のバインディングからは署名つきの URL を作れない([Cloudflare の Presigned URLs](https://developers.cloudflare.com/r2/api/s3/presigned-urls/) の「The R2 Workers API binding cannot generate presigned URLs」)。S3 の鍵を足すより秘密が増えないので、Worker が R2 から読んで流す(#14) |
+| `PUT /families/me/smile-deadline` | `{ hour }` で母の笑顔を待つ時刻(日本時間の5〜12時の整数)を変える。家族の役だけで、母の端末からは403。その時刻までに母の笑顔の写真がその日に無ければ(写真の無いひと言は数えない)、家族の役の全員に1日1回、音を鳴らさない通知で知らせる。家族の笑顔は数えず、母には送らない(#14) |
 | `GET /gmail/connect`、`GET /gmail/callback` | Gmail の許可 |
 
 ## 作る順番

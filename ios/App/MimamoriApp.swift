@@ -20,7 +20,10 @@ struct MimamoriApp: App {
       if phase == .active {
         delegate.model.refresh()
         delegate.model.cameToFront()
-        Task { await delegate.model.loadCases() }
+        Task {
+          await delegate.model.loadCases()
+          await delegate.model.loadSmiles()
+        }
       }
     }
   }
@@ -42,6 +45,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     _ center: UNUserNotificationCenter, willPresent notification: UNNotification
   ) async -> UNNotificationPresentationOptions {
     await model.loadCases()
+    await model.loadSmiles()
     return [.banner, .list, .sound]
   }
 
@@ -49,6 +53,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
   /// follow-up that is her chat, where she can answer by talking or writing.
   nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
     await model.loadCases()
+    await model.loadSmiles()
   }
 
   func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {

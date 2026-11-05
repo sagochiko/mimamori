@@ -25,6 +25,8 @@ async function seed(family: Created, opts: { at?: number; sessionId?: string; re
   const alertId = crypto.randomUUID();
   const caseId = crypto.randomUUID();
   const smileId = crypto.randomUUID();
+  // A one-line reply without a photo has no R2 object (migrations/0005).
+  const noteId = crypto.randomUUID();
   const r2Key = `${family.familyId}/smiles/${smileId}.jpg`;
   const statements = [
     env.DB.prepare(
@@ -42,6 +44,9 @@ async function seed(family: Created, opts: { at?: number; sessionId?: string; re
     env.DB.prepare(
       "INSERT INTO smiles (id, family_id, member_id, r2_key, score, created_at) VALUES (?, ?, ?, ?, 0.9, ?)",
     ).bind(smileId, family.familyId, family.memberId, r2Key, at),
+    env.DB.prepare(
+      "INSERT INTO smiles (id, family_id, member_id, r2_key, note, created_at) VALUES (?, ?, ?, '', 'おはよう', ?)",
+    ).bind(noteId, family.familyId, family.memberId, at),
   ];
   if (opts.refreshToken !== undefined) {
     statements.push(
@@ -54,7 +59,7 @@ async function seed(family: Created, opts: { at?: number; sessionId?: string; re
   }
   await env.DB.batch(statements);
   await env.PHOTOS.put(r2Key, "jpeg-bytes");
-  return { alertId, caseId, smileId, r2Key };
+  return { alertId, caseId, smileId, noteId, r2Key };
 }
 
 /** Many old cases, each with its own agent session. */
@@ -177,7 +182,8 @@ describe("DELETE /families/me (delete everything)", () => {
 
     // The other family is untouched.
     const kept = await countFor(other.familyId);
-    expect(kept).toMatchObject({ members: 1, alerts: 1, cases: 1, smiles: 1, gmail_auth: 1, relays: 1, families: 1 });
+    // Two smiles: the photo and the one-line reply without one.
+    expect(kept).toMatchObject({ members: 1, alerts: 1, cases: 1, smiles: 2, gmail_auth: 1, relays: 1, families: 1 });
     expect(await r2Count(`${other.familyId}/`)).toBe(1);
   });
 
@@ -308,7 +314,7 @@ describe("cron", () => {
       ).results.map((r) => r.id);
     expect(await ids("alerts")).toEqual([recent.alertId]);
     expect(await ids("cases")).toEqual([recent.caseId]);
-    expect(await ids("smiles")).toEqual([recent.smileId]);
+    expect((await ids("smiles")).sort()).toEqual([recent.smileId, recent.noteId].sort());
     const relays = await env.DB.prepare("SELECT case_id FROM relays WHERE case_id IN (?, ?)")
       .bind(old.caseId, recent.caseId)
       .all<{ case_id: string }>();

@@ -13,9 +13,10 @@ export const RETENTION_MS = 30 * 24 * 3600_000;
 export async function purgeExpired(env: Env, now: number): Promise<void> {
   const cutoff = now - RETENTION_MS;
 
-  const oldPhotos = await env.DB.prepare("SELECT r2_key FROM smiles WHERE created_at < ?")
+  const oldPhotos = await env.DB.prepare("SELECT r2_key FROM smiles WHERE created_at < ? AND r2_key != ''")
     .bind(cutoff)
     .all<{ r2_key: string }>();
+  // A reply without a photo has r2_key '' and nothing in R2 (migrations/0005); its row goes below.
   const keys = oldPhotos.results.map((r) => r.r2_key);
   for (let i = 0; i < keys.length; i += 1000) await env.PHOTOS.delete(keys.slice(i, i + 1000));
 

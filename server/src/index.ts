@@ -7,6 +7,7 @@ import { createFamily, createInvite, deleteEverything, joinInvite, leaveFamily, 
 import { errorResponse, HttpError } from "./http";
 import { handleJudgeBatch } from "./judge";
 import { siteAssociation } from "./site-association";
+import { listSmiles, postSmile, setSmileDeadline, smilePhoto } from "./smiles";
 import { smsRoute } from "./sms";
 
 type Handler = (request: Request, env: Env, params: string[], ctx: ExecutionContext) => Promise<Response>;
@@ -23,6 +24,10 @@ const routes: Array<[method: string, pattern: RegExp, handler: Handler]> = [
   ["POST", /^\/consult$/, (req, env) => consultRoute(req, env)],
   ["GET", /^\/cases$/, (req, env) => listCases(req, env)],
   ["POST", /^\/cases\/([^/]+)\/resolve$/, (req, env, [id]) => resolveRoute(req, env, id ?? "")],
+  ["POST", /^\/smiles$/, (req, env, _, ctx) => postSmile(req, env, ctx)],
+  ["GET", /^\/smiles$/, (req, env) => listSmiles(req, env)],
+  ["GET", /^\/smiles\/([^/]+)\/photo$/, (req, env, [id]) => smilePhoto(req, env, id ?? "")],
+  ["PUT", /^\/families\/me\/smile-deadline$/, (req, env) => setSmileDeadline(req, env)],
 ];
 
 export async function route(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

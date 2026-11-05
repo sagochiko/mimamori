@@ -624,3 +624,14 @@ Issue の完了の条件は「今の言葉も会話の中の前の母の言葉�
 拡張の返事がアプリにも届くと思っていた。
 
 `POST /sms/demo` の返事に `card`(規則だけで作った段階、1行、理由)を入れ、体験モードの画面はアプリから同じ問い合わせ先を呼んで並べる形にした。拡張は `action` だけを読む。迷う SMS をキューに積む範囲も決め直した。規則が段階を付けたものか、段階に届かない弱い印があるものだけを積み、印が1つも無いものと認証コードは積まない。キューの受け手は規則も Claude も決めないと2段階で家族に知らせるので、印の無い本物の SMS まで積むと、Claude が落ちたときに家族へ通知が飛ぶからだ。印の無い詐欺は Claude にも見てもらえない代わりになる。使ったのは mm-implementer、Vitest、Swift Testing、XcodeGen、WebFetch(Apple の文書)。
+## 2026年11月5日 写真の無いひと言の置き場と、R2 の空の鍵 (#14)
+
+毎朝の笑顔の送り合いを作っていた。家族は自分の笑顔かひと言で返すので、写真の無いひと言の行も `smiles` に入れたかった。
+
+親のセッションからは「r2_key が NOT NULL なので、ひと言だけの行の扱いはあなたが決めてよいが、R2 の鍵の無い行が『すべて消す』と30日の削除を壊さないこと」と頼まれた。
+
+SQLite では列の NOT NULL を外すのに表を作り直すしかなく、本番の D1 で DROP が要る。そこで、ひと言だけの行は `r2_key` を空の文字にした。テストの種([`server/test/data.test.ts`](../server/test/data.test.ts))にひと言だけの行を足し、空の鍵を飛ばす前のコードのまま流すと、「すべて消す」も30日の削除も通った。手元の R2(miniflare)は `PHOTOS.delete([""])` を断らなかった。ほかに当たったのは、家族の行の数を1と決めていた既存の確かめが、種に1行増えたので2になったことだけだった。
+
+空の鍵を渡せば R2 が断って、テストが落ちると思っていた。
+
+本物の R2 が空の鍵をどう扱うかは手元で確かめられないので、[`server/src/families.ts`](../server/src/families.ts) と [`server/src/retention.ts`](../server/src/retention.ts) の R2 を消す問い合わせで `r2_key != ''` の行だけを読むようにした。この確かめはテストでは落とせず、コードを読んで確かめる。写真の URL は、Cloudflare の文書に「The R2 Workers API binding cannot generate presigned URLs」とあったので、S3 の鍵を秘密に足す案は採らず、`GET /smiles/{id}/photo` で Worker から流す形にした。使ったのは mm-implementer、advisor、Cloudflare の文書の MCP、Vitest。
