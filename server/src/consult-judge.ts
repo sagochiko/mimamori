@@ -645,16 +645,6 @@ function cardReasons(said: Said, rule: RuleResult, reasons: string[], steered: b
 }
 
 /**
- * The family's one line for a consultation that is not the script: POLICE_TOPIC when her question
- * only points back and her earlier words told the script (#128), else Claude's topic, else the first
- * reason, else FALLBACK_TOPIC. Such a question goes to Claude (tellsPoliceScript), and the rules see
- * this turn only, so without the fixed line the card of a police answer was "スマホの相談". Words that
- * do not point back ("Wi-Fi がつながらない") keep their own line, as topicWords does. A line Claude
- * wrote is skipped when it repeats her words or would tell the family it is fine; the fixed lines of the rules are used as they are. When her words carry
- * text aimed at the AI or at keeping the family out (`steered`), only the fixed lines are used, never
- * Claude's topic or reasons: they are the lines such text would try to steer.
- */
-/**
  * Her question only points back, her earlier words told the script, and what it points at is part of
  * it: her last earlier turn that says something (namesSomething; "どういうこと?" in between says
  * nothing) has a part of the script. "それってどういうこと" after "Wi-Fi がつながらない" is about the
@@ -668,6 +658,17 @@ function pointsBackAtScript(said: Said): boolean {
   return parts.police.length > 0 || parts.caller || parts.money;
 }
 
+/**
+ * The family's one line for a consultation that is not the script: POLICE_TOPIC when her question
+ * only points back and her earlier words told the script (#128), else Claude's topic, else the first
+ * reason, else FALLBACK_TOPIC. Such a question goes to Claude (tellsPoliceScript), and the rules see
+ * this turn only, so without the fixed line the card of a police answer was "スマホの相談". Words that
+ * do not point back ("Wi-Fi がつながらない") keep their own line, as topicWords does. A line Claude
+ * wrote is skipped when it repeats her words or would tell the family it is fine; the fixed lines
+ * of the rules are used as they are. When her words carry
+ * text aimed at the AI or at keeping the family out (`steered`), only the fixed lines are used, never
+ * Claude's topic or reasons: they are the lines such text would try to steer.
+ */
 function summaryOf(
   said: Said,
   rule: RuleResult,
