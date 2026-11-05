@@ -265,15 +265,31 @@ describe("judge consumer", () => {
     await expectNothingSaysSafe(fam.familyId);
   });
 
-  it("sends no push for level 3 and opens no case, but keeps the alert for the app", async () => {
+  it.each([
+    ["sms", (familyId: string): JudgeJob => smsJob(familyId)],
+    ["gmail", (familyId: string): JudgeJob => ({ familyId, source: "gmail", payload: { sender: "news@shop.example", text: "今週のおすすめ" } })],
+    ["page", (familyId: string): JudgeJob => ({ familyId, source: "page", payload: { url: "https://shop.example/", text: "ご注文" } })],
+  ])("sends no push for a level-3 %s, opens no case, and writes no row, so no log of her mail or pages is kept", async (_source, job) => {
+    // #137: these routes now send most of what she receives or opens to Claude; a row for each
+    // would keep a record of her inbox and her browsing.
     const fam = await setupFamily();
     const deps = fakes({ claude: claudeSays({ level: 3, reasons: ["公式のドメインから届いた"] }) });
-    await run([smsJob(fam.familyId)], deps);
+    const { result } = await run([job(fam.familyId)], deps);
 
-    expect(await alertsOf(fam.familyId)).toMatchObject([{ level: 3, claude_level: 3 }]);
+    expect(await alertsOf(fam.familyId)).toEqual([]);
     expect(pushes).toHaveLength(0);
     expect(deps.opened).toHaveLength(0);
-    await expectNothingSaysSafe(fam.familyId);
+    expect(result.explicitAcks).toHaveLength(1);
+    expect(result.retryMessages).toHaveLength(0);
+  });
+
+  it("keeps the row of a level-3 consultation, which the conversation's later turns update", async () => {
+    const fam = await setupFamily();
+    const deps = fakes({ claude: claudeSays({ level: 3, reasons: ["手口は見当たらない"] }) });
+    await run([{ familyId: fam.familyId, source: "consult", payload: { text: "Wi-Fi がつながらない" } }], deps);
+    expect(await alertsOf(fam.familyId)).toMatchObject([{ level: 3, claude_level: 3, source: "consult" }]);
+    expect(pushes).toHaveLength(0);
+    expect(deps.opened).toHaveLength(0);
   });
 
   it("makes the level one step heavier when Claude suspects an injection", async () => {
@@ -339,7 +355,7 @@ describe("judge consumer", () => {
     const fam = await setupFamily();
     const deps = fakes({ rule: { level: 3, reasons: ["x"], confident: false }, claude: null });
     await run([smsJob(fam.familyId)], deps);
-    expect(await alertsOf(fam.familyId)).toMatchObject([{ level: 3, claude_level: null }]);
+    expect(await alertsOf(fam.familyId)).toEqual([]);
     expect(pushes).toHaveLength(0);
   });
 
@@ -386,11 +402,8 @@ describe("judge consumer", () => {
         expect(deps.claudeCalls).toBe(1);
         expect(pushes).toHaveLength(0);
         expect(deps.opened).toHaveLength(0);
-        // Kept only as a row no one is told about, with neither the rules' nor Claude's level.
-        const rows = await env.DB.prepare("SELECT level, rule_level, claude_level, notified FROM alerts WHERE family_id = ?")
-          .bind(fam.familyId)
-          .all();
-        expect(rows.results).toEqual([{ level: 3, rule_level: null, claude_level: null, notified: 0 }]);
+        // Level 3 with neither the rules' nor Claude's level, and no row is written for it.
+        expect(await alertsOf(fam.familyId)).toEqual([]);
         expect(result.explicitAcks).toHaveLength(1);
         expect(result.retryMessages).toHaveLength(0);
         await expectNothingSaysSafe(fam.familyId);
@@ -562,7 +575,8 @@ describe("judge consumer", () => {
 
     it("leaves out the reason when only the placeholder is left, and the domain when there is none", async () => {
       const fam = await setupFamily();
-      const deps = fakes({ rule: { level: null, reasons: [], confident: false }, claude: null });
+      // A level the rules gave without a reason, so the row is written and only the placeholder is left.
+      const deps = fakes({ rule: { level: 2, reasons: [], confident: false }, claude: null });
       await run([smsJob(fam.familyId, { url: undefined, text: "至急ご確認ください" })], deps);
       const [alert] = await alertsOf(fam.familyId);
       expect(alert?.summary).toBe("SMS");

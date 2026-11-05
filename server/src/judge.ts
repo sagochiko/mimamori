@@ -22,6 +22,7 @@ import {
   ALERT_SOURCES,
   decideFor,
   PLACEHOLDER_REASON,
+  QUIET_WHEN_UNDECIDED,
   requestClaudeJudgment,
   type AlertSource,
   type ClaudeJudgment,
@@ -380,7 +381,12 @@ async function judgeOne(
   const senderKey = await keyFor(job.familyId, "sender", normalizeSender(job.payload.sender));
   const domainKey = await keyFor(job.familyId, "domain", domain);
 
-  // Levels 1 and 2 notify; level 3 is only listed in the app (docs/design.md, データの扱い).
+  // An SMS, a mail, or a page at level 3, and one no one decided (decideFor), leaves no row: these routes
+  // send Claude most of what she receives or opens, and a row for each would keep a log of her inbox
+  // and her browsing (docs/design.md, データの扱い; #137). Nothing was told, so the message is done.
+  if (level === 3 && QUIET_WHEN_UNDECIDED.includes(job.source)) return "done";
+
+  // Levels 1 and 2 notify; a level-3 consultation is only kept (docs/design.md, データの扱い).
   let notify = level <= 2;
   if (notify && (senderKey !== null || domainKey !== null)) {
     const recent = await env.DB.prepare(

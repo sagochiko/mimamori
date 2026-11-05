@@ -36,6 +36,7 @@ async function check(message) {
       type: "page",
       url: message.url,
       text: message.text,
+      hasSecretField: message.hasSecretField === true,
     });
   } catch {
     return {};

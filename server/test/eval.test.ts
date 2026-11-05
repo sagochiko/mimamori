@@ -446,6 +446,26 @@ describe("judgeCases", () => {
     expect(broken).toMatchObject({ level: 2, rule_level: null, claude_answered: true });
   });
 
+  it("asks Claude about a page only where the page route would send it (#137)", async () => {
+    const seen: Array<string | undefined> = [];
+    const judge: Judge = async (input) => {
+      seen.push(input.url);
+      return { level: 2, checking: false };
+    };
+    const page = (id: string, url: string, text: string) =>
+      evalCase({ id, source: "page", url, text, is_scam: false, expected_level: null });
+    const FAKE = "https://secure-account-check.com/login";
+    const [recipe, fake] = await judgeCases(
+      [page("recipe", "https://cookpad.com/recipe/1", "肉じゃがの作り方。"), page("fake", FAKE, "Amazon サインイン")],
+      "rules+claude",
+      { judge, consult: refuseConsult },
+    );
+    expect(seen).toEqual([FAKE]);
+    expect(recipe).toMatchObject({ level: null });
+    expect(recipe?.claude_answered).toBeUndefined();
+    expect(fake).toMatchObject({ level: 2, claude_answered: true });
+  });
+
   // #109: which false alarms the family gets by design, and what Claude itself answered.
   describe("what a run keeps to tell the false alarms apart (#109)", () => {
     const SEND_MONEY = "振込のやり方を教えて";

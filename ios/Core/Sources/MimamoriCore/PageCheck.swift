@@ -30,7 +30,7 @@ public enum PageCheck {
   public static let timeout: TimeInterval = 8
   private static let urlMaxCharacters = 8000
 
-  /// `POST /page` for a message `{ type: "page", url, text }` from the background script, or nil for
+  /// `POST /page` for a message `{ type: "page", url, text, hasSecretField? }` from the background script, or nil for
   /// anything else (another scheme, another shape).
   public static func request(baseURL: URL, deviceKey: String, message: [String: Any]) -> URLRequest?
   {
@@ -45,7 +45,10 @@ public enum PageCheck {
 
     var cut = String.UnicodeScalarView()
     cut.append(contentsOf: text.unicodeScalars.prefix(textMaxCharacters))
-    let body: [String: String] = ["url": urlText, "text": String(cut)]
+    // Whether the page has a password or card number field (#137). The script counts the fields and
+    // never reads them; anything but a boolean is false.
+    let hasSecretField = message["hasSecretField"] as? Bool ?? false
+    let body: [String: Any] = ["url": urlText, "text": String(cut), "hasSecretField": hasSecretField]
     guard let data = try? JSONSerialization.data(withJSONObject: body) else { return nil }
 
     var request = URLRequest(url: baseURL.appendingPathComponent("page"), timeoutInterval: timeout)

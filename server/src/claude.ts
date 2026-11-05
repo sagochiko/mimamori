@@ -194,18 +194,18 @@ export function decide(rule: RuleResult, claude: ClaudeJudgment | null): Decisio
 }
 
 /**
- * The routes that queue what the rules find no sign in (#137): SMS, mail, and pages. Most of what
- * they carry is genuine, so when neither the rules nor Claude decided there, no one is told.
+ * The routes that send Claude what the rules find no sign in (#137): SMS, mail, and pages. Most of
+ * what they carry is genuine, so when neither the rules nor Claude decided there, no one is told, and
+ * the judge queue writes no row for their level 3 (src/judge.ts).
  */
 export const QUIET_WHEN_UNDECIDED: readonly RuleSource[] = ["sms", "gmail", "page"];
 
 /**
  * decide() for a job of the judge queue. On SMS, mail, and pages, what neither the rules nor Claude
- * decided is level 3, which is only listed, still marked as checking: these routes queue genuine
- * messages the rules found nothing in, and a Claude failure must not send the family a level 2 for
- * each of them. alerts.level cannot be empty (docs/plan.md), so the row says 3 with neither the rule
- * level nor Claude's. Every other route, the consultation above all, keeps decide()'s level 2: the
- * mother herself asked and must hear back.
+ * decided is level 3, still marked as checking: these routes send Claude genuine messages and pages
+ * the rules found nothing in, and a Claude failure must not send the family a level 2 for each of
+ * them. Every other route, the consultation above all, keeps decide()'s level 2: the mother herself
+ * asked and must hear back.
  */
 export function decideFor(source: RuleSource, rule: RuleResult, claude: ClaudeJudgment | null): Decision {
   const decision = decide(rule, claude);
