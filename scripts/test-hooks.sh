@@ -556,6 +556,10 @@ out=$(jq -nc --arg t "$T/t10.jsonl" --arg d "$T/p" '{hook_event_name:"Stop",stop
 jq -e '.hooks.PreCompact[] | select(.matcher == "auto") | .hooks[] | select(.command | endswith("compact-flag.sh"))' .claude/settings.json >/dev/null ||
   { echo "settings test failed: compact-flag.sh runs on automatic compaction"; fail=1; }
 jq -e '.idleCompaction == false' .claude/settings.json >/dev/null || { echo "settings test failed: idleCompaction is off"; fail=1; }
+# Plugins this repository does not use stay off here even when the author's user settings turn them on:
+# for enabledPlugins, project settings take precedence over user settings (settings-reference).
+jq -e '.enabledPlugins["codex@openai-codex"] == false and .enabledPlugins["pr-review-toolkit@claude-plugins-official"] == false' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: codex and pr-review-toolkit are turned off for this repository"; fail=1; }
 
 # Models and effort (#85). The main session answers in Japanese. Opus 5.5 (with the author) and Fable 5.1
 # (the autopilot) run at xhigh, each named under modelSettings, so an old top-level effortLevel in the
