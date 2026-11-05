@@ -912,9 +912,18 @@ priv 2 "gh pr comment 3 --body-file $T/rt/comment-head.md" "a time of day in the
 sed 's/承認/承認 /' "$T/rt/docs/audits/raw/$rawname" >"$T/rt/changed.md"
 rawpost "$T/rt/comment-changed.md" 1 "$T/rt/changed.md"
 priv 2 "gh pr comment 3 --body-file $T/rt/comment-changed.md" "a report that differs from the saved file by one byte is checked as a body" "$T/rt"
+# Phone and email shapes in the raw part pass too, as at commit time (author, 2026-11-04): reports quote
+# test numbers and published addresses. Otherwise「(伏せた)」would break the byte-for-byte tail, and
+# every time in the report would stop with it. In the heading they are still blocked.
+rawname2=20261105-0927-mm-reviewer-a0b1c2d4.md
+printf '%s\n' 'ステータス: 承認' '' "例文の差出人 $ph と support@example.com を、15:04 のコミットで読んだ。" >"$T/rt/docs/audits/raw/$rawname2"
+{ printf '## mm-reviewer の報告(原文)\n\n1回目、abc1234 を読んだもの。保存した原文は `%s`。\n\n' "docs/audits/raw/$rawname2" && cat "$T/rt/docs/audits/raw/$rawname2"; } >"$T/rt/comment-shapes.md"
+priv 0 "gh pr comment 3 --body-file $T/rt/comment-shapes.md" "phone and email shapes in a raw report posted as saved pass" "$T/rt"
+{ printf '## mm-reviewer の報告(原文)\n\n連絡は %s。保存した原文は `%s`。\n\n' "$ph" "docs/audits/raw/$rawname2" && cat "$T/rt/docs/audits/raw/$rawname2"; } >"$T/rt/comment-shapes-head.md"
+priv 2 "gh pr comment 3 --body-file $T/rt/comment-shapes-head.md" "a phone number in the heading above a raw report is blocked" "$T/rt"
 printf '%s\n' '15:04 に Tanukiyama と話した' >>"$T/rt/docs/audits/raw/$rawname"
 rawpost "$T/rt/comment-term.md" 1 "$T/rt/docs/audits/raw/$rawname"
-priv 2 "gh pr comment 3 --body-file $T/rt/comment-term.md" "personal data in a raw report is still blocked" "$T/rt"
+priv 2 "gh pr comment 3 --body-file $T/rt/comment-term.md" "a private term in a raw report is still blocked" "$T/rt"
 
 # pre-commit and the worktree lookup, in a throwaway repository with a worktree. scan-private.sh and the
 # git hooks are copied in, so the lists they find there are the throwaway main tree's, not the author's.
@@ -975,6 +984,9 @@ staged 0 docs/audits/raw/a.md 'レビューは 15:04 のコミットを読んだ
 staged 0 docs/design.md '毎日の声かけは既定で18時に出す' "the design keeps the app's own hours"
 staged 0 docs/plan.md '- [ ] 声かけの時刻を17時から21時で選ぶ' "the plan keeps the app's own hours"
 staged 0 README.md 'The daily check-in comes at 6 pm' "the README keeps the app's own hours"
+staged 0 README.ja.md '毎日の声かけは既定で18時に出す' "the Japanese README keeps the app's own hours"
+staged 0 CONDITIONS.md '11月8日 17:00 からは提出だけをする' "the event's schedule in CONDITIONS.md keeps its times"
+staged 1 eval/README.md '作者が 15:04 に測った' "only the root READMEs are exempt, not eval/README.md"
 # make usage writes docs/claude-usage.md, which /mm-endgame commits: the line saying when it counted gives
 # the date alone, so the commit is not stopped for the time of day it ran.
 scripts/usage-report.sh 2>/dev/null | grep -qE '^フックが記録した回数を数えたもの。最後に数えたのは [0-9]+年[0-9]+月[0-9]+日。' ||
