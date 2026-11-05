@@ -859,6 +859,13 @@ describe("consult.ts", () => {
       expect(props.handoff.description).toContain("本物か確かめられないだけなら false");
     });
 
+    // c-gb-07 on dev: a question about something only she can see came back at level 2 with only the
+    // placeholder reason; a handoff is one of the paths that gives exactly that.
+    it("asks for a way she can check herself, not a handoff, when she asks about something the AI cannot see", () => {
+      expect(system).toContain("あなたから見えないもの");
+      expect(system).toContain("本人が自分で確かめる方法を案内します");
+    });
+
     it("says the rules not deciding is no suspicion", () => {
       expect(system).toContain("詐欺の疑いという意味ではありません");
     });
