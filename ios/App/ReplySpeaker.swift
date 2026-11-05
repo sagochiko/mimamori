@@ -4,7 +4,7 @@ import MimamoriCore
 import os
 
 /// Reads the AI's answer to a voice consultation aloud on the protected person's iPhone, with the
-/// normal Japanese system voice. Family members do not send her messages through the app; when they
+/// normal Japanese system voice, when 「読み上げ」 is on in Settings > みまもり (off by default, #115). Family members do not send her messages through the app; when they
 /// want to talk to her, they call.
 ///
 /// Other apps' sound (the radio, a video) is lowered while the session is active and stays lowered
