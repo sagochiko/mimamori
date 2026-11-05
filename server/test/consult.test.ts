@@ -280,6 +280,13 @@ describe("fake police consultation", () => {
     // PR #80 review: the past tense and the passive she may use.
     ["someone who said he was the police", "警察を名乗った人から、口座が犯罪に使われてるって"],
     ["someone who claimed to be the police, in the passive", "警察を名乗られて、潔白を証明してって"],
+    // #81: more of the ways she may say it.
+    ["someone pretending to be the police", "警察をかたる人から電話があって、口座が犯罪に使われてるって"],
+    ["a police officer, as she calls him", "おまわりさんから電話で、逮捕状が出てるって言われた"],
+    ["a name with a section before 名乗る", "県警の生活安全課の人と名乗る男から、口座が悪用されてるって"],
+    ["the police, a pause, and what he said", "警察から、あなたの口座が犯罪に使われてるって"],
+    // She got the call and only adds her own doubt: not a warning passed on.
+    ["the main line with her own doubt", "警察から電話があって、口座が犯罪に使われてるって。詐欺かも"],
   ])("is level 1 by the rules alone when a caller from the police tells %s, with the fixed answer", async (_label, text) => {
     const fam = await setupFamily();
     const deps = fakes(scam({ level: 2 }));
@@ -301,6 +308,12 @@ describe("fake police consultation", () => {
     ["a warning on the neighborhood board", "回覧板に、警察を名乗る詐欺に注意、逮捕状が出ていると言われても信じないでって書いてあった"],
     ["a warning mail from the bank", "銀行から、警察を名乗る電話に注意、口座が犯罪に使われてると言われたら詐欺ですってメールが来た"],
     ["a warning heard at the police box", "警察を名乗る電話に気をつけてって、誰にも言わないでと言われたら詐欺だって交番で聞いた"],
+    // #81: a warning she passes on, with two of the script's parts in it.
+    ["a warning heard from a police officer", "交番のお巡りさんから、口座が犯罪に使われてるって電話は詐欺やから気ぃつけてって"],
+    ["a warning with no caller at all", "市のお知らせのチラシに、逮捕状とか潔白の証明とか言われたら詐欺ですって"],
+    ["a warning from the family", "息子が、警察を名乗って口座が悪用されてるって電話には出んといてって"],
+    // A call she got, next to a warning she also heard: Claude reads both.
+    ["a call she got and what TV warned about", "警察から電話があって、口座が犯罪に使われてるって言われた。テレビでやってた詐欺と同じかな"],
   ])("asks Claude when a caller from the police tells %s, which is not the script", async (_label, text) => {
     const fam = await setupFamily();
     const deps = fakes(scam({ level: 3, reasons: ["お金や暗証番号の話は出ていない"], basis: "", action: "お金や暗証番号を聞かれたら止めて" }));
@@ -1584,6 +1597,30 @@ describe("the conversation so far", () => {
     expect(JSON.parse(alert!.reasons)).toEqual(
       expect.arrayContaining(["警察を名乗る相手から連絡があった", "口座が犯罪に使われたという話がある"]),
     );
+  });
+
+  // #81: a warning she passed on earlier is not part of the script; the call she got later is.
+  it("does not count a warning passed on in an earlier turn, and counts the call she got after it", async () => {
+    const fam = await setupFamily();
+    const warned = turn("protected", "公民館で、ビデオ通話で取り調べするなんて電話は詐欺だから気をつけてって聞いた");
+    const first = fakes(scam({ level: 3, reasons: ["お金や暗証番号の話は出ていない"], basis: "", action: "お金や暗証番号を聞かれたら止めて" }));
+    await consult(consultEnv, motherOf(fam), "口座が犯罪に使われてるって言うのもあるらしい", new ExternalBudget(), first, [warned]);
+    expect(first.claudeCalls).toBe(1);
+
+    const second = fakes(help(), T0 + 2 * 60_000);
+    const answer = await consult(consultEnv, motherOf(fam), "そしたら今日、警察から電話があって、口座が犯罪に使われてるって", new ExternalBudget(), second, [
+      warned,
+    ]);
+    expect(second.claudeCalls).toBe(0);
+    expect(answer).toEqual({ reply: POLICE_REPLY, speak: POLICE_REPLY, handoff: true });
+    const alerts = await alertsOf(fam.familyId);
+    const police = alerts.find((a) => a.level === 1);
+    expect(police).toBeDefined();
+    // The family's card names what was said to her, not the video call the warning described.
+    expect(JSON.parse(police!.reasons)).toEqual(
+      expect.arrayContaining(["警察を名乗る相手から連絡があった", "口座が犯罪に使われたという話がある"]),
+    );
+    expect(JSON.parse(police!.reasons)).not.toContain("ビデオ通話や LINE に誘われている");
   });
 
   it("does not count a caller who says he is the police when no part of the script was told", async () => {

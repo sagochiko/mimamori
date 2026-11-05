@@ -18,7 +18,7 @@
 
 import { CLAUDE_TIMEOUT_MS, decide, PLACEHOLDER_REASON, soundsSafe, type Level } from "./claude";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
-import { INJECTION, matchSpans, MONEY_MOVE, POLICE_CALLER, POLICE_SCRIPT, type PhraseRule } from "./rules/phrases";
+import { INJECTION, matchSpans, MONEY_MOVE, POLICE_CALLER, POLICE_SCRIPT, type PhraseRule, type Telling, tellingOf } from "./rules/phrases";
 import { ownLines, quotes } from "./summary";
 
 export const CONSULT_MODEL = "claude-sonnet-5-5";
@@ -364,13 +364,19 @@ function topicWords(said: Said): string[] {
   return [said.text, ...(last !== undefined && pointsBack(said.text) ? [last] : [])].map(normalize);
 }
 
-/** The parts of the script in one stretch of her words. */
-function scriptParts(text: string): { police: PhraseRule[]; caller: boolean; money: boolean } {
+/**
+ * The parts of the script in one stretch of her words. A warning she passes on (tellingOf, #81) has
+ * none: the parts in it are what the warning describes, not what was said to her.
+ */
+function scriptParts(text: string): { police: PhraseRule[]; caller: boolean; money: boolean; telling: Telling } {
   const t = normalize(text);
+  const telling = tellingOf(t);
+  if (telling === "passed_on") return { police: [], caller: false, money: false, telling };
   return {
     police: POLICE_SCRIPT.filter((rule) => matchSpans(rule, t).length > 0),
     caller: matchSpans(POLICE_CALLER, t).length > 0,
     money: matchSpans(MONEY_MOVE, t).length > 0,
+    telling,
   };
 }
 
@@ -384,9 +390,13 @@ function scriptParts(text: string): { police: PhraseRule[]; caller: boolean; mon
  * "それってどういうこと?" after the script goes to Claude, which sees the earlier turns, instead of
  * the same fixed line again. "警察を名乗る電話だった" after "口座が犯罪にって言われて" does count:
  * it goes on telling the script.
+ * A turn that tells a call she got and also passes on a warning ("…って言われた。テレビで見た詐欺と
+ * 同じかな", #81) is not decided by the rules: Claude reads all of it. Her own doubt ("詐欺かも") is no
+ * warning and keeps the script.
  */
 function tellsPoliceScript(said: Said): boolean {
   const now = scriptParts(said.text);
+  if (now.telling === "mixed") return false;
   if (now.police.length === 0 && !now.caller && !now.money) return false;
   const parts = allOf(said).map(scriptParts);
   const police = new Set(parts.flatMap((p) => p.police)).size;
@@ -395,9 +405,11 @@ function tellsPoliceScript(said: Said): boolean {
   return police >= 1 && police + caller + money >= 2;
 }
 
-/** The parts of the script she told, as reasons for the family's card. */
+/** The parts of the script she told, as reasons for the family's card. Not those of a warning she passed on. */
 function policeReasons(said: Said): string[] {
-  const told = allOf(said).map(normalize);
+  const told = allOf(said)
+    .map(normalize)
+    .filter((t) => tellingOf(t) !== "passed_on");
   return [POLICE_CALLER, ...POLICE_SCRIPT, MONEY_MOVE]
     .filter((rule) => told.some((t) => matchSpans(rule, t).length > 0))
     .map((rule) => rule.reason);
