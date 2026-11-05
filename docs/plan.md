@@ -145,7 +145,7 @@ Structured Outputs で次の形だけを受け取る。
 | `POST /sms/{familyToken}` | Apple から届く問い合わせ。Apple の形で答える |
 | `GET`、`POST /dns-query/{familyToken}` | DoH。`application/dns-message` |
 | `POST /page` | Safari の拡張機能から URL とページの文字を送る |
-| `POST /consult` | 母の相談(文字にした声か書いた言葉、スクショ)。答えの文字と、押す場所の座標が返る。本文は `{ text, history? }` で、`history` は同じ会話の前のやり取りを古い順に `[{ role: "protected" \| "ai", text }]` で6件まで、1件500字まで。7件以上、501字以上、ほかの role、空の文は 400(`consult_history_invalid`)。無ければ今までどおり。前のやり取りは Claude に `<untrusted>` の中のデータとして渡し、`ai` の行を assistant の発言にしない。ニセ警察の筋書きは今の言葉と前の母の言葉を合わせて数える。2026年11月4日に #73 で足した |
+| `POST /consult` | 母の相談(文字にした声か書いた言葉、スクショ)。答えの文字と、押す場所の座標が返る。本文は `{ text, history? }` で、`history` は同じ会話の前のやり取りを古い順に `[{ role: "protected" \| "ai", text }]` で6件まで、1件500字まで。7件以上、501字以上、ほかの role、空の文は 400(`consult_history_invalid`)。無ければ今までどおり。今の言葉が前を指すだけの問いかけなら、端末は60分を最後のやり取りから数えるので、前の日の会話の終わりが届くこともある(形と上限は同じ、#118)。前のやり取りは Claude に `<untrusted>` の中のデータとして渡し、`ai` の行を assistant の発言にしない。ニセ警察の筋書きは今の言葉と前の母の言葉を合わせて数える。2026年11月4日に #73 で足した |
 | `GET /alerts` | 最近の知らせ |
 | `GET /cases`、`POST /cases/{id}/resolve` | 家族への知らせと解決。相談は `{ id, alertId, state, notifiedAt, resolvedAt, resolvedBy, renotifiedAt, familyNotifiedAt, alert: { level, source, summary, reasons }, aiReply }`。`familyNotifiedAt` は家族の端末に最初の知らせが届いた時刻(`cases.family_notified_at`)で、どの端末にも届いていなければ `null`。母の画面が「家族に伝えました」の代わりに「家族に届いていません。急ぐなら電話して」と出せるよう、2026年11月4日に #60 で足した。キーが無い古い裏側の答えは届いた相談として読む(裏側はまだデプロイしておらず、古い裏側は実際には無い)。解決は家族の誰でも押せ、ほかの家族に「(名前)が解決」と知らせる。`POST /cases/{id}/accept` と `POST /cases/{id}/relay` は2026年11月4日に外し、404 を返す |
 | `POST /smiles`、`GET /smiles` | 笑顔の写真の登録と一覧(写真は R2) |
@@ -421,7 +421,7 @@ Safari の拡張機能、背面タップ、DNS のサーバーが止まったと
 **作るもの**
 
 - `ios/App/` の母の画面(ふつうの AI チャットの形。上に家族の知らせの帯、真ん中に会話、下にマイクを収めた文字の欄。AI の答えは地の文で、吹き出しは母の言葉だけ。声で聞いたときだけの読み上げ、丸を付けた画像)。はじめは大きなマイクのボタン1つの画面で、2026年11月4日に作者がチャットにすると決め(#73)、11月5日に今の形を選んだ(#87)
-- `ios/Core/` の `ChatLog` と `ChatKeeper`(会話を端末に50件まで残し、同じ会話の直前の6件を渡す)。ファイルの読み書きは `ios/App/FileChatLogStore.swift`(`NSFileProtectionComplete`)
+- `ios/Core/` の `ChatLog` と `ChatKeeper`(会話を端末に50件まで残し、同じ会話の直前の6件を渡す。前を指すだけの問いかけには、60分を最後のやり取りから数えて、前の日の会話の終わりの6件までを渡す。前を指すかの見分けは裏側の `pointsBack` と同じ型で、[`server/test/fixtures/points-back.json`](../server/test/fixtures/points-back.json) を両方のテストで確かめる。2026年11月5日、#118)。ファイルの読み書きは `ios/App/FileChatLogStore.swift`(`NSFileProtectionComplete`)
 - `ios/ShareExtension/`
 - `ios/Core/` の `CoordinateMapper`(縮小した画像の座標を元の画像に戻す)
 - `server/src/consult.ts`
