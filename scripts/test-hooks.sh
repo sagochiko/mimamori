@@ -39,10 +39,22 @@ expect 2 guard-holdout.sh '{"tool_name":"Read","tool_input":{"file_path":"eval/c
 expect 0 guard-holdout.sh '{"tool_name":"Read","tool_input":{"file_path":"eval/cases/dev/a.jsonl"}}' "reading dev passes"
 expect 0 guard-holdout.sh '{"tool_name":"Write","agent_type":"mm-eval-curator","tool_input":{"file_path":"eval/cases/pool/a.jsonl"}}' "the curator writes the pool"
 expect 2 guard-holdout.sh '{"tool_name":"Read","agent_type":"mm-implementer","tool_input":{"file_path":"eval/cases/pool/a.jsonl"}}' "the implementer cannot read the pool"
-# A Read deny rule also refuses Write and Edit, before any hook runs. A deny on the pool would stop the curator,
-# so the pool stays guarded by guard-holdout.sh alone.
-jq -e '[.permissions.deny[] | select(test("cases/pool"))] | length == 0' .claude/settings.json >/dev/null ||
-  { echo "settings test failed: a deny rule covers the pool and would block the curator's writes"; fail=1; }
+# Since 2026-11-06 permissions holds allow rules only: the author removed deny and ask, and the hooks do
+# the stopping (docs/harness.md, "permissions の deny と ask を消した"). The pool and holdout stay guarded by
+# guard-holdout.sh, and secrets by guard-secrets.sh.
+jq -e '.permissions | (has("deny") or has("ask")) | not' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: permissions should have no deny or ask rules since 2026-11-06"; fail=1; }
+# The reads the removed Read and Bash deny rules also stopped, now on the hook alone.
+expect 2 guard-holdout.sh '{"tool_name":"Grep","tool_input":{"pattern":"x","path":"eval/cases/holdout"}}' "grep in holdout is blocked"
+expect 2 guard-holdout.sh '{"tool_name":"Bash","tool_input":{"command":"cat eval/cases/holdout/a.jsonl"}}' "cat on holdout is blocked"
+expect 2 guard-secrets.sh '{"tool_name":"Read","tool_input":{"file_path":"server/.dev.vars.production"}}' "reading .dev.vars.<env> is blocked"
+expect 2 guard-secrets.sh '{"tool_name":"Edit","tool_input":{"file_path":"server/.dev.vars"}}' "editing .dev.vars is blocked"
+expect 2 guard-secrets.sh '{"tool_name":"Read","tool_input":{"file_path":"/Users/someone/keys/dist.p12"}}' "reading a .p12 is blocked"
+expect 2 guard-secrets.sh '{"tool_name":"Read","tool_input":{"file_path":"/Users/someone/Downloads/client_secret_123.json"}}' "reading a Google client secret is blocked"
+expect 2 guard-secrets.sh '{"tool_name":"Read","tool_input":{"file_path":"/Users/someone/Library/Preferences/.wrangler/config/default.toml"}}' "reading the wrangler login is blocked"
+expect 2 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"gh auth token"}}' "gh auth token is blocked"
+expect 2 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"security find-generic-password -s x -w"}}' "reading the keychain is blocked"
+expect 2 guard-secrets.sh '{"tool_name":"Bash","tool_input":{"command":"printenv"}}' "printing the environment is blocked"
 expect 2 guard-holdout.sh '{"tool_name":"Bash","tool_input":{"command":"touch .claude/state/holdout.unlock"}}' "Claude cannot create the unlock file"
 expect 2 guard-holdout.sh '{"tool_name":"Bash","tool_input":{"command":"cd eval/cases && cat holdout/a.jsonl"}}' "cd then cat holdout is blocked"
 expect 2 guard-holdout.sh '{"tool_name":"Bash","tool_input":{"command":"cat eval/CASES/POOL/a.jsonl"}}' "upper-case pool path is blocked"
@@ -276,7 +288,7 @@ perm() {
       if [[ "$1" == $p ]] || [[ "$p" == *' *' && "${p%' *'}" != *'*'* && "$1" == "${p%' *'}" ]]; then
         echo "$kind" && return
       fi
-    done < <(jq -r --arg k "$kind" '.permissions[$k][] | select(startswith("Bash("))' .claude/settings.json)
+    done < <(jq -r --arg k "$kind" '(.permissions[$k] // [])[] | select(startswith("Bash("))' .claude/settings.json)
   done
   echo none
 }
@@ -287,23 +299,60 @@ rule() { # <deny|ask|allow|none> <command>
 }
 rule allow 'gh api repos/o/r/issues/1/comments -f body=x'
 rule allow 'gh api -X PATCH repos/o/r/issues/1 -f state=closed'
-rule ask 'gh api -X DELETE repos/o/r/git/refs/heads/x'
-rule ask 'gh api repos/o/r/git/refs/heads/x -XDELETE'
-rule ask 'gh api --method DELETE repos/o/r/x'
-rule ask 'gh api --method=DELETE repos/o/r/x'
+# The gh issue and gh pr calls of the daily flow (/mm-task, /mm-human-queue) still run without a prompt.
+rule allow 'gh issue create --title t --body-file /tmp/b.md --milestone M2'
+rule allow 'gh issue view 12 --comments'
+rule allow 'gh issue list --milestone M2 --state open'
+rule allow 'gh issue list'
+rule allow 'gh issue comment 12 --body-file /tmp/b.md'
+rule allow 'gh issue edit 12 --add-label x'
+rule allow 'gh issue close 12 --comment done'
+rule allow 'gh issue reopen 12'
+rule allow 'gh pr create --base main --title t --body-file /tmp/b.md'
+rule allow 'gh pr view 41 --json body'
+rule allow 'gh pr list --state open'
+rule allow 'gh pr comment 41 --body-file /tmp/b.md'
+rule allow 'gh pr edit 41 --body-file /tmp/b.md'
+rule allow 'gh pr checks 41'
+rule allow 'gh pr ready 41'
+rule allow 'gh pr diff 41'
+rule none 'gh issue transfer 12 o/other'
+rule none 'gh pr checkout 41'
+# PR #157 review: closing a PR with --delete-branch removes the remote branch, and gh project deletes
+# boards, items, and fields, so these left allow too. The board calls of scripts/board.sh still pass.
+rule none 'gh pr close 41 --delete-branch'
+rule none 'gh pr close 41'
+rule none 'gh project delete 1 --owner sagochiko'
+rule none 'gh project item-delete 1 --owner sagochiko --id x'
+rule none 'gh project field-delete --id x'
+rule allow 'gh project list --owner sagochiko --format json'
+rule allow 'gh project view 1 --owner sagochiko --format json'
+rule allow 'gh project field-list 1 --owner sagochiko --format json'
+rule allow 'gh project item-list 1 --owner sagochiko --format json --limit 200'
+rule allow 'gh project item-add 1 --owner sagochiko --url https://github.com/o/r/issues/1'
+rule allow 'gh project item-edit --project-id p --id i --field-id f --single-select-option-id o'
 rule allow 'git push -u origin HEAD'
 rule allow 'git push -u origin fix-f'
 rule allow 'git push origin c++fix'
 rule none 'git -c credential.helper= -c credential.helper=x push -u origin HEAD'
 rule none 'git -c credential.helper= branch -D main push'
-rule deny 'git push --force origin x'
-rule deny 'git push -f origin x'
-rule deny 'git push -f'
-rule deny 'git push origin x -f'
-rule deny 'git push origin +x'
-rule deny 'git -c credential.helper= -c credential.helper=x push --force-with-lease origin x'
-rule deny 'git -c credential.helper= -c credential.helper=x push -f origin x'
-rule deny 'git -c credential.helper= -c credential.helper=x push origin +HEAD:x'
+# Until 2026-11-06 deny and ask rules also stopped these. Now the allow rules let them through, and only
+# the hook stands in front: a hook that exits 2 stops the call before the rules are matched (permissions,
+# "A blocking hook also takes precedence over allow rules").
+rule allow 'git push --force origin x'
+rule allow 'gh api -X DELETE repos/o/r/git/refs/heads/x'
+prod ask 'gh api -X DELETE repos/o/r/git/refs/heads/x' "gh api -X DELETE still asks without the ask rule"
+prod ask 'gh api repos/o/r/git/refs/heads/x -XDELETE' "gh api -XDELETE still asks without the ask rule"
+prod ask 'gh api --method DELETE repos/o/r/x' "gh api --method DELETE still asks without the ask rule"
+prod ask 'gh api --method=DELETE repos/o/r/x' "gh api --method=DELETE still asks without the ask rule"
+prod block 'git push --force origin x' "push --force is blocked without the deny rule"
+prod block 'git push -f' "a bare push -f is blocked without the deny rule"
+prod block 'git push origin x -f' "a trailing -f is blocked without the deny rule"
+prod block 'git push origin +x' "a + refspec is blocked without the deny rule"
+prod block 'git -c credential.helper= -c credential.helper=x push --force-with-lease origin x' "push --force-with-lease through the credential helper is blocked without the deny rule"
+prod block 'git -c credential.helper= -c credential.helper=x push -f origin x' "push -f through the credential helper is blocked without the deny rule"
+prod block 'git -c credential.helper= -c credential.helper=x push origin +HEAD:x' "a + refspec through the credential helper is blocked without the deny rule"
+prod block 'git push --mirror origin' "push --mirror is blocked without a deny rule"
 rule allow 'npx wrangler deploy'
 rule allow 'npx wrangler deploy --dry-run'
 rule allow 'npx wrangler rollback'
@@ -320,19 +369,27 @@ rule allow 'npx wrangler tail mimamori --format pretty'
 rule allow 'xcodebuild -exportArchive -archivePath a -exportOptionsPlist ios/ExportOptions.plist -exportPath b -allowProvisioningUpdates'
 rule allow 'xcrun altool --upload-app -f a.ipa -t ios'
 rule allow 'xcrun notarytool history'
-rule ask 'npx wrangler secret delete TOKEN_ENC_KEY'
-rule ask 'npx wrangler versions secret delete TOKEN_ENC_KEY'
+prod ask 'npx wrangler secret delete TOKEN_ENC_KEY' "secret delete still asks without the ask rule"
+prod ask 'npx wrangler versions secret delete TOKEN_ENC_KEY' "versions secret delete still asks without the ask rule"
 rule allow 'xcrun simctl erase all'
 rule allow 'xcrun simctl delete unavailable'
-rule ask 'gh pr merge 3 --merge --admin'
-rule deny 'npx wrangler delete'
-rule deny 'npx wrangler d1 delete mimamori'
-rule deny 'npx wrangler d1 time-travel restore mimamori --timestamp=1'
-rule deny 'git reset --hard origin/main'
-rule deny 'gh repo delete sagochiko/x'
-rule deny 'gh issue delete 3'
-rule deny 'gh secret set X'
-rule deny 'gh repo edit --visibility public'
+prod block 'npx wrangler delete' "wrangler delete is blocked without the deny rule"
+prod block 'npx wrangler d1 delete mimamori' "deleting the database is blocked without the deny rule"
+prod block 'npx wrangler d1 time-travel restore mimamori --timestamp=1' "time-travel restore is blocked without the deny rule"
+# No hook looks at these, so since 2026-11-06 the auto mode classifier judges them. None may match an allow
+# rule: an allow match skips the classifier (permission-modes, "Actions matching your allow, ask, or deny
+# rules resolve immediately"). The author chose on 2026-11-06 to split gh issue and gh pr in allow by
+# subcommand, so delete and merge fall to the classifier. A * cannot leave out --admin alone, so every
+# gh pr merge does; guard-merge.sh still gates it. docs/harness.md lists them.
+rule none 'gh issue delete 3'
+rule none 'gh issue delete 3 --yes'
+rule none 'gh pr merge 3 --merge --admin'
+rule none 'gh pr merge 3 --admin --merge'
+rule none 'gh pr merge 3 --merge'
+rule none 'git reset --hard origin/main'
+rule none 'gh repo delete sagochiko/x'
+rule none 'gh secret set X'
+rule none 'gh repo edit --visibility public'
 # guard-merge: a fake gh answers from JSON files in $MM_FAKE_GH, and a throwaway bare repository
 # plays origin, so the gate is tested without GitHub.
 mkdir -p "$T/bin" "$T/gh"
@@ -515,12 +572,11 @@ mcp 0 '{"tool_name":"mcp__mobilebuildmcp__build_run_sim","agent_type":"mm-verifi
 echo 'not json' | PATH="$T/nojq:$PATH" "$H/guard-mcp.sh" >/dev/null 2>&1 && { echo "hook test failed: guard-mcp lets a call through when jq fails"; fail=1; }
 jq -e '[.hooks.PreToolUse[] | select(.matcher | split("|") | (index("mcp__mobilebuildmcp__session_set_defaults") and index("mcp__mobilebuildmcp__session_clear_defaults") and index("mcp__mobilebuildmcp__session_use_defaults_profile"))) | .hooks[] | select(.command | endswith("guard-mcp.sh")) | select(.onFailure == "block")] | length == 1' .claude/settings.json >/dev/null ||
   { echo "settings test failed: guard-mcp.sh must match the three default-rewriting tools with onFailure block"; fail=1; }
-# The connectors' outward and destructive tools: sending mail asks, deleting is denied. The rule shape
-# is mcp__<server>__<tool>; a rule with parentheses is dropped by Claude Code when it loads the file.
-jq -e '(.permissions.ask | index("mcp__claude_ai_Gmail__send_message") and index("mcp__claude_ai_Gmail__reply") and index("mcp__claude_ai_Gmail__forward"))' .claude/settings.json >/dev/null ||
-  { echo "settings test failed: sending mail through the Gmail connector must ask"; fail=1; }
-jq -e '(.permissions.deny | index("mcp__claude_ai_Gmail__trash_*") and index("mcp__claude_ai_Gmail__delete_*") and index("mcp__claude_ai_Gmail__apply_sensitive_*") and index("mcp__claude_ai_Gmail__mark_message_spam") and index("mcp__claude_ai_Gmail__mark_thread_spam") and index("mcp__claude_ai_Google_Calendar__delete_event") and index("mcp__claude_ai_Claude_Docs__delete"))' .claude/settings.json >/dev/null ||
-  { echo "settings test failed: the connectors' delete tools must be denied"; fail=1; }
+# The connectors' send and delete tools had ask and deny rules until 2026-11-06; no hook looks at them,
+# so the auto mode classifier judges them now. No allow rule may cover them, or they would skip it.
+jq -e '[.permissions.allow[] | select(test("^mcp__claude_ai_(Gmail|Google_Calendar|Claude_Docs)"))] | length == 0' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: an allow rule covers a connector tool, which would skip the auto mode classifier"; fail=1; }
+# The rule shape is mcp__<server>__<tool>; a rule with parentheses is dropped by Claude Code when it loads the file.
 jq -e '[.permissions[][] | select(startswith("mcp__") and contains("("))] | length == 0' .claude/settings.json >/dev/null ||
   { echo "settings test failed: an mcp__ rule with parentheses is skipped by Claude Code"; fail=1; }
 # stop-gate: judged in the tree of the input's cwd, against origin/main, and never passing untested.

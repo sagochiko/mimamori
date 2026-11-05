@@ -1,6 +1,6 @@
 #!/bin/bash
-# PreToolUse: keep secrets out of Claude's context. permissions.deny covers the file tools;
-# this also catches grep -r, Glob patterns, and commands that print credentials. The gh token lives
+# PreToolUse: keep secrets out of Claude's context. Since 2026-11-06 there is no permissions.deny behind it, so
+# this hook alone covers the file tools (Read, Edit, Write, Grep, Glob), and it also catches grep -r, Glob patterns, and commands that print credentials. The gh token lives
 # in ~/.config/gh/hosts.yml, so that directory is on the list next to `gh auth token`, and so is
 # `gh auth status` with --show-token or -t, which prints it ("Display the auth token", gh auth status
 # --help) under the allow rule for gh auth status.
