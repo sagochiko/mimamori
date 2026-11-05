@@ -224,6 +224,9 @@ function levelOf(signs: Sign[]): 1 | 2 | null {
   return null;
 }
 
+/** The weak sign for an SMS from a number outside Japan. Genuine overseas services send those too. */
+export const FOREIGN_SENDER_REASON = "海外の番号からの SMS";
+
 /** The one reason a message that is only a verification code gets. Its level stays null. */
 export const CODE_ONLY_REASON = "認証コードの知らせに見える";
 
@@ -259,7 +262,7 @@ export function judgeByRules(input: RuleInput): RuleResult {
     add("brand_mismatch", "medium", "名乗る会社と違うドメインへ誘っている");
   }
   if (input.source === "sms" && /^\+(?!81)\d/.test((input.sender ?? "").replace(/\s/g, ""))) {
-    add("foreign_sender", "weak", "海外の番号からの SMS");
+    add("foreign_sender", "weak", FOREIGN_SENDER_REASON);
   }
 
   // A message that is only a verification code: typing the code in is what it is for, and "don't

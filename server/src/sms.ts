@@ -15,7 +15,7 @@
 
 import { HttpError, json, readJson } from "./http";
 import { enqueueJudge, normalizeDomain, summarize, type JudgeJob } from "./judge";
-import { CODE_ONLY_REASON, judgeByRules, type RuleResult } from "./rules";
+import { CODE_ONLY_REASON, FOREIGN_SENDER_REASON, judgeByRules, type RuleResult } from "./rules";
 
 /** The judges' build uses this token. It tells no family; the reply carries the card instead (docs/design.md). */
 export const DEMO_TOKEN = "demo";
@@ -87,13 +87,14 @@ function firstLink(text: string): string | undefined {
 
 /**
  * Whether Claude should look. A level from the rules, or a sign too weak for a level, means unsure. A
- * message with no sign at all, or one the rules read as only a verification code (even with a weak
- * sign such as an overseas number), is not queued: when Claude fails, the queue treats an undecided
+ * message with no sign at all, one whose only sign is the overseas number (genuine services abroad send
+ * bookings and codes), or one the rules read as only a verification code, is not queued: when Claude fails, the queue treats an undecided
  * message as level 2 and tells the family, which a genuine code or delivery notice must not cause.
  */
 function unsure(rule: RuleResult): boolean {
   if (rule.level !== null) return true;
-  return rule.reasons.length > 0 && !rule.reasons.includes(CODE_ONLY_REASON);
+  if (rule.reasons.includes(CODE_ONLY_REASON)) return false;
+  return rule.reasons.some((r) => r !== FOREIGN_SENDER_REASON);
 }
 
 function demoCard(job: JudgeJob, rule: RuleResult): DemoCard | null {

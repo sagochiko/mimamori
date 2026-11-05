@@ -127,6 +127,33 @@ describe("POST /sms/{familyToken}", () => {
     expect(sent).toHaveLength(0);
   });
 
+  it("queues nothing for a genuine SMS whose only sign is the overseas number", async () => {
+    // With Claude down, an undecided job becomes level 2: the family would be told about a booking.
+    const overseas = "+14150000100";
+    const text = "Your table is booked for 7pm tonight.";
+    expect(judgeByRules({ source: "sms", sender: overseas, text })).toMatchObject({
+      level: null,
+      reasons: ["海外の番号からの SMS"],
+    });
+    const family = await createFamily();
+    const { sent, queueEnv } = fakeQueue();
+    const res = await call("POST", `/sms/${family.familyToken}`, { body: appleBody(text, overseas), env: queueEnv });
+    expect(await res.json()).toEqual({ action: "none" });
+    expect(sent).toHaveLength(0);
+  });
+
+  it.each([UNSURE_WEAK, UNSURE_PARCEL, SCAM_TAX])(
+    "still queues an overseas SMS that carries a sign besides the number: %s",
+    async (text) => {
+      const overseas = "+14150000100";
+      expect(judgeByRules({ source: "sms", sender: overseas, text }).reasons).toContain("海外の番号からの SMS");
+      const family = await createFamily();
+      const { sent, queueEnv } = fakeQueue();
+      await call("POST", `/sms/${family.familyToken}`, { body: appleBody(text, overseas), env: queueEnv });
+      expect(sent).toHaveLength(1);
+    },
+  );
+
   it("answers none for an unknown familyToken and records nothing", async () => {
     const { sent, queueEnv } = fakeQueue();
     const before = await alertCount();
