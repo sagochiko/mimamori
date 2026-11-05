@@ -119,11 +119,11 @@ cd server && npx tsc --noEmit -p ../eval/tsconfig.json  # eval/ の型検査
 
 `rules+claude` の行では、筋書きに当たった相談は本番と同じく Claude を呼ばずに1段階にする。当たらない相談は、判定のキューの `requestClaudeJudgment` ではなく、相談用の `requestClaudeConsult`(Sonnet)に聞き、本番と同じ `judgeConsult` で段階を決める。相談用の Claude が形の合う答えを返さなかったときは、本番と同じく段階は規則の段階か、規則が決められなければ2になり、`claude_unanswered` に数える。筋書きで決まって Claude を呼ばなかった例文は `claude_unanswered` に数えない。`eval/out/dev-latest.json` の例文ごとの結果には、筋書きで決まったかを `consult_script` で残す。
 
-2026年11月5日に、この測り方に変えた(#74)。それまでは相談も `judgeByRules` と `requestClaudeJudgment` に通していて、本番の母の相談で起きることを測っていなかった。変えたのは数字を見る前で、2026年11月5日 00:39 までの `rules` の行の `consult` は、前の測り方の数字になっている。
+2026年11月5日に、この測り方に変えた(#74)。それまでは相談も `judgeByRules` と `requestClaudeJudgment` に通していて、本番の母の相談で起きることを測っていなかった。変えたのは数字を見る前で、測り方を変えた最初の回(99633ed、変えたことの列が #74 の行)より前の `rules` の行の `consult` は、前の測り方の数字になっている。
 
 ## 規則だけの数字(下書き)
 
-2026年11月4日 08:44 に main(a2ce26b)で `make eval` の `rules` を流した dev の結果。
+2026年11月4日に main(a2ce26b)で `make eval` の `rules` を流した dev の結果。
 
 | 経路 | 見逃し | 誤判定 | 本物を1段階 |
 |---|---:|---:|---:|
