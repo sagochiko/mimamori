@@ -229,6 +229,10 @@ beforeEach(async () => {
   pushed = [];
   resetApnsJwtCache();
   useFakeGoogle();
+  useApns();
+});
+
+function useApns() {
   network.use(
     http.post(`${SANDBOX}/3/device/:token`, async ({ request, params }) => {
       const payload = (await request.json()) as { aps: { alert: { body: string } } };
@@ -236,7 +240,7 @@ beforeEach(async () => {
       return new HttpResponse(null, { status: 200 });
     }),
   );
-});
+}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -652,6 +656,54 @@ describe("the 5-minute watch", () => {
     await watchGmail(queueEnv, Date.now(), new ExternalBudget());
     expect(pushed).toHaveLength(2);
     expect(await authRow(f.owner.familyId)).toBeNull();
+  });
+
+  it("keeps the dead grant and tells again on the next tick when APNs fails for every device", async () => {
+    const f = await family();
+    const { refresh } = await grant(f.owner.familyId);
+    deadTokens.add(refresh);
+    const { queueEnv } = fakeQueue();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    network.use(http.post(`${SANDBOX}/3/device/:token`, () => new HttpResponse(null, { status: 500 })));
+
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(pushed).toHaveLength(0);
+    expect(await authRow(f.owner.familyId)).not.toBeNull();
+
+    network.resetHandlers();
+    useFakeGoogle();
+    useApns();
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(pushed.map((p) => p.body)).toEqual(["Gmail の許可の取り直しが要ります", "Gmail の許可の取り直しが要ります"]);
+    expect(await authRow(f.owner.familyId)).toBeNull();
+  });
+
+  it("counts a family with no device as told, so a dead grant does not stay forever", async () => {
+    const owner = await createFamily("作者");
+    const { refresh } = await grant(owner.familyId);
+    deadTokens.add(refresh);
+    const { queueEnv } = fakeQueue();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(await authRow(owner.familyId)).toBeNull();
+  });
+
+  it("gives the advance notice back to a later tick when APNs fails for every device", async () => {
+    const f = await family();
+    await grant(f.owner.familyId, { grantedAt: Date.now() - RENEW_NOTICE_AFTER_MS - 60_000 });
+    const { queueEnv } = fakeQueue();
+    network.use(http.post(`${SANDBOX}/3/device/:token`, () => new HttpResponse(null, { status: 500 })));
+
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect((await authRow(f.owner.familyId))?.expired_notified_at).toBeNull();
+
+    network.resetHandlers();
+    useFakeGoogle();
+    useApns();
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(pushed).toHaveLength(2);
+    expect((await authRow(f.owner.familyId))?.expired_notified_at).not.toBeNull();
   });
 
   it("keeps watching after a Google error other than invalid_grant, without telling anyone", async () => {

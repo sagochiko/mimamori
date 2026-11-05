@@ -274,15 +274,21 @@ async function familyMembers(env: Env, familyId: string): Promise<string[]> {
   return rows.results.map((r) => r.id);
 }
 
-/** Sends one notice to the family's members. False when the budget could not cover all of them. */
+/**
+ * Sends one notice to the family's members. False, so a later tick sends it again, when the budget could
+ * not cover them, or when some member has a device and it reached none of them (APNs failed), as
+ * openCase does (src/cases.ts). A family with no device at all counts as told: nothing could reach it.
+ */
 async function tellFamily(env: Env, familyId: string, body: string, budget: ExternalBudget): Promise<boolean> {
   const results = await sendPush(env, await familyMembers(env, familyId), { body, threadId: "gmail" }, budget);
-  return !results.some((r) => r.status === "skipped" && r.reason === "no_budget");
+  if (results.some((r) => r.status === "skipped" && r.reason === "no_budget")) return false;
+  const reachable = results.filter((r) => r.status !== "skipped");
+  return reachable.length === 0 || reachable.some((r) => r.status === "sent");
 }
 
 /**
  * Six days after the grant, once: the family is told to take it again before Google ends it. The flag
- * (expired_notified_at) is claimed before sending, and given back when the budget ran out.
+ * (expired_notified_at) is claimed before sending, and given back when it reached nobody.
  */
 async function warnBeforeExpiry(env: Env, grant: GrantRow, now: number, budget: ExternalBudget): Promise<void> {
   if (grant.expired_notified_at !== null || now - grant.granted_at < RENEW_NOTICE_AFTER_MS) return;
@@ -302,7 +308,7 @@ async function warnBeforeExpiry(env: Env, grant: GrantRow, now: number, budget: 
 /**
  * Google refused the refresh token (invalid_grant): the grant ran out or she took it back. The family
  * is told once and the row goes, which stops the watch until she grants again. When the budget could
- * not cover the notice, the row stays and the next tick tries again.
+ * not cover the notice, or APNs failed for every device, the row stays and the next tick tries again.
  */
 async function endGrant(env: Env, grant: GrantRow, budget: ExternalBudget): Promise<void> {
   console.warn("gmail grant ended");
@@ -529,6 +535,7 @@ export async function watchGmail(env: Env, now: number, budget: ExternalBudget):
   const rows = await env.DB.prepare(
     `SELECT family_id, refresh_token_enc, granted_at, last_history_id, expired_notified_at
        FROM gmail_auth ORDER BY granted_at LIMIT ?`,
+    // Known limit: with more than FAMILIES_PER_TICK grants, the sixth and later are never reached.
   )
     .bind(FAMILIES_PER_TICK)
     .all<GrantRow>();

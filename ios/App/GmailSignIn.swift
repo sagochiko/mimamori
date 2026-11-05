@@ -12,7 +12,13 @@ enum GmailSignIn {
   private static let anchor = Anchor()
 
   static func run(url: URL) async -> GmailConnectResult {
-    await withCheckedContinuation { continuation in
+    // The sheet needs a window to sit on; the app is on screen when she presses the button.
+    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+    guard let scene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first else {
+      return .failed
+    }
+    anchor.window = scene.windows.first(where: \.isKeyWindow) ?? ASPresentationAnchor(windowScene: scene)
+    return await withCheckedContinuation { continuation in
       let session = ASWebAuthenticationSession(
         url: url, callback: .customScheme(GmailConnectResult.callbackScheme)
       ) { callback, error in
@@ -39,13 +45,11 @@ enum GmailSignIn {
   }
 
   private final class Anchor: NSObject, ASWebAuthenticationPresentationContextProviding {
+    /// Set by run(url:) before the session starts.
+    var window: ASPresentationAnchor?
+
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-      MainActor.assumeIsolated {
-        UIApplication.shared.connectedScenes
-          .compactMap { $0 as? UIWindowScene }
-          .flatMap(\.windows)
-          .first { $0.isKeyWindow } ?? ASPresentationAnchor()
-      }
+      MainActor.assumeIsolated { window! }
     }
   }
 }

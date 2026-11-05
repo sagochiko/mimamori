@@ -221,8 +221,13 @@ final class AppModel {
 
   /// Opens Google's consent screen in the system sign-in sheet, then reads the grant again.
   func connectGmail() async {
-    guard let grant = gmail else { return }
-    let result = await GmailSignIn.run(url: grant.url)
+    // A fresh URL on each press: the one read with the screen carries a state that ends after 15 minutes.
+    guard let fresh = try? await session.gmailConnect() else {
+      problem = .unreachable
+      return
+    }
+    gmail = fresh
+    let result = await GmailSignIn.run(url: fresh.url)
     if result == .failed { problem = .unreachable }
     await loadGmail()
   }
