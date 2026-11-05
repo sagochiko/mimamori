@@ -3,11 +3,8 @@ import MimamoriCore
 import UserNotifications
 
 /// The local notification "さっきの電話、大丈夫だった？". `CallFollowUp` in Core decides whether and
-/// when; this only posts it.
-///
-/// Nothing calls `AppModel.callEnded(_:)` yet. How the app learns that a call ended is waiting on
-/// the author's measurements (#25): CXCallObserver is silent while the app is suspended. The chosen
-/// trigger only has to build an `EndedCall` and pass it there.
+/// when; this only posts it. The end of a call comes from `CallEndWatcher`, which hears it only while
+/// the app is in front (#25); the daily prompt (`DailyCheckInNotifier`) covers the rest.
 enum CallFollowUpNotifier {
   static func post() async {
     let content = UNMutableNotificationContent()
