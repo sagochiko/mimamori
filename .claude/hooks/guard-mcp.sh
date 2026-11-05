@@ -1,8 +1,8 @@
 #!/bin/bash
 # PreToolUse (the three mobilebuildmcp session-default tools, listed in settings.json): the session's
-# default project, scheme, and simulator come from .mobilebuildmcp/config.yaml ("mimamori iPhone", the
-# family role) and are moved by the main session to the simulator a task needs ("mimamori mother" for
-# the mother's screens, docs/harness.md). A subagent that rewrites them
+# default project, scheme, and simulator come from .mobilebuildmcp/config.yaml ("mimamori mother", the
+# mother's sample, outside the production family) and are moved by the main session to the simulator a
+# task needs ("mimamori iPhone" only to check the family side against production, docs/harness.md). A subagent that rewrites them
 # (session_set_defaults, session_clear_defaults, session_use_defaults_profile) moves every later build
 # and screenshot of the whole session to another device without the parent seeing it. So those three
 # are stopped when the call comes from a subagent: the hook input then carries agent_type

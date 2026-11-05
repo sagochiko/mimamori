@@ -19,7 +19,7 @@ Some system apps are not in the simulator. On 2026-11-05 the iOS 26.5 one had no
 
 ## 2. Drive it
 
-In the main session, run `session_show_defaults` first and keep what it prints: the repository's default is "mimamori iPhone", and the session may have moved it already. Then point mobilebuildmcp at the simulator for this guide with `session_set_defaults` (`simulatorName` and `simulatorId`, never `persist`). Step 4 puts the kept values back. A subagent may not change the defaults (`guard-mcp.sh`); it passes the udid or asks the main session.
+In the main session, run `session_show_defaults` first and keep what it prints: the repository's default is "mimamori mother" (`.mobilebuildmcp/config.yaml`), and the session may have moved it already. Then point mobilebuildmcp at the simulator for this guide with `session_set_defaults` (`simulatorName` and `simulatorId`, never `persist`). Step 4 puts the kept values back. A subagent may not change the defaults (`guard-mcp.sh`); it passes the udid or asks the main session.
 
 Open the app with `xcrun simctl launch <udid> <bundle id>`. For each screen, screenshot before acting:
 
