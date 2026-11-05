@@ -4,10 +4,10 @@
   "language": "japanese",
   "modelSettings": {
     "claude-opus-5-5": {
-      "effortLevel": "xhigh"
+      "effortLevel": "medium"
     },
     "claude-fable-5-1": {
-      "effortLevel": "xhigh"
+      "effortLevel": "medium"
     }
   },
   "attribution": {

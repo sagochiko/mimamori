@@ -76,7 +76,7 @@ chmod +x "$launcher"
 open -a Terminal "$launcher"
 ```
 
-The heredoc is unquoted on purpose: the repository path, the model, the prompt with the brief path, and the `claude` binary are filled in now, from this shell where `claude` is on the PATH. The session starts in the main checkout, so it loads the project's settings and hooks. `--model` takes an alias such as `opus` or `fable` and applies to the launched session only (https://code.claude.com/docs/en/cli-reference, https://code.claude.com/docs/en/model-config). The project's `modelSettings` sets `xhigh` effort for both Opus 5.5 and Fable 5.1.
+The heredoc is unquoted on purpose: the repository path, the model, the prompt with the brief path, and the `claude` binary are filled in now, from this shell where `claude` is on the PATH. The session starts in the main checkout, so it loads the project's settings and hooks. `--model` takes an alias such as `opus` or `fable` and applies to the launched session only (https://code.claude.com/docs/en/cli-reference, https://code.claude.com/docs/en/model-config). The project's `modelSettings` sets `medium` effort for both Opus 5.5 and Fable 5.1.
 
 Open the `.command` file with `open -a Terminal`. Do not drive Terminal with AppleScript (`tell application "Terminal" to do script`): called from a Claude Code shell it times out. Opening a `.command` file needs no extra permission.
 
