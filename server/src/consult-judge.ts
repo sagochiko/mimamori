@@ -602,7 +602,8 @@ function decidePlan(said: Said, rule: RuleResult, claude: ClaudeConsult | null, 
       : [];
   const sensitive = [...new Set([...ownSensitive, ...guided])];
   const reasons = [...decision.reasons];
-  const base = { ruleLevel: decision.ruleLevel, claudeLevel: decision.claudeLevel, unguided: sensitive.length > 0 };
+  // Her own words only (Plan.unguided): guidance Claude wrote that hits such a topic is Claude's answer.
+  const base = { ruleLevel: decision.ruleLevel, claudeLevel: decision.claudeLevel, unguided: ownSensitive.length > 0 };
 
   // A topic the AI does not guide, or one Claude cannot answer: the family takes it, at any level, and
   // Claude's action is not read out (it may be the very guidance that is not given). At level 2 or

@@ -14,6 +14,7 @@ import {
   AI_REPLY_ON_CARD,
   CONSULT_MODEL,
   defaultConsultDeps,
+  judgeConsult,
   notReachedReply,
   parseClaudeConsult,
   type ClaudeConsult,
@@ -1881,6 +1882,16 @@ describe("the conversation so far", () => {
     expect(answer.reply).not.toMatch(/ATM|振込/);
     expect(answer).toMatchObject({ reply: HANDOFF, handoff: true });
     expect(familyPushes(fam)).toHaveLength(2);
+  });
+
+  // Review 1 of PR #111, finding 2: `unguided` is her own words on such a topic, as eval/README.md
+  // says. Here the family takes it because Claude's guidance hit one after her earlier question.
+  it("marks the plan unguided for her own words only, not for Claude's guidance after an earlier question", async () => {
+    const guidance = help({ action: "ATM の「振込」を押して、口座番号を入れます" });
+    const afterEarlier = await judgeConsult("次は何を押すの?", [turn("protected", "振込のやり方を教えて")], async () => guidance);
+    expect(afterEarlier).toMatchObject({ reply: HANDOFF, toFamily: true, unguided: false });
+    const own = await judgeConsult("振込のやり方を教えて", [], async () => help());
+    expect(own).toMatchObject({ toFamily: true, unguided: true });
   });
 
   it("reads out guidance that mentions deleting as before when nothing earlier was about it", async () => {
