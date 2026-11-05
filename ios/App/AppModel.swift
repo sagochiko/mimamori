@@ -313,7 +313,10 @@ final class AppModel {
       // An answer that comes after she started again is dropped (VoiceConsult.answered).
       guard case .thinking = voice.phase else { return }
       chat.answered(answer.reply, at: .now)
-      apply(voice.answered(answer))
+      // 「読み上げ」 in Settings > みまもり, off unless turned on (#115). Read for each answer: the
+      // Settings app is another process and sends no notice of the change.
+      let readAloud = ReadAloudSettings(reading: { UserDefaults.standard.object(forKey: $0) })
+      apply(voice.answered(answer, readsAloud: readAloud.isOn))
       // The case shows up: "家族に伝えました", or "家族に届いていません" while no family device took it.
       if answer.handoff { await loadCases() }
     } catch {
