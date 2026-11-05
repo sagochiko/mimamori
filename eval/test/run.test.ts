@@ -203,6 +203,53 @@ describe("runEval --mode rules+claude", () => {
     assert.match(lines.join("\n"), /claude gave nothing for 1 of 3/);
   });
 
+  // #109: the family gets a genuine consultation on such a topic by design, so the run says how many
+  // of the false alarms these are, and keeps Claude's own answers per case for dev.
+  it("records and prints the false alarms on topics the AI does not guide, and keeps Claude's own answers", async () => {
+    const extra = {
+      id: "dev-genuine-2",
+      source: "consult",
+      sender: null,
+      domain: null,
+      text: "FIXTURE-TEXT 振込のやり方を教えて",
+      url: null,
+      expected_level: null,
+      is_scam: false,
+      note: "self-written",
+    };
+    await writeFile(path.join(evalDir, "cases", "dev", "fixture-unguided.jsonl"), `${JSON.stringify(extra)}\n`);
+    const judge: Judge = async () => ({
+      level: 3,
+      checking: false,
+      claude: { level: 3, reasons: ["公式のドメイン"], injection_suspected: false },
+    });
+    const { exitCode, lines } = await runEval({
+      evalDir,
+      set: "dev",
+      mode: "rules+claude",
+      notes: "",
+      now: TODAY,
+      judge,
+      consult,
+    });
+    assert.equal(exitCode, 0);
+    const r = JSON.parse((await read("results.jsonl")).trim());
+    assert.equal(r.false_alarms, 1);
+    assert.equal(r.false_alarms_unguided, 1);
+    assert.equal(r.by_source.consult.false_alarms_unguided, 1);
+    assert.match(lines.join("\n"), /false alarms 1\/2 \(50\.0%\), 1 on topics the AI does not guide/);
+    const out = JSON.parse(await read("out/dev-latest.json"));
+    const byId = (id: string) => out.cases.find((c: { id: string }) => c.id === id);
+    assert.equal(byId("dev-genuine-2").unguided_topic, true);
+    assert.deepEqual(byId("dev-genuine-1").claude, {
+      level: 3,
+      reasons: ["公式のドメイン"],
+      injection_suspected: false,
+    });
+    assert.equal(byId("dev-scam-2").claude.kind, "scam");
+    assert.ok(!lines.join("\n").includes("FIXTURE-TEXT"), "printed case text");
+  });
+
   it("refuses a dev run once today's budget is used, without calling the judge", async () => {
     const used = [
       { ts: "2026-11-03T09:00:00+09:00", set: "dev", mode: "rules+claude" },

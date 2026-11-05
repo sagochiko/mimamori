@@ -154,6 +154,25 @@ describe("scoreRun", () => {
     expect(out.by_source.gmail).toMatchObject({ n: 1, scam: 0, miss_rate: null, genuine_at_level1: 1 });
   });
 
+  // #109: a genuine consultation on a topic the AI does not guide goes to the family by design
+  // (decidePlan). It stays a false alarm, since the family was told, and is also counted on its own.
+  it("counts the false alarms on topics the AI does not guide apart, inside false_alarms", () => {
+    const unguided = (isScam: boolean, level: 1 | 2 | 3 | null) => ({
+      ...scored("consult", isScam, level),
+      unguided_topic: true,
+    });
+    const out = scoreRun([
+      unguided(false, 2), // a false alarm, and one on such a topic
+      unguided(true, 2), // a scam: no false alarm at all
+      scored("consult", false, 2), // a false alarm Claude made
+      { ...scored("consult", false, 3), unguided_topic: false },
+      scored("sms", false, 2),
+    ]);
+    expect(out).toMatchObject({ false_alarms: 3, false_alarms_unguided: 1 });
+    expect(out.by_source.consult).toMatchObject({ false_alarms: 2, false_alarms_unguided: 1 });
+    expect(out.by_source.sms).toMatchObject({ false_alarms: 1, false_alarms_unguided: 0 });
+  });
+
   it("reports the median and the slowest tenth of the latency", () => {
     const cases = Array.from({ length: 10 }, (_, i) => scored("sms", true, 1, i + 1));
     const out = scoreRun(cases);
@@ -198,6 +217,7 @@ describe("records", () => {
         by_source: {},
         scam: 10,
         genuine: 10,
+        false_alarms_unguided: 0,
       },
     });
     expect(row).toBe("| 2026年11月3日 23:05 | dev | rules | 20 | 30.0% (3/10) | 0.0% (0/10) | 0 | 0.04 | first run |");
@@ -229,8 +249,13 @@ describe("judge", () => {
       asked.push([input, rule]);
       return { ...answer, message_to_protected: "" };
     });
-    // Rule 2 is the floor, then one step heavier for the injection.
-    expect(await judge({ source: "sms", text: "x" }, notConfident)).toEqual({ level: 1, checking: false });
+    // Rule 2 is the floor, then one step heavier for the injection. Claude's own answer comes along
+    // for eval/out/dev-latest.json (#109).
+    expect(await judge({ source: "sms", text: "x" }, notConfident)).toEqual({
+      level: 1,
+      checking: false,
+      claude: { level: 3, reasons: ["本文に判定への指示がある"], injection_suspected: true },
+    });
     expect(asked).toEqual([[{ source: "sms", text: "x" }, notConfident]]);
   });
 
@@ -256,7 +281,11 @@ describe("judge", () => {
       }),
     );
     const judge = loadJudge("eval-test-key");
-    expect(await judge({ source: "sms", text: "x" }, undecided)).toEqual({ level: 2, checking: false });
+    expect(await judge({ source: "sms", text: "x" }, undecided)).toEqual({
+      level: 2,
+      checking: false,
+      claude: { level: 3, reasons: ["本文に判定への指示がある"], injection_suspected: true },
+    });
     expect(keys).toEqual(["eval-test-key"]);
   });
 });
@@ -386,6 +415,78 @@ describe("judgeCases", () => {
     const scored = await judgeCases(others, "rules+claude", { judge, consult: refuseConsult });
     expect(seen).toEqual(["sms", "gmail", "page"]);
     expect(scored.map((c) => c.level)).toEqual([2, 2, 2]);
+  });
+
+  // #109: which false alarms the family gets by design, and what Claude itself answered.
+  describe("what a run keeps to tell the false alarms apart (#109)", () => {
+    const SEND_MONEY = "振込のやり方を教えて";
+    const help: ClaudeConsult = {
+      ...scamAnswer,
+      kind: "help",
+      level: 3,
+      reasons: [],
+      basis: "",
+      action: "銀行の窓口で聞いてね",
+    };
+    const genuine = (text: string) => evalCase({ text, is_scam: false, expected_level: null });
+
+    it("marks a consultation on a topic the AI does not guide, which reaches the family whatever Claude says", async () => {
+      const [scored] = await judgeCases([genuine(SEND_MONEY)], "rules+claude", {
+        judge: refuse,
+        consult: async () => help,
+      });
+      expect(scored).toMatchObject({ level: 2, unguided_topic: true, claude_answered: true });
+    });
+
+    it("does not mark a consultation Claude put at level 2 on its own", async () => {
+      const [scored] = await judgeCases([genuine(NOTHING)], "rules+claude", {
+        judge: refuse,
+        consult: async () => scamAnswer,
+      });
+      expect(scored).toMatchObject({ level: 2, unguided_topic: false });
+    });
+
+    it("marks nothing in the rules row, which does not hand any topic to the family", async () => {
+      const [scored] = await judgeCases([genuine(SEND_MONEY)], "rules", { judge: refuse, consult: refuseConsult });
+      expect(scored).not.toHaveProperty("unguided_topic");
+      expect(scored).not.toHaveProperty("claude");
+    });
+
+    it("keeps the consultation Claude's own answer: kind, level, reasons, handoff, and the injection flag", async () => {
+      const answer: ClaudeConsult = { ...help, reasons: ["通帳は本人しか見られない"], handoff: true };
+      const [scored] = await judgeCases([genuine(NOTHING)], "rules+claude", {
+        judge: refuse,
+        consult: async () => answer,
+      });
+      expect(scored?.claude).toEqual({
+        kind: "help",
+        level: 3,
+        reasons: ["通帳は本人しか見られない"],
+        handoff: true,
+        injection_suspected: false,
+      });
+      // Claude said 3 and the handoff took it to the family at 2: the record shows both.
+      expect(scored?.level).toBe(2);
+    });
+
+    it("keeps nothing of Claude when it gave nothing", async () => {
+      const [scored] = await judgeCases([genuine(NOTHING)], "rules+claude", {
+        judge: refuse,
+        consult: async () => null,
+      });
+      expect(scored).not.toHaveProperty("claude");
+    });
+
+    it("keeps the judge queue Claude's own answer for SMS, mail, and pages", async () => {
+      const seen = { level: 2 as const, reasons: ["本物か確かめられない"], injection_suspected: false };
+      const judge: Judge = async () => ({ level: 2, checking: false, claude: seen });
+      const [scored] = await judgeCases([evalCase({ source: "sms", text: NOTHING, is_scam: false })], "rules+claude", {
+        judge,
+        consult: refuseConsult,
+      });
+      expect(scored?.claude).toEqual(seen);
+      expect(scored).not.toHaveProperty("unguided_topic");
+    });
   });
 
   it("stops clearly without an API key for consultations too", async () => {

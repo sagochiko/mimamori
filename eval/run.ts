@@ -93,12 +93,15 @@ function pct(count: number, total: number): string {
 }
 
 function summary(set: string, mode: Mode, n: number, m: RunMetrics): string[] {
+  // Only rules+claude hands topics the AI does not guide to the family (eval/README.md, #109).
+  const unguided = (count: number) => (mode === "rules+claude" ? `, ${count} on topics the AI does not guide` : "");
   const lines = [
-    `${set} ${mode}: n=${n}  misses ${pct(m.misses, m.scam)}  false alarms ${pct(m.false_alarms, m.genuine)}  genuine at level 1: ${m.genuine_at_level1}  p50 ${m.p50_latency_ms}ms  p90 ${m.p90_latency_ms}ms`,
+    `${set} ${mode}: n=${n}  misses ${pct(m.misses, m.scam)}  false alarms ${pct(m.false_alarms, m.genuine)}${unguided(m.false_alarms_unguided)}  genuine at level 1: ${m.genuine_at_level1}  p50 ${m.p50_latency_ms}ms  p90 ${m.p90_latency_ms}ms`,
   ];
   for (const [source, s] of Object.entries(m.by_source)) {
+    const note = source === "consult" ? unguided(s.false_alarms_unguided) : "";
     lines.push(
-      `  ${source.padEnd(8)} misses ${pct(s.misses, s.scam)}  false alarms ${pct(s.false_alarms, s.genuine)}  level 1 genuine ${s.genuine_at_level1}`,
+      `  ${source.padEnd(8)} misses ${pct(s.misses, s.scam)}  false alarms ${pct(s.false_alarms, s.genuine)}${note}  level 1 genuine ${s.genuine_at_level1}`,
     );
   }
   return lines;
