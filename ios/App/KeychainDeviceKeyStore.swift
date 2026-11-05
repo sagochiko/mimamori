@@ -17,8 +17,14 @@ struct KeychainDeviceKeyStore: DeviceKeyStore {
 
   static let sharedAccessGroup = "group.com.sagochiko.mimamori"
 
-  private let service = "com.sagochiko.mimamori.device"
-  private let account = "credentials"
+  private let service: String
+  private let account: String
+
+  /// Tests pass their own service name so the app's real item is left alone.
+  init(service: String = "com.sagochiko.mimamori.device", account: String = "credentials") {
+    self.service = service
+    self.account = account
+  }
 
   /// Without an access group, so a lookup or delete covers every group this process can reach.
   private var query: [String: Any] {
@@ -68,7 +74,13 @@ struct KeychainDeviceKeyStore: DeviceKeyStore {
     item[kSecValueData as String] = data
     item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
     clear()
-    let status = SecItemAdd(item as CFDictionary, nil)
+    var status = SecItemAdd(item as CFDictionary, nil)
+    if status == errSecMissingEntitlement {
+      // A build signed without the app group: keep joining working as before task 9. The Safari
+      // extension then finds no key and draws no warning.
+      item.removeValue(forKey: kSecAttrAccessGroup as String)
+      status = SecItemAdd(item as CFDictionary, nil)
+    }
     guard status == errSecSuccess else { throw Failure.status(status) }
   }
 

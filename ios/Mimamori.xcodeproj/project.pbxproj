@@ -32,6 +32,7 @@
 		56FEB594CFB85A1BCA209BE5 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BDA3D10727E119E0680CB3C /* AppModel.swift */; };
 		5AB286F4D233C69A78E81661 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6347632638B2BBB1D921BC29 /* ShareViewController.swift */; };
 		623BFA36F797A841D73BCCCA /* MimamoriCore in Frameworks */ = {isa = PBXBuildFile; productRef = 7E983F62499436B4FE715598 /* MimamoriCore */; };
+		6F95C519EA092FABCAAE9890 /* KeychainDeviceKeyStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A5992A9AA59868FE51BFDE1 /* KeychainDeviceKeyStoreTests.swift */; };
 		6FEF03D086E951C0928C1667 /* SmileCamera.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE03DFD3ED761E36F6E29C2B /* SmileCamera.swift */; };
 		71BE124743C22D542CE5194E /* CallDirectoryHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECDC69D9559207B1E43D992A /* CallDirectoryHandler.swift */; };
 		7C3ACF594C1E220440463051 /* FileChatLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 419E10C36BDE538278F82BD1 /* FileChatLogStore.swift */; };
@@ -118,6 +119,7 @@
 		1BDA3D10727E119E0680CB3C /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		1F9B0F681A88B43BA14AE240 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = manifest.json; sourceTree = "<group>"; };
 		269A9FC1AFAA472457732ED0 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		2A5992A9AA59868FE51BFDE1 /* KeychainDeviceKeyStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainDeviceKeyStoreTests.swift; sourceTree = "<group>"; };
 		358E9B4A2B3429F153B655CB /* icon-96.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-96.png"; sourceTree = "<group>"; };
 		37FA4151507E2DD9222D61D8 /* icon-48.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-48.png"; sourceTree = "<group>"; };
 		3A6A9A0EF7199C388B1E5887 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -275,6 +277,7 @@
 			isa = PBXGroup;
 			children = (
 				5A5DCBCDB127D92299354AAC /* CallEndWatcherTests.swift */,
+				2A5992A9AA59868FE51BFDE1 /* KeychainDeviceKeyStoreTests.swift */,
 				8FE0A1F8B5B0B0C8F791B5C8 /* MessageFieldTests.swift */,
 			);
 			path = AppTests;
@@ -666,6 +669,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				42D563BF82AF5DBCD95A0ECC /* CallEndWatcherTests.swift in Sources */,
+				6F95C519EA092FABCAAE9890 /* KeychainDeviceKeyStoreTests.swift in Sources */,
 				89FAA146B103F89E0CA95418 /* MessageFieldTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
