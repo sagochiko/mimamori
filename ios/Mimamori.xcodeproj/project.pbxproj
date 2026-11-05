@@ -40,6 +40,7 @@
 		A47056C1598ECDB8501B26E2 /* ReplySpeaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84BA38ED727FD076C6B3DDD6 /* ReplySpeaker.swift */; };
 		A6C56C492741A879A53F09EC /* KeychainDeviceKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B78E521DD07930F33B780261 /* KeychainDeviceKeyStore.swift */; };
 		AA0AD678E7547C38E9194D08 /* icon-96.png in Resources */ = {isa = PBXBuildFile; fileRef = 358E9B4A2B3429F153B655CB /* icon-96.png */; };
+		AAABE0E3CC9080FE4B9B1C29 /* MimamoriCore in Frameworks */ = {isa = PBXBuildFile; productRef = F0D918D888D31C20899E6AAA /* MimamoriCore */; };
 		B30588DA403943E16C24E603 /* FamilyStartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EB3212F121AF5A1BC7F588E /* FamilyStartView.swift */; };
 		CA60F854809C86C96B2A956E /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04CE476A28DC68FEBBCCD33 /* AppConfig.swift */; };
 		CC53B3BFD66808AB9E8791E7 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 323881E1882ECFEB4C39DB1F /* InfoPlist.strings */; };
@@ -165,6 +166,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		854866FC2DE9B7897B6B43F3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AAABE0E3CC9080FE4B9B1C29 /* MimamoriCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A205F87CB94B0ACCA39B66F9 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -344,6 +353,7 @@
 			buildPhases = (
 				62C6CC143AE04590B49766E2 /* Sources */,
 				BE003E25DDC8F136068B50A7 /* Resources */,
+				854866FC2DE9B7897B6B43F3 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -351,6 +361,7 @@
 			);
 			name = MessageFilter;
 			packageProductDependencies = (
+				F0D918D888D31C20899E6AAA /* MimamoriCore */,
 			);
 			productName = MessageFilter;
 			productReference = B2BE94A81A0443A61F439C2E /* MessageFilter.appex */;
@@ -1115,6 +1126,10 @@
 
 /* Begin XCSwiftPackageProductDependency section */
 		7E983F62499436B4FE715598 /* MimamoriCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MimamoriCore;
+		};
+		F0D918D888D31C20899E6AAA /* MimamoriCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = MimamoriCore;
 		};

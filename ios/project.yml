@@ -83,6 +83,9 @@ targets:
     platform: iOS
     sources:
       - MessageFilter
+    dependencies:
+      - package: Core
+        product: MimamoriCore
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1"
@@ -96,8 +99,11 @@ targets:
         NSExtension:
           NSExtensionPointIdentifier: com.apple.identitylookup.message-filter
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).MessageFilterExtension
-          # Task 5 adds NSExtensionAttributes / ILMessageFilterExtensionNetworkURL:
-          # https://$(MIMAMORI_API_HOST)/sms/<familyToken>
+          # Where Apple sends the queries (Apple, "Creating a Message Filter App Extension"). The token
+          # and the query come from build settings (ios/Config/Shared.xcconfig): `demo` unless a build
+          # is made for the mother's family on purpose.
+          NSExtensionAttributes:
+            ILMessageFilterExtensionNetworkURL: https://$(MIMAMORI_API_HOST)/sms/$(MIMAMORI_SMS_FAMILY_TOKEN)$(MIMAMORI_SMS_QUERY)
     entitlements:
       path: MessageFilter/MessageFilter.entitlements
       properties:

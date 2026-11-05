@@ -22,6 +22,11 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSExtension</key>
 	<dict>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<key>ILMessageFilterExtensionNetworkURL</key>
+			<string>https://$(MIMAMORI_API_HOST)/sms/$(MIMAMORI_SMS_FAMILY_TOKEN)$(MIMAMORI_SMS_QUERY)</string>
+		</dict>
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.identitylookup.message-filter</string>
 		<key>NSExtensionPrincipalClass</key>

@@ -3,3 +3,14 @@
 // The Workers host (no scheme, no path). Used for the API base URL (Info.plist MimamoriAPIBaseURL) and the
 // Associated Domains entitlement (messagefilter:). Deployed on 2026-11-04.
 MIMAMORI_API_HOST = mimamori.sago3.workers.dev
+
+// The familyToken in the Message Filter extension's server URL (ILMessageFilterExtensionNetworkURL,
+// https://<host>/sms/<token>). `demo` tells no family and suits the judges' build and the simulator. A
+// build for the mother's family sets the real token on purpose, never by default, so that no build for
+// the judges can reach her family:
+//   xcodebuild ... -xcconfig ios/Config/Mother.xcconfig    (gitignored; copy Mother.xcconfig.example)
+MIMAMORI_SMS_FAMILY_TOKEN = demo
+
+// Appended to that URL. Empty in every build that is handed out. For measuring how long Apple waits for
+// the server, a Debug build may set `?delayMs=3000`; the server honours it only for `demo` (server/src/sms.ts).
+MIMAMORI_SMS_QUERY =
