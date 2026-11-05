@@ -465,3 +465,33 @@ struct PhoneNumberTests {
     #expect(PhoneNumber(input) == nil)
   }
 }
+
+/// The top of her screen (the follow-up, the notices, the smiles, Gmail) takes at most 40% of the
+/// screen, but never cuts the closed strip, so "電話して" stays in the first screen at any text size (#134).
+@Suite("母の画面の上の段の高さ")
+struct ProtectedTopHeightTests {
+  @Test("中身が4割より低ければ中身の高さのまま")
+  func fitsContent() {
+    #expect(ProtectedNotice.topHeight(content: 300, screen: 874, closedStripBottom: 150) == 300)
+  }
+
+  @Test("中身が4割を超えれば4割で止める")
+  func capsAtFortyPercent() {
+    #expect(ProtectedNotice.topHeight(content: 600, screen: 1000, closedStripBottom: 150) == 400)
+  }
+
+  @Test("閉じた帯が4割を超えるときは、帯の下の端まで広げる")
+  func keepsClosedStrip() {
+    #expect(ProtectedNotice.topHeight(content: 900, screen: 1000, closedStripBottom: 520) == 520)
+  }
+
+  @Test("開いているときは4割で止め、その中でずらす")
+  func openStaysCapped() {
+    #expect(ProtectedNotice.topHeight(content: 900, screen: 1000, closedStripBottom: nil) == 400)
+  }
+
+  @Test("画面がまだ測れていなくても120は取る")
+  func floor() {
+    #expect(ProtectedNotice.topHeight(content: 300, screen: 0, closedStripBottom: nil) == 120)
+  }
+}
