@@ -657,6 +657,9 @@ hsx 0 "a tool call and its result with the skill line are a first turn, even nex
 hsx 0 "the Opus line needs no skill line" check "$hp" "$T/before" "$brief" ""
 { u "another session"; echo "$a_tool"; echo "$a_result"; } >"$hp/new.jsonl"
 hsx 1 "a new session that never read this brief is not the one" check "$hp" "$T/before" "$brief" ""
+# Low review findings are sorted by the PR's goal before any follow-up issue is opened (#85, item 13).
+grep -q '^Sort each low finding' .claude/skills/mm-task/SKILL.md && grep -q '^- Not needed: .*採らなかった' .claude/skills/mm-task/SKILL.md ||
+  { echo "skill test failed: mm-task sorts low findings by the PR's goal before opening issues"; fail=1; }
 # A session that a handoff started does not hand over again when it did not get Fable.
 grep -q 'do not hand over again' .claude/skills/mm-autopilot/SKILL.md ||
   { echo "skill test failed: mm-autopilot does not chain handoffs"; fail=1; }
