@@ -118,8 +118,13 @@ struct ProtectedHomeView: View {
     ScrollViewReader { proxy in
       ScrollView {
         VStack(spacing: 24) {
-          ForEach(model.chat.log.messages) { message in
-            ChatTurn(message: message).id(message.id)
+          ForEach(model.chat.log.rows(at: .now)) { row in
+            switch row {
+            case .day(let label, _):
+              DayRow(label: label)
+            case .message(let message, let time):
+              ChatTurn(message: message, time: time).id(message.id)
+            }
           }
           // Always there, even while idle, so it can be scrolled to in the same update that shows
           // the first words heard.
@@ -280,27 +285,82 @@ private struct ConversationViewport: Equatable {
 
 /// One turn of the conversation: the AI's answer as plain text across the width, her words in a
 /// small grey bubble on the right, as in the AI chat apps (the author chose this on 2026-11-05, #87).
+/// The time it was sent goes small beside her bubble and under the answer, as in the usual chat apps
+/// (#113); a message kept without a time has none.
 private struct ChatTurn: View {
   let message: ChatMessage
+  let time: ChatStamp?
+  @Environment(\.dynamicTypeSize) private var typeSize
 
   var body: some View {
     Group {
       if message.role == .protected {
-        HStack(spacing: 0) {
-          Spacer(minLength: 56)
-          Bubble(text: message.text, fill: Color(.secondarySystemBackground), foreground: .primary)
+        // At the accessibility sizes the time goes under the bubble: beside it, the bubble had about
+        // five characters a line at accessibility-large (2026-11-06).
+        if typeSize.isAccessibilitySize {
+          VStack(alignment: .trailing, spacing: 4) {
+            bubble
+            stamp
+          }
+          .padding(.leading, 56)
+          .frame(maxWidth: .infinity, alignment: .trailing)
+        } else {
+          HStack(alignment: .bottom, spacing: 6) {
+            Spacer(minLength: 56)
+            stamp
+            bubble
+          }
         }
       } else {
-        Text(message.text)
-          .font(.body)
-          .lineSpacing(3)
-          .textSelection(.enabled)
-          .fixedSize(horizontal: false, vertical: true)
-          .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 4) {
+          Text(message.text)
+            .font(.body)
+            .lineSpacing(3)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+          stamp
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
       }
     }
     .accessibilityElement(children: .combine)
-    .accessibilityLabel(message.role == .protected ? "あなた、\(message.text)" : "答え、\(message.text)")
+    .accessibilityLabel(label)
+  }
+
+  private var bubble: some View {
+    Bubble(text: message.text, fill: Color(.secondarySystemBackground), foreground: .primary)
+  }
+
+  @ViewBuilder private var stamp: some View {
+    if let time {
+      Text(time.text)
+        .font(.caption2)
+        .monospacedDigit()
+        .foregroundStyle(.secondary)
+        .fixedSize()
+    }
+  }
+
+  private var label: String {
+    let who = message.role == .protected ? "あなた" : "答え"
+    guard let time else { return "\(who)、\(message.text)" }
+    return "\(who)、\(message.text)、\(time.spoken)"
+  }
+}
+
+/// Where the day changes: "11月4日", or "今日" (#113).
+private struct DayRow: View {
+  let label: String
+
+  var body: some View {
+    Text(label)
+      .font(.caption.weight(.semibold))
+      .foregroundStyle(.secondary)
+      .padding(.horizontal, 10)
+      .padding(.vertical, 3)
+      .background(Capsule().fill(Color(.tertiarySystemFill)))
+      .frame(maxWidth: .infinity)
+      .accessibilityAddTraits(.isHeader)
   }
 }
 

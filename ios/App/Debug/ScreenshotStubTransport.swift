@@ -228,11 +228,19 @@
     private var data: Data?
 
     /// `police` is the fake-police question and its answer; `followup` adds "それってどういうこと?" and
-    /// its answer after them.
+    /// its answer after them; `days` puts a question and its answer of yesterday at 14:55 before them,
+    /// so the date rows show (#113).
     init(seed: String?) {
-      guard seed == "police" || seed == "followup" else { return }
+      guard ["police", "followup", "days"].contains(seed) else { return }
       var log = ChatLog()
       let now = Date.now
+      if seed == "days" {
+        let calendar = Calendar.current
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: now) ?? now
+        let asked = calendar.date(bySettingHour: 14, minute: 55, second: 0, of: yesterday) ?? yesterday
+        log.append(.protected, "写真を消さずに空きを増やすには?", at: asked)
+        log.append(.ai, "設定の「一般」から「iPhoneストレージ」を開くと、大きいアプリが上から並びます", at: asked.addingTimeInterval(40))
+      }
       log.append(.protected, "警察から電話があって、口座が犯罪に使われてるって。ほかの人には言わないでって", at: now.addingTimeInterval(-180))
       log.append(.ai, "詐欺で使われる説明と一致しています。送金せず、いったん電話を切って家族に確かめて", at: now.addingTimeInterval(-175))
       if seed == "followup" {
