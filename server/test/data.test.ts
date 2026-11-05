@@ -33,18 +33,23 @@ async function seed(family: Created, opts: { at?: number; sessionId?: string; re
     env.DB.prepare(
       "INSERT INTO cases (id, family_id, alert_id, state, agent_session_id, notified_at) VALUES (?, ?, ?, 'notified', ?, ?)",
     ).bind(caseId, family.familyId, alertId, opts.sessionId ?? null, at),
-    env.DB.prepare(
-      "INSERT INTO relays (id, case_id, from_member_id, body, created_at) VALUES (?, ?, ?, 'x', ?)",
-    ).bind(crypto.randomUUID(), caseId, family.memberId, at),
+    env.DB.prepare("INSERT INTO relays (id, case_id, from_member_id, body, created_at) VALUES (?, ?, ?, 'x', ?)").bind(
+      crypto.randomUUID(),
+      caseId,
+      family.memberId,
+      at,
+    ),
     env.DB.prepare(
       "INSERT INTO smiles (id, family_id, member_id, r2_key, score, created_at) VALUES (?, ?, ?, ?, 0.9, ?)",
     ).bind(smileId, family.familyId, family.memberId, r2Key, at),
   ];
   if (opts.refreshToken !== undefined) {
     statements.push(
-      env.DB.prepare(
-        "INSERT INTO gmail_auth (family_id, refresh_token_enc, granted_at) VALUES (?, ?, ?)",
-      ).bind(family.familyId, await sealText(env.TOKEN_ENC_KEY, opts.refreshToken), at),
+      env.DB.prepare("INSERT INTO gmail_auth (family_id, refresh_token_enc, granted_at) VALUES (?, ?, ?)").bind(
+        family.familyId,
+        await sealText(env.TOKEN_ENC_KEY, opts.refreshToken),
+        at,
+      ),
     );
   }
   await env.DB.batch(statements);
@@ -216,7 +221,9 @@ describe("DELETE /families/me when outside services fail", () => {
     const family = await createFamily();
     await seed(family, { refreshToken: "token" });
     network.use(
-      http.post("https://oauth2.googleapis.com/revoke", () => HttpResponse.json({ error: "server_error" }, { status: 500 })),
+      http.post("https://oauth2.googleapis.com/revoke", () =>
+        HttpResponse.json({ error: "server_error" }, { status: 500 }),
+      ),
     );
 
     const res = await call("DELETE", "/families/me", { deviceKey: family.deviceKey });
@@ -292,11 +299,7 @@ describe("cron", () => {
     const recent = await seed(family, { at: cleanupTick - 29 * DAY });
 
     const ctx = createExecutionContext();
-    await worker.scheduled(
-      createScheduledController({ scheduledTime: cleanupTick, cron: "*/5 * * * *" }),
-      env,
-      ctx,
-    );
+    await worker.scheduled(createScheduledController({ scheduledTime: cleanupTick, cron: "*/5 * * * *" }), env, ctx);
     await waitOnExecutionContext(ctx);
 
     const ids = async (table: string) =>
@@ -332,15 +335,13 @@ describe("cron", () => {
     );
 
     const ctx = createExecutionContext();
-    await worker.scheduled(
-      createScheduledController({ scheduledTime: cleanupTick, cron: "*/5 * * * *" }),
-      env,
-      ctx,
-    );
+    await worker.scheduled(createScheduledController({ scheduledTime: cleanupTick, cron: "*/5 * * * *" }), env, ctx);
     await waitOnExecutionContext(ctx);
 
     expect(deleted).toEqual(["sesn_old_done"]);
-    const cases = await env.DB.prepare("SELECT id FROM cases WHERE family_id = ?").bind(family.familyId).all<{ id: string }>();
+    const cases = await env.DB.prepare("SELECT id FROM cases WHERE family_id = ?")
+      .bind(family.familyId)
+      .all<{ id: string }>();
     expect(cases.results.map((r) => r.id)).toEqual([stuck.caseId]);
     expect(cases.results.map((r) => r.id)).not.toContain(gone.caseId);
   });

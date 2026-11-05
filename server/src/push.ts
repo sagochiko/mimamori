@@ -157,9 +157,7 @@ export async function sendPush(
 ): Promise<PushResult[]> {
   if (memberIds.length === 0) return [];
   const placeholders = memberIds.map(() => "?").join(", ");
-  const rows = await env.DB.prepare(
-    `SELECT id, apns_token, apns_env FROM members WHERE id IN (${placeholders})`,
-  )
+  const rows = await env.DB.prepare(`SELECT id, apns_token, apns_env FROM members WHERE id IN (${placeholders})`)
     .bind(...memberIds)
     .all<Target>();
   const byId = new Map(rows.results.map((r) => [r.id, r]));

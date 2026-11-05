@@ -11,7 +11,10 @@ export const QUOTE_RUN = 8;
 
 /** NFKC and lowercase, without spaces, punctuation, or symbols, so a comma put in between changes nothing. */
 function squeeze(text: string): string {
-  return text.normalize("NFKC").toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+  return text
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, "");
 }
 
 /** True when `line` repeats QUOTE_RUN or more characters in a row from one of `sources`. */
