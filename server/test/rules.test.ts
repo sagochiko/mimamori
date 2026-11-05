@@ -191,6 +191,13 @@ describe("a consultation that passes on a warning", () => {
     ["a bank clerk, with a call that comes", "銀行の人が、マネロンに口座使われとる言うて警察から電話きても、絶対ニセモンやから気ぃつけやって"],
     ["a warning told to her", "交番で、口座が事件に使われたって電話には気をつけてって言われた"],
     ["a poster", "郵便局のポスターに、警察から、あなたが容疑者になってるって電話が来たら詐欺って"],
+    // PR #105 review, second round: warnings whose only warning words are 気をつけて, 詐欺が増えてる,
+    // or 電話には出ないで, with a comma anywhere.
+    ["calls are many, so be careful", "警察の人が来て、口座が犯罪に使われてるって電話が多いから気をつけてって"],
+    ["such scams are increasing", "警察の人が来て、口座が犯罪に使われてるって言う詐欺が増えてるって言ってた"],
+    ["do not answer such calls", "警察の人が、口座が犯罪に使われてるって電話には出ないでって"],
+    ["do not answer, with a comma after 名乗って", "息子が、警察を名乗って、口座が悪用されてるって電話には出んといてって"],
+    ["do not answer, with a comma before 出", "警察署の人が、逮捕状が出てるって電話、出たらあかんって"],
   ])("does not decide %s", (_label, text) => {
     const result = judge({ source: "consult", text });
     expect(result.level).toBeNull();
@@ -235,6 +242,10 @@ describe("a caller from the police, in more of her words", () => {
     ["から with a pause and nothing about a call", "警察から、あなたの口座がマネロンに使われてるって"],
     ["から with a space", "警察から あんたに 逮捕状が 出てるって"],
     ["から without the pause", "警察からあなたの口座が犯罪に使われてるって"],
+    // PR #105 review, second round: more ways to say whose account it is.
+    ["うちの口座", "警察から、うちの口座が犯罪に使われてるって"],
+    ["お前の口座", "警察から、お前の口座が犯罪に使われてるって言われた"],
+    ["an account in her son's name", "警察から、息子名義の口座が犯罪に使われてるって"],
   ])("makes %s next to a part of the script the script", (_label, text) => {
     expect(consultByRules(text).script).toBe(true);
   });
