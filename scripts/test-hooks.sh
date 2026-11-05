@@ -125,6 +125,23 @@ mkdir -p "$T/sql2/server"
 printf '%s\n' 'SELECT 1;' >"$T/sql2/same.sql"
 printf '%s\n' 'DELETE FROM cases;' >"$T/sql2/server/same.sql"
 prod ask 'pushd server && npx wrangler d1 execute mimamori --remote --file=same.sql' "a relative SQL file after pushd is read from there too" "$T/sql2"
+# A heredoc body is text, not a command, when every command of the line only writes or reads text (issue
+# #116: a dev-log entry that quoted the remote D1 command asked the author). A body that something may run
+# keeps counting: a shell, wrangler, an interpreter, a command substitution, or any command outside the list.
+prod quiet $'cat >> docs/dev-log.md <<\'EOF\'\n## 2026年11月5日 記録\n`npx wrangler d1 execute mimamori --remote --command "DELETE FROM cases"` を書いた。\nEOF\ngit add docs/dev-log.md' "a dev-log entry that quotes a remote DELETE in a heredoc runs without asking"
+prod quiet $'tee -a docs/x.md <<\'EOF\' >/dev/null\nwrangler d1 execute mimamori --remote --command "$SQL"\nEOF' "a heredoc to tee -a is text"
+prod quiet $'gh issue comment 5 -F - <<\'EOF\'\n`gh api -X DELETE repos/o/r/x` と `wrangler d1 execute x --remote` の話\nEOF' "an issue comment that quotes gh api DELETE in a heredoc is text"
+prod quiet $'cat <<\'EOF\' | git commit -q -F -\ndocs: 記録\n\nwrangler d1 execute mimamori --remote --command "DROP TABLE a"\nEOF' "a commit message from a heredoc is text"
+prod ask $'npx wrangler d1 execute mimamori --remote <<\'EOF\'\nDELETE FROM cases;\nEOF' "a heredoc fed to wrangler still counts"
+prod ask $'cat <<\'EOF\' | sh\nnpx wrangler d1 execute mimamori --remote --command "DROP TABLE cases"\nEOF' "a heredoc piped into sh still counts"
+prod ask $'bash <<\'EOF\'\nnpx wrangler d1 execute mimamori --remote --command "DROP TABLE cases"\nEOF' "a heredoc fed to bash still counts"
+prod ask $'python3 <<\'EOF\'\nimport os; os.system(\'npx wrangler d1 execute mimamori --remote --command "DROP TABLE cases"\')\nEOF' "a heredoc fed to an interpreter still counts"
+prod ask $'cat <<EOF >> notes.md\n$(npx wrangler d1 execute mimamori --remote --command "DROP TABLE cases")\nEOF' "an unquoted heredoc that runs a command substitution still counts"
+prod ask $'cat <<\'EOF\' | tee >(sh)\nnpx wrangler d1 execute mimamori --remote --command "DROP TABLE cases"\nEOF' "a heredoc that reaches sh through a process substitution still counts"
+prod ask $'git -c alias.x=\'!sh\' x <<\'EOF\'\nnpx wrangler d1 execute mimamori --remote --command "DROP TABLE cases"\nEOF' "git with -c, which can run a shell, still counts"
+# The body may be the SQL that a later command runs: the file the hook reads now is the old one.
+prod ask $'cat > '"$T"$'/sql/ok.sql <<\'EOF\'\nDELETE FROM cases;\nEOF\nnpx wrangler d1 execute mimamori --remote --file='"$T"$'/sql/ok.sql' "a heredoc that rewrites the SQL file of a later remote execute still counts"
+prod ask $'cat >> docs/dev-log.md <<\'EOF\'\nwrangler d1 execute mimamori --remote --command "DELETE FROM cases"\nEOF\nmake verify' "a heredoc next to a command outside the list still counts"
 # Remote D1 migrations: the SQL files, without their comments, get the same check as a remote --file.
 mkdir -p "$T/mig-ok/server/migrations" "$T/mig-bad/server/migrations" "$T/mig-str/server/migrations" "$T/mig-none"
 printf '%s\n' '-- DROP the old table later; delete rows with the 30-day cleanup' '/* TRUNCATE is not used,' '   DROP neither */' 'CREATE TABLE a (id TEXT, deleted_at INTEGER);' >"$T/mig-ok/server/migrations/0001_a.sql"
