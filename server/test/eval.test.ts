@@ -199,8 +199,8 @@ describe("records", () => {
   });
 
   it("writes a RESULTS.md row with the Japanese date alone and counts next to rates", () => {
-    // The table is public, and public records give the date alone,
-    // so the row carries the date only; the full ts stays in results.jsonl.
+    // The table is public, and public records give the date alone, so the row carries the date only; the
+    // full ts stays in results.jsonl.
     const row = resultsRow({
       ts: "2026-11-05T15:04:00+09:00",
       set: "dev",

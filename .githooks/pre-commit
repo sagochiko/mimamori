@@ -1,8 +1,8 @@
 #!/bin/bash
 # pre-commit: the repository becomes public at submission, so refuse added lines that carry
 # personal data (phone numbers, email addresses, terms of the author's private list), and, in
-# documents, a time of day. The rules live in
-# scripts/scan-private.sh. Only where and which rule are printed, never the matched text.
+# documents, a time of day. The rules live in scripts/scan-private.sh. Only where and which rule are
+# printed, never the matched text.
 root=$(git rev-parse --show-toplevel) || exit 1
 out=$("$root/scripts/scan-private.sh" staged)
 status=$?
