@@ -2,10 +2,10 @@ import Foundation
 
 // "さっきの電話、大丈夫だった？" after a long call ("検知" and "アプリからの声かけ" in docs/design.md).
 //
-// Only the rules live here. What tells the app that a call ended is still open: CXCallObserver says
-// nothing while the app is suspended (docs/design.md, 2026年11月3日), and the replacements are being
-// measured on the author's iPhone (#25). Whatever is chosen calls `callEnded(_:)` with an `EndedCall`;
-// nothing here depends on where it came from.
+// Only the rules live here. On the author's iPhone 16 (iOS 27.2) CXCallObserver reported the end of a
+// call only while the app was in front, not after going home or being swiped away (#25, 2026年11月5日).
+// So the app passes what it sees while in front (`CallTracker` turns CXCallObserver's changes into an
+// `EndedCall`), and the daily prompt (`DailyCheckIn`) covers the calls it never sees (#99).
 
 /// A call that has ended. The number is never known or kept.
 public struct EndedCall: Equatable, Sendable {
@@ -38,6 +38,9 @@ public struct CallFollowUpState: Codable, Equatable, Sendable {
   /// The call whose prompt is still waiting for an answer.
   public var pendingCallId: String?
   public var pendingEndedAt: Date?
+  /// When a call was last asked about (notified, or left on her screen for the night). That day's
+  /// daily prompt is skipped. Optional so that state saved before #99 still decodes.
+  public var lastAskedAt: Date?
 
   public init() {}
 }
@@ -57,7 +60,8 @@ public final class InMemoryCallFollowUpStore: CallFollowUpStore, @unchecked Send
 
 public final class CallFollowUp: @unchecked Sendable {
   public static let prompt = "さっきの電話、大丈夫だった？"
-  /// Calls shorter than this are not asked about.
+  /// Calls shorter than this are not asked about. Release builds always use this; a Debug launch
+  /// argument can pass a shorter one to the initializer, to film the demo with a short call.
   public static let minimumDuration: TimeInterval = 3 * 60
   /// No notification from 22:00 up to 7:00, device time.
   static let quietFrom = 22
@@ -69,18 +73,24 @@ public final class CallFollowUp: @unchecked Sendable {
 
   private let store: any CallFollowUpStore
   private let calendar: Calendar
+  private let minimum: TimeInterval
   private let lock = NSLock()
 
-  public init(store: any CallFollowUpStore, calendar: Calendar = .current) {
+  public init(
+    store: any CallFollowUpStore, calendar: Calendar = .current,
+    minimumDuration: TimeInterval = CallFollowUp.minimumDuration
+  ) {
     self.store = store
     self.calendar = calendar
+    self.minimum = minimumDuration
   }
 
-  /// A call ended. Asks at most once per call, and only after a call of 3 minutes or more.
+  /// A call ended. Asks at most once per call, and only after a call of 3 minutes or more (or the
+  /// shorter minimum a Debug build was launched with).
   public func callEnded(_ call: EndedCall) -> FollowUpAction {
     lock.withLock {
       var state = store.load()
-      guard call.duration >= Self.minimumDuration, !state.handled.contains(call.id) else {
+      guard call.duration >= minimum, !state.handled.contains(call.id) else {
         return .nothing
       }
       state.handled.append(call.id)
@@ -89,6 +99,7 @@ public final class CallFollowUp: @unchecked Sendable {
       }
       state.pendingCallId = call.id
       state.pendingEndedAt = call.endedAt
+      state.lastAskedAt = call.endedAt
       store.save(state)
       return isQuiet(call.endedAt) ? .askOnNextOpen : .notifyNow
     }
@@ -107,6 +118,12 @@ public final class CallFollowUp: @unchecked Sendable {
       }
       return Self.prompt
     }
+  }
+
+  /// When to post the daily prompt: `DailyCheckIn.schedule`, skipping the day a call was asked about.
+  public func dailyCheckIns(_ settings: DailyCheckInSettings, now: Date) -> [DateComponents] {
+    let asked = lock.withLock { store.load().lastAskedAt }
+    return DailyCheckIn.schedule(settings, now: now, lastCallFollowUpAt: asked, calendar: calendar)
   }
 
   /// "大丈夫": nothing else happens. No consultation, nothing to the family.
@@ -129,7 +146,11 @@ public final class CallFollowUp: @unchecked Sendable {
   }
 
   private func isQuiet(_ date: Date) -> Bool {
-    let hour = calendar.component(.hour, from: date)
-    return hour >= Self.quietFrom || hour < Self.quietUntil
+    Self.isQuiet(hour: calendar.component(.hour, from: date))
+  }
+
+  /// 22:00 up to 7:00. The one definition for both prompts.
+  static func isQuiet(hour: Int) -> Bool {
+    hour >= quietFrom || hour < quietUntil
   }
 }
