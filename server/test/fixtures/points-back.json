@@ -67,5 +67,9 @@
   { "text": "うーん、それってなに", "pointsBack": true },
   { "text": "ええ、それってどういうこと", "pointsBack": true },
   { "text": "あのう、それってなに", "pointsBack": true },
-  { "text": "じゃ、それってどうやるの", "pointsBack": true }
+  { "text": "じゃ、それってどうやるの", "pointsBack": true },
+  { "text": "えーっと、それってなに", "pointsBack": true },
+  { "text": "えーと、それってなに", "pointsBack": true },
+  { "text": "あのー、それってなに", "pointsBack": true },
+  { "text": "ねー、それってなに", "pointsBack": true }
 ]

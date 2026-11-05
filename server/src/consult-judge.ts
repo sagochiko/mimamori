@@ -422,7 +422,7 @@ export function allOf(said: Said): string[] {
 // the conversation before, even from the day before, with exactly these words (#118). Both run
 // test/fixtures/points-back.json; change them together.
 const POINTS_BACK =
-  /^(ねえ|ねぇ|えっと|ええと|えっ|えー|ええ|え|じゃあ|じゃ|でも|で|うーん|うん|はい|あのう|あのね|あの|あ|ちょっと)*((なに|何)?(それ|これ|あれ)|そう(なの|なん|か|です|でしょ|いう|$)|どうやる|どうやって|どうすれば|どうしたら|どういう|やり方|(この|その|あの)(やり方|方法|こと|件|やつ|操作|\p{Script=Han}\p{Script=Hiragana}?方))/u;
+  /^(ねえ|ねぇ|ねー|えーっと|えーと|えっと|ええと|えっ|えー|ええ|え|じゃあ|じゃ|でも|で|うーん|うん|はい|あのう|あのー|あのね|あの|あ|ちょっと)*((なに|何)?(それ|これ|あれ)|そう(なの|なん|か|です|でしょ|いう|$)|どうやる|どうやって|どうすれば|どうしたら|どういう|やり方|(この|その|あの)(やり方|方法|こと|件|やつ|操作|\p{Script=Han}\p{Script=Hiragana}?方))/u;
 const NEW_TOPIC = /それより|それと|それから|ところで|別の|ほかの|他の/;
 const POINTS_BACK_MAX_CHARS = 15;
 
