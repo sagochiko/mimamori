@@ -86,6 +86,24 @@ public final class Session {
     try await call { try await $0.consult(text: text, history: history) }
   }
 
+  public func smiles() async throws -> SmileBoard {
+    try await call { try await $0.smiles() }
+  }
+
+  @discardableResult
+  public func postSmile(photoJPEG: Data? = nil, score: Double? = nil, note: String? = nil) async throws -> Smile {
+    try await call { try await $0.postSmile(photoJPEG: photoJPEG, score: score, note: note) }
+  }
+
+  public func smilePhoto(id: String) async throws -> Data {
+    try await call { try await $0.smilePhoto(id: id) }
+  }
+
+  @discardableResult
+  public func setSmileDeadline(hour: Int) async throws -> Int {
+    try await call { try await $0.setSmileDeadline(hour: hour) }
+  }
+
   /// Runs one call and then follows the Keychain: joining stores a key, a 401 clears it.
   private func call<T>(_ body: (APIClient) async throws -> T) async throws -> T {
     defer { route = AppRoute(store.load()) }
