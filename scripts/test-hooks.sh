@@ -125,6 +125,23 @@ mkdir -p "$T/sql2/server"
 printf '%s\n' 'SELECT 1;' >"$T/sql2/same.sql"
 printf '%s\n' 'DELETE FROM cases;' >"$T/sql2/server/same.sql"
 prod ask 'pushd server && npx wrangler d1 execute mimamori --remote --file=same.sql' "a relative SQL file after pushd is read from there too" "$T/sql2"
+# A heredoc body is text, not a command, when every command of the line only writes or reads text (issue
+# #116: a dev-log entry that quoted the remote D1 command asked the author). A body that something may run
+# keeps counting: a shell, wrangler, an interpreter, a command substitution, or any command outside the list.
+prod quiet $'cat >> docs/dev-log.md <<\'EOF\'\n## 2026年11月5日 記録\n`npx wrangler d1 execute mimamori --remote --command "DELETE FROM cases"` を書いた。\nEOF\ngit add docs/dev-log.md' "a dev-log entry that quotes a remote DELETE in a heredoc runs without asking"
+prod quiet $'tee -a docs/x.md <<\'EOF\' >/dev/null\nwrangler d1 execute mimamori --remote --command "$SQL"\nEOF' "a heredoc to tee -a is text"
+prod quiet $'gh issue comment 5 -F - <<\'EOF\'\n`gh api -X DELETE repos/o/r/x` と `wrangler d1 execute x --remote` の話\nEOF' "an issue comment that quotes gh api DELETE in a heredoc is text"
+prod quiet $'cat <<\'EOF\' | git commit -q -F -\ndocs: 記録\n\nwrangler d1 execute mimamori --remote --command "DROP TABLE a"\nEOF' "a commit message from a heredoc is text"
+prod ask $'npx wrangler d1 execute mimamori --remote <<\'EOF\'\nDELETE FROM cases;\nEOF' "a heredoc fed to wrangler still counts"
+prod ask $'cat <<\'EOF\' | sh\nnpx wrangler d1 execute mimamori --remote --command "DROP TABLE cases"\nEOF' "a heredoc piped into sh still counts"
+prod ask $'bash <<\'EOF\'\nnpx wrangler d1 execute mimamori --remote --command "DROP TABLE cases"\nEOF' "a heredoc fed to bash still counts"
+prod ask $'python3 <<\'EOF\'\nimport os; os.system(\'npx wrangler d1 execute mimamori --remote --command "DROP TABLE cases"\')\nEOF' "a heredoc fed to an interpreter still counts"
+prod ask $'cat <<EOF >> notes.md\n$(npx wrangler d1 execute mimamori --remote --command "DROP TABLE cases")\nEOF' "an unquoted heredoc that runs a command substitution still counts"
+prod ask $'cat <<\'EOF\' | tee >(sh)\nnpx wrangler d1 execute mimamori --remote --command "DROP TABLE cases"\nEOF' "a heredoc that reaches sh through a process substitution still counts"
+prod ask $'git -c alias.x=\'!sh\' x <<\'EOF\'\nnpx wrangler d1 execute mimamori --remote --command "DROP TABLE cases"\nEOF' "git with -c, which can run a shell, still counts"
+# The body may be the SQL that a later command runs: the file the hook reads now is the old one.
+prod ask $'cat > '"$T"$'/sql/ok.sql <<\'EOF\'\nDELETE FROM cases;\nEOF\nnpx wrangler d1 execute mimamori --remote --file='"$T"$'/sql/ok.sql' "a heredoc that rewrites the SQL file of a later remote execute still counts"
+prod ask $'cat >> docs/dev-log.md <<\'EOF\'\nwrangler d1 execute mimamori --remote --command "DELETE FROM cases"\nEOF\nmake verify' "a heredoc next to a command outside the list still counts"
 # Remote D1 migrations: the SQL files, without their comments, get the same check as a remote --file.
 mkdir -p "$T/mig-ok/server/migrations" "$T/mig-bad/server/migrations" "$T/mig-str/server/migrations" "$T/mig-none"
 printf '%s\n' '-- DROP the old table later; delete rows with the 30-day cleanup' '/* TRUNCATE is not used,' '   DROP neither */' 'CREATE TABLE a (id TEXT, deleted_at INTEGER);' >"$T/mig-ok/server/migrations/0001_a.sql"
@@ -868,6 +885,45 @@ out=$(jq -nc --arg c "gh issue create --title x --body-file $T/term.md" '{tool_n
   { echo "hook test failed: guard-private names the place and the rule, never the term"; fail=1; }
 jq -e '[.hooks.PreToolUse[].hooks[] | select(.command | endswith("guard-private.sh")) | select(.onFailure == "block")] | length == 1' .claude/settings.json >/dev/null ||
   { echo "settings test failed: guard-private.sh must be registered once with onFailure block"; fail=1; }
+# A time of day (issue #116) stops a public write too; the date
+# alone passes. The hit names the place and the rule, never the time.
+printf '%s\n' '審査が通った。' '2026年11月5日 15:04 に作者が押した' >"$T/time.md"
+priv 2 "gh issue comment 3 --body-file $T/time.md" "a time of day in a body file is blocked"
+priv 2 "gh pr comment 3 --body '作者が15時に試した'" "a time of day in --body is blocked"
+priv 2 "gh issue create --title '11:20 の測定' --body x" "a time of day in the title is blocked"
+priv 0 "gh issue comment 3 --body '2026年11月5日の午後に作者が試した'" "the date and 午後 pass"
+out=$(jq -nc --arg c "gh issue comment 3 --body-file $T/time.md" '{tool_name:"Bash",tool_input:{command:$c}}' | "$H/guard-private.sh" 2>&1)
+[[ "$out" == *"time.md line 2: time of day"* && "$out" == *"午後"* && "$out" != *"15:04"* ]] ||
+  { echo "hook test failed: guard-private names the line and the time of day rule, says to write the date alone, and never shows the time"; fail=1; }
+# A reviewer's raw report that /mm-task step 6 posts as it was saved (a heading, then the file byte for
+# byte) keeps its times: reviews quote the app's own hours and log stamps. Only that tail is let through;
+# the heading is checked, a tail that differs from the saved file is checked, and personal data in the
+# report is still checked.
+mkdir -p "$T/rt/docs/audits/raw"
+rawname=20261105-0926-mm-reviewer-a0b1c2d3.md
+printf '%s\n' 'ステータス: 承認' '' '毎日の声かけの既定は18時で、15:04 のコミットを読んだ。' >"$T/rt/docs/audits/raw/$rawname"
+rawpost() { # <file> <round text> <raw file to append>
+  { printf '## mm-reviewer の報告(原文)\n\n%s回目、%s を読んだもの。保存した原文は `%s`。\n\n' "$2" abc1234 "docs/audits/raw/$rawname" && cat "$3"; } >"$1"
+}
+rawpost "$T/rt/comment.md" 1 "$T/rt/docs/audits/raw/$rawname"
+priv 0 "gh pr comment 3 --body-file $T/rt/comment.md" "a raw report posted as it was saved keeps its times" "$T/rt"
+rawpost "$T/rt/comment-head.md" "15:30 の1" "$T/rt/docs/audits/raw/$rawname"
+priv 2 "gh pr comment 3 --body-file $T/rt/comment-head.md" "a time of day in the heading above a raw report is blocked" "$T/rt"
+sed 's/承認/承認 /' "$T/rt/docs/audits/raw/$rawname" >"$T/rt/changed.md"
+rawpost "$T/rt/comment-changed.md" 1 "$T/rt/changed.md"
+priv 2 "gh pr comment 3 --body-file $T/rt/comment-changed.md" "a report that differs from the saved file by one byte is checked as a body" "$T/rt"
+# Phone and email shapes in the raw part pass too, as at commit time (author, 2026-11-04): reports quote
+# test numbers and published addresses. Otherwise「(伏せた)」would break the byte-for-byte tail, and
+# every time in the report would stop with it. In the heading they are still blocked.
+rawname2=20261105-0927-mm-reviewer-a0b1c2d4.md
+printf '%s\n' 'ステータス: 承認' '' "例文の差出人 $ph と support@example.com を、15:04 のコミットで読んだ。" >"$T/rt/docs/audits/raw/$rawname2"
+{ printf '## mm-reviewer の報告(原文)\n\n1回目、abc1234 を読んだもの。保存した原文は `%s`。\n\n' "docs/audits/raw/$rawname2" && cat "$T/rt/docs/audits/raw/$rawname2"; } >"$T/rt/comment-shapes.md"
+priv 0 "gh pr comment 3 --body-file $T/rt/comment-shapes.md" "phone and email shapes in a raw report posted as saved pass" "$T/rt"
+{ printf '## mm-reviewer の報告(原文)\n\n連絡は %s。保存した原文は `%s`。\n\n' "$ph" "docs/audits/raw/$rawname2" && cat "$T/rt/docs/audits/raw/$rawname2"; } >"$T/rt/comment-shapes-head.md"
+priv 2 "gh pr comment 3 --body-file $T/rt/comment-shapes-head.md" "a phone number in the heading above a raw report is blocked" "$T/rt"
+printf '%s\n' '15:04 に Tanukiyama と話した' >>"$T/rt/docs/audits/raw/$rawname"
+rawpost "$T/rt/comment-term.md" 1 "$T/rt/docs/audits/raw/$rawname"
+priv 2 "gh pr comment 3 --body-file $T/rt/comment-term.md" "a private term in a raw report is still blocked" "$T/rt"
 
 # pre-commit and the worktree lookup, in a throwaway repository with a worktree. scan-private.sh and the
 # git hooks are copied in, so the lists they find there are the throwaway main tree's, not the author's.
@@ -899,6 +955,49 @@ staged 0 server/src/rules/a.ts "const sample = \"$ph\"" "phone shapes in the rul
 staged 0 docs/audits/raw/a.md '窓口は support@example.com と書いてある' "an email address in a raw report passes"
 staged 1 docs/audits/raw/a.md 'Tanukiyama に聞いた' "private terms are refused in raw reports too"
 staged 1 server/src/a.ts "const sample = \"$ph\"" "phone shapes elsewhere in server/src are still refused"
+# Times of day (author, 2026-11-04; issue #116): documents that go
+# public give the date alone. Code, test data, machine records, raw reports, and the documents
+# that describe the app's own hours keep their times.
+mkdir -p "$R/.claude/skills/x" "$R/eval"
+staged 1 docs/a.md '2026年11月5日 10:14 に実機で試した' "a time of day in a document is refused"
+staged 1 docs/a.md '審査は 15:00:01 に通った' "hh:mm:ss is refused"
+staged 1 docs/a.md '作者が15時に決めた' "15時 is refused"
+staged 1 docs/a.md '15時04分に押した' "15時04分 is refused"
+staged 1 docs/a.md '18時台に試した' "18時台 is refused"
+staged 1 docs/a.md '１５：３０に届いた' "full-width digits and colon are refused"
+staged 1 docs/a.md '午後3時に審査が通った' "午後3時 is refused"
+staged 1 docs/a.md '夕方5時に届いた' "夕方5時 is refused"
+staged 1 docs/a.md 'approved at 3:04 PM' "3:04 PM is refused"
+staged 1 docs/a.md 'tried it at 11am' "11am is refused"
+staged 1 .claude/skills/x/SKILL.md '## 2026年11月5日 13:20 見出し' "a skill file is a document too"
+staged 1 docs/dev-log.md '## 2026年11月7日 16:40 土曜の記録' "a time in a heading stops too"
+staged 0 docs/a.md '2026年11月5日の午後に試した' "the date and 午後 pass"
+staged 0 docs/a.md '9:30、12:30、19:00、22:15 に見た' "these times pass"
+staged 0 docs/a.md '9時、12時、19時、夜8時、午後10時、夜11時、10:30 PM、11 pm' "these hours pass, evening ones included"
+staged 1 docs/a.md '午前10時と午後10時' "午前10時 is refused next to an evening hour"
+staged 0 docs/a.md '15時間かかり、10時間待った' "a duration in 時間 passes"
+staged 0 docs/a.md 'submit_window: 2026-11-08T17:00:00+09:00' "an ISO time joined by T passes"
+staged 0 docs/a.md '`docs/x.md:13:45` を見た' "a line and column after a colon pass"
+staged 0 server/src/a.ts 'const at = "15:04"; // 15時に通知' "times in code pass"
+staged 0 eval/results.jsonl '{"ts":"2026-11-05T14:41:56+09:00","notes":"15:04"}' "the eval machine record keeps its times"
+staged 0 docs/audits/raw/a.md 'レビューは 15:04 のコミットを読んだ' "raw reports keep their times"
+staged 0 docs/design.md '毎日の声かけは既定で18時に出す' "the design keeps the app's own hours"
+staged 0 docs/plan.md '- [ ] 声かけの時刻を17時から21時で選ぶ' "the plan keeps the app's own hours"
+staged 0 README.md 'The daily check-in comes at 6 pm' "the README keeps the app's own hours"
+staged 0 README.ja.md '毎日の声かけは既定で18時に出す' "the Japanese README keeps the app's own hours"
+# CONDITIONS.md also records the author's decisions, so it is checked like any document (PR #119, second
+# review). Its checkpoints live in the frontmatter as ISO times joined by T, and the text names their keys.
+staged 1 CONDITIONS.md '11月8日 17:00 からは提出だけをする' "a time in the text of CONDITIONS.md is refused"
+staged 0 CONDITIONS.md 'submit_window: 2026-11-08T17:00:00+09:00' "a checkpoint in the frontmatter of CONDITIONS.md passes"
+staged 1 eval/README.md '作者が 15:04 に測った' "only the root READMEs are exempt, not eval/README.md"
+# make usage writes docs/claude-usage.md, which /mm-endgame commits: the line saying when it counted gives
+# the date alone, so the commit is not stopped for the time of day it ran.
+scripts/usage-report.sh 2>/dev/null | grep -qE '^フックが記録した回数を数えたもの。最後に数えたのは [0-9]+年[0-9]+月[0-9]+日。' ||
+  { echo "usage test failed: docs/claude-usage.md says when it counted by the date alone"; fail=1; }
+out=$(printf '%s\n' 'x' '作者が 15:04 に試した' >"$R/docs/b.md" && r add docs/b.md && cd "$R" && .githooks/pre-commit 2>&1)
+r reset -q docs/b.md && rm -f "$R/docs/b.md"
+[[ "$out" == *"docs/b.md:2: time of day"* && "$out" == *"午後"* && "$out" != *"15:04"* ]] ||
+  { echo "pre-commit test failed: a time of day names the line and the rule, says to write the date alone, and never shows the time"; fail=1; }
 # In a git worktree the lists are found in the main tree (--git-common-dir), without the test variables.
 printf '%s\n' 'Kitsunezaka' >"$R/.claude/private-terms.local"
 printf '%s\n' '/tmp/mm-test/fox-dummy-app' >"$R/.claude/prior-work.local"
@@ -1008,4 +1107,13 @@ cm 1 $'docs: 記録を足す\n\nold-dummy-app から写した' "an earlier proje
 out=$(printf '%s\n' 'docs: 記録を足す' '' 'Tanukiyama に聞いた' >"$T/msg2" && .githooks/commit-msg "$T/msg2" 2>&1)
 [[ "$out" == *"commit message line 3: private term"* && "$out" != *Tanukiyama* ]] ||
   { echo "commit-msg test failed: the hit names the line and the rule, never the term"; fail=1; }
+cm 1 $'docs: 記録を足す\n\n作者が 2026年11月5日 15:04 に実機で試した' "a time of day in a message is refused"
+cm 1 $'docs: 11時の測定を残す\n\n理由' "a time of day in the subject is refused"
+cm 0 $'docs: 記録を足す\n\n作者が2026年11月5日の午後に実機で試した。15時間待った' "the date, 午後, and a duration pass in a message"
+out=$(printf '%s\n' 'docs: Tanukiyama と11時に話した' '' 'x' >"$T/msg4" && .githooks/commit-msg "$T/msg4" 2>&1)
+[[ "$out" == *"commit message line 1: private term"* && "$out" == *"commit message line 1: time of day"* && "$out" != *[Tt]anukiyama* && "$out" != *"11時"* ]] ||
+  { echo "commit-msg test failed: a hit in the subject names the line and the rule, and the subject is not echoed back"; fail=1; }
+out=$(printf '%s\n' 'docs: 記録を足す' '' '作者が 15:04 に試した' >"$T/msg3" && .githooks/commit-msg "$T/msg3" 2>&1)
+[[ "$out" == *"commit message line 3: time of day"* && "$out" == *"午後"* && "$out" != *"15:04"* ]] ||
+  { echo "commit-msg test failed: a time of day names the line and the rule, says to write the date alone, and never shows the time"; fail=1; }
 exit $fail

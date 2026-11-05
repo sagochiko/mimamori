@@ -4,21 +4,29 @@
 #   (空行)
 #   なぜ変えたか。
 #   Refs #12
-# The repository becomes public, so this also refuses personal data in messages (scripts/scan-private.sh)
-# and the names of the author's earlier projects.
+# The repository becomes public, so this also refuses personal data in messages (scripts/scan-private.sh),
+# a time of day (the same script), and the names of the author's
+# earlier projects.
 export LC_ALL=en_US.UTF-8
 msg_file=$1
 root=$(git rev-parse --show-toplevel) || exit 1
 subject=$(grep -v '^#' "$msg_file" | head -1)
 body=$(grep -v '^#' "$msg_file")
 fail() { echo "commit-msg: $1" >&2; echo "  subject: $subject" >&2; exit 1; }
+# For a scan hit the subject is not echoed: it may hold the very term or time that was stopped.
+refuse() { echo "commit-msg: $1" >&2; exit 1; }
 
-# Personal data, in every message, merges and reverts included. Only where and which rule are shown.
+# Personal data and times of day, in every message, merges and reverts included. Only where and
+# which rule are shown.
 out=$("$root/scripts/scan-private.sh" message "$msg_file")
 case $? in
   0) ;;
-  1) fail "the message looks like it holds personal data (the text itself is not shown):"$'\n'"$(sed 's/^/  /' <<<"$out")" ;;
-  *) fail "the personal-data scan could not run" ;;
+  1)
+    hint=""
+    grep -q ': time of day$' <<<"$out" &&
+      hint=$'\n'"Public records give the date alone. Write the date alone in those lines."
+    refuse "the message looks like it holds personal data or a time of day (the text itself is not shown):"$'\n'"$(sed 's/^/  /' <<<"$out")$hint" ;;
+  *) refuse "the personal-data scan could not run" ;;
 esac
 
 # The earlier projects are listed in a gitignored file that only the main working tree has. In a git
@@ -32,7 +40,7 @@ if [[ -s "$list" ]]; then
   shopt -s nocasematch
   while IFS= read -r dir; do
     [[ -z "$dir" || "$dir" == \#* ]] && continue
-    [[ "$body" == *"${dir##*/}"* ]] && fail "the message names one of the author's earlier projects; this repository keeps them private"
+    [[ "$body" == *"${dir##*/}"* ]] && refuse "the message names one of the author's earlier projects; this repository keeps them private"
   done <"$list"
   shopt -u nocasematch
 fi

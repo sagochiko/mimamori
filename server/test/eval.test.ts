@@ -198,9 +198,11 @@ describe("records", () => {
     expect(countRunsOn(lines.join("\n"), "2026-11-03")).toBe(1);
   });
 
-  it("writes a RESULTS.md row with Japanese dates and counts next to rates", () => {
+  it("writes a RESULTS.md row with the Japanese date alone and counts next to rates", () => {
+    // The table is public, and public records give the date alone,
+    // so the row carries the date only; the full ts stays in results.jsonl.
     const row = resultsRow({
-      ts: "2026-11-03T23:05:00+09:00",
+      ts: "2026-11-05T15:04:00+09:00",
       set: "dev",
       mode: "rules",
       n: 20,
@@ -220,7 +222,7 @@ describe("records", () => {
         false_alarms_unguided: 0,
       },
     });
-    expect(row).toBe("| 2026年11月3日 23:05 | dev | rules | 20 | 30.0% (3/10) | 0.0% (0/10) | 0 | 0.04 | first run |");
+    expect(row).toBe("| 2026年11月5日 | dev | rules | 20 | 30.0% (3/10) | 0.0% (0/10) | 0 | 0.04 | first run |");
   });
 });
 
