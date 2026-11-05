@@ -75,9 +75,25 @@ function worthAsking(rule: RuleResult): boolean {
   return rule.reasons.some((r) => r !== FOREIGN_SENDER_REASON);
 }
 
+/**
+ * Her own network: a home router's or printer's page, addressed by a private or loopback address or a
+ * .local name. The rules read an address made of numbers as a sign, which these pages are not, and
+ * they are hers alone, so they are neither judged nor sent on.
+ */
+export function onOwnNetwork(url: URL): boolean {
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
+  if (host === "::1" || host.startsWith("fe80:") || /^f[cd][0-9a-f]{2}:/.test(host)) return true;
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!v4) return false;
+  const [a, b] = [Number(v4[1]), Number(v4[2])];
+  return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+}
+
 export async function pageRoute(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const me = await requireMember(request, env);
   const { url, text } = await readPage(request);
+  if (onOwnNetwork(url)) return json({ level: null, reasons: [] } satisfies PageReply);
 
   const payload: JudgePayload = { url: url.toString(), ...(text !== "" ? { text } : {}) };
   const domain = normalizeDomain({ familyId: me.familyId, source: "page", payload });

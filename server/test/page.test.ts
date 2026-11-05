@@ -140,6 +140,24 @@ describe("POST /page", () => {
     expect(body.level).not.toBeNull();
   });
 
+  it.each([
+    "http://192.168.0.1/login",
+    "http://10.0.0.1/",
+    "http://172.16.0.1/",
+    "http://127.0.0.1:8000/",
+    "http://localhost/",
+    "http://printer.local/",
+    "http://[::1]/",
+  ])("leaves pages on her own network alone, such as the router's: %s", async (url) => {
+    // The rules count an address made of numbers as a sign, which a home router's page is not.
+    const m = await mother();
+    const { sent, queueEnv } = fakeQueue();
+    const { res, body } = await ask(m.deviceKey, { url, text: "管理画面 パスワードを入力" }, queueEnv);
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ level: null, reasons: [] });
+    expect(sent).toHaveLength(0);
+  });
+
   it("answers the family's own phones by the rules but queues nothing, so no one is told about them", async () => {
     const m = await mother();
     const { sent, queueEnv } = fakeQueue();
