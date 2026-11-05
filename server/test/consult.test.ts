@@ -2980,6 +2980,74 @@ describe("a question that points back at the day before's conversation (#118)", 
   });
 });
 
+// #128, on the author's iPhone (#125): "それってどういうこと" the day after the fake-police script got
+// a level 2 answer about the police, and the family's card was titled "スマホの相談". The rules see this
+// turn only, and Claude's lines that copy her words are not used, so nothing was left for the title.
+// A question that only points back at the script told before gets the script's fixed line. The level
+// stays Claude's (the script needs a part in this turn, #118).
+describe("the title of a question that points back at the script (#128)", () => {
+  const DAY = 24 * 60 * 60_000;
+  const UNCLEAR = "それってどういうこと?";
+  const turn = (role: "protected" | "ai", text: string): ConsultTurn => ({ role, text });
+  const told = [turn("protected", POLICE), turn("ai", POLICE_REPLY)];
+
+  async function ask(claude: ClaudeConsult, text = UNCLEAR, history = told) {
+    const fam = await setupFamily();
+    await consult(consultEnv, motherOf(fam), POLICE, new ExternalBudget(), fakes(null));
+    pushes = [];
+    const deps = fakes(claude, T0 + DAY);
+    await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps, history);
+    const alerts = await alertsOf(fam.familyId);
+    return { fam, deps, alert: alerts.at(-1), count: alerts.length };
+  }
+
+  it.each([
+    ["no topic and no reasons", scam({ level: 2, reasons: [], topic: null })],
+    [
+      "a topic and reasons that copy her words",
+      scam({ level: 2, reasons: ["あなたの口座が犯罪に使われている"], topic: "口座が犯罪に使われているって話" }),
+    ],
+    ["a topic of its own", scam({ level: 2, topic: "電話の続きの相談" })],
+  ])("is the police line when Claude gives %s, at Claude's level", async (_label, claude) => {
+    const { fam, deps, alert, count } = await ask(claude);
+    expect(deps.claudeCalls).toBe(1);
+    expect(count).toBe(2);
+    expect(alert).toMatchObject({ level: 2, summary: "警察を名乗る電話の相談", notified: 1 });
+    expect(familyPushes(fam).map((p) => [p.title, p.body])).toEqual([
+      ["2段階", "警察を名乗る電話の相談"],
+      ["2段階", "警察を名乗る電話の相談"],
+    ]);
+    // The title cuts out nothing of what she said (the reasons may be the rules' fixed wording).
+    const c = [...POLICE.replace(/\s+/g, "")];
+    for (let i = 0; i + 8 <= c.length; i++) expect(alert?.summary).not.toContain(c.slice(i, i + 8).join(""));
+  });
+
+  it("is the police line even when she said the police line's words herself", async () => {
+    const said = "警察を名乗る電話があって、口座が犯罪に使われてるって言われた";
+    const { alert } = await ask(scam({ level: 2, reasons: [], topic: null }), UNCLEAR, [
+      turn("protected", said),
+      turn("ai", POLICE_REPLY),
+    ]);
+    expect(alert).toMatchObject({ level: 2, summary: "警察を名乗る電話の相談" });
+  });
+
+  it("keeps the fallback for words that do not point back, even with the script in the conversation", async () => {
+    const { alert } = await ask(
+      help({ action: "家族に聞いてみてね", handoff: true, topic: null }),
+      "Wi-Fi がつながらない",
+    );
+    expect(alert).toMatchObject({ level: 2, summary: "スマホの相談" });
+  });
+
+  it("keeps the fallback after a warning she only passed on", async () => {
+    const { alert } = await ask(scam({ level: 2, reasons: [], topic: null }), UNCLEAR, [
+      turn("protected", "テレビで警察を名乗る詐欺が増えてるって。口座が犯罪に使われてるって言われるらしい"),
+      turn("ai", "そういう話が増えています"),
+    ]);
+    expect(alert).toMatchObject({ level: 2, summary: "スマホの相談" });
+  });
+});
+
 // #121, on the author's iPhone: a level 3 answer told her "手口の印は聞き取れませんでした", in the
 // words the prompt uses to tell Claude when to answer 2 (#109). She does not know what a 印 is. A line
 // to her with such words is not used, and the fixed line of its path takes its place; the reasons on

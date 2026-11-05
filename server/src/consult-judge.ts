@@ -493,7 +493,12 @@ function tellsPoliceScript(said: Said): boolean {
   const now = scriptParts(said.text);
   if (now.telling === "mixed") return false;
   if (now.police.length === 0 && !now.caller && !now.money) return false;
-  const parts = allOf(said).map(scriptParts);
+  return scriptTold(allOf(said));
+}
+
+/** Two or more parts of the script over these stretches of her words, one of them a police part. */
+function scriptTold(texts: readonly string[]): boolean {
+  const parts = texts.map(scriptParts);
   const police = new Set(parts.flatMap((p) => p.police)).size;
   const caller = parts.some((p) => p.caller) ? 1 : 0;
   const money = parts.some((p) => p.money) ? 1 : 0;
@@ -640,9 +645,12 @@ function cardReasons(said: Said, rule: RuleResult, reasons: string[], steered: b
 }
 
 /**
- * The family's one line for a consultation that is not the script: Claude's topic, else the first
- * reason, else FALLBACK_TOPIC. A line Claude wrote is skipped when it repeats her words or would tell
- * the family it is fine; the fixed lines of the rules are used as they are. When her words carry
+ * The family's one line for a consultation that is not the script: POLICE_TOPIC when her question
+ * only points back and her earlier words told the script (#128), else Claude's topic, else the first
+ * reason, else FALLBACK_TOPIC. Such a question goes to Claude (tellsPoliceScript), and the rules see
+ * this turn only, so without the fixed line the card of a police answer was "スマホの相談". Words that
+ * do not point back ("Wi-Fi がつながらない") keep their own line, as topicWords does. A line Claude
+ * wrote is skipped when it repeats her words or would tell the family it is fine; the fixed lines of the rules are used as they are. When her words carry
  * text aimed at the AI or at keeping the family out (`steered`), only the fixed lines are used, never
  * Claude's topic or reasons: they are the lines such text would try to steer.
  */
@@ -657,6 +665,9 @@ function summaryOf(
   // Not even "安全な…" as a name for the case: the family must not read it as a verdict.
   const own = (line: string) =>
     fixed.has(line) || (!steered && usable(line) && !/安全/.test(line) && !quotes(line, allOf(said)));
+  // A fixed line, used as it is like the rules' ones: steered or not, and even when she said
+  // "警察を名乗る電話" herself.
+  if (pointsBack(said.text) && scriptTold(said.earlier)) return POLICE_TOPIC;
   const topic = claude?.topic && !steered ? [claude.topic] : [];
   const candidates = [...topic, ...reasons.filter((r) => r !== PLACEHOLDER_REASON), ...rule.reasons];
   return candidates.map((l) => l.trim()).find((l) => l !== "" && own(l)) ?? FALLBACK_TOPIC;
