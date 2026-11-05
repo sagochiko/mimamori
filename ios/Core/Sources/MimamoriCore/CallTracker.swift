@@ -9,14 +9,16 @@ public struct CallTracker: Sendable {
 
   public init() {}
 
-  /// The calls already under way when watching starts. A connected one counts from now, which is
-  /// shorter than the real call: it may then not reach the minimum, but it never asks after a call
-  /// that was shorter than the minimum.
+  /// The calls under way when the app comes to the front, called every time it does. A connected
+  /// one not yet being timed counts from now, which is shorter than the real call: it may then not
+  /// reach the minimum, but it never asks after a call that was shorter than the minimum. One already
+  /// being timed keeps its start. A call the list already shows as ended is skipped: its end is left
+  /// to `changed`, so a call being timed is not dropped here without being returned.
   public mutating func started(
     with calls: [(id: String, hasConnected: Bool, hasEnded: Bool)], at now: Date
   ) {
-    for call in calls {
-      _ = changed(id: call.id, hasConnected: call.hasConnected, hasEnded: call.hasEnded, at: now)
+    for call in calls where !call.hasEnded {
+      _ = changed(id: call.id, hasConnected: call.hasConnected, hasEnded: false, at: now)
     }
   }
 
