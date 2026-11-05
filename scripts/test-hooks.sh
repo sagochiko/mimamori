@@ -687,6 +687,16 @@ done
 grep -q 'シミュレータの画面を撮らず見ない確かめ.*`mm-verifier` に `sonnet`' CLAUDE.md &&
   grep -q 'takes and judges no simulator screen.*the verifier may get `sonnet`' .claude/skills/mm-task/SKILL.md ||
   { echo "agent test failed: CLAUDE.md and mm-task let the verifier run on sonnet only for checks without a simulator screen"; fail=1; }
+# The line the author drew stays: a screen check keeps Opus, and the reviewer and implementer are left out of
+# that exception. Apart from the dated-records case, no sentence lets the reviewer have sonnet.
+grep -q '画面を撮る確かめと、画面が設計どおりかを判断する確かめは表どおり Opus にする' CLAUDE.md &&
+  grep -q '`mm-reviewer` と `mm-implementer` はこの例外に入らない' CLAUDE.md &&
+  grep -q "a check that takes a screenshot or judges a screen against the design keeps the table's Opus" .claude/skills/mm-task/SKILL.md &&
+  grep -q 'the reviewer and implementer never get `sonnet` for it' .claude/skills/mm-task/SKILL.md ||
+  { echo "agent test failed: CLAUDE.md and mm-task keep screen checks, the reviewer, and the implementer on Opus"; fail=1; }
+[[ -z "$(perl -pe 's/。/\n/g' CLAUDE.md | grep 'mm-reviewer' | grep 'sonnet' | grep -v '^そのときの `mm-reviewer` と `mm-verifier` に `sonnet` を渡してよい$')" ]] &&
+  [[ -z "$(grep -o 'reviewer[^.;]*get `sonnet`' .claude/skills/mm-task/SKILL.md | grep -v -x 'reviewer and verifier may get `sonnet`' | grep -v -x 'reviewer and implementer never get `sonnet`')" ]] ||
+  { echo "agent test failed: only the dated-records case lets mm-reviewer have sonnet, in CLAUDE.md and mm-task"; fail=1; }
 jq -e '.advisorModel == "fable"' .claude/settings.json >/dev/null || { echo "settings test failed: the advisor stays on Fable"; fail=1; }
 ! grep -q -i 'Fable of its definition\|reviewer off Fable' .claude/skills/mm-endgame/SKILL.md .claude/skills/mm-task/SKILL.md ||
   { echo "skill test failed: mm-task and mm-endgame say the subagents run on Opus, not Fable"; fail=1; }
