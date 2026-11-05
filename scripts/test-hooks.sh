@@ -602,6 +602,27 @@ grep -q 'scripts/handoff-started.sh" before ' .claude/skills/mm-handoff/SKILL.md
 grep '^On exit 2' .claude/skills/mm-handoff/SKILL.md | grep -q 'ls "$HOME/tmp"/mimamori-handoff-\*.before' &&
   grep '^On exit 2' .claude/skills/mm-handoff/SKILL.md | grep -q 'do step 4 again from the top, once' ||
   { echo "skill test failed: mm-handoff checks the stamp first on exit 2 and relaunches once at most"; fail=1; }
+# format.sh with the pinned Prettier and the repository's config, in a throwaway tree that has the same
+# two config files and borrows server/node_modules: TypeScript is wrapped at 120 columns with double
+# quotes, JSONC keeps no trailing commas, and the generated worker types are left alone. It needs
+# server/node_modules (make bootstrap), like the server tests, so it runs only where Prettier is.
+if [[ -x server/node_modules/.bin/prettier ]]; then
+  F=$T/fmt
+  mkdir -p "$F/server" "$F/eval" && cp .prettierrc.json .prettierignore "$F/" && ln -s "$PWD/server/node_modules" "$F/server/node_modules"
+  long="export const x = { alpha: 'a', beta: 'b', gamma: 'c', delta: 'd', epsilon: 'e', zeta: 'f', eta: 'g', theta: 'h', iota: 'i', kappa: 'k' }"
+  mid='export const y = { alpha: "a", beta: "b", gamma: "c", delta: "d", epsilon: "e", zeta: "f", eta: "g" };'
+  printf '%s\n' "$long" "$mid" >"$F/eval/a.ts"
+  printf '%s\n' "$long" >"$F/server/worker-configuration.d.ts"
+  printf '%s\n' '{' '  // a comment' '  "a": [1,2],' '  "b": { "c": 1 }' '}' >"$F/server/w.jsonc"
+  fmt() { jq -nc --arg f "$1" '{tool_name:"Write",tool_input:{file_path:$f}}' | CLAUDE_PROJECT_DIR=$F "$H/format.sh"; }
+  fmt "$F/eval/a.ts" && fmt "$F/server/worker-configuration.d.ts" && fmt "$F/server/w.jsonc"
+  [[ "$(sed -n 2p "$F/eval/a.ts")" == '  alpha: "a",' && "$(tail -3 "$F/eval/a.ts")" == $'  kappa: "k",\n};\n'"$mid" ]] ||
+    { echo "hook test failed: format.sh wraps TypeScript at 120 columns with double quotes and trailing commas"; fail=1; }
+  [[ "$(cat "$F/server/worker-configuration.d.ts")" == "$long" ]] ||
+    { echo "hook test failed: format.sh leaves the generated worker types alone (.prettierignore)"; fail=1; }
+  [[ "$(cat "$F/server/w.jsonc")" == $'{\n  // a comment\n  "a": [1, 2],\n  "b": { "c": 1 }\n}' ]] ||
+    { echo "hook test failed: format.sh keeps JSONC without trailing commas"; fail=1; }
+fi
 # mm-screen-guide's picture builder: captions wrap inside their tile and the marks are drawn. It needs
 # Pillow and the Hiragino font, which a Mac has and a cloud session may not, so it runs only where both are.
 # The check uses python3 -I like the run, so a Pillow that only -I cannot see skips instead of failing.
