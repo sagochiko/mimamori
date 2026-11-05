@@ -58,27 +58,43 @@ public enum PageCheck {
 
   /// Reads `{ level: 1 | 2 | null, reasons }`. Anything other than a 2xx with level 1 or 2 is no warning.
   public static func warning(statusCode: Int?, data: Data?) -> PageWarning? {
+    if case .answered(let warning) = outcome(statusCode: statusCode, data: data) { return warning }
+    return nil
+  }
+
+  /// Whether the server answered (with a warning or without), or the check did not get through.
+  public static func outcome(statusCode: Int?, data: Data?) -> PageCheckOutcome {
     struct Reply: Decodable { let level: Int? }
     // JSONDecoder refuses `true` and `1.5` for an Int, which JSONSerialization would turn into 1.
     guard let statusCode, (200..<300).contains(statusCode), let data,
       let reply = try? JSONDecoder().decode(Reply.self, from: data)
-    else { return nil }
+    else { return .failed }
     switch reply.level {
-    case 1: return .doNotOpen
-    case 2: return .waitForFamily
-    default: return nil
+    case 1: return .answered(.doNotOpen)
+    case 2: return .answered(.waitForFamily)
+    default: return .answered(nil)
     }
   }
 
-  /// What the native handler hands back to the JavaScript: only the level, so no text from the server
-  /// or the page is drawn on it.
-  public static func reply(for warning: PageWarning?) -> [String: Any] {
-    guard let warning else { return [:] }
-    return ["level": warning.level]
+  /// What the native handler hands back to the JavaScript: `checked` when the server answered, and the
+  /// level only, so no text from the server or the page is drawn on it. A failure is `{}`, which the
+  /// background script does not remember for the URL.
+  public static func reply(for outcome: PageCheckOutcome) -> [String: Any] {
+    switch outcome {
+    case .failed: return [:]
+    case .answered(nil): return ["checked": true]
+    case .answered(let warning?): return ["checked": true, "level": warning.level]
+    }
   }
 }
 
-/// Sends the page check with this device's key. A failure of any kind is no warning; a 401 leaves the
+/// The result of one page check. `answered(nil)` is "the rules did not decide", never "fine".
+public enum PageCheckOutcome: Equatable, Sendable {
+  case answered(PageWarning?)
+  case failed
+}
+
+/// Sends the page check with this device's key. A failure of any kind is `.failed` (no warning); a 401 leaves the
 /// stored key alone, since clearing it is the app's job (`APIClient`).
 public struct PageChecker: Sendable {
   private let baseURL: URL
@@ -93,12 +109,12 @@ public struct PageChecker: Sendable {
     self.store = store
   }
 
-  public func check(_ message: [String: Any]) async -> PageWarning? {
+  public func check(_ message: [String: Any]) async -> PageCheckOutcome {
     guard let credentials = store.load(),
       let request = PageCheck.request(
         baseURL: baseURL, deviceKey: credentials.deviceKey, message: message)
-    else { return nil }
-    guard let (data, response) = try? await transport.send(request) else { return nil }
-    return PageCheck.warning(statusCode: response.statusCode, data: data)
+    else { return .failed }
+    guard let (data, response) = try? await transport.send(request) else { return .failed }
+    return PageCheck.outcome(statusCode: response.statusCode, data: data)
   }
 }

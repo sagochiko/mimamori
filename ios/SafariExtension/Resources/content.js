@@ -114,7 +114,9 @@
     veil.append(title, back, close);
     root.append(style, veil);
 
-    // A page that removes the warning gets it back, until the mother closes it herself.
+    // A page that removes the warning gets it back, until the mother closes it herself. Only removal
+    // is undone: a page that hides the host (display:none or the hidden attribute on it), covers it,
+    // or keeps raising alert() dialogs is not stopped here.
     const observer = new MutationObserver(() => {
       if (!host.isConnected) document.documentElement.append(host);
     });

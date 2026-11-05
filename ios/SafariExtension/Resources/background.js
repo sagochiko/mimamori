@@ -40,7 +40,10 @@ async function check(message) {
   } catch {
     return {};
   }
-  const level = reply && (reply.level === 1 || reply.level === 2) ? reply.level : null;
+  // `checked` is set only when the server answered. A failure ({}) is not remembered, so the next
+  // visit asks again instead of showing no warning for ten minutes.
+  if (!reply || reply.checked !== true) return {};
+  const level = reply.level === 1 || reply.level === 2 ? reply.level : null;
   remember(message.url, level);
   return level === null ? {} : { level };
 }

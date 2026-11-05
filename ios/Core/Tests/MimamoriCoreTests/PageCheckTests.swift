@@ -58,9 +58,25 @@ struct PageCheckTests {
 
   @Test("拡張の JavaScript への返事は段階の数だけで、警告の無いときは空")
   func reply() {
-    #expect(PageCheck.reply(for: .doNotOpen) as NSDictionary == ["level": 1] as NSDictionary)
-    #expect(PageCheck.reply(for: .waitForFamily) as NSDictionary == ["level": 2] as NSDictionary)
-    #expect(PageCheck.reply(for: nil).isEmpty)
+    #expect(
+      PageCheck.reply(for: .answered(.doNotOpen)) as NSDictionary == ["checked": true, "level": 1] as NSDictionary
+    )
+    #expect(
+      PageCheck.reply(for: .answered(.waitForFamily)) as NSDictionary
+        == ["checked": true, "level": 2] as NSDictionary
+    )
+    #expect(PageCheck.reply(for: .answered(nil)) as NSDictionary == ["checked": true] as NSDictionary)
+    // A failure is not an answer, so the background script does not remember it for the URL.
+    #expect(PageCheck.reply(for: .failed).isEmpty)
+  }
+
+  @Test("届いた答えと、届かなかった問い合わせを分ける")
+  func outcome() {
+    #expect(PageCheck.outcome(statusCode: 200, data: Data(#"{"level":1,"reasons":[]}"#.utf8)) == .answered(.doNotOpen))
+    #expect(PageCheck.outcome(statusCode: 200, data: Data(#"{"level":null,"reasons":[]}"#.utf8)) == .answered(nil))
+    #expect(PageCheck.outcome(statusCode: 200, data: Data("not json".utf8)) == .failed)
+    #expect(PageCheck.outcome(statusCode: 500, data: Data(#"{"level":1}"#.utf8)) == .failed)
+    #expect(PageCheck.outcome(statusCode: nil, data: nil) == .failed)
   }
 
   @Test("端末の鍵をつけて URL とページの文を POST /page に送る")
@@ -123,7 +139,7 @@ struct PageCheckTests {
     let checker = PageChecker(
       baseURL: testBaseURL, transport: transport, store: InMemoryDeviceKeyStore(mother)
     )
-    #expect(await checker.check(message()) == .doNotOpen)
+    #expect(await checker.check(message()) == .answered(.doNotOpen))
     #expect(transport.requests.count == 1)
     #expect(
       transport.requests.first?.value(forHTTPHeaderField: "Authorization") == "Bearer dk_test_page")
@@ -134,7 +150,7 @@ struct PageCheckTests {
     let transport = StubTransport(status: 200, body: #"{"level":1}"#)
     let checker = PageChecker(
       baseURL: testBaseURL, transport: transport, store: InMemoryDeviceKeyStore())
-    #expect(await checker.check(message()) == nil)
+    #expect(await checker.check(message()) == .failed)
     #expect(transport.requests.isEmpty)
   }
 
@@ -144,7 +160,7 @@ struct PageCheckTests {
     let checker = PageChecker(
       baseURL: testBaseURL, transport: StubTransport(status: 401, body: "{}"), store: store
     )
-    #expect(await checker.check(message()) == nil)
+    #expect(await checker.check(message()) == .failed)
     #expect(store.load() == mother)
   }
 
@@ -153,6 +169,6 @@ struct PageCheckTests {
     let checker = PageChecker(
       baseURL: testBaseURL, transport: FailingTransport(), store: InMemoryDeviceKeyStore(mother)
     )
-    #expect(await checker.check(message()) == nil)
+    #expect(await checker.check(message()) == .failed)
   }
 }
