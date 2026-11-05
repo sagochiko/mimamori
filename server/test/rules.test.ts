@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { officialBrandOf, OFFICIAL_DOMAINS } from "../src/rules/domains";
 import { consultByRules } from "../src/consult-judge";
 import { judgeByRules, type RuleInput, type RuleResult } from "../src/rules/index";
+import { matchSpans, POLICE_CALLER } from "../src/rules/phrases";
 
 const LEVELS = [1, 2, 3, null];
 
@@ -253,6 +254,20 @@ describe("a caller from the police, in more of her words", () => {
   ])("does not make %s a caller", (_label, text) => {
     expect(consultByRules(text).script).toBe(false);
   });
+
+  // PR #105 review: a pause after 警察から is not the caller by itself. What follows has to be what the
+  // caller said (口座, 名義, 逮捕, ...) or her correcting herself (いや), not how she heard of it.
+  it.each([
+    ["heard, after a comma", "警察から、聞いたんやけど、口座が犯罪に使われてるって電話が来たら切るようにって"],
+    ["taught, after a space", "警察から 教えてもろたんやけど 口座が犯罪に使われてるって電話は切ってええって"],
+    ["a notice to the neighborhood", "警察から、町内会に連絡があって、口座が犯罪に使われてるって電話が増えてるって"],
+    ["a letter, after a space", "警察から 手紙が来てて 口座が犯罪に使われてるって電話は切ってって"],
+    ["heard, then a call to hang up on", "警察から 聞いたんやけど 口座が犯罪に使われてるって電話が来たら切ってって"],
+    ["a genuine call about a lost bankbook", "警察から、落とし物の通帳が届いてるって。口座が悪用されてないか銀行で確認してって"],
+  ])("does not make 警察から with a pause a caller when it is %s", (_label, text) => {
+    expect(matchSpans(POLICE_CALLER, text.normalize("NFKC").toLowerCase())).toEqual([]);
+    expect(consultByRules(text).script).toBe(false);
+  });
 });
 
 // #81: she got the call herself and adds what she thinks ("詐欺かも"). That is not passing on a
@@ -274,8 +289,23 @@ describe("a call she got, with her own doubt or a warning beside it", () => {
     ["stay at home", "警察から電話があって、口座が犯罪に使われてるから家から出ないでって"],
     ["do not trust the bank", "警察の人から、口座が犯罪に使われてる、銀行の人は信用しないでって"],
     ["no arrest if she helps", "警察から電話で、協力すれば逮捕されることはないって言われた"],
+    // PR #105 review: more of the caller's stock lines.
+    ["scams are frequent lately", "警察から電話があって、最近詐欺が多いから調べてるって。私の口座が犯罪に使われてるって"],
+    ["do not answer other calls, after 電話で", "警察から電話で、捜査中だから他の電話には出ないでって。口座が犯罪に使われてるって"],
+    ["do not answer other calls", "警察の人が、口座が犯罪に使われてるから、ほかの電話には出ないでって"],
+    ["do not trust what the bank says", "警察の人が、口座が犯罪に使われてるから、銀行が何か言っても信用しないでって"],
+    ["be careful, because the account was used", "警察から電話。口座が犯罪に使われてるから気をつけてって"],
+    ["it is all a scam ring's doing", "警察から、口座が犯罪に使われてるって。全部詐欺グループの仕業やからって"],
   ])("keeps the script when the caller says %s", (_label, text) => {
     expect(consultByRules(text).script).toBe(true);
+  });
+
+  it("leaves the caller's 'scams are frequent lately' with one part to Claude, at the rules' level", () => {
+    // As before #81: no caller after 警察から、最近, one part, so level 2 and not the script. The
+    // caller's words do not make it a warning she passes on.
+    const text = "警察から、最近詐欺が多発してて、あなたの口座が犯罪に使われてるって";
+    expect(consultByRules(text).script).toBe(false);
+    expect(judge({ source: "consult", text }).level).toBe(2);
   });
 
   it.each([

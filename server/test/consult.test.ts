@@ -282,7 +282,7 @@ describe("fake police consultation", () => {
     ["someone who claimed to be the police, in the passive", "警察を名乗られて、潔白を証明してって"],
     // #81: more of the ways she may say it.
     ["someone pretending to be the police", "警察をかたる人から電話があって、口座が犯罪に使われてるって"],
-    ["a police officer, as she calls him", "おまわりさんから電話で、逮捕状が出てるって言われた"],
+    ["a police officer, as she calls him", "おまわりさんから電話で、あんたに逮捕状が出とるでって"],
     ["a name with a section before 名乗る", "県警の生活安全課の人と名乗る男から、口座が悪用されてるって"],
     ["the police, a pause, and what he said", "警察から、あなたの口座が犯罪に使われてるって"],
     // She got the call and only adds her own doubt: not a warning passed on.
@@ -309,7 +309,7 @@ describe("fake police consultation", () => {
     ["a warning mail from the bank", "銀行から、警察を名乗る電話に注意、口座が犯罪に使われてると言われたら詐欺ですってメールが来た"],
     ["a warning heard at the police box", "警察を名乗る電話に気をつけてって、誰にも言わないでと言われたら詐欺だって交番で聞いた"],
     // #81: a warning she passes on, with two of the script's parts in it.
-    ["a warning heard from a police officer", "交番のお巡りさんから、口座が犯罪に使われてるって電話は詐欺やから気ぃつけてって"],
+    ["a warning heard from a police officer", "ラジオでお巡りさんが、潔白を証明しろとか現金を用意しろとか言われたら詐欺やって話してた"],
     ["a warning with no caller at all", "市のお知らせのチラシに、逮捕状とか潔白の証明とか言われたら詐欺ですって"],
     ["a warning from the family", "息子が、警察を名乗って口座が悪用されてるって電話には出んといてって"],
     // A call she got, next to a warning she also heard: Claude reads both.
@@ -1602,7 +1602,7 @@ describe("the conversation so far", () => {
   // #81: a warning she passed on earlier is not part of the script; the call she got later is.
   it("does not count a warning passed on in an earlier turn, and counts the call she got after it", async () => {
     const fam = await setupFamily();
-    const warned = turn("protected", "公民館で、ビデオ通話で取り調べするなんて電話は詐欺だから気をつけてって聞いた");
+    const warned = turn("protected", "回覧板に、ラインで事情聴取するなんて電話は詐欺やって書いてあった");
     const first = fakes(scam({ level: 3, reasons: ["お金や暗証番号の話は出ていない"], basis: "", action: "お金や暗証番号を聞かれたら止めて" }));
     await consult(consultEnv, motherOf(fam), "口座が犯罪に使われてるって言うのもあるらしい", new ExternalBudget(), first, [warned]);
     expect(first.claudeCalls).toBe(1);

@@ -108,9 +108,11 @@ export const POLICE_CALLER: PhraseRule = {
   patterns: [
     // 警察から電話, 警察署から連絡, 警視庁からかかってきた
     new RegExp(`${POLICE_NAME}から[^。!?\\n]{0,4}(電話|連絡|着信|かかって|言われ)`),
-    // 警察から、口座が… / 警察から 名義… / 警察からあなたの口座が…: what the caller said comes right
-    // after から, with a pause or without one (#81). Not 警察から聞いた or 警察からのお知らせ.
-    new RegExp(`${POLICE_NAME}から(?=[、,\\s]|(あなた|あんた|お宅|おたく|私|わたし)?の?(口座|名義|逮捕|容疑|捜査))`),
+    // 警察から、口座が… / 警察から 名義… / 警察から、いや警察の… / 警察からあなたの口座が…: what the
+    // caller said, or her correcting herself, comes right after から, with a pause or without one
+    // (#81). A pause alone is not enough (PR #105 review): 警察から、聞いたんやけど and 警察から、落とし物の
+    // 通帳が are how she heard of it, and 警察からのお知らせ is a notice.
+    new RegExp(`${POLICE_NAME}から[、,\\s]*(?=いや|((あなた|あんた|お宅|おたく|私|わたし)(の|に|が|は)?[、,\\s]*)?(口座|名義|逮捕|容疑|捜査))`),
     // 警察署の人から, 警察官を名乗る人から, 警察を名乗る電話が, 警察って人が, 県警の者で
     new RegExp(`${POLICE_NAME}(の|を名乗る|と名乗る|って名乗る|だと名乗る|って(いう|言う)?|という|と言う|だという|だって(いう|言う)?)(人|方|者|男性?|女性?|相手|電話)(から|が|で)`),
     // 警察署の人だって言う電話, 警察だという電話, 警察ですって電話
@@ -132,14 +134,18 @@ export const POLICE_CALLER: PhraseRule = {
 
 // She passes on a warning that she heard, read, or saw (#81): from the police, a bank, the family, TV,
 // a leaflet. The script's parts in such words are what the warning describes, not what was said to
-// her ("交番の人が、口座が犯罪にって電話は詐欺だから気をつけてって"). Her own doubt about a call she got
+// her ("ラジオで聞いた、潔白を証明しろって電話はニセモノやって"). Her own doubt about a call she got
 // ("詐欺かも", "詐欺だと思う", "詐欺じゃないよね") is not a warning passed on. Each pattern may take
 // the words she quotes it with ("…って言われた", "…と書いてあった"), so those are not counted as a
-// call she got (RECEIVED_CONTACT).
+// call she got (RECEIVED_CONTACT). The caller's own stock lines are left out (PR #105 review): "口座が
+// 犯罪に使われてるから気をつけて", "最近詐欺が多発してて", "ほかの電話には出ないで", "銀行が何か言っても
+// 信用しないで" are what he says to her, not a warning she heard.
 const QUOTED = "((って|と|て)?[^。!?\\n]{0,4}?(言われ|言って|言うて|ゆうて|話して|聞い|書いて|教えて|教わ|注意され)[^。!?\\n]{0,3})?";
 const WARNING_PATTERNS = [
-  // 気をつけて, 気ぃつけや, 用心して, 注意してください, 気をつけなあかん
-  "(気をつけ|気を付け|気ぃつけ|用心し|注意し)(て|や|なさい|ましょう|な(あかん|いと|きゃ|けれ)|ないと)",
+  // 〜には気をつけて, 〜に用心しなさい: careful of something. Not "〜だから気をつけて", which the caller
+  // says. Her own "気をつけなあかん" after hearing a warning.
+  "(に|には|にも)(気をつけ|気を付け|気ぃつけ|用心し|注意し)(て|や|なさい|ましょう)",
+  "(気をつけ|気を付け|気ぃつけ|用心し)(な(あかん|いと|きゃ|けれ)|ないと)",
   // 〜に注意, 〜にご注意, 注意喚起
   "にご?注意|注意喚起|注意を呼びかけ",
   // What the police or a bank never do: 警察が〜ことはありません, 警察は絶対せえへん. Only with the body
@@ -147,11 +153,13 @@ const WARNING_PATTERNS = [
   "(警察|警察官|銀行|役所|郵便局)(が|は)[^。!?\\n]{0,20}?(ことは(絶対)?(ない|ありません|ございません|ありえ|あらへん)|絶対に?(せえへん|せーへん|しない|しません)(?!で))",
   // 〜は詐欺だから, 詐欺ですって, ニセモンやって (not 詐欺だと思う)
   "(詐欺|ニセ(モン|もん|モノ|もの|物)|にせもの|偽物|偽者)(だ|です|や|なん(だ|や|です))(から|って|と(?!\\s*(思|おも)))",
-  "(全部|ぜんぶ|みんな|すべて|全て)が?(詐欺|ニセ|偽)",
-  "詐欺[^。!?\\n]{0,4}(増え|多い|多発|流行|はや)",
-  // 〜電話には出ないで, 言われても信じないで. Not 家から出ないで or 銀行の人は信用しないで: the caller says those.
-  "(電話|でんわ|番号)(に|には|にも|は)?出(ないで|んといて|んとって|ちゃだめ|たらあかん|ないよう)",
-  "(ても|でも)(信じ|信用し|相手にし|応じ)(ないで|んといて|んとって|ちゃだめ|たらあかん|ないよう)",
+  // 全部詐欺, みんなニセモン. Not 全部詐欺グループの仕業, which the caller says.
+  "(全部|ぜんぶ|みんな|すべて|全て)が?(詐欺|ニセ|偽)(?!グループ|集団|団|師|犯|事件|に使)",
+  // "詐欺が増えてる" counts only with where she heard it (テレビ, 回覧板, below), which counts by itself.
+  // 警察を名乗る電話には出ないで, 〜って言う電話には出ないで: a kind of call not to answer. Not "ほかの電話
+  // には出ないで" or "家から出ないで", which the caller says.
+  "(名乗|かた|騙|語)(る|って|った)((?!から)[^。!?、\\n]){0,20}?(電話|でんわ|番号)(に|には|にも|は)?出(ないで|んといて|んとって|ちゃだめ|たらあかん|ないよう)",
+  "(って|と)(言う|いう|ゆう)(電話|でんわ)(に|には|にも|は)?出(ないで|んといて|んとって|ちゃだめ|たらあかん|ないよう)",
   // Where she saw or heard it. テレビ電話 is the script's video call, not TV.
   "テレビ(?!電話)|ニュース|ラジオ|新聞|広報|回覧板|チラシ|ちらし|ポスター|貼り紙|張り紙|はり紙|掲示|パンフ|講習|防犯(?!課)",
 ];
