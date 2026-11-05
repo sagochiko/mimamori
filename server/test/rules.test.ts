@@ -321,6 +321,8 @@ describe("a caller from the police, with 名乗る heard as 乗る (#114)", () =
     ["riding home with an officer", "おまわりさんと乗って帰ってきた、口座が犯罪に使われてるって"],
     ["getting over the police", "警察を乗り越えて潔白を証明"],
     ["a lift with the station's staff", "警察署の人と乗るエレベーターで逮捕状の話を聞いた"],
+    // Review of PR #117, second round: 載る after って is how one says something was shown or printed.
+    ["the police shown on the screen", "画面に警察って載ってたけど、逮捕状って何"],
   ])("does not make %s a caller", (_label, text) => {
     expect(matchSpans(POLICE_CALLER, text.normalize("NFKC").toLowerCase())).toEqual([]);
     expect(consultByRules(text).script).toBe(false);
