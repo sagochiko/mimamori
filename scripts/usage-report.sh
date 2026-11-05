@@ -4,7 +4,9 @@ cd "$(dirname "$0")/.." || exit 1
 log=.claude/logs/usage.jsonl
 echo "# Claude Code の使われ方"
 echo
-echo "フックが記録した回数を数えたもの。最後に数えたのは $(date '+%Y年%-m月%-d日 %H:%M')。記録の仕組みは [\`docs/harness.md\`](harness.md) にある。"
+# The date alone: the file is public, and public records give the date alone (the pre-commit hook would
+# stop a time of day).
+echo "フックが記録した回数を数えたもの。最後に数えたのは $(date '+%Y年%-m月%-d日')。記録の仕組みは [\`docs/harness.md\`](harness.md) にある。"
 echo
 if [[ ! -s $log ]]; then echo "まだ記録が無い。"; exit 0; fi
 section() { # <title> <jq filter for kind>

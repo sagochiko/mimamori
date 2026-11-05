@@ -975,6 +975,10 @@ staged 0 docs/audits/raw/a.md 'レビューは 15:04 のコミットを読んだ
 staged 0 docs/design.md '毎日の声かけは既定で18時に出す' "the design keeps the app's own hours"
 staged 0 docs/plan.md '- [ ] 声かけの時刻を17時から21時で選ぶ' "the plan keeps the app's own hours"
 staged 0 README.md 'The daily check-in comes at 6 pm' "the README keeps the app's own hours"
+# make usage writes docs/claude-usage.md, which /mm-endgame commits: the line saying when it counted gives
+# the date alone, so the commit is not stopped for the time of day it ran.
+scripts/usage-report.sh 2>/dev/null | grep -qE '^フックが記録した回数を数えたもの。最後に数えたのは [0-9]+年[0-9]+月[0-9]+日。' ||
+  { echo "usage test failed: docs/claude-usage.md says when it counted by the date alone"; fail=1; }
 out=$(printf '%s\n' 'x' '作者が 15:04 に試した' >"$R/docs/b.md" && r add docs/b.md && cd "$R" && .githooks/pre-commit 2>&1)
 r reset -q docs/b.md && rm -f "$R/docs/b.md"
 [[ "$out" == *"docs/b.md:2: time of day"* && "$out" == *"午後"* && "$out" != *"15:04"* ]] ||
