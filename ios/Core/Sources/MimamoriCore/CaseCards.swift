@@ -114,13 +114,17 @@ public struct ProtectedNotice: Equatable, Sendable, Identifiable {
   static let openShownFor: TimeInterval = 3 * 24 * 3600
   static let maxShown = 3
 
-  /// The lines for the screen, newest case first, at most three.
+  /// The lines for the screen, at most three: not reached first, then no reply yet, then told, and
+  /// newest first within each. Ordered before the cut, so a case no family device took is never
+  /// pushed off the screen by three newer ones the family got (review of PR #89).
   public static func notices(from cases: [Case], now: Date) -> [ProtectedNotice] {
     cases
       .sorted { $0.notifiedAt > $1.notifiedAt }
       .compactMap { notice(for: $0, now: now) }
+      .enumerated()
+      .sorted { ($0.element.urgency, $0.offset) < ($1.element.urgency, $1.offset) }
       .prefix(maxShown)
-      .map { $0 }
+      .map(\.element)
   }
 
   private static func notice(for item: Case, now: Date) -> ProtectedNotice? {
@@ -136,14 +140,14 @@ public struct ProtectedNotice: Equatable, Sendable, Identifiable {
 }
 
 /// The strip at the top of her screen (#86, chosen by the author on 2026-11-05 in #87): closed, it is
-/// one notice and how many there are; a tap opens them all.
+/// one notice and how many there are; a tap opens all of them in the order of `notices(from:now:)`.
 extension ProtectedNotice {
   /// "家族に届いていません" and "家族から返事がまだ" end with "急ぐなら電話して"; "家族に伝えました" does not.
   public var asksToCall: Bool { urgency < Self.toldUrgency }
 
   /// The notice the closed strip shows: not reached first, so she never reads "家族に伝えました" there
   /// while the family has not got another one; then no reply yet; then told. Within each, the first
-  /// in the list, which `notices(from:now:)` makes the newest. Nil when there is none.
+  /// in the list. `notices(from:now:)` already puts this one first. Nil when there is none.
   public static func mostPressing(_ notices: [ProtectedNotice]) -> ProtectedNotice? {
     // `min(by:)` keeps the first of equal ones.
     notices.min { $0.urgency < $1.urgency }
