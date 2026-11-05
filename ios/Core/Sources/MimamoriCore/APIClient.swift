@@ -86,6 +86,34 @@ public final class APIClient: Sendable {
       "POST", "consult", body: ConsultBody(text: text, history: history.isEmpty ? nil : history), auth: true)
   }
 
+  /// `GET /smiles`. Everyone's smiles and replies from the last week, newest first.
+  public func smiles() async throws -> SmileBoard {
+    try await send("GET", "smiles", body: Empty?.none, auth: true)
+  }
+
+  /// `POST /smiles`. A photo (JPEG) with its score, one of the set words, or both.
+  @discardableResult
+  public func postSmile(photoJPEG: Data? = nil, score: Double? = nil, note: SmileNote? = nil) async throws -> Smile {
+    try await send(
+      "POST", "smiles",
+      body: SmileBody(
+        photo: photoJPEG?.base64EncodedString(), score: photoJPEG == nil ? nil : score, note: note?.rawValue),
+      auth: true)
+  }
+
+  /// `GET /smiles/{id}/photo`. Through the transport, so the device key goes with it.
+  public func smilePhoto(id: String) async throws -> Data {
+    try await perform("GET", "smiles/\(id)/photo", body: Empty?.none, auth: true)
+  }
+
+  /// `PUT /families/me/smile-deadline`. The hour (JST) by which her smile is expected.
+  @discardableResult
+  public func setSmileDeadline(hour: Int) async throws -> Int {
+    let answer: DeadlineAnswer = try await send(
+      "PUT", "families/me/smile-deadline", body: DeadlineBody(hour: hour), auth: true)
+    return answer.deadlineHour
+  }
+
   // MARK: Plumbing
 
   static let decoder: JSONDecoder = {
@@ -183,6 +211,21 @@ private struct JoinAnswer: Decodable {
   let deviceKey: String
   let role: Role
   let familyToken: String?
+}
+
+/// Nil fields are left out of the JSON.
+private struct SmileBody: Encodable {
+  let photo: String?
+  let score: Double?
+  let note: String?
+}
+
+private struct DeadlineBody: Encodable {
+  let hour: Int
+}
+
+private struct DeadlineAnswer: Decodable {
+  let deadlineHour: Int
 }
 
 private struct CaseList: Decodable {

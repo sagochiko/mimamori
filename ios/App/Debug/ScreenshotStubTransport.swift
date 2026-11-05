@@ -26,6 +26,13 @@
     static var draftText: String? { value(after: "-mimamori-stub-draft") }
     /// With `-mimamori-stub-notices-open`, the family notices at the top start opened.
     static var noticesOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-notices-open") }
+    /// With `-mimamori-stub-camera-open`, the home screen opens the smile camera at once.
+    static var cameraOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-camera-open") }
+    /// With `-mimamori-stub-note-open`, the home screen opens the set words ("ひと言") at once.
+    static var noteOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-note-open") }
+    /// With `-mimamori-stub-camera-hold`, the stand-in camera never "sees" the smile, so the camera
+    /// screen itself can be shot.
+    static var cameraHold: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-camera-hold") }
     /// The stub keeps the key in memory, so the real marker file is left alone.
     static let marker = FileInstallMarker(url: URL.temporaryDirectory.appending(path: "mimamori-stub-installed"))
     /// The conversation stays in memory too, so her real one is left alone. With
@@ -41,6 +48,9 @@
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
       try await Task.sleep(for: .milliseconds(300))
       let path = request.url?.path ?? ""
+      if request.httpMethod == "GET", path.hasPrefix("/smiles/"), path.hasSuffix("/photo") {
+        return Self.photo(for: request, path: path)
+      }
       let (status, body): (Int, String) =
         switch (request.httpMethod ?? "", path) {
         case ("POST", "/families"):
@@ -59,11 +69,34 @@
           (200, StubCases.shared.list())
         case ("POST", let p) where p.hasPrefix("/cases/"):
           StubCases.shared.act(path: p)
+        case ("GET", "/smiles"):
+          (200, StubSmiles.shared.list())
+        case ("POST", "/smiles"):
+          StubSmiles.shared.add(Self.body(of: request))
+        case ("PUT", "/families/me/smile-deadline"):
+          StubSmiles.shared.setHour(Self.body(of: request)["hour"] as? Int)
         default:
           (404, "{}")
         }
       let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
       return (Data(body.utf8), response)
+    }
+
+    private static func body(of request: URLRequest) -> [String: Any] {
+      guard let data = request.httpBody,
+        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+      else { return [:] }
+      return json
+    }
+
+    /// The drawn face (`SmilePlaceholder`), or the photo the stand-in camera "took".
+    private static func photo(for request: URLRequest, path: String) -> (Data, HTTPURLResponse) {
+      let id = path.split(separator: "/").dropFirst().first.map(String.init) ?? ""
+      let data = StubSmiles.shared.photo(id: id)
+      let response = HTTPURLResponse(
+        url: request.url!, statusCode: data == nil ? 404 : 200, httpVersion: nil,
+        headerFields: ["Content-Type": "image/jpeg"])!
+      return (data ?? Data(), response)
     }
 
     private static func hasHistory(_ request: URLRequest) -> Bool {
@@ -111,6 +144,75 @@
       ]
       let data = try! JSONSerialization.data(withJSONObject: answer)
       return String(decoding: data, as: UTF8.self)
+    }
+  }
+
+  /// Made-up smiles for the screenshots: 母 this morning, 妹's smile, and 作者's reply, all with drawn
+  /// faces. `-mimamori-stub-smiles none` starts with none, so the morning without her smile can be shot.
+  final class StubSmiles: @unchecked Sendable {
+    static let shared = StubSmiles()
+    private let lock = NSLock()
+    private var smiles: [[String: Any]] = []
+    private var photos: [String: Data] = [:]
+    private var hour = SmileBoard.defaultDeadlineHour
+
+    private init() {
+      let args = ProcessInfo.processInfo.arguments
+      if let i = args.firstIndex(of: "-mimamori-stub-smiles"), i + 1 < args.count, args[i + 1] == "none" { return }
+      let now = Date.now
+      func at(_ minutesAgo: Double) -> String { now.addingTimeInterval(-minutesAgo * 60).ISO8601Format() }
+      // Her smile is placed earlier today, but never before midnight, so it counts as today's.
+      let sinceMidnight = now.timeIntervalSince(Calendar.current.startOfDay(for: now)) / 60
+      let hers = min(45, max(1, sinceMidnight - 1))
+      smiles = [
+        Self.row("s-owner", "m-owner", "作者", "family", photo: false, note: "いい笑顔", at: at(hers * 0.3)),
+        Self.row("s-sister", "m-sister", "妹", "family", photo: true, note: nil, at: at(hers * 0.6)),
+        Self.row("s-mother", "m-mother", "母", "protected", photo: true, note: nil, at: at(hers)),
+      ]
+      photos = ["s-sister": SmilePlaceholder.jpeg(variant: 1), "s-mother": SmilePlaceholder.jpeg(variant: 2)]
+    }
+
+    private static func row(
+      _ id: String, _ member: String, _ name: String, _ role: String, photo: Bool, note: String?, at: String
+    ) -> [String: Any] {
+      [
+        "id": id, "memberId": member, "displayName": name, "role": role, "score": photo ? 0.8 : NSNull(),
+        "note": note ?? NSNull(), "hasPhoto": photo, "createdAt": at,
+      ]
+    }
+
+    func list() -> String {
+      lock.withLock { ScreenshotStubTransport.json(["smiles": smiles, "deadlineHour": hour]) }
+    }
+
+    func photo(id: String) -> Data? { lock.withLock { photos[id] } }
+
+    /// As the stub's own member ("m-stub"), named after the role it joined as.
+    func add(_ body: [String: Any]) -> (Int, String) {
+      let photo = (body["photo"] as? String).flatMap { Data(base64Encoded: $0) }
+      // Set words only, as on the server: an id or the words themselves.
+      let sent = body["note"] as? String
+      let note = SmileNote.allCases.first { $0.rawValue == sent || $0.text == sent }?.text
+      if sent != nil && note == nil { return (400, #"{"error":"note_not_allowed"}"#) }
+      guard photo != nil || note != nil else { return (400, #"{"error":"smile_empty"}"#) }
+      let role = ScreenshotStubTransport.joinedAs?.role ?? .family
+      let id = "s-\(UUID().uuidString.prefix(8))"
+      let row = Self.row(
+        id, "m-stub", role == .protected ? "母" : "作者", role.rawValue, photo: photo != nil, note: note,
+        at: Date.now.ISO8601Format())
+      return lock.withLock {
+        smiles.insert(row, at: 0)
+        if let photo { photos[id] = photo }
+        return (201, ScreenshotStubTransport.json(row))
+      }
+    }
+
+    func setHour(_ value: Int?) -> (Int, String) {
+      guard let value, SmileBoard.deadlineHours.contains(value) else { return (400, #"{"error":"hour_invalid"}"#) }
+      return lock.withLock {
+        hour = value
+        return (200, ScreenshotStubTransport.json(["deadlineHour": value]))
+      }
     }
   }
 

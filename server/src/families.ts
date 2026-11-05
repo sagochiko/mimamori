@@ -173,7 +173,7 @@ export function familyR2Prefix(familyId: string): string {
 }
 
 async function deleteFamilyPhotos(env: Env, familyId: string): Promise<void> {
-  const rows = await env.DB.prepare("SELECT r2_key FROM smiles WHERE family_id = ?")
+  const rows = await env.DB.prepare("SELECT r2_key FROM smiles WHERE family_id = ? AND r2_key != ''")
     .bind(familyId)
     .all<{ r2_key: string }>();
   const keys = new Set(rows.results.map((r) => r.r2_key));

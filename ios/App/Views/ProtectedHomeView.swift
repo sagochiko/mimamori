@@ -19,27 +19,38 @@ struct ProtectedHomeView: View {
   @State private var noticesOpen = false
   @State private var noticesHeight: CGFloat = 0
   @State private var screenHeight: CGFloat = 0
+  @State private var camera = false
+  @State private var choosingNote = false
 
   private static let liveID = "live"
 
   var body: some View {
     let notices = model.protectedNotices
     VStack(spacing: 0) {
-      if model.followUpPrompt != nil || !notices.isEmpty {
-        top(notices: notices)
-      }
+      // Always there: the smiles row starts with the button that opens the smile camera.
+      top(notices: notices)
       conversation(notices: notices)
       inputBar
     }
     .background(Color(.systemBackground))
     .onGeometryChange(for: CGFloat.self, of: \.size.height) { screenHeight = $0 }
     .task { await model.keepCasesFresh() }
+    .fullScreenCover(isPresented: $camera) { SmileCaptureView() }
+    .sheet(isPresented: $choosingNote) {
+      // Full height, and a swipe scrolls the words before it moves the sheet: at the medium height the
+      // fifth word was cut off, and at the largest text size a swipe could not reach it.
+      NoteSheet()
+        .presentationDetents([.large])
+        .presentationContentInteraction(.scrolls)
+    }
     .onAppear {
       model.loadChat()
       model.refreshFollowUp()
       #if DEBUG
         if draft.isEmpty, let text = ScreenshotStubTransport.draftText { draft = text }
         if ScreenshotStubTransport.noticesOpen { noticesOpen = true }
+        if ScreenshotStubTransport.cameraOpen { camera = true }
+        if ScreenshotStubTransport.noteOpen { choosingNote = true }
       #endif
     }
     .onChange(of: scenePhase) { _, phase in
@@ -49,7 +60,7 @@ struct ProtectedHomeView: View {
     }
   }
 
-  /// The follow-up question and the family notices. Closed, the notices are one strip; open, the top
+  /// The follow-up question, the family notices, and the smiles. Closed, the notices are one strip; open, the top
   /// takes at most 40% of the screen, scrolling beyond that, so the conversation always has room.
   private func top(notices: [ProtectedNotice]) -> some View {
     ScrollView {
@@ -60,6 +71,8 @@ struct ProtectedHomeView: View {
         if !notices.isEmpty {
           NoticeStrip(notices: notices, open: $noticesOpen)
         }
+        // The family's smiles and replies, and her own (#14).
+        SmileStrip(onCamera: { camera = true }, onNote: { choosingNote = true })
       }
       .padding(.horizontal, 16)
       .padding(.vertical, 8)

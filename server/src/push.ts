@@ -17,6 +17,11 @@ export interface PushPayload {
   data?: Record<string, string | number | boolean>;
   /** Groups notifications of one case together on the lock screen. */
   threadId?: string;
+  /**
+   * No sound, and the "passive" interruption level: it goes to the notification list without lighting
+   * the screen. For news that is not urgent, such as a smile or a smile that has not come yet.
+   */
+  quiet?: boolean;
 }
 
 export type PushResult =
@@ -101,8 +106,9 @@ function apnsJwt(env: Env, nowMs: number): Promise<string> {
 function apsBody(payload: PushPayload): Record<string, unknown> {
   const aps: Record<string, unknown> = {
     alert: payload.title === undefined ? { body: payload.body } : { title: payload.title, body: payload.body },
-    sound: "default",
   };
+  if (payload.quiet) aps["interruption-level"] = "passive";
+  else aps.sound = "default";
   if (payload.threadId) aps["thread-id"] = payload.threadId;
   return { ...payload.data, aps };
 }

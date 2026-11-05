@@ -6,9 +6,12 @@
 import { ExternalBudget } from "./budget";
 import { sendFirstNotices, watchUnanswered } from "./cases";
 import { purgeExpired, purgeExpiredSessions } from "./retention";
+import { notifyMissedSmiles } from "./smiles";
+import { JST_OFFSET_MS } from "./time";
+
+export { jstDate } from "./time";
 
 const TICK_MINUTES = 5;
-const JST_OFFSET_MS = 9 * 3600_000;
 
 /** Jobs in one tick share one budget of outside calls (see src/budget.ts). */
 type Run = (env: Env, now: number, budget: ExternalBudget) => Promise<void>;
@@ -24,6 +27,8 @@ export const JOBS: Job[] = [
   { name: "case-first-notice", everyMinutes: 5, run: sendFirstNotices },
   // Cases not resolved within 30 minutes. Before the cleanup, so notices are never starved by it.
   { name: "case-watch", everyMinutes: 5, run: watchUnanswered },
+  // Each family has its own hour, so every tick looks for families whose hour has passed today.
+  { name: "smile-missed", everyMinutes: 5, run: notifyMissedSmiles },
   // 04:00 JST, when the family is least likely to be using the app.
   { name: "retention", dailyAtJst: "04:00", run: purgeExpired },
   // Agent sessions of old cases, a few at a time, so a backlog finishes over the following ticks.
