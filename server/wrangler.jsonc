@@ -41,6 +41,6 @@
 
   // Set by the author with `wrangler secret put`; the shape is in .dev.vars.example.
   "secrets": {
-    "required": ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID", "ANTHROPIC_API_KEY", "TOKEN_ENC_KEY"]
+    "required": ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID", "ANTHROPIC_API_KEY", "TOKEN_ENC_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]
   }
 }

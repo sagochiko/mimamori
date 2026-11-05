@@ -1,10 +1,11 @@
 // One Cron Trigger ("*/5 * * * *") drives every scheduled job, because the Free plan allows only
 // 5 Cron Triggers per account. Each job says when it is due; dueJobs() picks them from the tick time.
-// To add a job (Gmail polling in task 7), put it in JOBS. Jobs run one after another in JOBS order
+// To add a job, put it in JOBS. Jobs run one after another in JOBS order
 // and share one budget of outside calls, so notices go before the cleanup that takes what is left.
 
 import { ExternalBudget } from "./budget";
 import { sendFirstNotices, watchUnanswered } from "./cases";
+import { watchGmail } from "./gmail";
 import { purgeExpired, purgeExpiredSessions } from "./retention";
 import { notifyMissedSmiles } from "./smiles";
 import { JST_OFFSET_MS } from "./time";
@@ -29,6 +30,9 @@ export const JOBS: Job[] = [
   { name: "case-watch", everyMinutes: 5, run: watchUnanswered },
   // Each family has its own hour, so every tick looks for families whose hour has passed today.
   { name: "smile-missed", everyMinutes: 5, run: notifyMissedSmiles },
+  // New mail in the protected member's inbox (task 7), and the notices that her grant needs taking again.
+  // After the case notices, so a backlog of mail cannot starve them, and before the cleanup.
+  { name: "gmail-watch", everyMinutes: 5, run: watchGmail },
   // 04:00 JST, when the family is least likely to be using the app.
   { name: "retention", dailyAtJst: "04:00", run: purgeExpired },
   // Agent sessions of old cases, a few at a time, so a backlog finishes over the following ticks.
