@@ -40,6 +40,20 @@ struct CallFollowUpTests {
     #expect(followUp.promptToShow(at: Self.at(15, 1)) == nil)
   }
 
+  @Test("既定の下限は3分のまま")
+  func defaultMinimumIsThreeMinutes() {
+    #expect(CallFollowUp.minimumDuration == 180)
+    let (followUp, _) = make()
+    #expect(followUp.callEnded(Self.call(minutes: 0.5)) == .nothing)
+  }
+
+  @Test("下限を短くすれば、短い通話でも聞く(デモを撮るときの Debug の起動の引数)")
+  func shorterMinimum() {
+    let followUp = CallFollowUp(store: InMemoryCallFollowUpStore(), calendar: Self.tokyo, minimumDuration: 10)
+    #expect(followUp.callEnded(EndedCall(id: "short", duration: 9.9, endedAt: Self.at(15))) == .nothing)
+    #expect(followUp.callEnded(EndedCall(id: "demo", duration: 15, endedAt: Self.at(15))) == .notifyNow)
+  }
+
   @Test("同じ通話で2回は聞かない")
   func sameCallOnce() {
     let (followUp, _) = make()
