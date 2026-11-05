@@ -530,3 +530,74 @@ struct ConsultHistoryAPITests {
     #expect(try bodyJSON(try #require(transport.requests.first))["history"] == nil)
   }
 }
+
+// #113: like the usual chat apps, a date row where the day changes ("11月4日", today "今日") and the
+// time each one was sent ("14:55"), read by VoiceOver as a time ("14時55分").
+@Suite("日付の行と送った時刻")
+struct ChatRowTests {
+  static let tokyo: Calendar = {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+    return calendar
+  }()
+
+  static func jst(_ month: Int, _ day: Int, _ hour: Int, _ minute: Int) -> Date {
+    tokyo.date(from: DateComponents(year: 2026, month: month, day: day, hour: hour, minute: minute))!
+  }
+
+  @Test("日が変わるところに日付の行を置き、今日は「今日」にする")
+  func dayRows() {
+    var log = ChatLog()
+    let asked = log.append(.protected, "ストレージがいっぱいと出た", at: Self.jst(11, 4, 14, 55))
+    let answer = log.append(.ai, "設定の「一般」から", at: Self.jst(11, 4, 14, 56))
+    let today = log.append(.protected, "それってどういうこと", at: Self.jst(11, 6, 9, 5))
+    let rows = log.rows(at: Self.jst(11, 6, 9, 6), calendar: Self.tokyo)
+    #expect(
+      rows == [
+        .day(label: "11月4日", id: "day-\(asked.id)"),
+        .message(asked, time: ChatStamp(text: "14:55", spoken: "14時55分")),
+        .message(answer, time: ChatStamp(text: "14:56", spoken: "14時56分")),
+        .day(label: "今日", id: "day-\(today.id)"),
+        .message(today, time: ChatStamp(text: "09:05", spoken: "9時5分")),
+      ])
+  }
+
+  @Test("日本時間の0時をまたげば、世界時で同じ日でも行を分ける")
+  func midnightInTokyo() {
+    var log = ChatLog()
+    // 14:59 and 15:01 UTC on 2026-11-04.
+    log.append(.protected, "夜", at: Self.jst(11, 4, 23, 59))
+    log.append(.ai, "朝", at: Self.jst(11, 5, 0, 1))
+    let days = log.rows(at: Self.jst(11, 6, 12, 0), calendar: Self.tokyo).compactMap { row in
+      if case .day(let label, _) = row { label } else { nil }
+    }
+    #expect(days == ["11月4日", "11月5日"])
+  }
+
+  @Test("時刻の無い古い記録も読め、時刻と日付の行を出さず、裏側にも渡さない")
+  func untimedRecord() throws {
+    let id = UUID()
+    let json = #"{"messages":[{"id":"\#(id.uuidString)","role":"protected","text":"前の話"}]}"#
+    let log = ChatLog.restored(from: Data(json.utf8), at: .t0)
+    #expect(log.messages.map(\.text) == ["前の話"])
+    #expect(log.messages.first?.at == nil)
+    #expect(log.rows(at: .t0, calendar: Self.tokyo) == [.message(log.messages[0], time: nil)])
+    #expect(log.history(at: .t0).isEmpty)
+    #expect(log.history(for: "それってどういうこと", at: .t0).isEmpty)
+  }
+
+  @Test("時刻の無い記録のあとに足した話は、ふつうに日付の行と時刻が付く")
+  func untimedThenTimed() throws {
+    let json = #"{"messages":[{"id":"\#(UUID().uuidString)","role":"ai","text":"前の答え"}]}"#
+    var log = ChatLog.restored(from: Data(json.utf8), at: .t0)
+    let now = Self.jst(11, 6, 10, 0)
+    let asked = log.append(.protected, "教えて", at: now)
+    #expect(
+      log.rows(at: now, calendar: Self.tokyo) == [
+        .message(log.messages[0], time: nil),
+        .day(label: "今日", id: "day-\(asked.id)"),
+        .message(asked, time: ChatStamp(text: "10:00", spoken: "10時0分")),
+      ])
+    #expect(log.history(at: now + 60).map(\.text) == ["教えて"])
+  }
+}

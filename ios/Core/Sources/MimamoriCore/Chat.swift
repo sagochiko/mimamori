@@ -16,13 +16,39 @@ public struct ChatMessage: Codable, Equatable, Identifiable, Sendable {
   public let id: UUID
   public let role: ChatRole
   public let text: String
-  public let at: Date
+  /// When it was said or answered. Every message the app writes has it; nil only for a record kept
+  /// without one, which is still shown, with no time (#113).
+  public let at: Date?
 
-  public init(id: UUID, role: ChatRole, text: String, at: Date) {
+  public init(id: UUID, role: ChatRole, text: String, at: Date?) {
     self.id = id
     self.role = role
     self.text = text
     self.at = at
+  }
+}
+
+/// The time a message was sent as the screen shows it ("14:55") and as VoiceOver reads it ("14時55分").
+public struct ChatStamp: Equatable, Sendable {
+  public let text: String
+  public let spoken: String
+
+  public init(text: String, spoken: String) {
+    self.text = text
+    self.spoken = spoken
+  }
+}
+
+/// One row of her chat: a date where the day changes, or a message with its time.
+public enum ChatRow: Equatable, Identifiable, Sendable {
+  case day(label: String, id: String)
+  case message(ChatMessage, time: ChatStamp?)
+
+  public var id: String {
+    switch self {
+    case .day(_, let id): id
+    case .message(let message, _): message.id.uuidString
+    }
   }
 }
 
@@ -66,8 +92,9 @@ public struct ChatLog: Codable, Equatable, Sendable {
 
   /// The turns to send with a consultation at `now`: those of the last hour, the last six, each cut
   /// to 500 code points (the server counts code points, not what the screen shows as one character).
+  /// A message with no time is never sent: how old it is cannot be known.
   public func history(at now: Date) -> [ConsultTurn] {
-    turns(messages.filter { now.timeIntervalSince($0.at) < Self.window })
+    turns(messages.filter { $0.at.map { now.timeIntervalSince($0) < Self.window } ?? false })
   }
 
   /// The turns to send with `text` at `now`. Words that only point back (`pointsBack`) get the
@@ -77,14 +104,45 @@ public struct ChatLog: Codable, Equatable, Sendable {
   /// last hour only. The server's own conversation of 60 minutes, which decides whether the family is
   /// told again, does not move with this.
   public func history(for text: String, at now: Date) -> [ConsultTurn] {
-    guard Self.pointsBack(text), let last = messages.last, last.at < now else {
+    guard Self.pointsBack(text), let last = messages.last?.at, last < now else {
       return history(at: now)
     }
     return turns(
-      messages.filter {
-        last.at.timeIntervalSince($0.at) < Self.window
-          && now.timeIntervalSince($0.at) < Self.keptFor
+      messages.filter { message in
+        guard let at = message.at else { return false }
+        return last.timeIntervalSince(at) < Self.window && now.timeIntervalSince(at) < Self.keptFor
       })
+  }
+
+  /// What the screen lists, oldest first, as in the usual chat apps (#113, decided by the author on
+  /// 2026-11-05): a date row where the day changes in `calendar` ("11月4日", or "今日"), then each
+  /// message with the time it was sent ("14:55"). A message with no time gets neither and starts no
+  /// day. No year: nothing older than 30 days is kept.
+  public func rows(at now: Date, calendar: Calendar = .current) -> [ChatRow] {
+    var rows: [ChatRow] = []
+    var shownDay: DateComponents?
+    for message in messages {
+      guard let at = message.at else {
+        rows.append(.message(message, time: nil))
+        continue
+      }
+      let parts = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: at)
+      let day = DateComponents(year: parts.year, month: parts.month, day: parts.day)
+      if day != shownDay {
+        shownDay = day
+        let label =
+          calendar.isDate(at, inSameDayAs: now) ? "今日" : "\(parts.month ?? 0)月\(parts.day ?? 0)日"
+        rows.append(.day(label: label, id: "day-\(message.id)"))
+      }
+      let hour = parts.hour ?? 0
+      let minute = parts.minute ?? 0
+      rows.append(
+        .message(
+          message,
+          time: ChatStamp(
+            text: String(format: "%02d:%02d", hour, minute), spoken: "\(hour)時\(minute)分")))
+    }
+    return rows
   }
 
   private func turns(_ kept: [ChatMessage]) -> [ConsultTurn] {
@@ -151,7 +209,8 @@ public struct ChatLog: Codable, Equatable, Sendable {
     guard let data, var log = try? JSONDecoder().decode(ChatLog.self, from: data) else {
       return ChatLog()
     }
-    log.messages.removeAll { now.timeIntervalSince($0.at) >= keptFor }
+    // One with no time cannot be aged, so it stays, within the newest 50.
+    log.messages.removeAll { $0.at.map { now.timeIntervalSince($0) >= keptFor } ?? false }
     if log.messages.count > keep { log.messages.removeFirst(log.messages.count - keep) }
     return log
   }
