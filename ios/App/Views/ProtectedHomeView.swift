@@ -160,7 +160,8 @@ struct ProtectedHomeView: View {
   }
 
   /// The glyphs in the field's 34pt circles grow with the text up to here; at the accessibility
-  /// sizes they would spill out of the circle, and a long press shows them large instead.
+  /// sizes they would spill out of the circle (seen at accessibility-large, 2026-11-05). There the
+  /// large content viewer, on a long press, is the way to see them large.
   private static let largestButtonType = DynamicTypeSize.xxxLarge
 
   private var sendButton: some View {
@@ -182,7 +183,7 @@ struct ProtectedHomeView: View {
     .buttonStyle(.plain)
     .disabled(!canSend)
     .transition(.scale.combined(with: .opacity))
-    .accessibilityShowsLargeContentViewer()
+    .accessibilityShowsLargeContentViewer { Label("送る", systemImage: "arrow.up") }
     .accessibilityLabel("送る")
     .accessibilityHint(model.voice.acceptsText ? "書いた言葉を送ります" : "答えを待っています")
   }
@@ -204,7 +205,9 @@ struct ProtectedHomeView: View {
     }
     .buttonStyle(.plain)
     .transition(.scale.combined(with: .opacity))
-    .accessibilityShowsLargeContentViewer()
+    .accessibilityShowsLargeContentViewer {
+      Label(model.voice.micLabel, systemImage: listening ? "waveform" : "mic.fill")
+    }
     .accessibilityLabel(model.voice.micLabel)
     .accessibilityHint(model.voice.micHint)
   }
