@@ -94,10 +94,12 @@ export function soundsSafe(text: string): boolean {
 // も and a "no" ("印が無いので", "お話に印は見当たらない"). Phone guidance says 印 for a mark on the
 // screen, and that is hers (review 1 of PR #129): 赤い印 for a badge, 既読の印 in LINE, 地図の印, 印を
 // つけて, and words like 印鑑, 矢印, ×印; after an adjective or の even before a "no" ("赤い印が無けれ
-// ば"). Stopped, such guidance in a help answer went to the family. The family's reasons keep the
-// signs, so this is for lines to her only.
+// ば"). Stopped, such guidance in a help answer went to the family, so help answers are not checked
+// at all (review 2 of PR #129), and the form may be wide for the scam answers, where a stopped line
+// only becomes the fixed one: "印は見えませんでした", "印はなさそう", "印のない相談". The family's
+// reasons keep the signs, so this is for lines to her only.
 const JUDGMENT_WORD =
-  /(手口|詐欺)の印|(見えた|危ない)印|(?<=^|[\s、。,，!！?？「」『』(（]|[にでもはが])印(が|は|も)、?(無|な[いかくけ]|見当たら|見つか|聞き取れ|(一|1|１|ひと)つも|ありませ)|規則の判定|決まった規則による判定/u;
+  /(手口|詐欺)の印|(見えた|危ない)印|(?<=^|[\s、。,，!！?？「」『』(（]|[にでもはが])印(が|は|も)、?(無|な[いかくけ]|見当たら|見つか|見え(ませ|な)|聞き取れ|確認でき|なさそう|(一|1|１|ひと)つも|ありませ)|(?<!\p{sc=Han})印の(無|な)い|規則の判定|決まった規則による判定/u;
 
 /** True when a line to the mother uses the judgment's own words instead of hers. */
 export function talksJudgment(text: string): boolean {

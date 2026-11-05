@@ -3021,7 +3021,6 @@ describe("words of the judgment in her answer (#121)", () => {
       [MESSAGE, scam({ level: 3, reasons: [], basis: "", action: line, topic: null }), LOW_CONCERN],
       [POLICE_CALL, scam({ level: 2, basis: line, action: line }), LIKE_SCAM],
       [POLICE_CALL, scam({ level: 2, basis: line, handoff: true }), `${LIKE_SCAM}。家族に伝えました`],
-      ["Wi-Fiがつながらない", help({ action: line }), null],
     ];
     for (const [text, said, expected] of cases) {
       const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), fakes(said));
@@ -3065,6 +3064,27 @@ describe("words of the judgment in her answer (#121)", () => {
       fakes(scam({ level: 3, reasons: [], basis: "", action: line, topic: null })),
     );
     expect(low.reply).toBe(`${line}。${LOW_CONCERN}`);
+  });
+
+  // Review 2 of PR #129: in phone guidance 印 is a mark on the screen, so the words of the judgment are
+  // not checked there. Checked, a bare 印 after a place went to the family as an answer the AI could
+  // not give.
+  it.each([
+    "画面に印が無ければ、まだ届いていません",
+    "右上に印がなければ、新しい通知はありません",
+    "地図に印が見つからないときは、検索を使って",
+  ])("reads out phone guidance as it is, without the family: %s", async (line) => {
+    const fam = await setupFamily();
+    const answer = await consult(
+      consultEnv,
+      motherOf(fam),
+      "通知が消えない",
+      new ExternalBudget(),
+      fakes(help({ action: line })),
+    );
+    expect(answer).toMatchObject({ reply: line, handoff: false });
+    expect(await alertsOf(fam.familyId)).toHaveLength(0);
+    expect(familyPushes(fam)).toHaveLength(0);
   });
 
   it("keeps the signs in the reasons on the family's card", async () => {

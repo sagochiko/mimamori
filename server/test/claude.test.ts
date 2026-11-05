@@ -119,6 +119,13 @@ describe("talksJudgment", () => {
     "お話に印は見当たらないよ",
     "今回は印が見つからなかったよ",
     "印はありませんでした",
+    // Review 2 of PR #129: forms the prompts use that slipped through.
+    "印のない相談でした",
+    "印の無いお話なので、様子を見てね",
+    "お話に印は見えませんでした",
+    "お話からは印が見えません",
+    "印は確認できませんでした",
+    "印はなさそうです",
   ])("stops %s", (line) => {
     expect(talksJudgment(line)).toBe(true);
   });
@@ -143,6 +150,7 @@ describe("talksJudgment", () => {
     "印をつけて",
     "印字",
     "印刷",
+    "目印のない所を押して",
     // 決まった規則 alone is an everyday phrase; the prompts say 決まった規則による判定.
     "銀行の決まった規則で、暗証番号を電話で聞くことはありません",
     "アプリの右上に赤い印が出ていたら",

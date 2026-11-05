@@ -525,8 +525,11 @@ function usable(line: string): boolean {
 }
 
 /**
- * A line from Claude that may be read out to her: usable, and in her words rather than the
- * judgment's ("手口の印", #121). The family's line and reasons keep the signs, so only usable().
+ * A line from Claude that may be read out to her in a scam answer: usable, and in her words rather
+ * than the judgment's ("手口の印", #121). Phone guidance is checked by usable() only: there 印 is a
+ * mark on the screen ("画面に印が無ければ"), and a stopped guidance line goes to the family as one the
+ * AI could not answer (review 2 of PR #129). The family's line and reasons keep the signs, so only
+ * usable().
  */
 function readable(line: string): boolean {
   return usable(line) && !talksJudgment(line);
@@ -708,7 +711,7 @@ function decidePlan(
   // answer from Claude at all still go on below.
   if (
     claude !== null &&
-    (claude.handoff || claude.kind === "scam" || (claude.kind === "help" && !readable(claude.action))) &&
+    (claude.handoff || claude.kind === "scam" || (claude.kind === "help" && !usable(claude.action))) &&
     sensitive.length === 0 &&
     level === 3 &&
     rule.level === null &&
@@ -763,7 +766,7 @@ function decidePlan(
     // About a message, a call, or a link, or the rules saw something: not Claude's free guidance.
     return { level: 3, reasons, reply: LOW_CONCERN_ACTION, toFamily: false, record: true, sign: false, ...base };
   }
-  if (unanswered || claude === null || !readable(claude.action)) {
+  if (unanswered || claude === null || !usable(claude.action)) {
     const why = reasons.length > 0 ? reasons : [UNANSWERED_REASON];
     return { level: 2, reasons: why, reply: UNANSWERED_REPLY, toFamily: true, record: true, sign: false, ...base };
   }
