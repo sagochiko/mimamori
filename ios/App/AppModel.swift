@@ -34,7 +34,16 @@ final class AppModel {
     return listener
   }()
   @ObservationIgnored private var silenceWatch: Task<Void, Never>?
-  @ObservationIgnored private let followUp = CallFollowUp(store: UserDefaultsCallFollowUpStore())
+  @ObservationIgnored private let followUp = CallFollowUp(
+    store: UserDefaultsCallFollowUpStore(), minimumDuration: AppModel.followUpMinimum)
+  @ObservationIgnored private lazy var callWatcher = CallEndWatcher { [weak self] call in
+    Task { await self?.callEnded(call) }
+  }
+  /// Rebuilds run one after another, so a slower one cannot put back requests a newer one removed.
+  @ObservationIgnored private var checkInWork: Task<Void, Never>?
+  #if DEBUG
+    @ObservationIgnored private var postedDebugCheckIn = false
+  #endif
 
   init(
     store: any DeviceKeyStore = KeychainDeviceKeyStore(),
@@ -58,7 +67,17 @@ final class AppModel {
         // Not before the first unlock, when the Keychain only reads as empty.
         if UIApplication.shared.isProtectedDataAvailable { self?.chat.clear() }
       }
+      // Joined as the protected member, or no longer: the call watch and the daily prompt follow.
+      self?.cameToFront()
     }
+  }
+
+  /// 3 minutes, or what a Debug build was launched with (`-mimamori-followup-min-seconds`).
+  private static var followUpMinimum: TimeInterval {
+    #if DEBUG
+      if let seconds = DebugLaunch.followUpMinimum { return seconds }
+    #endif
+    return CallFollowUp.minimumDuration
   }
 
   /// An empty file in Application Support: deleted with the app, and checkable while locked.
@@ -221,16 +240,51 @@ final class AppModel {
 
   // MARK: Call follow-up
 
-  /// The single entry for whatever learns that a call ended (#25 decides what that is).
+  /// Each time the app comes to the front, at launch, and when the route changes. Only the protected
+  /// member's iPhone watches calls and gets the daily prompt; on any other route both stop.
+  ///
+  /// Settings > みまもり is read here too. The Settings app is another process, and Apple's page on
+  /// `UserDefaults.didChangeNotification` says "If a different process changes your app's settings,
+  /// the system doesn't generate this notification"; a suspended app could not act on it anyway. A
+  /// new value takes effect the next time the app comes to the front.
+  func cameToFront() {
+    if route == .protectedHome { callWatcher.start() } else { callWatcher.stop() }
+    scheduleDailyCheckIns()
+  }
+
+  /// A call ended while the app was in front (`CallEndWatcher`, #99).
   func callEnded(_ call: EndedCall) async {
     switch followUp.callEnded(call) {
     case .notifyNow:
       await CallFollowUpNotifier.post()
       refreshFollowUp()
+      // She was asked about a call today: today's daily prompt goes.
+      scheduleDailyCheckIns()
     case .askOnNextOpen:
       refreshFollowUp()
+      scheduleDailyCheckIns()
     case .nothing:
       break
+    }
+  }
+
+  /// Replaces the pending daily prompts with the ones for the next days. Nothing on a family
+  /// member's iPhone, or before joining.
+  private func scheduleDailyCheckIns() {
+    let previous = checkInWork
+    checkInWork = Task { [weak self] in
+      await previous?.value
+      guard let self else { return }
+      // Read now, after the one before finished, so the newest settings and route win.
+      let settings = DailyCheckInNotifier.settings
+      let protected = route == .protectedHome
+      await DailyCheckInNotifier.replace(with: protected ? followUp.dailyCheckIns(settings, now: .now) : [])
+      #if DEBUG
+        if protected, settings.isOn, !postedDebugCheckIn, let seconds = DebugLaunch.checkInAfter {
+          postedDebugCheckIn = true
+          await DailyCheckInNotifier.postSoon(after: seconds)
+        }
+      #endif
     }
   }
 
@@ -263,6 +317,14 @@ final class AppModel {
     let granted =
       (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])) ?? false
     if granted { UIApplication.shared.registerForRemoteNotifications() }
+    // Requests added before she allowed notifications may not have been kept.
+    guard granted else { return }
+    #if DEBUG
+      // The Debug prompt may have been added while the permission sheet was still up; add it again
+      // (same identifier, so it replaces rather than doubles).
+      postedDebugCheckIn = false
+    #endif
+    scheduleDailyCheckIns()
   }
 
   /// No alert on failure: the token is sent again on the next launch. A 401 still ends at role
