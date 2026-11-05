@@ -3,7 +3,8 @@ import Foundation
 // The protected person's screen is a chat (#73, decided by the author on 2026-11-04): what she said,
 // by voice or in writing, on the right, and the AI's answers on the left, oldest first. The
 // conversation stays on her iPhone only (the newest `keep`), and the turns of the same conversation
-// go with her next consultation so "それってどういうこと?" can be answered. The server keeps none of it.
+// go with her next consultation so "それってどういうこと?" can be answered, the day after too (#118).
+// The server keeps none of it.
 // The App's adapter reads and writes the file (NSFileProtectionComplete); everything else is here.
 
 public enum ChatRole: String, Codable, Equatable, Sendable {
@@ -66,14 +67,75 @@ public struct ChatLog: Codable, Equatable, Sendable {
   /// The turns to send with a consultation at `now`: those of the last hour, the last six, each cut
   /// to 500 code points (the server counts code points, not what the screen shows as one character).
   public func history(at now: Date) -> [ConsultTurn] {
-    messages
-      .filter { now.timeIntervalSince($0.at) < Self.window }
+    turns(messages.filter { now.timeIntervalSince($0.at) < Self.window })
+  }
+
+  /// The turns to send with `text` at `now`. Words that only point back (`pointsBack`) get the
+  /// conversation they point at, even from the day before: the hour is counted back from the last
+  /// message instead of from now, so they get what a question right after it would have (#118,
+  /// decided by the author on 2026-11-05). Nothing 30 days old or older goes. Other words get the
+  /// last hour only. The server's own conversation of 60 minutes, which decides whether the family is
+  /// told again, does not move with this.
+  public func history(for text: String, at now: Date) -> [ConsultTurn] {
+    guard Self.pointsBack(text), let last = messages.last, last.at < now else {
+      return history(at: now)
+    }
+    return turns(
+      messages.filter {
+        last.at.timeIntervalSince($0.at) < Self.window
+          && now.timeIntervalSince($0.at) < Self.keptFor
+      })
+  }
+
+  private func turns(_ kept: [ChatMessage]) -> [ConsultTurn] {
+    kept
       .suffix(Self.historyTurns)
       .map { message in
         let cut = String(
           String.UnicodeScalarView(message.text.unicodeScalars.prefix(Self.turnMaxCharacters)))
         return ConsultTurn(role: message.role, text: cut)
       }
+  }
+
+  /// Words that only point back at what came just before ("それってどういうこと?", "どうすればいい?",
+  /// "そのやり方を教えて"): short, with a pointing or "how" word, and no word that opens a new topic.
+  /// The same test as `pointsBack` in server/src/consult-judge.ts, which reads only such words as about
+  /// her last earlier ones, so the app sends the conversation before for exactly the words the server
+  /// reads that way. Both run server/test/fixtures/points-back.json; change them together.
+  public static func pointsBack(_ text: String) -> Bool {
+    // normalize() and /[\s\p{P}\p{S}]+/gu on the server: NFKC, lowercase, then no white space (as
+    // JavaScript's \s), punctuation, or symbols.
+    let lowered = text.precomposedStringWithCompatibilityMapping.lowercased()
+    let kept = String(String.UnicodeScalarView(lowered.unicodeScalars.filter { !ignored($0) }))
+    // The server counts code points.
+    guard kept.unicodeScalars.count <= pointsBackMaxCharacters else { return false }
+    // POINTS_BACK and NEW_TOPIC on the server, matched on code points as JavaScript's u flag does.
+    let pointing =
+      /それ|これ|あれ|そう|どうやる|どうやって|どうすれば|どうしたら|どういう|やり方|(この|その|あの)(やり方|方法|こと|件|やつ|操作)/
+    let newTopic = /それより|それと|それから|ところで|別の|ほかの|他の/
+    return kept.contains(pointing.matchingSemantics(.unicodeScalar))
+      && !kept.contains(newTopic.matchingSemantics(.unicodeScalar))
+  }
+
+  /// POINTS_BACK_MAX_CHARS on the server.
+  static let pointsBackMaxCharacters = 15
+
+  /// JavaScript's \s (tab, line tabulation, form feed, the zero width no-break space, any space
+  /// separator, and the line terminators), \p{P}, and \p{S}.
+  private static func ignored(_ scalar: Unicode.Scalar) -> Bool {
+    switch scalar.value {
+    case 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0xFEFF, 0x2028, 0x2029: return true
+    default: break
+    }
+    switch scalar.properties.generalCategory {
+    case .spaceSeparator,
+      .connectorPunctuation, .dashPunctuation, .openPunctuation, .closePunctuation,
+      .initialPunctuation, .finalPunctuation, .otherPunctuation,
+      .mathSymbol, .currencySymbol, .modifierSymbol, .otherSymbol:
+      return true
+    default:
+      return false
+    }
   }
 
   public func encoded() throws -> Data {
@@ -128,10 +190,11 @@ public struct ChatKeeper: Sendable {
     isLoaded = true
   }
 
-  /// Her words go out: returns the earlier turns to send with them, then keeps them.
+  /// Her words go out: returns the earlier turns to send with them (`ChatLog.history(for:at:)`), then
+  /// keeps them.
   public mutating func send(_ text: String, at now: Date) -> [ConsultTurn] {
     load(at: now)
-    let history = log.history(at: now)
+    let history = log.history(for: text, at: now)
     log.append(.protected, text, at: now)
     save()
     return history

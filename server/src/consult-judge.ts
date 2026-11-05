@@ -403,12 +403,15 @@ export function allOf(said: Said): string[] {
 // "そのやり方を教えて"): short, with a pointing or "how" word, and no word that opens a new topic.
 // "この", "その", "あの" point back only before a word for the thing itself ("そのやり方", "この件"):
 // "このアプリの文字を大きくしたい" is a new topic (review of PR #79, second round).
+// The app has the same test (ChatLog.pointsBack in ios/Core/Sources/MimamoriCore/Chat.swift) and sends
+// the conversation before, even from the day before, with exactly these words (#118). Both run
+// test/fixtures/points-back.json; change them together.
 const POINTS_BACK =
   /それ|これ|あれ|そう|どうやる|どうやって|どうすれば|どうしたら|どういう|やり方|(この|その|あの)(やり方|方法|こと|件|やつ|操作)/;
 const NEW_TOPIC = /それより|それと|それから|ところで|別の|ほかの|他の/;
 const POINTS_BACK_MAX_CHARS = 15;
 
-function pointsBack(text: string): boolean {
+export function pointsBack(text: string): boolean {
   const t = normalize(text).replace(/[\s\p{P}\p{S}]+/gu, "");
   return [...t].length <= POINTS_BACK_MAX_CHARS && POINTS_BACK.test(t) && !NEW_TOPIC.test(t);
 }
@@ -439,9 +442,10 @@ function namesSomething(text: string): boolean {
 }
 
 /**
- * Her question only points back, and none of her words in this conversation say at what (#114). The
- * app sends the turns of the last 60 minutes, so the conversation she means may be older than that;
- * her earlier words that only point back too ("それってどういうこと" again) say nothing either.
+ * Her question only points back, and none of her words in this conversation say at what (#114). For
+ * such a question the app sends the conversation before even from the day before (#118), but there
+ * may be none: nothing kept on her iPhone, or only what is 30 days old or older. Her earlier words
+ * that only point back too ("それってどういうこと" again) say nothing either.
  */
 function pointsAtNothing(said: Said): boolean {
   return [said.text, ...said.earlier].every((t) => !namesSomething(t));
