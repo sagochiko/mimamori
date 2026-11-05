@@ -143,6 +143,10 @@ export const POLICE_CALLER: PhraseRule = {
     // and only after を or と: 警察官が語った話 is the police talking.
     new RegExp(`${POLICE_NAME}(の人|の者|署員)?を?(かた|騙)(る|って|り|った|られ)${NOT_A_WARNING}`),
     new RegExp(`${POLICE_NAME}(の人|の者|署員)?(を|と)語(る|って|り|った|られ)${NOT_A_WARNING}`),
+    // 警察を乗る, 警察署の人と乗る: 名乗る as speech recognition wrote it on the author's iPhone, with な
+    // dropped (#114). Only right after を, と, or って, which riding does not take: 警察の車に乗る,
+    // パトカーに乗って, 警察官とパトカーに乗った.
+    new RegExp(`${POLICE_NAME}(の人|の者|署員)?(を|と|って)乗(る|って|り|った|られ)${NOT_A_WARNING}`),
     // 警察の名前で電話, 警察の名前をかたって, 警察みたいな人から, 警察っぽい男 (#81)
     new RegExp(`${POLICE_NAME}の名(前)?(で|を(使|かた|騙|語|名乗)(って|い|う|った|る)${NOT_A_WARNING})`),
     new RegExp(`${POLICE_NAME}(みたいな|っぽい|のような|らしき)(人|方|者|男|女|相手|電話|声)`),

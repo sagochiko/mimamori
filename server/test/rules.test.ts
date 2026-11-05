@@ -296,6 +296,29 @@ describe("a caller from the police, in more of her words", () => {
   });
 });
 
+// #114: on the author's iPhone, speech recognition wrote 警察を名乗る as 警察を乗る (な dropped), and
+// the script was missed. 乗る right after を, と, or って is not how one rides anything ("車に乗る").
+describe("a caller from the police, with 名乗る heard as 乗る (#114)", () => {
+  it.each([
+    ["を乗る", "警察を乗る電話が来て潔白を証明してって"],
+    ["と乗る after 署の人", "警察署の人と乗る男から、逮捕状が出てるって"],
+    ["を乗った", "警察を乗った人から電話で、口座が犯罪に使われてるって"],
+    ["って乗る", "警察って乗る人から、ほかの人には言わないでって言われた"],
+  ])("makes %s next to a part of the script the script", (_label, text) => {
+    expect(consultByRules(text).script).toBe(true);
+  });
+
+  it.each([
+    ["riding in a police car", "警察の車に乗るように言われて、潔白を証明してって"],
+    ["a bus to the police station", "警察署へ行くバスに乗って、口座が悪用されてないか聞いてきた"],
+    ["riding with an officer", "警察官とパトカーに乗って、逮捕状のことを聞いた"],
+    ["a warning about the scam", "警察を乗る詐欺が増えてて、潔白を証明しろって言うらしい"],
+  ])("does not make %s a caller", (_label, text) => {
+    expect(matchSpans(POLICE_CALLER, text.normalize("NFKC").toLowerCase())).toEqual([]);
+    expect(consultByRules(text).script).toBe(false);
+  });
+});
+
 // #81: she got the call herself and adds what she thinks ("詐欺かも"). That is not passing on a
 // warning, so the script stays level 1 by the rules alone. When her words also pass on a warning
 // she heard, the rules do not take it on themselves, and Claude, which reads all of it, answers.
