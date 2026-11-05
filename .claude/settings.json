@@ -18,6 +18,7 @@
     "allow": [
       "Bash(make verify*)",
       "Bash(make eval)",
+      "Bash(make eval-rules)",
       "Bash(make usage*)",
       "Bash(swift test*)",
       "Bash(swift build*)",
