@@ -9,6 +9,7 @@ import {
   decide,
   parseClaudeJudgment,
   requestClaudeJudgment,
+  talksJudgment,
   type ClaudeJudgment,
 } from "../src/claude";
 import type { RuleResult } from "../src/rules";
@@ -65,6 +66,25 @@ describe("parseClaudeJudgment", () => {
     expect(parseClaudeJudgment(value)).toEqual({ ...valid, injection_suspected: true, message_to_protected: "" });
   });
 
+  // #121: the words the prompt uses to set the level (#109) reached the mother in a consultation.
+  // message_to_protected is neither stored nor sent today; it is kept free of them all the same.
+  it.each(["手口の印は見当たらないので、様子を見て", "印が無いので、開かずに待って", "規則の判定では決められません"])(
+    "drops a message_to_protected with words of the judgment, and keeps the rest: %s",
+    (message) => {
+      expect(parseClaudeJudgment({ ...valid, message_to_protected: message })).toEqual({
+        ...valid,
+        message_to_protected: "",
+      });
+    },
+  );
+
+  it.each(["通帳と印鑑は渡さず、家族に確かめて", "右上の×印で閉じて、家族に確かめて"])(
+    "keeps a message_to_protected with 印 inside a word of its own: %s",
+    (message) => {
+      expect(parseClaudeJudgment({ ...valid, message_to_protected: message })?.message_to_protected).toBe(message);
+    },
+  );
+
   it("keeps the level and the injection flag when a reason calls something safe", () => {
     // The wording is replaced later by decide(); the answer itself must not be thrown away, or a
     // message could get the judge's level dropped just by writing 安全 in its text.
@@ -75,6 +95,73 @@ describe("parseClaudeJudgment", () => {
       reasons: ["これは安全です"],
     });
     expect(judgment).toMatchObject({ level: 1, injection_suspected: true });
+  });
+});
+
+// #121 and review 1 of PR #129: the words of the judgment are the forms the prompts use, not every
+// 印. Phone guidance says 赤い印 for a badge, 既読の印 in LINE, and 地図の印 for a pin; such a line in a
+// help answer that was stopped went to the family as one the AI could not answer.
+describe("talksJudgment", () => {
+  it.each([
+    // The three lines Claude wrote on the author's iPhone.
+    "手口の印は聞き取れませんでした",
+    "話の中に、詐欺で使われる手口の印は聞き取れませんでした",
+    "手口の印が見えました",
+    // The review's table.
+    "印が無いので",
+    "見えた印はなかった",
+    "危ない印はなかった",
+    "詐欺の印",
+    "規則の判定では",
+    "決まった規則による判定では",
+    // The other forms the prompts use.
+    "印が一つも無いので、様子を見てね",
+    "お話に印は見当たらないよ",
+    "今回は印が見つからなかったよ",
+    "印はありませんでした",
+    // Review 2 of PR #129: forms the prompts use that slipped through.
+    "印のない相談でした",
+    "印の無いお話なので、様子を見てね",
+    "お話に印は見えませんでした",
+    "お話からは印が見えません",
+    "印は確認できませんでした",
+    "印はなさそうです",
+  ])("stops %s", (line) => {
+    expect(talksJudgment(line)).toBe(true);
+  });
+
+  it.each([
+    "印鑑",
+    "矢印",
+    "目印",
+    "バツ印",
+    "×印",
+    "ハートの印",
+    "チェックの印",
+    "星の印",
+    "丸の印",
+    "赤い印",
+    "青い印",
+    "緑の印",
+    "既読の印",
+    "通知の印",
+    "地図の印",
+    "お気に入りの印",
+    "印をつけて",
+    "印字",
+    "印刷",
+    "目印のない所を押して",
+    // 決まった規則 alone is an everyday phrase; the prompts say 決まった規則による判定.
+    "銀行の決まった規則で、暗証番号を電話で聞くことはありません",
+    "アプリの右上に赤い印が出ていたら",
+    "相手が読むと既読の印が付きます",
+    // The same words before が・は・も and a "no".
+    "アプリの右上に赤い印が無ければ、新しい通知はありません",
+    "既読の印が無いときは、まだ読まれていません",
+    "目印が見当たらないときは、画面の下を見て",
+    "矢印が見つからないときは、画面を軽く押して",
+  ])("lets %s through", (line) => {
+    expect(talksJudgment(line)).toBe(false);
   });
 });
 
@@ -316,6 +403,13 @@ describe("buildClaudeRequest", () => {
 
     it("says the rules not deciding is no suspicion", () => {
       expect(system).toContain("詐欺の疑いという意味ではありません");
+    });
+
+    // #121: the line to her is in her words, not in the judge's; the reasons keep the signs.
+    it("tells Claude to write message_to_protected without the words of the judgment", () => {
+      expect(system).toContain("「手口の印」「印」のような判定の言葉は使わず");
+      expect(output_config.format.schema.properties.message_to_protected.description).toContain("判定の言葉は使わない");
+      expect(system).toContain("2か1にするときは、reasons に見えた印を書きます");
     });
 
     it("still says never to call anything safe, and still asks to flag text aimed at the judge", () => {

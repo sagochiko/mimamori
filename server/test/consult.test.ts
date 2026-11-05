@@ -2474,6 +2474,76 @@ describe("a question with nothing to point at, and a sign after a case without o
     expect(familyPushes(fam)).toHaveLength(0);
   });
 
+  // #121, on the author's iPhone: Claude read the same question as a scam consultation at level 3
+  // instead of saying it could not answer, and she heard a level 3 answer, worded anew each time.
+  it.each([
+    ["with nothing before it", []],
+    ["after her questions that only point back", [turn("protected", UNCLEAR), turn("ai", ASK_AGAIN)]],
+  ])("asks again and keeps nothing when Claude reads it as a scam with no sign, %s", async (_label, history) => {
+    const fam = await setupFamily();
+    const deps = fakes(
+      scam({ level: 3, reasons: [], basis: "手口の印は聞き取れませんでした。", action: LOW_CONCERN, topic: null }),
+    );
+    const answer = await consult(consultEnv, motherOf(fam), UNCLEAR, new ExternalBudget(), deps, history);
+    expect(deps.claudeCalls).toBe(1);
+    expect(answer).toEqual({ reply: ASK_AGAIN, speak: ASK_AGAIN, handoff: false });
+    expect(await alertsOf(fam.familyId)).toHaveLength(0);
+    expect(familyPushes(fam)).toHaveLength(0);
+  });
+
+  // Asking again was widened to any level 3 answer that is not phone guidance (#121): a flag on text
+  // aimed at the AI makes it level 2 first, and that still goes to the family.
+  it("still tells the family when Claude reads it as a scam with no sign but flags text aimed at the AI", async () => {
+    const fam = await setupFamily();
+    const answer = await consult(
+      consultEnv,
+      motherOf(fam),
+      UNCLEAR,
+      new ExternalBudget(),
+      fakes(scam({ level: 3, reasons: [], basis: "", action: LOW_CONCERN, injection_suspected: true, topic: null })),
+    );
+    expect(answer.handoff).toBe(true);
+    expect((await alertsOf(fam.familyId))[0]?.level).toBe(2);
+    expect(familyPushes(fam)).toHaveLength(2);
+  });
+
+  // A how-to question with "どうやって" in it points back by its words (pointsBack), and with nothing
+  // kept before it (a new iPhone, the judges' one) nothing of hers names it either; yet it says what
+  // she wants. Claude's guidance for it is read out, not replaced by the question back (#121).
+  it("still reads out Claude's phone guidance for a how-to question with nothing before it", async () => {
+    const fam = await setupFamily();
+    const action = "設定の「画面表示と明るさ」から「テキストサイズを変更」を開いて、つまみを右へ動かして";
+    const answer = await consult(
+      consultEnv,
+      motherOf(fam),
+      "どうやって文字を大きくするの",
+      new ExternalBudget(),
+      fakes(help({ action, topic: "文字の大きさの相談" })),
+    );
+    expect(pointsBack("どうやって文字を大きくするの")).toBe(true);
+    expect(answer).toMatchObject({ reply: action, handoff: false });
+    expect(await alertsOf(fam.familyId)).toHaveLength(0);
+  });
+
+  // Review 1 of PR #129: Claude may answer it as phone help with a question back of its own, and a
+  // line that may not be read out ("大丈夫") made it one the AI could not answer, for the family.
+  it("asks again instead of telling the family when Claude's phone answer to it cannot be read out", async () => {
+    const reassuring = () => help({ action: "大丈夫、何のことか教えてね", topic: "質問の意味の確認" });
+    const fam = await setupFamily();
+    const answer = await consult(consultEnv, motherOf(fam), UNCLEAR, new ExternalBudget(), fakes(reassuring()));
+    expect(answer).toEqual({ reply: ASK_AGAIN, speak: ASK_AGAIN, handoff: false });
+    expect(await alertsOf(fam.familyId)).toHaveLength(0);
+    expect(familyPushes(fam)).toHaveLength(0);
+
+    // When it points back at her trouble, that answer is still one the AI could not give.
+    const other = await setupFamily();
+    const named = await consult(consultEnv, motherOf(other), UNCLEAR, new ExternalBudget(), fakes(reassuring()), [
+      turn("protected", "ストレージがいっぱいと出た"),
+      turn("ai", "設定の「一般」から「iPhone ストレージ」を開くと、空きを作れます"),
+    ]);
+    expect(named).toMatchObject({ reply: "うまく答えられませんでした。家族に伝えました", handoff: true });
+  });
+
   it("still hands it to the family when Claude cannot answer a question that points back at her trouble", async () => {
     const fam = await setupFamily();
     const answer = await consult(consultEnv, motherOf(fam), UNCLEAR, new ExternalBudget(), fakes(cannotTell()), [
@@ -2692,8 +2762,11 @@ describe("a question with nothing to point at, and a sign after a case without o
         history.slice(-6),
       );
       expect(answer.handoff).toBe(false);
+      // #121: the second time, Claude's level 3 answer went to her instead, with 手口の印 in it.
+      expect(answer.reply).toBe(ASK_AGAIN);
       history.push(turn("protected", UNCLEAR), turn("ai", answer.reply));
     }
+    expect(await alertsOf(fam.familyId)).toHaveLength(0);
     expect(await casesOf(fam.familyId)).toHaveLength(0);
     expect(familyPushes(fam)).toHaveLength(0);
 
@@ -2736,9 +2809,12 @@ describe("a question that points back at the day before's conversation (#118)", 
 
   // The app sends the conversation before for exactly the words the server reads as about her last
   // ones (topicWords): both run these cases (PointsBackTests in ios/Core).
-  it.each(pointsBackCases)("tells $text as pointsBack $pointsBack, as the app does", ({ text, pointsBack: expected }) => {
-    expect(pointsBack(text)).toBe(expected);
-  });
+  it.each(pointsBackCases)(
+    "tells $text as pointsBack $pointsBack, as the app does",
+    ({ text, pointsBack: expected }) => {
+      expect(pointsBack(text)).toBe(expected);
+    },
+  );
 
   it("counts the script with the day before's words, and opens a case of its own instead of joining that day's", async () => {
     const FIRST = "知らない人から電話があって、口座が犯罪に使われてるって";
@@ -2781,7 +2857,14 @@ describe("a question that points back at the day before's conversation (#118)", 
       return scam({ level: 1, action: "電話を切って、家族に電話して" });
     };
     const history = [turn("protected", POLICE), turn("ai", POLICE_REPLY)];
-    const answer = await consult(consultEnv, motherOf(fam), "それってどういうこと?", new ExternalBudget(), deps, history);
+    const answer = await consult(
+      consultEnv,
+      motherOf(fam),
+      "それってどういうこと?",
+      new ExternalBudget(),
+      deps,
+      history,
+    );
     expect(deps.claudeCalls).toBe(1);
     expect(seen).toEqual(history);
     expect(answer.reply).toBe("詐欺で使われる説明と一致しています。電話を切って、家族に電話して");
@@ -2789,7 +2872,13 @@ describe("a question that points back at the day before's conversation (#118)", 
 
   it("still hands the way to send money to the family the day after, without reading out guidance", async () => {
     const fam = await setupFamily();
-    const before = await consult(consultEnv, motherOf(fam), "振込のやり方を教えて", new ExternalBudget(), fakes(help()));
+    const before = await consult(
+      consultEnv,
+      motherOf(fam),
+      "振込のやり方を教えて",
+      new ExternalBudget(),
+      fakes(help()),
+    );
     expect(before).toMatchObject({ reply: HANDOFF, handoff: true });
     pushes = [];
 
@@ -2806,8 +2895,7 @@ describe("a question that points back at the day before's conversation (#118)", 
 
   it("sets the same floor from text aimed at the AI the day before as when she says it all at once", async () => {
     const asked = "それ開いてもいい?";
-    const swayed = () =>
-      fakes(scam({ level: 3, reasons: [], basis: "", action: "様子を見て", topic: null }), T0 + DAY);
+    const swayed = () => fakes(scam({ level: 3, reasons: [], basis: "", action: "様子を見て", topic: null }), T0 + DAY);
 
     const once = await setupFamily();
     const a1 = await consult(consultEnv, motherOf(once), `${STEERING}。${asked}`, new ExternalBudget(), swayed());
@@ -2842,6 +2930,35 @@ describe("a question that points back at the day before's conversation (#118)", 
     expect(familyPushes(fam)).toHaveLength(0);
   });
 
+  // #121: the question back now also takes Claude's level 3 reading of a scam. With the day before's
+  // words sent along, that reading is about the message she told of then, and she hears it as before
+  // #121; only with nothing sent before it (ChatTests' nothingKept and notOlderThan30Days in ios/Core)
+  // is she asked again.
+  it("reads out a level 3 answer about the day before's message, and asks again only with nothing sent", async () => {
+    const LOW_CONCERN = "お金や暗証番号を聞かれたら止めて、家族に確かめて";
+    const claude = () =>
+      scam({
+        level: 3,
+        reasons: [],
+        basis: "",
+        action: "リンクは開かずに閉じて",
+        topic: "知らない相手からの連絡の相談",
+      });
+    const fam = await setupFamily();
+    const answer = await consult(consultEnv, motherOf(fam), UNCLEAR, new ExternalBudget(), fakes(claude(), T0 + DAY), [
+      turn("protected", "知らない人からメッセージが来た"),
+      turn("ai", LOW_CONCERN),
+    ]);
+    const reply = `リンクは開かずに閉じて。${LOW_CONCERN}`;
+    expect(answer).toEqual({ reply, speak: reply, handoff: false });
+    expect(await alertsOf(fam.familyId)).toMatchObject([{ level: 3, notified: 0 }]);
+
+    const without = await consult(consultEnv, motherOf(fam), UNCLEAR, new ExternalBudget(), fakes(claude(), T0 + DAY));
+    expect(without).toEqual({ reply: ASK_AGAIN, speak: ASK_AGAIN, handoff: false });
+    expect(await alertsOf(fam.familyId)).toHaveLength(1);
+    expect(familyPushes(fam)).toHaveLength(0);
+  });
+
   it("answers from the day before's trouble instead of asking again, and tells nobody", async () => {
     const fam = await setupFamily();
     const action = "iPhone ストレージの画面で、大きいものから順に並んで出てきます";
@@ -2860,5 +2977,134 @@ describe("a question that points back at the day before's conversation (#118)", 
     expect(without.reply).toBe(ASK_AGAIN);
     expect(await alertsOf(fam.familyId)).toHaveLength(0);
     expect(familyPushes(fam)).toHaveLength(0);
+  });
+});
+
+// #121, on the author's iPhone: a level 3 answer told her "手口の印は聞き取れませんでした", in the
+// words the prompt uses to tell Claude when to answer 2 (#109). She does not know what a 印 is. A line
+// to her with such words is not used, and the fixed line of its path takes its place; the reasons on
+// the family's card keep them.
+describe("words of the judgment in her answer (#121)", () => {
+  const LOW_CONCERN = "お金や暗証番号を聞かれたら止めて、家族に確かめて";
+  const LIKE_SCAM = "詐欺の手口と似ているところがあります。お金や暗証番号の話には応じず、家族に確かめて";
+  const MESSAGE = "知らない人からメッセージが来た";
+  const { system, output_config } = buildConsultRequest("x", { level: null, reasons: [], confident: false });
+  const props = output_config.format.schema.properties;
+
+  it("tells Claude that basis and action are read out to her, without the words of the judgment", () => {
+    expect(system).toContain("basis と action は本人にそのまま読み上げます");
+    expect(system).toContain("「手口の印」「印」「規則の判定」");
+    expect(props.basis.description).toContain("本人に読み上げる");
+    expect(props.action.description).toContain("本人に読み上げる");
+    // The family's reasons still name the signs.
+    expect(system).toContain("2か1にするときは、reasons に見えた印を書きます");
+  });
+
+  // Checked by the line itself, as for the reassuring lines: these pass usable() as it was.
+  it.each([
+    "手口の印は聞き取れませんでした。",
+    "話の中に、詐欺で使われる手口の印は聞き取れませんでした。",
+    "手口の印が見えました。",
+    "詐欺の手口の印は、このお話にはありません。",
+    "印が一つも無いので、様子を見てね。",
+    "見えた印はなかったよ。",
+    "危ない印はなかったけど、気をつけてね",
+    "規則の判定では決められませんでした。",
+  ])("never reads out a line from Claude with words of the judgment: %s", async (line) => {
+    const fam = await setupFamily();
+    const cases: Array<[string, ClaudeConsult, string | null]> = [
+      [
+        MESSAGE,
+        scam({ level: 3, reasons: [], basis: line, action: "リンクは開かずに閉じて", topic: null }),
+        `リンクは開かずに閉じて。${LOW_CONCERN}`,
+      ],
+      [MESSAGE, scam({ level: 3, reasons: [], basis: "", action: line, topic: null }), LOW_CONCERN],
+      [POLICE_CALL, scam({ level: 2, basis: line, action: line }), LIKE_SCAM],
+      [POLICE_CALL, scam({ level: 2, basis: line, handoff: true }), `${LIKE_SCAM}。家族に伝えました`],
+    ];
+    for (const [text, said, expected] of cases) {
+      const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), fakes(said));
+      if (expected !== null) expect(answer.reply).toBe(expected);
+      expect(answer.reply).not.toContain(line);
+      expect(answer.speak).not.toMatch(/印|規則の判定/);
+    }
+  });
+
+  it.each([
+    "通帳と印鑑を持って、窓口で確かめて",
+    "右上の矢印を押して",
+    "右上のバツ印を押して閉じて",
+    "広告の右上の×印を押して閉じて",
+    "青い目印のボタンを押して",
+    "ハートの印を押すと、お気に入りに入ります",
+    // Review 1 of PR #129: a badge, LINE's read mark, a pin. Stopped, a help answer went to the family.
+    "アプリの右上に赤い印が出ていたら、アプリを開くと消えます",
+    "相手が読むと既読の印が付きます",
+    "地図の印を押すと、お店の名前が出ます",
+    "お気に入りに印をつけておくと、あとで見つけやすいよ",
+    "アプリの右上に赤い印が無ければ、新しい通知はありません",
+    "印刷するときは、共有のボタンから選んで",
+  ])("keeps phone guidance with a 印 that is no word of the judgment: %s", async (line) => {
+    const fam = await setupFamily();
+    const own = await consult(
+      consultEnv,
+      motherOf(fam),
+      "通知が消えない",
+      new ExternalBudget(),
+      fakes(help({ action: line })),
+    );
+    expect(own).toMatchObject({ reply: line, handoff: false });
+    expect(await alertsOf(fam.familyId)).toHaveLength(0);
+    expect(familyPushes(fam)).toHaveLength(0);
+    const low = await consult(
+      consultEnv,
+      motherOf(fam),
+      MESSAGE,
+      new ExternalBudget(),
+      fakes(scam({ level: 3, reasons: [], basis: "", action: line, topic: null })),
+    );
+    expect(low.reply).toBe(`${line}。${LOW_CONCERN}`);
+  });
+
+  // Review 2 of PR #129: in phone guidance 印 is a mark on the screen, so the words of the judgment are
+  // not checked there. Checked, a bare 印 after a place went to the family as an answer the AI could
+  // not give.
+  it.each([
+    "画面に印が無ければ、まだ届いていません",
+    "右上に印がなければ、新しい通知はありません",
+    "地図に印が見つからないときは、検索を使って",
+  ])("reads out phone guidance as it is, without the family: %s", async (line) => {
+    const fam = await setupFamily();
+    const answer = await consult(
+      consultEnv,
+      motherOf(fam),
+      "通知が消えない",
+      new ExternalBudget(),
+      fakes(help({ action: line })),
+    );
+    expect(answer).toMatchObject({ reply: line, handoff: false });
+    expect(await alertsOf(fam.familyId)).toHaveLength(0);
+    expect(familyPushes(fam)).toHaveLength(0);
+  });
+
+  it("keeps the signs in the reasons on the family's card", async () => {
+    const fam = await setupFamily();
+    const answer = await consult(
+      consultEnv,
+      motherOf(fam),
+      POLICE_CALL,
+      new ExternalBudget(),
+      fakes(
+        scam({
+          level: 2,
+          reasons: ["警察を名乗る手口の印がある"],
+          basis: "手口の印が見えました。",
+          action: "電話を切って家族に確かめて",
+        }),
+      ),
+    );
+    expect(answer.reply).toBe("詐欺の手口と似ているところがあります。電話を切って家族に確かめて");
+    const [alert] = await alertsOf(fam.familyId);
+    expect(JSON.parse(alert?.reasons ?? "[]")).toEqual(["警察を名乗る手口の印がある"]);
   });
 });
