@@ -27,6 +27,8 @@ final class AppModel {
   private(set) var followUpPrompt: String?
   /// Everyone's smiles and replies (`GET /smiles`), newest first, with the hour her smile is expected by.
   private(set) var smileBoard = SmileBoard()
+  /// Her Gmail grant (`GET /gmail/connect`): nil until read, and while the server has no Google client.
+  private(set) var gmail: GmailGrant?
   /// Photos already fetched this run, by smile id. They never change, so they are not fetched again.
   @ObservationIgnored private var photoCache: [String: Data] = [:]
 
@@ -68,6 +70,7 @@ final class AppModel {
         self?.invite = nil
         self?.cases = []
         self?.smileBoard = SmileBoard()
+        self?.gmail = nil
         self?.photoCache = [:]
         // The key is gone (a 401, or this iPhone left the family): her conversation goes with it.
         // Not before the first unlock, when the Keychain only reads as empty.
@@ -203,6 +206,30 @@ final class AppModel {
       let saved = try await session.setSmileDeadline(hour: hour)
       self?.smileBoard.deadlineHour = saved
     }
+  }
+
+  // MARK: Gmail
+
+  /// Whether her screen offers the Gmail button: no grant yet, or one that runs out within a day.
+  var offersGmail: Bool { gmail?.needsGrant(now: now) ?? false }
+
+  /// Quiet on failure. Only her device reads it: the grant is for her inbox (403 for the family).
+  func loadGmail() async {
+    guard route == .protectedHome else { return }
+    gmail = try? await session.gmailConnect()
+  }
+
+  /// Opens Google's consent screen in the system sign-in sheet, then reads the grant again.
+  func connectGmail() async {
+    // A fresh URL on each press: the one read with the screen carries a state that ends after 15 minutes.
+    guard let fresh = try? await session.gmailConnect() else {
+      problem = .unreachable
+      return
+    }
+    gmail = fresh
+    let result = await GmailSignIn.run(url: fresh.url)
+    if result == .failed { problem = .unreachable }
+    await loadGmail()
   }
 
   // MARK: Consultation

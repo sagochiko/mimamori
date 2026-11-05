@@ -1,0 +1,55 @@
+import AuthenticationServices
+import MimamoriCore
+import UIKit
+
+/// The thin adapter around ASWebAuthenticationSession for her Gmail grant. Google's consent screen runs
+/// in the system browser sheet (Google refuses embedded web views), and the server's callback sends it
+/// back to `mimamori://gmail?result=...`, which the session catches for itself.
+@MainActor
+enum GmailSignIn {
+  /// The session must be held while it is showing.
+  private static var current: ASWebAuthenticationSession?
+  private static let anchor = Anchor()
+
+  static func run(url: URL) async -> GmailConnectResult {
+    // The sheet needs a window to sit on; the app is on screen when she presses the button.
+    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+    guard let scene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first else {
+      return .failed
+    }
+    anchor.window = scene.windows.first(where: \.isKeyWindow) ?? ASPresentationAnchor(windowScene: scene)
+    return await withCheckedContinuation { continuation in
+      let session = ASWebAuthenticationSession(
+        url: url, callback: .customScheme(GmailConnectResult.callbackScheme)
+      ) { callback, error in
+        let result: GmailConnectResult =
+          if let callback {
+            GmailConnectResult(callback: callback)
+          } else if (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin {
+            .denied
+          } else {
+            .failed
+          }
+        Task { @MainActor in current = nil }
+        continuation.resume(returning: result)
+      }
+      session.presentationContextProvider = anchor
+      // Safari's sign-in is shared (not ephemeral), so taking the grant again every 7 days is mostly a tap
+      // on her account instead of typing the password.
+      current = session
+      if !session.start() {
+        current = nil
+        continuation.resume(returning: .failed)
+      }
+    }
+  }
+
+  private final class Anchor: NSObject, ASWebAuthenticationPresentationContextProviding {
+    /// Set by run(url:) before the session starts.
+    var window: ASPresentationAnchor?
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+      MainActor.assumeIsolated { window! }
+    }
+  }
+}

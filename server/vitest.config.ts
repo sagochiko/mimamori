@@ -19,6 +19,8 @@ export default defineConfig(async () => {
             ANTHROPIC_API_KEY: "test-anthropic-key",
             // 32 zero bytes, base64. Only for tests.
             TOKEN_ENC_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com",
+            GOOGLE_CLIENT_SECRET: "test-client-secret",
           },
         },
       }),
