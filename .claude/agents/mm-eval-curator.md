@@ -25,8 +25,8 @@ Rules:
 
 If a hook or a permission rule blocks an action, report what was blocked and why; do not retry it another way (another tool, another spelling of the command, another path).
 
-Report in this shape:
-- Status
-- Files written and case counts per path and label
-- Sources used
-- Gaps (paths or patterns with too few cases)
+Write the report in Japanese, in this shape (the table in `CLAUDE.md`, "作業の流れ"). The first line is exactly one of `ステータス: 完了`, `ステータス: 一部`, `ステータス: 止まった`, with nothing before it (no list marker, bold, or heading). A hook (`.claude/hooks/report-form.sh`) checks the first line when you hand the report back, and that most of the prose is Japanese; when either is off, it returns the reason in Japanese, and you fix only that and hand the same report back. Put commands, code, paths, and English quotes in backticks or code blocks. Then these sections, with these headings:
+
+- `## 書いたファイルと件数`: files written and case counts per path and label
+- `## 使った出典`
+- `## 足りないもの`: paths or patterns with too few cases

@@ -664,6 +664,83 @@ grep -q '^Sort each low finding' .claude/skills/mm-task/SKILL.md && grep -q '^- 
 grep -q 'do not hand over again' .claude/skills/mm-autopilot/SKILL.md ||
   { echo "skill test failed: mm-autopilot does not chain handoffs"; fail=1; }
 
+# report-form: an mm- subagent's report starts with 「ステータス: <value of its role>」 and is mostly
+# Japanese. PreToolUse sees the SubagentHandback message (auto mode); SubagentStop sees the last message
+# when there was no handback. Other roles, unreadable input, and a missing jq pass. rfx <exit> <json> <label>
+rfx() { expect "$1" report-form.sh "$2" "report-form: $3"; }
+rh() { # <agent type> <message> [agent id]: a SubagentHandback call as PreToolUse sees it
+  jq -nc --arg t "$1" --arg m "$2" --arg id "${3:-a1b2c3d4}" '{hook_event_name:"PreToolUse",tool_name:"SubagentHandback",agent_type:$t,agent_id:$id,session_id:"s",tool_input:{message:$m}}'
+}
+en_body="The hook was added and the tests pass. Everything listed in the brief is done, and the reviewer should look at the new hook first because it touches every subagent report from now on."
+ja_body=$'## コミット\n\n- `abc1234` harness(harness): 報告の形を確かめる\n\n## 確かめたこと\n\n`make verify` の6つが ok だった。道筋は /Users/x/develop/mimamori/.claude/hooks/report-form.sh で、文書は https://code.claude.com/docs/en/hooks を見た。\n\n```sh\nscripts/test-hooks.sh\nok   hooks self-test (24s) and a long English line from the command output that must not count against the report\n```\n\nPreToolUse の matcher は SubagentHandback で、SubagentStop は ^mm- にした。'
+rfx 0 "$(rh mm-reviewer $'ステータス: 承認\n\n指摘なし。')" "the reviewer's approval passes"
+rfx 0 "$(rh mm-reviewer $'ステータス: 直すべき指摘あり(2件)\n\n## 指摘\n\n- a.ts:12 の判定が逆')" "the reviewer's changes-needed value with a note after it passes"
+rfx 2 "$(rh mm-reviewer $'ステータス: 完了\n\n指摘なし。' r2)" "a value of another role is refused"
+rfx 2 "$(rh mm-implementer $'Status: done\n\n'"$ja_body" i2)" "an English Status line is refused"
+rfx 2 "$(rh mm-implementer $'ステータスは完了。\n\n'"$ja_body" i3)" "「ステータスは完了」, the line that missed the merge gate on 2026-11-04, is refused"
+rfx 2 "$(rh mm-implementer $'- ステータス: 完了\n\n'"$ja_body" i4)" "a list marker before the status is refused"
+rfx 0 "$(rh mm-implementer $'\n\n  \nステータス: 完了\n\n'"$ja_body")" "blank lines before the status line are skipped"
+rfx 0 "$(rh mm-verifier $'ステータス：落ちた。\n\nvitest が2件落ちた。')" "a full-width colon passes"
+rfx 0 "$(rh mm-eval-curator $'ステータス: 一部\n\n'"$ja_body")" "code blocks, inline code, paths, and URLs do not count against Japanese"
+rfx 2 "$(rh mm-implementer $'ステータス: 完了\n\n'"$en_body $en_body" i5)" "a report written in English under a correct status line is refused"
+rfx 0 "$(rh mm-implementer $'ステータス: 完了\n\nDone. All green.')" "a short report is not measured for Japanese"
+rfx 0 "$(rh Explore $'Status: done\n\n'"$en_body $en_body")" "roles outside mm- are not checked"
+rfx 0 '{"hook_event_name":"PreToolUse","tool_name":"SubagentHandback","tool_input":{"message":"Status: done"}}' "a call without an agent type is not checked"
+rfx 0 'not json' "input that cannot be read passes"
+mkdir -p "$T/nojq" && ln -sf "$(command -v cat)" "$T/nojq/cat" && ln -sf "$(command -v dirname)" "$T/nojq/dirname"
+out=$(rh mm-implementer "Status: done" | PATH="$T/nojq" "$H/report-form.sh" 2>&1)
+[[ $? -eq 0 ]] || { echo "hook test failed: report-form passes when jq is missing ($out)"; fail=1; }
+# The reason names the line that is off and the values that pass, in Japanese; the log keeps no report text.
+out=$(rh mm-verifier $'Status: pass\n\nok' v1 | "$H/report-form.sh" 2>&1)
+[[ "$out" == *"Status: pass"* && "$out" == *"ステータス: 通った"* && "$out" == *"ステータス: 走らせられなかった"* ]] ||
+  { echo "hook test failed: report-form's reason quotes the first line and lists the role's values ($out)"; fail=1; }
+grep '"name":"report-form"' "$MM_LOG_DIR/usage.jsonl" | grep -q 'Status: pass' &&
+  { echo "hook test failed: report-form logs the report's text"; fail=1; }
+grep -q '"kind":"guard","name":"report-form"' "$MM_LOG_DIR/usage.jsonl" || { echo "hook test failed: report-form logs its blocks"; fail=1; }
+# The same report is refused twice at most, then let through, so a subagent never gets stuck. A report
+# that passes starts the count again (a resumed subagent keeps its agent id).
+bad=$(rh mm-implementer "Status: done" loop1)
+good=$(rh mm-implementer $'ステータス: 完了\n\n終わった。' loop1)
+rfx 2 "$bad" "the first wrong handback is refused"
+rfx 2 "$bad" "the second wrong handback is refused"
+rfx 0 "$bad" "the third wrong handback goes through"
+grep -q '"kind":"report-form-gave-up"' "$MM_LOG_DIR/usage.jsonl" || { echo "hook test failed: report-form logs when it lets a wrong report through"; fail=1; }
+rfx 2 "$bad" "after letting one through, the next report is checked again"
+rfx 0 "$good" "a right report passes"
+rfx 2 "$bad" "after a pass, a wrong report is refused again"
+rfx 2 "$bad" "and again"
+rfx 0 "$bad" "and the third goes through"
+# SubagentStop: outside auto mode there is no SubagentHandback, and the last message is the report.
+# After a handback the last message is only the closing text (hooks reference), so it is not checked.
+rs() { # <agent type> <last message> <transcript> [stop_hook_active] [agent id]
+  jq -nc --arg t "$1" --arg m "$2" --arg p "$3" --argjson a "${4:-false}" --arg id "${5:-s1}" \
+    '{hook_event_name:"SubagentStop",agent_type:$t,agent_id:$id,session_id:"s",stop_hook_active:$a,agent_transcript_path:$p,last_assistant_message:$m}'
+}
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"b1","name":"Bash","input":{}}]}}' >"$T/agent-plain.jsonl"
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"b1","name":"Bash","input":{}}]}}' \
+  '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"h1","name":"SubagentHandback","input":{"message":"x"}}]}}' >"$T/agent-handback.jsonl"
+rfx 2 "$(rs mm-implementer "Status: done" "$T/agent-plain.jsonl" false st1)" "SubagentStop refuses a wrong last message when there was no handback"
+rfx 0 "$(rs mm-implementer $'ステータス: 一部\n\n残りがある。' "$T/agent-plain.jsonl" false st2)" "SubagentStop passes a right last message"
+rfx 0 "$(rs mm-implementer "Status: done" "$T/agent-plain.jsonl" true st3)" "SubagentStop lets the subagent stop once a stop hook already made it go on"
+rfx 0 "$(rs mm-implementer "渡した。" "$T/agent-handback.jsonl" false st4)" "SubagentStop skips the closing text after a handback"
+rfx 0 "$(rs mm-implementer "Status: done" "$T/no-such-transcript.jsonl" false st5)" "SubagentStop passes when it cannot read the subagent's transcript"
+rfx 0 "$(rs general-purpose "Status: done" "$T/agent-plain.jsonl" false st6)" "SubagentStop does not check roles outside mm-"
+jq -e '.hooks.PreToolUse[] | select(.matcher == "SubagentHandback") | .hooks[] | select(.command | endswith("report-form.sh"))' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: report-form.sh runs before SubagentHandback"; fail=1; }
+jq -e '.hooks.SubagentStop[] | select(.matcher == "^mm-") | .hooks[] | select(.command | endswith("report-form.sh"))' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: report-form.sh runs when an mm- subagent stops"; fail=1; }
+# Every role's definition and the CLAUDE.md table give the same values the hook accepts.
+for f in .claude/agents/mm-*.md; do
+  name=$(basename "$f" .md)
+  case $name in mm-reviewer) vals="承認 直すべき指摘あり" ;; mm-verifier) vals="通った 落ちた 走らせられなかった" ;; *) vals="完了 一部 止まった" ;; esac
+  for v in $vals; do
+    grep -qF "\`ステータス: $v\`" "$f" || { echo "agent test failed: $name's report shape names 「ステータス: ${v}」"; fail=1; }
+  done
+  grep -q 'Status:' "$f" && { echo "agent test failed: $name's report shape still has an English Status line"; fail=1; }
+done
+grep -q '| `mm-reviewer` | 承認、直すべき指摘あり |' CLAUDE.md && grep -q '| `mm-verifier` | 通った、落ちた、走らせられなかった |' CLAUDE.md ||
+  { echo "agent test failed: CLAUDE.md has the table of first-line values"; fail=1; }
+
 # save-report: a subagent's handback is kept verbatim, marked as unchecked, and never blocked.
 export MM_RAW_REPORT_DIR=$T/raw
 report=$'- Status: changes needed\n- server/src/a.ts:12 の判定が逆\n\n`code` と "引用" もそのまま'
