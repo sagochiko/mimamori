@@ -597,6 +597,11 @@ grep -q 'scripts/handoff-started.sh" before ' .claude/skills/mm-handoff/SKILL.md
   grep -q 'Base directory for this skill: $repo/.claude/skills/mm-autopilot' .claude/skills/mm-handoff/SKILL.md &&
   ! grep -q 'pgrep -fl "mimamori-handoff-$stamp.md" && exit 0' .claude/skills/mm-handoff/SKILL.md ||
   { echo "skill test failed: mm-handoff waits for the new session's first turn with scripts/handoff-started.sh"; fail=1; }
+# On exit 2 a mistyped stamp is looked for before a window is stopped, and step 4 is redone once at most,
+# so a typo never opens a second autopilot on the same tree (PR #90, third review).
+grep '^On exit 2' .claude/skills/mm-handoff/SKILL.md | grep -q 'ls "$HOME/tmp"/mimamori-handoff-\*.before' &&
+  grep '^On exit 2' .claude/skills/mm-handoff/SKILL.md | grep -q 'do step 4 again from the top, once' ||
+  { echo "skill test failed: mm-handoff checks the stamp first on exit 2 and relaunches once at most"; fail=1; }
 # mm-screen-guide's picture builder: captions wrap inside their tile and the marks are drawn. It needs
 # Pillow and the Hiragino font, which a Mac has and a cloud session may not, so it runs only where both are.
 # The check uses python3 -I like the run, so a Pillow that only -I cannot see skips instead of failing.
@@ -606,12 +611,18 @@ if python3 -I -c 'import PIL' 2>/dev/null && [[ -f "/System/Library/Fonts/ヒラ
 fi
 # handoff-started.sh on made-up transcripts. The old session's own transcript holds the brief, Claude's
 # answers, and the skill line too, so only transcripts missing from the list taken before the launch count.
-# An API error is kept as an assistant line (isApiErrorMessage), so a first turn needs a tool call.
+# An API error is kept as an assistant line (isApiErrorMessage), so a first turn needs a tool call. The
+# call is written before a permission prompt is answered (PR #90, third review), so its result must be
+# there too. A real first turn writes a thinking-only line, then the tool call, then the result.
 hs=scripts/handoff-started.sh hp=$T/projects brief=$T/mimamori-handoff-X.md
 sk="Base directory for this skill: /r/.claude/skills/mm-autopilot"
 mkdir -p "$hp"
 u() { jq -nc --arg t "$1" '{type:"user",message:{role:"user",content:$t}}'; }
 a_tool='{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"CONDITIONS.md"}}]}}'
+a_result='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"x"}]}}'
+a_other_result='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t9","content":"x"}]}}'
+a_think='{"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"x","signature":"s"}]}}'
+a_text='{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"読みます"}]}}'
 a_err='{"type":"assistant","isApiErrorMessage":true,"message":{"role":"assistant","content":[{"type":"text","text":"API Error: 500"}]}}'
 hsx() { # <expected exit> <label> <args...>
   local want=$1 label=$2; shift 2
@@ -628,15 +639,23 @@ hsx 1 "the old session's own transcript is not the new one" check "$hp" "$T/befo
 hsx 2 "without the list taken before the launch, nothing counts" check "$hp" "$T/before-missing" "$brief" "$sk"
 { u "/mm-autopilot $brief"; u "$sk"; echo "$a_err"; } >"$hp/new.jsonl"
 hsx 1 "an API error is not a first turn" check "$hp" "$T/before" "$brief" "$sk"
-{ u "/mm-autopilot $brief"; echo "$a_tool"; } >"$hp/new.jsonl"
+{ u "/mm-autopilot $brief"; u "$sk"; echo "$a_think"; } >"$hp/new.jsonl"
+hsx 1 "a thinking-only line, the real first line, is not yet a first turn" check "$hp" "$T/before" "$brief" "$sk"
+{ u "/mm-autopilot $brief"; u "$sk"; echo "$a_text"; } >"$hp/new.jsonl"
+hsx 1 "an answer of text alone, not an error, is not a first turn" check "$hp" "$T/before" "$brief" "$sk"
+{ u "/mm-autopilot $brief"; u "$sk"; echo "$a_think"; echo "$a_tool"; } >"$hp/new.jsonl"
+hsx 1 "a tool call still waiting for its result (a permission prompt) is not a first turn" check "$hp" "$T/before" "$brief" "$sk"
+{ u "/mm-autopilot $brief"; u "$sk"; echo "$a_tool"; echo "$a_other_result"; } >"$hp/new.jsonl"
+hsx 1 "a result of another call does not answer this one" check "$hp" "$T/before" "$brief" "$sk"
+{ u "/mm-autopilot $brief"; echo "$a_tool"; echo "$a_result"; } >"$hp/new.jsonl"
 hsx 1 "the autopilot window did not load its skill" check "$hp" "$T/before" "$brief" "$sk"
-{ u "/mm-autopilot $brief"; u "$sk"; echo "$a_err"; echo "$a_tool"; printf '{"type":"assis'; } >"$hp/new.jsonl"
-hsx 0 "a tool call after the skill line is a first turn, even next to a half-written line" check "$hp" "$T/before" "$brief" "$sk"
+{ u "/mm-autopilot $brief"; u "$sk"; echo "$a_err"; echo "$a_think"; echo "$a_tool"; echo "$a_result"; printf '{"type":"assis'; } >"$hp/new.jsonl"
+hsx 0 "a tool call and its result with the skill line are a first turn, even next to a half-written line" check "$hp" "$T/before" "$brief" "$sk"
 [[ "$("$hs" check "$hp" "$T/before" "$brief" "$sk")" == "$hp/new.jsonl" ]] ||
   { echo "handoff test failed: check prints the new transcript"; fail=1; }
-{ u "$brief を読んで"; echo "$a_tool"; } >"$hp/new.jsonl"
+{ u "$brief を読んで"; echo "$a_tool"; echo "$a_result"; } >"$hp/new.jsonl"
 hsx 0 "the Opus line needs no skill line" check "$hp" "$T/before" "$brief" ""
-{ u "another session"; echo "$a_tool"; } >"$hp/new.jsonl"
+{ u "another session"; echo "$a_tool"; echo "$a_result"; } >"$hp/new.jsonl"
 hsx 1 "a new session that never read this brief is not the one" check "$hp" "$T/before" "$brief" ""
 # A session that a handoff started does not hand over again when it did not get Fable.
 grep -q 'do not hand over again' .claude/skills/mm-autopilot/SKILL.md ||
