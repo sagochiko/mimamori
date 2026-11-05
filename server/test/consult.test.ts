@@ -2496,6 +2496,19 @@ describe("a question with nothing to point at, and a sign after a case without o
     expect(await casesOf(fam.familyId)).toHaveLength(1);
   });
 
+  // Review of PR #117: the police, or a part of the script, is something to point at.
+  it.each([
+    ["the police in this turn", "これ、警察から", []],
+    ["the police's staff in this turn", "それ警察の人", []],
+    ["a part of the script in this turn", "それって逮捕状のこと", []],
+    ["the police in her earlier words", UNCLEAR, [turn("protected", "これ、警察から"), turn("ai", ASK_AGAIN)]],
+  ])("still hands it to the family when Claude cannot answer and %s names it", async (_label, text, history) => {
+    const fam = await setupFamily();
+    const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), fakes(cannotTell()), history);
+    expect(answer).toMatchObject({ reply: HANDOFF, handoff: true });
+    expect(await casesOf(fam.familyId)).toHaveLength(1);
+  });
+
   it("still warns her and tells the family when Claude sees a sign in it", async () => {
     const fam = await setupFamily();
     const answer = await consult(

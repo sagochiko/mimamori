@@ -24,6 +24,7 @@ import {
   MONEY_MOVE,
   POLICE_CALLER,
   POLICE_SCRIPT,
+  POLICE_WORD,
   type PhraseRule,
   type Telling,
   tellingOf,
@@ -422,10 +423,19 @@ function topicWords(said: Said): string[] {
   return [said.text, ...(last !== undefined && pointsBack(said.text) ? [last] : [])].map(normalize);
 }
 
-/** Words that say what she means: more than a question that points back, a message or a call, or a topic the AI does not guide. */
+/**
+ * Words that say what she means: more than a question that points back, a message or a call, a topic
+ * the AI does not guide, the police, or a part of the script ("これ、警察から", review of PR #117).
+ */
 function namesSomething(text: string): boolean {
   const t = normalize(text);
-  return !pointsBack(text) || CONTACT.test(t) || SENSITIVE.some(({ pattern }) => pattern.test(t));
+  return (
+    !pointsBack(text) ||
+    CONTACT.test(t) ||
+    SENSITIVE.some(({ pattern }) => pattern.test(t)) ||
+    POLICE_WORD.test(t) ||
+    [...POLICE_SCRIPT, MONEY_MOVE].some((rule) => matchSpans(rule, t).length > 0)
+  );
 }
 
 /**
