@@ -8,7 +8,8 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { jstDate } from "../src/cron";
 import worker from "../src/index";
 import { resetApnsJwtCache } from "../src/push";
-import { MAX_PHOTO_BYTES, SMILE_NOTES } from "../src/smiles";
+import { ExternalBudget } from "../src/budget";
+import { MAX_PHOTO_BYTES, notifyMissedSmiles, SMILE_NOTES } from "../src/smiles";
 import { call, createFamily, invite, join, type Created } from "./helpers";
 import { network } from "./network";
 
@@ -203,6 +204,28 @@ describe("POST /smiles and GET /smiles", () => {
     expect(await r2CountFor(owner.familyId)).toBe(0);
   });
 
+  it("leaves no photo in R2 when the row cannot be written", async () => {
+    const owner = await createFamily();
+    const failing = {
+      ...env,
+      DB: new Proxy(env.DB, {
+        get(target, key) {
+          if (key === "prepare") {
+            return (sql: string) => {
+              if (sql.startsWith("INSERT INTO smiles")) throw new Error("d1 down");
+              return target.prepare(sql);
+            };
+          }
+          const value = Reflect.get(target, key) as unknown;
+          return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+        },
+      }),
+    } as Env;
+    const res = await post(owner.deviceKey, { photo: b64(JPEG) }, failing);
+    expect(res.status).toBe(500);
+    expect(await r2CountFor(owner.familyId)).toBe(0);
+  });
+
   it("needs a device key", async () => {
     expect((await call("GET", "/smiles")).status).toBe(401);
     expect((await call("POST", "/smiles", { body: { note: "おはよう" } })).status).toBe(401);
@@ -390,6 +413,35 @@ describe("the quiet notice when the protected member's smile has not come", () =
     await tick(jstAt(10, 55));
     expect(sent.filter(ours)).toEqual([]);
     await tick(jstAt(11, 0));
+    expect(sent.filter(ours)).toHaveLength(2);
+  });
+
+  it("still tells when her only word today came without a photo, as her screen does", async () => {
+    const { owner, mother, tok } = await threeOfUs();
+    await joinedLongAgo(owner.familyId);
+    await env.DB.prepare(
+      "INSERT INTO smiles (id, family_id, member_id, r2_key, note, created_at) VALUES (?, ?, ?, '', 'おはよう', ?)",
+    )
+      .bind(crypto.randomUUID(), owner.familyId, mother.memberId, jstAt(7, 0))
+      .run();
+
+    await tick(jstAt(9, 0));
+    expect(sent.filter(to([tok.owner, tok.sister]))).toHaveLength(2);
+  });
+
+  it("gives the day back when the budget could not cover the devices, so a later tick sends", async () => {
+    const { owner, tok } = await threeOfUs();
+    await joinedLongAgo(owner.familyId);
+    const ours = to([tok.owner, tok.sister]);
+
+    await notifyMissedSmiles(pushEnv, jstAt(9, 0), new ExternalBudget(0));
+    expect(sent.filter(ours)).toEqual([]);
+    const row = await env.DB.prepare("SELECT smile_missed_notified_on AS d FROM families WHERE id = ?")
+      .bind(owner.familyId)
+      .first<{ d: string | null }>();
+    expect(row?.d).toBeNull();
+
+    await tick(jstAt(9, 5));
     expect(sent.filter(ours)).toHaveLength(2);
   });
 

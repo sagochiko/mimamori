@@ -118,11 +118,17 @@ export async function postSmile(request: Request, env: Env, ctx: ExecutionContex
   const now = Date.now();
   const r2Key = photo ? `${familyR2Prefix(me.familyId)}smiles/${id}.jpg` : "";
   if (photo) await env.PHOTOS.put(r2Key, photo, { httpMetadata: { contentType: "image/jpeg" } });
-  await env.DB.prepare(
-    "INSERT INTO smiles (id, family_id, member_id, r2_key, score, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-  )
-    .bind(id, me.familyId, me.id, r2Key, photo ? score : null, note, now)
-    .run();
+  try {
+    await env.DB.prepare(
+      "INSERT INTO smiles (id, family_id, member_id, r2_key, score, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+      .bind(id, me.familyId, me.id, r2Key, photo ? score : null, note, now)
+      .run();
+  } catch (error) {
+    // A photo without its row would be missed by the 30-day cleanup, which reads the rows.
+    if (photo) await env.PHOTOS.delete(r2Key);
+    throw error;
+  }
 
   ctx.waitUntil(tellOthers(env, me, photo !== null, note));
 
@@ -217,9 +223,10 @@ export async function setSmileDeadline(request: Request, env: Env): Promise<Resp
 
 /**
  * Every tick (src/cron.ts). A family is due when today's hour (JST) has passed, it was not told
- * today, a protected member joined before today's hour, and no smile of a protected member came
- * since 00:00 JST. The day is claimed before sending, so a second tick never sends again; if the
- * budget could not cover the devices, the claim goes back and a later tick tries again.
+ * today, a protected member joined before today's hour, and no smile photo of a protected member
+ * came since 00:00 JST (a set word alone does not count, as on her family's screen). The day is
+ * claimed before sending, so a second tick never sends again; if the budget could not cover the
+ * devices, the claim goes back and a later tick tries again.
  */
 export async function notifyMissedSmiles(env: Env, now: number, budget: ExternalBudget): Promise<void> {
   const today = jstDate(now);
@@ -234,7 +241,8 @@ export async function notifyMissedSmiles(env: Env, now: number, budget: External
         AND EXISTS (SELECT 1 FROM members p WHERE p.family_id = f.id AND p.role = 'protected'
                      AND p.created_at < ? + f.smile_deadline_hour * 3600000)
         AND NOT EXISTS (SELECT 1 FROM smiles s JOIN members p ON p.id = s.member_id
-                         WHERE s.family_id = f.id AND p.role = 'protected' AND s.created_at >= ?)
+                         WHERE s.family_id = f.id AND p.role = 'protected' AND s.r2_key != ''
+                           AND s.created_at >= ?)
       LIMIT ?`,
   )
     .bind(midnight, now, today, midnight, midnight, MISSED_PER_TICK)
