@@ -18,6 +18,8 @@ struct ProtectedHomeView: View {
   @State private var followsConsult = false
   @State private var noticesOpen = false
   @State private var noticesHeight: CGFloat = 0
+  /// Where the strip ends inside the top, so the top is never shorter than the closed strip (#134).
+  @State private var stripBottom: CGFloat = 0
   @State private var screenHeight: CGFloat = 0
   @State private var camera = false
   @State private var choosingNote = false
@@ -63,7 +65,10 @@ struct ProtectedHomeView: View {
   }
 
   /// The follow-up question, the family notices, and the smiles. Closed, the notices are one strip; open, the top
-  /// takes at most 40% of the screen, scrolling beyond that, so the conversation always has room.
+  /// takes at most 40% of the screen, scrolling beyond that, so the conversation always has room. The
+  /// closed strip is never cut: at accessibility-extra-extra-extra-large it alone passed 40% and its
+  /// line stopped at "急ぐなら" (#134), so there the top grows to the strip's end and the smiles and
+  /// Gmail below it scroll.
   private func top(notices: [ProtectedNotice]) -> some View {
     ScrollView {
       VStack(spacing: 8) {
@@ -72,6 +77,9 @@ struct ProtectedHomeView: View {
         }
         if !notices.isEmpty {
           NoticeStrip(notices: notices, open: $noticesOpen)
+            .onGeometryChange(for: CGFloat.self, of: { $0.frame(in: .named(Self.topSpace)).maxY }) {
+              stripBottom = $0
+            }
         }
         // The family's smiles and replies, and her own (#14).
         SmileStrip(onCamera: { camera = true }, onNote: { choosingNote = true })
@@ -89,10 +97,21 @@ struct ProtectedHomeView: View {
       .padding(.horizontal, 16)
       .padding(.vertical, 8)
       .onGeometryChange(for: CGFloat.self, of: \.size.height) { noticesHeight = $0 }
+      .coordinateSpace(.named(Self.topSpace))
     }
     .scrollBounceBehavior(.basedOnSize)
-    .frame(height: min(noticesHeight, max(screenHeight * 0.4, 120)))
+    .frame(height: topHeight(hasNotices: !notices.isEmpty))
     .animation(.snappy, value: noticesOpen)
+  }
+
+  private static let topSpace = "top"
+
+  private func topHeight(hasNotices: Bool) -> CGFloat {
+    // The 8 points of padding under the strip, so its rounded bottom is not clipped.
+    let closedStrip = hasNotices && !noticesOpen ? Double(stripBottom) + 8 : nil
+    return CGFloat(
+      ProtectedNotice.topHeight(
+        content: Double(noticesHeight), screen: Double(screenHeight), closedStripBottom: closedStrip))
   }
 
   private func conversation(notices: [ProtectedNotice]) -> some View {
@@ -389,33 +408,65 @@ private struct NoticeStrip: View {
     first.asksToCall ? "押すと、相談を全部見られます" : "押すと、家族に伝えたことを全部見られます"
   }
 
+  private func mark(_ first: ProtectedNotice) -> some View {
+    Image(systemName: first.asksToCall ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+      .foregroundStyle(first.asksToCall ? Color.orange : Color.accentColor)
+  }
+
+  private func status(_ first: ProtectedNotice) -> some View {
+    Text(first.status)
+      .font(.subheadline.weight(.semibold))
+      .foregroundStyle(.primary)
+      .lineLimit(open ? nil : closedLineLimit(first))
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  @ViewBuilder private var count: some View {
+    if notices.count > 1 {
+      Text("\(notices.count)")
+        .font(.caption.weight(.semibold))
+        .monospacedDigit()
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 2)
+        .background(Capsule().fill(Color(.tertiarySystemFill)))
+    }
+  }
+
+  private var chevron: some View {
+    Image(systemName: "chevron.down")
+      .font(.caption.weight(.semibold))
+      .foregroundStyle(.secondary)
+      .rotationEffect(.degrees(open ? 180 : 0))
+  }
+
   private func strip(first: ProtectedNotice) -> some View {
     VStack(alignment: .leading, spacing: 0) {
       Button {
         open.toggle()
       } label: {
-        HStack(spacing: 8) {
-          Image(systemName: first.asksToCall ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
-            .foregroundStyle(first.asksToCall ? Color.orange : Color.accentColor)
-          Text(first.status)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.primary)
-            .lineLimit(open ? nil : closedLineLimit(first))
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
-          if notices.count > 1 {
-            Text("\(notices.count)")
-              .font(.caption.weight(.semibold))
-              .monospacedDigit()
-              .foregroundStyle(.secondary)
-              .padding(.horizontal, 8)
-              .padding(.vertical, 2)
-              .background(Capsule().fill(Color(.tertiarySystemFill)))
+        // At the accessibility sizes the line goes under the mark, the count, and the chevron, across the
+        // whole width: beside them it had about four characters a line (#134).
+        Group {
+          if typeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 4) {
+              HStack(spacing: 8) {
+                mark(first)
+                Spacer(minLength: 0)
+                count
+                chevron
+              }
+              status(first)
+            }
+          } else {
+            HStack(spacing: 8) {
+              mark(first)
+              status(first)
+              count
+              chevron
+            }
           }
-          Image(systemName: "chevron.down")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .rotationEffect(.degrees(open ? 180 : 0))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

@@ -75,7 +75,9 @@ public struct ResolveConfirmation: Equatable, Sendable {
   /// The question's title: the card's one line, so it is clear which case is being resolved, or
   /// "解決" when the case has none. The question has no sentence of its own.
   public static func title(for item: Case) -> String {
-    guard let summary = item.alert?.summary, !summary.isEmpty else { return CardAction.resolve.title }
+    guard let summary = item.alert?.summary, !summary.isEmpty else {
+      return CardAction.resolve.title
+    }
     return summary
   }
 }
@@ -154,6 +156,16 @@ extension ProtectedNotice {
   }
 
   private static let toldUrgency = 2
+
+  /// How tall the top of her screen (the follow-up, the strip, the smiles, Gmail) is: its content, up
+  /// to 40% of the screen (at least 120 points), scrolling beyond that. The closed strip is never cut:
+  /// `closedStripBottom` is where it ends inside the top, nil while it is open. At the largest text
+  /// sizes the strip alone passed 40% and "電話して" fell below the top (#134).
+  public static func topHeight(content: Double, screen: Double, closedStripBottom: Double?)
+    -> Double
+  {
+    min(content, max(screen * 0.4, 120, closedStripBottom ?? 0))
+  }
 
   /// Lower is more pressing.
   private var urgency: Int {
