@@ -2,7 +2,8 @@ import Foundation
 
 // The protected person's consultation ("スマホ相談と声" in docs/design.md): press the microphone
 // and talk, or type and send, and the answer appears in her chat (Chat.swift). An answer is read
-// aloud only when she asked by voice, so a typed question never makes the phone speak in public (#73). The App's adapters do the listening
+// aloud only when 「読み上げ」 is on in Settings (off by default, #115) and she asked by voice, so a
+// typed question never makes the phone speak in public (#73). The App's adapters do the listening
 // (Speech, on the device), the sending (POST /consult), and the speaking (AVSpeechSynthesizer); every
 // decision about what happens next is here so it can be tested.
 
@@ -100,7 +101,7 @@ public struct VoiceConsult: Sendable {
   private var stopRequested = false
   /// She pressed again before listening started: stop as soon as it starts.
   private var stopPending = false
-  /// This consultation came by voice, so its answer is read aloud.
+  /// This consultation came by voice, so its answer is read aloud when 「読み上げ」 is on.
   private var byVoice = false
 
   /// The server refuses longer text (server/src/consult.ts, CONSULT_TEXT_MAX_CHARS).
@@ -193,11 +194,14 @@ public struct VoiceConsult: Sendable {
     return []
   }
 
-  /// The answer arrived. Dropped when she has already started again.
-  public mutating func answered(_ answer: ConsultAnswer) -> [ConsultEffect] {
+  /// The answer arrived. Dropped when she has already started again. Read aloud only when
+  /// `readsAloud` (「読み上げ」 in Settings, `ReadAloudSettings`) is on and she asked by voice.
+  public mutating func answered(_ answer: ConsultAnswer, readsAloud: Bool = ReadAloudSettings.standard.isOn)
+    -> [ConsultEffect]
+  {
     guard case .thinking(let said) = phase else { return [] }
     phase = .answered(said: said, answer: answer)
-    return byVoice ? [.speak(answer.speak)] : []
+    return readsAloud && byVoice ? [.speak(answer.speak)] : []
   }
 
   public mutating func sendFailed() {
