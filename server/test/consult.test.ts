@@ -861,6 +861,22 @@ describe("consult.ts", () => {
 
     // c-gb-07 on dev: a question about something only she can see came back at level 2 with only the
     // placeholder reason; a handoff is one of the paths that gives exactly that.
+    // Review 1 of PR #111: "お金や口座の話が無ければ3にします" after the script paragraph overrode the list
+    // of signs, and the script starts with her name in a case, keeping quiet, and LINE before any money.
+    it("has no line that puts a consultation at 3 against the list of signs", () => {
+      expect(system).not.toContain("お金や口座の話が無ければ3にします");
+      // The only rule that says 3 is the head of the list of things that are no sign.
+      expect(system.match(/3にします/g)).toEqual(["3にします"]);
+      expect(system).toContain("次のことだけでは、印になりません。このときは3にします。");
+    });
+
+    it("keeps the early parts of the fake-police script, before any money, among the signs", () => {
+      const signs = system.slice(system.indexOf("相談の中の手口の印は"), system.indexOf("次のことだけでは、印になりません"));
+      for (const part of ["名前や名義", "事件や犯罪に関わっている", "口止め", "LINE やビデオ通話", "自動音声", "今日中"]) {
+        expect(signs).toContain(part);
+      }
+    });
+
     it("asks for a way she can check herself, not a handoff, when she asks about something the AI cannot see", () => {
       expect(system).toContain("あなたから見えないもの");
       expect(system).toContain("本人が自分で確かめる方法を案内します");

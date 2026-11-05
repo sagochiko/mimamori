@@ -267,6 +267,12 @@ describe("buildClaudeRequest", () => {
       expect(levelDescription).toContain("確かめられないだけなら3");
     });
 
+    // Review 1 of PR #111 found such a line in the consultation prompt; this keeps the judge's free of one.
+    it("has no line that puts a message at 3 against the list of signs", () => {
+      expect(system.match(/3にします/g)).toEqual(["3にします"]);
+      expect(system).not.toMatch(/無ければ3/);
+    });
+
     it("names the signs that make it 2 or heavier, and asks for them as the reasons", () => {
       for (const part of ["急がせる", "暗証番号", "認証コード", "口止め", "ドメインが食い違う", "短縮 URL", "電話させる", "構成プロファイル"]) {
         expect(system).toContain(part);
