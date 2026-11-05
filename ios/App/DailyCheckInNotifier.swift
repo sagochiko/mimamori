@@ -6,8 +6,9 @@ import UserNotifications
 /// decides the days; this swaps the pending requests for them. Tapping one opens the app, and her
 /// screen is the chat, so she can talk or write from there.
 ///
-/// A change in Settings > みまもり reaches the app only when it next runs, so the requests already
-/// pending keep firing until she opens the app (tapping one of them is enough).
+/// A change in Settings > みまもり is read when the app next comes to the front
+/// (`AppModel.cameToFront`), so the requests already pending keep firing until she opens the app
+/// (tapping one of them is enough).
 enum DailyCheckInNotifier {
   private static let prefix = "daily-check-in-"
 

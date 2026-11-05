@@ -39,9 +39,6 @@ final class AppModel {
   @ObservationIgnored private lazy var callWatcher = CallEndWatcher { [weak self] call in
     Task { await self?.callEnded(call) }
   }
-  /// The daily prompt's settings last applied, so a write to UserDefaults that is not one of them
-  /// (the follow-up's own state, for one) does not rebuild the requests.
-  @ObservationIgnored private var appliedCheckIn: DailyCheckInSettings?
   /// Rebuilds run one after another, so a slower one cannot put back requests a newer one removed.
   @ObservationIgnored private var checkInWork: Task<Void, Never>?
   #if DEBUG
@@ -72,12 +69,6 @@ final class AppModel {
       }
       // Joined as the protected member, or no longer: the call watch and the daily prompt follow.
       self?.cameToFront()
-    }
-    // Settings > みまもり writes here. Delivered on the main queue.
-    NotificationCenter.default.addObserver(
-      forName: UserDefaults.didChangeNotification, object: nil, queue: .main
-    ) { [weak self] _ in
-      MainActor.assumeIsolated { self?.settingsMayHaveChanged() }
     }
   }
 
@@ -251,6 +242,11 @@ final class AppModel {
 
   /// Each time the app comes to the front, at launch, and when the route changes. Only the protected
   /// member's iPhone watches calls and gets the daily prompt; on any other route both stop.
+  ///
+  /// Settings > みまもり is read here too. The Settings app is another process, and Apple's page on
+  /// `UserDefaults.didChangeNotification` says "If a different process changes your app's settings,
+  /// the system doesn't generate this notification"; a suspended app could not act on it anyway. A
+  /// new value takes effect the next time the app comes to the front.
   func cameToFront() {
     if route == .protectedHome { callWatcher.start() } else { callWatcher.stop() }
     scheduleDailyCheckIns()
@@ -272,12 +268,6 @@ final class AppModel {
     }
   }
 
-  /// Something in UserDefaults changed; rebuilds only if it was the daily prompt's settings.
-  private func settingsMayHaveChanged() {
-    guard DailyCheckInNotifier.settings != appliedCheckIn else { return }
-    scheduleDailyCheckIns()
-  }
-
   /// Replaces the pending daily prompts with the ones for the next days. Nothing on a family
   /// member's iPhone, or before joining.
   private func scheduleDailyCheckIns() {
@@ -287,7 +277,6 @@ final class AppModel {
       guard let self else { return }
       // Read now, after the one before finished, so the newest settings and route win.
       let settings = DailyCheckInNotifier.settings
-      appliedCheckIn = settings
       let protected = route == .protectedHome
       await DailyCheckInNotifier.replace(with: protected ? followUp.dailyCheckIns(settings, now: .now) : [])
       #if DEBUG
