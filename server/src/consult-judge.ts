@@ -16,7 +16,7 @@
 // - /docs/en/test-and-evaluate/strengthen-guardrails/mitigate-jailbreaks: "JSON-encode untrusted
 //   content" so it cannot close a quote or a tag; the earlier turns go in as one JSON array.
 
-import { CLAUDE_TIMEOUT_MS, decide, PLACEHOLDER_REASON, soundsSafe, type Level } from "./claude";
+import { CLAUDE_TIMEOUT_MS, decide, PLACEHOLDER_REASON, soundsSafe, talksJudgment, type Level } from "./claude";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
 import {
   INJECTION,
@@ -193,8 +193,14 @@ const CONSULT_SCHEMA = {
       items: { type: "string" },
       description: `根拠。最大${MAX_REASONS}つ、それぞれ${REASON_MAX_CHARS}字以内。2か1なら見えた手口の印`,
     },
-    basis: { type: "string", description: `見えた根拠を一文で、${BASIS_MAX_CHARS}字以内。help のときは空` },
-    action: { type: "string", description: `勧める行動か、操作の案内。${ACTION_MAX_CHARS}字以内` },
+    basis: {
+      type: "string",
+      description: `見えた根拠を一文で、${BASIS_MAX_CHARS}字以内。help のときは空。本人に読み上げるので、印のような判定の言葉は使わない`,
+    },
+    action: {
+      type: "string",
+      description: `勧める行動か、操作の案内。${ACTION_MAX_CHARS}字以内。本人に読み上げるので、印のような判定の言葉は使わない`,
+    },
     handoff: {
       type: "boolean",
       description: "案内しない話題か、答えきれず家族の手が要るなら true。本物か確かめられないだけなら false",
@@ -249,6 +255,8 @@ const SYSTEM_PROMPT = `あなたは、離れて住む家族が見守っている
 
 basis には見えた根拠を一文で、action には勧める行動を書き、二つを分けます。例 basis「詐欺で使われる説明と一致しています。」action「送金せず、いったん電話を切って家族に確かめて」。「これは詐欺です」「本物です」「偽物です」のような言い切りはしません。
 2か1にするときは、reasons に見えた印を書きます。「確かめられない」は印ではないので、2や1の理由にしません。
+
+basis と action は本人にそのまま読み上げます。「手口の印」「印」「規則の判定」のような、ここで段階を決めるために使っている言葉は使わず、本人に分かるふだんの言葉で書きます。こうした言葉が入った文も本人に読み上げず、決まった文に置き換えます。reasons は家族に見せるもので、今までどおり見えた印を書きます。
 
 スマホの困りごとの相談(kind は help、level は 3)では、action に操作の案内を短く書きます。例「ストレージがいっぱい」と出たら、設定の「一般」から「iPhone ストレージ」を案内し、広告の掃除アプリは入れなくていいと伝えます。広告から入れるアプリについての相談は、詐欺の手口と一致するところを根拠に答えます。
 
@@ -505,7 +513,7 @@ function policeReasons(said: Said, withoutPassedOn = false): string[] {
     .map((rule) => rule.reason);
 }
 
-/** A line from Claude that may be read out to her. */
+/** A line from Claude that tells no one it is fine, nor that the family was told. */
 function usable(line: string): boolean {
   return (
     line.trim() !== "" &&
@@ -514,6 +522,14 @@ function usable(line: string): boolean {
     !REASSURING.test(line) &&
     !TOLD_CLAIM.test(line)
   );
+}
+
+/**
+ * A line from Claude that may be read out to her: usable, and in her words rather than the
+ * judgment's ("手口の印", #121). The family's line and reasons keep the signs, so only usable().
+ */
+function readable(line: string): boolean {
+  return usable(line) && !talksJudgment(line);
 }
 
 /**
@@ -682,10 +698,20 @@ function decidePlan(
   const base = { ruleLevel: decision.ruleLevel, claudeLevel: decision.claudeLevel, unguided: ownSensitive.length > 0 };
 
   // "それってどういうこと" with nothing of hers in the conversation to point at (#114): Claude cannot tell
-  // what "それ" is and says it cannot answer, which is no trouble for the family. She is asked what she
-  // means, the same way each time. A sign Claude or the rules see, a topic the AI does not guide, and
-  // no answer from Claude at all still go on below.
-  if (claude?.handoff && sensitive.length === 0 && level === 3 && rule.level === null && pointsAtNothing(said)) {
+  // what "それ" is. It says it cannot answer, which is no trouble for the family, or it reads a scam
+  // consultation into it and sees no sign (#121, on the author's iPhone: a level 3 answer, worded anew
+  // each time). She is asked what she means, the same way each time. Claude's phone guidance is still
+  // read out: a how-to question points back by its words ("どうやって文字を大きくするの") and still says
+  // what she wants. A sign Claude or the rules see (an injection flag makes it 2 first), a topic the AI
+  // does not guide, and no answer from Claude at all still go on below.
+  if (
+    claude !== null &&
+    (claude.handoff || claude.kind === "scam") &&
+    sensitive.length === 0 &&
+    level === 3 &&
+    rule.level === null &&
+    pointsAtNothing(said)
+  ) {
     return { level, reasons, reply: ASK_AGAIN_REPLY, toFamily: false, record: false, sign: false, ...base };
   }
 
@@ -694,7 +720,7 @@ function decidePlan(
   // heavier she still hears the warning and what to do, then that the family was told.
   if (sensitive.length > 0 || (claude?.handoff ?? false)) {
     if (!unanswered && level <= 2) {
-      const basis = claude && claude.kind === "scam" && usable(claude.basis) ? claude.basis : LIKE_SCAM_BASIS;
+      const basis = claude && claude.kind === "scam" && readable(claude.basis) ? claude.basis : LIKE_SCAM_BASIS;
       const both = [...new Set([...sensitive, ...reasons])];
       return {
         level,
@@ -721,21 +747,21 @@ function decidePlan(
   }
   if (!unanswered && level <= 2) {
     // A warning, not guidance: what was seen, then what to do.
-    const basis = claude && claude.kind === "scam" && usable(claude.basis) ? claude.basis : LIKE_SCAM_BASIS;
-    const action = claude && claude.kind === "scam" && usable(claude.action) ? claude.action : SCAM_ACTION;
+    const basis = claude && claude.kind === "scam" && readable(claude.basis) ? claude.basis : LIKE_SCAM_BASIS;
+    const action = claude && claude.kind === "scam" && readable(claude.action) ? claude.action : SCAM_ACTION;
     return { level, reasons, reply: `${basis}${action}`, toFamily: true, record: true, sign: true, ...base };
   }
   if (claude !== null && claude.kind === "scam") {
     // Level 3: little concern, and still never "safe".
-    const basis = usable(claude.basis) ? claude.basis : "";
-    const reply = lowConcernReply(basis, usable(claude.action) ? claude.action : null);
+    const basis = readable(claude.basis) ? claude.basis : "";
+    const reply = lowConcernReply(basis, readable(claude.action) ? claude.action : null);
     return { level, reasons, reply, toFamily: false, record: true, sign: false, ...base };
   }
   if (claude !== null && claude.kind === "help" && (told.some((t) => CONTACT.test(t)) || rule.reasons.length > 0)) {
     // About a message, a call, or a link, or the rules saw something: not Claude's free guidance.
     return { level: 3, reasons, reply: LOW_CONCERN_ACTION, toFamily: false, record: true, sign: false, ...base };
   }
-  if (unanswered || claude === null || !usable(claude.action)) {
+  if (unanswered || claude === null || !readable(claude.action)) {
     const why = reasons.length > 0 ? reasons : [UNANSWERED_REASON];
     return { level: 2, reasons: why, reply: UNANSWERED_REPLY, toFamily: true, record: true, sign: false, ...base };
   }

@@ -65,6 +65,25 @@ describe("parseClaudeJudgment", () => {
     expect(parseClaudeJudgment(value)).toEqual({ ...valid, injection_suspected: true, message_to_protected: "" });
   });
 
+  // #121: the words the prompt uses to set the level (#109) reached the mother in a consultation.
+  // message_to_protected is neither stored nor sent today; it is kept free of them all the same.
+  it.each(["手口の印は見当たらないので、様子を見て", "印が無いので、開かずに待って", "規則の判定では決められません"])(
+    "drops a message_to_protected with words of the judgment, and keeps the rest: %s",
+    (message) => {
+      expect(parseClaudeJudgment({ ...valid, message_to_protected: message })).toEqual({
+        ...valid,
+        message_to_protected: "",
+      });
+    },
+  );
+
+  it.each(["通帳と印鑑は渡さず、家族に確かめて", "右上の×印で閉じて、家族に確かめて"])(
+    "keeps a message_to_protected with 印 inside a word of its own: %s",
+    (message) => {
+      expect(parseClaudeJudgment({ ...valid, message_to_protected: message })?.message_to_protected).toBe(message);
+    },
+  );
+
   it("keeps the level and the injection flag when a reason calls something safe", () => {
     // The wording is replaced later by decide(); the answer itself must not be thrown away, or a
     // message could get the judge's level dropped just by writing 安全 in its text.
@@ -316,6 +335,13 @@ describe("buildClaudeRequest", () => {
 
     it("says the rules not deciding is no suspicion", () => {
       expect(system).toContain("詐欺の疑いという意味ではありません");
+    });
+
+    // #121: the line to her is in her words, not in the judge's; the reasons keep the signs.
+    it("tells Claude to write message_to_protected without the words of the judgment", () => {
+      expect(system).toContain("「手口の印」「印」のような判定の言葉は使わず");
+      expect(output_config.format.schema.properties.message_to_protected.description).toContain("判定の言葉は使わない");
+      expect(system).toContain("2か1にするときは、reasons に見えた印を書きます");
     });
 
     it("still says never to call anything safe, and still asks to flag text aimed at the judge", () => {
