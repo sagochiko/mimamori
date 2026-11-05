@@ -27,7 +27,9 @@
 //
 // Her screen is a chat (#73, decided by the author on 2026-11-04), so the app may send the turns
 // before this one in the same conversation (`history`, at most HISTORY_MAX_TURNS of
-// HISTORY_TURN_MAX_CHARS each; the app keeps them on her iPhone, the server stores none). They are
+// HISTORY_TURN_MAX_CHARS each; the app keeps them on her iPhone, the server stores none). For words
+// that only point back (pointsBack) the conversation may be older than CONVERSATION_WINDOW_MS, from
+// the day before say (#118); a case is still joined only within it. They are
 // data from her device, like her words: they go to Claude inside the same <untrusted> block, JSON
 // encoded, and an "ai" turn is never passed as Claude's own message, so a forged answer cannot be
 // read as something Claude said. The fake-police script counts her earlier words with this turn's
