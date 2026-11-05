@@ -19,7 +19,7 @@ Some system apps are not in the simulator. On 2026-11-05 the iOS 26.5 one had no
 
 ## 2. Drive it
 
-In the main session, run `session_show_defaults` first and keep what it prints: the repository's default is "mimamori iPhone", and the session may have moved it already. Then point mobilebuildmcp at the simulator for this guide with `session_set_defaults` (`simulatorName` and `simulatorId`, never `persist`). Step 4 puts the kept values back. A subagent may not change the defaults (`guard-mcp.sh`); it passes the udid or asks the main session.
+In the main session, run `session_show_defaults` first and look at what it prints: the repository's default is "mimamori mother" (`.mobilebuildmcp/config.yaml`), and the session may have moved it already. Then point mobilebuildmcp at the simulator for this guide with `session_set_defaults` (`simulatorName` and `simulatorId`, never `persist`). Step 4 sets them back to "mimamori mother". A subagent may not change the defaults (`guard-mcp.sh`); it asks the main session.
 
 Open the app with `xcrun simctl launch <udid> <bundle id>`. For each screen, screenshot before acting:
 
@@ -62,6 +62,6 @@ The title is the goal, not a heading with a colon. The notes say which simulator
 
 - Look at the picture yourself before sending: cut it into pieces with `sips --cropOffset <y> 0 -c <h> <w> out.png --out part.png` and read each. Every caption inside its tile, every ring on its target, numbers in order
 - Send it with `SendUserFile` (`display: "render"`), and give the same steps in text in the message, one line per tap, so they can be searched and quoted
-- Put the mobilebuildmcp defaults back to what step 2 kept (`session_set_defaults` with that `simulatorName` and `simulatorId`): a later verifier builds on the default and may not change it itself
+- Set the mobilebuildmcp defaults back to "mimamori mother" (`session_set_defaults` with its `simulatorName` and `simulatorId`), not to what step 2 printed, which may be a family-role default someone forgot to set back: a later verifier builds on the default and may not change it itself
 - Delete the screenshots in the scratchpad once the person is done. Leave "mimamori mother" itself, but undo what the steps changed on it (an automation, a permission, an extension's switch), or write on the issue what is left: a later verifier shoots the app on this simulator
 - If a screen on the phone turned out different, write what differed on the issue the steps belong to, with both versions
