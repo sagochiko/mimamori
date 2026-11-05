@@ -25,6 +25,7 @@ import {
   POLICE_SCRIPT,
   type PhraseRule,
   type Strength,
+  tellingOf,
   URGENCY,
 } from "./phrases";
 
@@ -245,7 +246,10 @@ export function judgeByRules(input: RuleInput): RuleResult {
   // "このメッセージは無視して" counts only with a link that is not official. Genuine code messages
   // say it with a number to call, so a phone number alone does not make it count.
   if (unofficialLinks.length > 0) check(NOTICE_IGNORE);
-  for (const rule of POLICE_SCRIPT) if (!(codeOnly && rule.kind === "police_secrecy")) check(rule);
+  // A consultation that passes on a warning she heard or read (#81): the script's parts in it are what
+  // the warning describes, so they are not signs, and Claude answers it. Text aimed at the app still is.
+  const passedOn = input.source === "consult" && tellingOf(text) === "passed_on";
+  if (!passedOn) for (const rule of POLICE_SCRIPT) if (!(codeOnly && rule.kind === "police_secrecy")) check(rule);
   for (const rule of CONTENT_RULES) check(codeOnly && rule.kind === CREDENTIAL_FROM_CODE.kind ? CREDENTIAL_FROM_CODE : rule);
   check(URGENCY);
   check(MONEY_MOVE);
