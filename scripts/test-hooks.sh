@@ -570,6 +570,84 @@ p switch -q -c landed && GIT_COMMITTER_DATE="$(($(date +%s) - 5 * 3600)) +0900" 
 p fetch -q origin && p switch -q -c issue-10-new origin/main && p commit -q --allow-empty -m new
 out=$(jq -nc --arg t "$T/t10.jsonl" --arg d "$T/p" '{hook_event_name:"Stop",stop_hook_active:false,session_id:"s4",transcript_path:$t,cwd:$d}' | "$H/pacer.sh" 2>&1)
 [[ "$out" != *"issue-10-new has been open"* ]] || { echo "hook test failed: pacer counts commits already on origin/main against a new branch"; fail=1; }
+
+# keep-going: the main session does not end a turn with work left and nothing running to wake it.
+# $T/k is a repository on main with no worktree; $T/kp holds the CONDITIONS.md the hook reads, so the
+# tests do not depend on today's date against the real deadline.
+k() { git -c user.name=test -c user.email=test@localhost -c commit.gpgsign=false -C "$T/k" "$@"; }
+git init -q -b main "$T/k" && k commit -q --allow-empty -m base
+mkdir -p "$T/kp" "$T/kp-late"
+printf -- '---\ndeadline: 2999-01-01T00:00:00+09:00\n---\n' >"$T/kp/CONDITIONS.md"
+printf -- '---\ndeadline: 2000-01-01T00:00:00+09:00\n---\n' >"$T/kp-late/CONDITIONS.md"
+kg() { # <session> <cwd> <last message> [extra jq object merged into the input] [project dir]
+  local x=${4:-}
+  [[ -n "$x" ]] || x='{}'
+  jq -nc --arg s "$1" --arg d "$2" --arg m "$3" --argjson x "$x" \
+    '{hook_event_name:"Stop",stop_hook_active:false,session_id:$s,cwd:$d,last_assistant_message:$m,background_tasks:[],session_crons:[]} + $x' |
+    CLAUDE_PROJECT_DIR="${5:-$T/kp}" "$H/keep-going.sh" 2>&1
+}
+done_msg="Issue #12 を直してマージした。"
+next_msg=$'#12 をマージした。\n\n次に進めるもの\n- #133\n- #134'
+[[ -z "$(kg k1 "$T/k" "$done_msg")" ]] || { echo "hook test failed: keep-going lets a finished turn end when no work is left"; fail=1; }
+# It asks through additionalContext, not decision "block" (https://code.claude.com/docs/en/hooks, "Stop decision control").
+ASK='"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":'
+out=$(kg k2 "$T/k" "$next_msg")
+[[ "$out" == *"$ASK"* && "$out" == *"次に進めるものの一覧で終わっている"* && "$out" != *'"decision"'* ]] ||
+  { echo "hook test failed: keep-going asks through additionalContext when a turn ends on a list of what to take next"; fail=1; }
+[[ -z "$(kg k2 "$T/k" "$next_msg")" ]] || { echo "hook test failed: keep-going asks only once for the same state"; fail=1; }
+[[ -z "$(kg k2 "$T/k" "$next_msg"$'\n- #137')" ]] ||
+  { echo "hook test failed: keep-going does not ask again when only the wording of the same list changed"; fail=1; }
+[[ "$(kg k2 "$T/k" $'#12 をマージした。\n\n#140 は後回しにした。')" == *"$ASK"* ]] ||
+  { echo "hook test failed: keep-going asks again when other words of a list hit"; fail=1; }
+k worktree add -q "$T/k/.claude/worktrees/issue-134-x" -b issue-134-x 2>/dev/null
+out=$(kg k3 "$T/k" "$done_msg")
+[[ "$out" == *"$ASK"* && "$out" == *"作業中の木が残っている(issue-134-x)"* ]] ||
+  { echo "hook test failed: keep-going stops a turn while a worktree under .claude/worktrees/ is left"; fail=1; }
+[[ "$(kg k4 "$T/k/.claude/worktrees/issue-134-x" "$done_msg")" == *"(issue-134-x)"* ]] ||
+  { echo "hook test failed: keep-going finds the worktrees from inside one of them, naming it once"; fail=1; }
+[[ -z "$(kg k5 "$T/k" "$next_msg" '{"stop_hook_active":true}')" ]] || { echo "hook test failed: keep-going lets the turn end when stop_hook_active is true"; fail=1; }
+[[ -z "$(kg k5 "$T/k" "$next_msg" '{"background_tasks":[{"id":"t1","type":"subagent","status":"running","agent_type":"mm-implementer"}]}')" ]] ||
+  { echo "hook test failed: keep-going waits while a subagent runs"; fail=1; }
+[[ -z "$(kg k5 "$T/k" "$next_msg" '{"background_tasks":[{"id":"t2","type":"shell","status":"running","command":"for i in $(seq 360); do sleep 5; done"}]}')" ]] ||
+  { echo "hook test failed: keep-going waits while a shell loop waits for the author"; fail=1; }
+[[ -z "$(kg k5 "$T/k" "$next_msg" '{"session_crons":[{"id":"c1","schedule":"*/5 * * * *","recurring":true,"prompt":"x"}]}')" ]] ||
+  { echo "hook test failed: keep-going lets the turn end when a wakeup is scheduled"; fail=1; }
+[[ -z "$(kg k5 "$T/k" "$next_msg" '{"background_tasks":null}')" ]] ||
+  { echo "hook test failed: keep-going lets the turn end when it cannot tell what runs in the background"; fail=1; }
+[[ -z "$(kg k5 "$T/k" "$next_msg"$'\n\nどれから進める？')" ]] || { echo "hook test failed: keep-going lets the turn end on a question"; fail=1; }
+[[ -z "$(kg k5 "$T/k" $'auto mode の判定で push が止められた。\n次に進めるもの\n- #133')" ]] ||
+  { echo "hook test failed: keep-going lets the turn end when a permission judgment stopped Claude"; fail=1; }
+[[ -z "$(kg k5 "$T/k" "$next_msg" '{}' "$T/kp-late")" ]] || { echo "hook test failed: keep-going lets the turn end after the deadline"; fail=1; }
+# The skill's name is split, so reading this file into a real transcript does not look like a handoff.
+skill_line="Base directory for this skill: /x/.claude/skills/mm-"handoff
+jq -nc --arg l "$skill_line" '{type:"user",message:{role:"user",content:[{type:"text",text:$l}]}}' >"$T/k-handoff.jsonl"
+jq -nc --arg l "line 1: $skill_line" '{type:"user",message:{role:"user",content:[{type:"tool_result",content:$l}]}}' >"$T/k-quoted.jsonl"
+[[ "$(kg k6 "$T/k" "$next_msg" "$(jq -nc --arg t "$T/k-quoted.jsonl" '{transcript_path:$t}')")" == *"$ASK"* ]] ||
+  { echo "hook test failed: keep-going is not turned off by a file read that quotes the handoff skill line"; fail=1; }
+[[ -z "$(kg k5 "$T/k" "$next_msg" "$(jq -nc --arg t "$T/k-handoff.jsonl" '{transcript_path:$t}')")" ]] ||
+  { echo "hook test failed: keep-going lets the turn end after /mm-handoff ran in this session"; fail=1; }
+[[ "$(kg k5 "$T/k" "$next_msg")" == *"$ASK"* ]] || { echo "hook test failed: keep-going still stops the same state once nothing exempts it"; fail=1; }
+[[ -z "$(kg k8 "$T/k" "$next_msg"$'\n\n残りは全部作者待ちなので返事を待つ。')" ]] ||
+  { echo "hook test failed: keep-going lets the turn end when the rest waits for the author"; fail=1; }
+[[ "$(kg k8 "$T/k" $'フックで止められる経路を足した。\n\n次に進めるもの\n- #140')" == *"$ASK"* ]] ||
+  { echo "hook test failed: keep-going is not turned off by an answer that only talks about a path a hook stops"; fail=1; }
+[[ -z "$(kg k9 "$T/k" $'auto mode の判定で止められたので、作者に聞く。\n次に進めるもの\n- #133')" ]] ||
+  { echo "hook test failed: keep-going lets the turn end when auto mode stopped Claude, said as a sentence"; fail=1; }
+[[ -z "$(kg k9 "$T/k" "$next_msg"$'\n\nどれから進める？\n\n```sh\n! gh auth login\n```')" ]] ||
+  { echo "hook test failed: keep-going reads the question before a code block at the end"; fail=1; }
+[[ -z "$(kg k9 "$T/k" "$next_msg"$'\n\n(どれにする？)')" && -z "$(kg k9 "$T/k" "$next_msg"$'\n\n「どれにする？」')" ]] ||
+  { echo "hook test failed: keep-going takes a question closed by ) or 」 for a question"; fail=1; }
+[[ "$(kg k9 "$T/k" "$next_msg"$'\n\n```sh\nmake verify?\n```')" == *"$ASK"* ]] ||
+  { echo "hook test failed: keep-going does not take a ? inside a code block for a question"; fail=1; }
+# At most 3 times in a session, whatever changes in between (k9 asked once just above).
+kg k9 "$T/k" "$next_msg"$'\n#140 は後回し' >/dev/null
+kg k9 "$T/k" "$next_msg"$'\n手を付けていない #141' >/dev/null
+[[ -z "$(kg k9 "$T/k" $'次の Issue は #142')" ]] || { echo "hook test failed: keep-going asks at most 3 times in a session"; fail=1; }
+[[ "$(grep -c . "$MM_STATE_DIR/keep-going-k9")" == 3 ]] || { echo "hook test failed: keep-going counted 3 asks for the session"; fail=1; }
+out=$(echo 'not json' | CLAUDE_PROJECT_DIR="$T/kp" "$H/keep-going.sh" 2>&1); got=$?
+[[ $got -eq 0 && -z "$out" ]] || { echo "hook test failed: keep-going lets the turn end on input it cannot read, never exit 2"; fail=1; }
+jq -e '.hooks.Stop[].hooks[] | select(.command | endswith("keep-going.sh")) | .timeout <= 20' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: keep-going.sh runs on Stop with a short timeout"; fail=1; }
 jq -e '.hooks.PreCompact[] | select(.matcher == "auto") | .hooks[] | select(.command | endswith("compact-flag.sh"))' .claude/settings.json >/dev/null ||
   { echo "settings test failed: compact-flag.sh runs on automatic compaction"; fail=1; }
 jq -e '.idleCompaction == false' .claude/settings.json >/dev/null || { echo "settings test failed: idleCompaction is off"; fail=1; }
