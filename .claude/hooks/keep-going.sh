@@ -9,7 +9,8 @@
 #     a monitor, a /loop): the session is paused, and the task's notice wakes it
 #     (https://code.claude.com/docs/en/hooks, "Stop input");
 #   - background_tasks is missing: the task registry was not reachable, so what runs is unknown;
-#   - the deadline in CONDITIONS.md has passed, or this session ran /mm-handoff;
+#   - the deadline in CONDITIONS.md has passed, or this session ran /mm-handoff (the line Claude Code
+#     adds when a skill runs starts a text block; a file that only quotes it is escaped in the transcript);
 #   - the last answer ends with a question, or says a permission rule, a hook, or auto mode stopped it.
 # Otherwise it asks Claude to go on when a worktree under .claude/worktrees/ exists, the tree Claude is in
 # is on a branch other than main, or the last answer ends on what to take next. It asks once per state
@@ -22,6 +23,7 @@ jq -e 'type == "object"' >/dev/null 2>&1 <<<"$in" || exit 0
 [[ "$(jq -r '.stop_hook_active // false' <<<"$in")" == "true" ]] && exit 0
 running=$(jq -r 'if (.background_tasks | type) != "array" then "unknown"
   else ((.background_tasks | length) + (.session_crons // [] | length)) end' <<<"$in")
+[[ "$running" == "unknown" ]] && { log_event gate keep-going "no background_tasks"; exit 0; }
 [[ "$running" == "0" ]] || exit 0
 
 deadline=$(condition deadline)
@@ -29,7 +31,7 @@ end=$(epoch_of "$deadline")
 [[ "$end" =~ ^[0-9]+$ ]] && (($(date +%s) >= end)) && exit 0
 transcript=$(jq -r '.transcript_path // empty' <<<"$in")
 [[ -n "$transcript" && -r "$transcript" ]] &&
-  grep -qE 'Base directory for this skill: [^"]*/mm-handoff' "$transcript" 2>/dev/null && exit 0
+  grep -qE '"text":"Base directory for this skill: [^"]*/skills/mm-handoff' "$transcript" 2>/dev/null && exit 0
 
 msg=$(jq -r '.last_assistant_message // empty' <<<"$in")
 tail_line=$(sed -e 's/[[:space:]]*$//' <<<"$msg" | grep -v '^$' | tail -1)

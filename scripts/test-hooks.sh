@@ -614,7 +614,12 @@ out=$(kg k3 "$T/k" "$done_msg")
 [[ -z "$(kg k5 "$T/k" $'auto mode の判定で push が止められた。\n次に進めるもの\n- #133')" ]] ||
   { echo "hook test failed: keep-going lets the turn end when a permission judgment stopped Claude"; fail=1; }
 [[ -z "$(kg k5 "$T/k" "$next_msg" '{}' "$T/kp-late")" ]] || { echo "hook test failed: keep-going lets the turn end after the deadline"; fail=1; }
-jq -nc '{type:"user",message:{role:"user",content:[{type:"text",text:"Base directory for this skill: /x/.claude/skills/mm-handoff"}]}}' >"$T/k-handoff.jsonl"
+# The skill's name is split, so reading this file into a real transcript does not look like a handoff.
+skill_line="Base directory for this skill: /x/.claude/skills/mm-"handoff
+jq -nc --arg l "$skill_line" '{type:"user",message:{role:"user",content:[{type:"text",text:$l}]}}' >"$T/k-handoff.jsonl"
+jq -nc --arg l "line 1: $skill_line" '{type:"user",message:{role:"user",content:[{type:"tool_result",content:$l}]}}' >"$T/k-quoted.jsonl"
+[[ "$(kg k6 "$T/k" "$next_msg" "$(jq -nc --arg t "$T/k-quoted.jsonl" '{transcript_path:$t}')")" == *'"decision":"block"'* ]] ||
+  { echo "hook test failed: keep-going is not turned off by a file read that quotes the handoff skill line"; fail=1; }
 [[ -z "$(kg k5 "$T/k" "$next_msg" "$(jq -nc --arg t "$T/k-handoff.jsonl" '{transcript_path:$t}')")" ]] ||
   { echo "hook test failed: keep-going lets the turn end after /mm-handoff ran in this session"; fail=1; }
 [[ "$(kg k5 "$T/k" "$next_msg")" == *'"decision":"block"'* ]] || { echo "hook test failed: keep-going still stops the same state once nothing exempts it"; fail=1; }

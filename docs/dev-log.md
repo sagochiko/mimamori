@@ -658,3 +658,15 @@ Apple の [Messaging between the app and JavaScript in a Safari web extension](h
 知らせごとに列が1つずつ要ると思っていた。日本語のメールは ISO-2022-JP が多く、Workers の `TextDecoder` で読めるかも心配だったが、手元の workerd では `iso-2022-jp`、`shift_jis`、`euc-jp` のどれも作れた。
 
 列を足す案は、#16 と同時に動いていてマイグレーションの番号を分け合うことと、知らせ1つのために本番の D1 を変えることになるので採らなかった。メールは SMS と同じ関門を通し、印の無いメールは Claude に回さない。Claude が落ちると決まらないメールは2段階で家族に知らせるので、ふつうのお知らせのメールで家族に通知が飛ばないようにするためだ。この関門は SMS と共通の [`server/src/inbound.ts`](../server/src/inbound.ts) に移した。Google のクライアントの2つの名前は、はじめ `wrangler.jsonc` の `secrets.required` に足したが、Cloudflare の [設定の文書](https://developers.cloudflare.com/workers/wrangler/configuration/#secrets-configuration-property) に、足りない秘密があると `wrangler deploy` が失敗するとあった。作者が Google Cloud でクライアントを作るまで裏側の全部がデプロイできなくなるので、名前を `secrets.required` から外し、無いあいだは Gmail の呼び出しが503を返し、見張りは何もしない形にした。使ったのは mm-implementer、advisor、WebFetch(Google の文書)、Vitest、@msw/cloudflare。
+
+## 2026年11月6日 手を止めた主を Stop フックで続けさせる
+
+主のセッションが次に進められる Issue の一覧を報告に並べたまま応答を終え、作者に「あれ止まってないか大丈夫かい」と聞かれた。作者は「とまらないようにこれは hooks で」と頼んだ。
+
+主は実装役に、作業中の worktree やボードの「In Progress」、作者待ちの印(`.claude/state/author-waiting`)を見て、残りがあるのに裏で何も動いていなければ止める Stop フックを頼んだ。
+
+hooks の文書を読むと、Stop の入力には `background_tasks` と `session_crons` があり、裏のサブエージェントや作者を待つシェルのループはそこで見分けられた。一方で、続けさせた回数の上限は「The count of consecutive continuations resets each time Claude calls a tool」とあり、`stop_hook_active` だけでは、Claude が1回見回すたびに同じ催促が戻ってくる。`author-waiting` は「作者: 」の Issue の数を5分ためておくファイルで、いま作者を待っている印ではなかった。
+
+`stop_hook_active` で足りる、`author-waiting` が待ちの印に使える、という見込みはどちらも外れた。ボードも gh を4、5回呼ぶので、応答の終わりのたびに流すには重かった。
+
+[`keep-going.sh`](../.claude/hooks/keep-going.sh) は、同じセッションで同じ残りの組(worktree の名前と、次の候補で終わる応答の中身)には1回だけ言う形にした。ボードと `author-waiting` は使わず、手元の worktree とブランチ、入力の `background_tasks` で代えた。`/mm-handoff` のあとを見分ける skill の行は、試験の中で語を割って書いた。試験のファイルを読んだだけで記録に同じ行が入り、フックが黙ってしまうためだ。使ったのは mm-implementer、advisor、WebFetch(hooks の文書)、`scripts/test-hooks.sh`。
