@@ -74,14 +74,15 @@ clock=(
 # data and raw reports are skipped as for phone shapes (test_data): reviewers quote log stamps and the
 # app's hours verbatim. Some documents write hours that are nobody's action, where the date alone means
 # nothing (hours_docs): docs/design.md, docs/plan.md, and the root README.md and README.ja.md describe
-# the hours the app offers (the daily check-in from 17 to 21), and CONDITIONS.md holds the event's
-# checkpoints, which are edited right before the deadline. eval/README.md and other READMEs below the
+# the hours the app offers (the daily check-in from 17 to 21). CONDITIONS.md is checked: it also records
+# the author's decisions, and its checkpoints sit in the frontmatter as ISO times joined by T, which the
+# text names by key. eval/README.md and other READMEs below the
 # root are checked. guard-private labels the part of a body that is a saved raw report byte for byte
 # "raw report <file>", which this rule skips, and phone and email shapes there pass as at commit time.
 # The history mode does not apply it: commits are not rewritten, and the author decided that what is
 # already in them stays.
 docs_scope='\.md:[0-9]+$'
-hours_docs='^(docs/design\.md|docs/plan\.md|README(\.ja)?\.md|CONDITIONS\.md):'
+hours_docs='^(docs/design\.md|docs/plan\.md|README(\.ja)?\.md):'
 
 # scan <tsv>: each line is "<location>\t<text>". Prints "<location>: <rule>" per hit.
 scan() {
