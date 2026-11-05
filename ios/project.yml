@@ -127,6 +127,11 @@ targets:
       # build fails with "Couldn't load Info dictionary".
       - path: SafariExtension/Resources
         buildPhase: resources
+      # The same Keychain adapter as the app, reading the device key from the app group's access group.
+      - path: App/KeychainDeviceKeyStore.swift
+    dependencies:
+      - package: Core
+        product: MimamoriCore
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1"
@@ -137,6 +142,8 @@ targets:
         CFBundleDisplayName: みまもり
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Where the native handler sends POST /page (same value as the app).
+        MimamoriAPIBaseURL: https://$(MIMAMORI_API_HOST)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.Safari.web-extension
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).SafariWebExtensionHandler
