@@ -143,7 +143,11 @@ function normalizeDomain(job: JudgeJob): string | null {
     }
   }
   if (!host) return null;
-  const d = host.trim().toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
+  const d = host
+    .trim()
+    .toLowerCase()
+    .replace(/\.$/, "")
+    .replace(/^www\./, "");
   return d === "" ? null : d;
 }
 
@@ -338,7 +342,11 @@ async function judgeOne(
       family: stored.case_id === null || stored.family_notified_at === null,
     };
     if (!pending.mother && !pending.family) return "done";
-    const notice = { level: stored.level, reasons: storedReasons(stored.reasons), checking: stored.claude_level === null };
+    const notice = {
+      level: stored.level,
+      reasons: storedReasons(stored.reasons),
+      checking: stored.claude_level === null,
+    };
     return finishNotices(env, alertId, notice, pending, await reachableMembers(env, job.familyId), budget, deps);
   }
   // "Delete everything" may have run since the job was queued.

@@ -145,7 +145,9 @@ describe("join notification", () => {
       [owner.memberId, "a1".repeat(32)],
       [sister.memberId, "b2".repeat(32)],
     ] as const) {
-      await env.DB.prepare("UPDATE members SET apns_token = ?, apns_env = 'sandbox' WHERE id = ?").bind(token, id).run();
+      await env.DB.prepare("UPDATE members SET apns_token = ?, apns_env = 'sandbox' WHERE id = ?")
+        .bind(token, id)
+        .run();
     }
 
     const sent: Array<{ token: string; body: unknown }> = [];
@@ -170,7 +172,9 @@ describe("join notification", () => {
 });
 
 async function testP8(): Promise<string> {
-  const pair = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign"])) as CryptoKeyPair;
+  const pair = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
+    "sign",
+  ])) as CryptoKeyPair;
   const der = (await crypto.subtle.exportKey("pkcs8", pair.privateKey)) as ArrayBuffer;
   return `-----BEGIN PRIVATE KEY-----\n${btoa(String.fromCharCode(...new Uint8Array(der)))}\n-----END PRIVATE KEY-----`;
 }

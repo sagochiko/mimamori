@@ -59,7 +59,11 @@ export function claudeJudge(ask: AskClaude): Judge {
     const decision = decide(rule, answer);
     const combined: CombinedJudgment = { level: decision.level, checking: decision.checking };
     if (answer !== null) {
-      combined.claude = { level: answer.level, reasons: answer.reasons, injection_suspected: answer.injection_suspected };
+      combined.claude = {
+        level: answer.level,
+        reasons: answer.reasons,
+        injection_suspected: answer.injection_suspected,
+      };
     }
     return combined;
   };

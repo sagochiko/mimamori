@@ -79,7 +79,8 @@ const consult: ConsultJudge = async () => ({
 });
 
 const read = (file: string) => readFile(path.join(evalDir, file), "utf8");
-const header = "| 日時 | セット | 方式 | 件数 | 見逃し率 | 誤判定率 | 要らない通知 | 中央値(ms) | 変えたこと |\n|---|---|---|---:|---:|---:|---:|---:|---|\n";
+const header =
+  "| 日時 | セット | 方式 | 件数 | 見逃し率 | 誤判定率 | 要らない通知 | 中央値(ms) | 変えたこと |\n|---|---|---|---:|---:|---:|---:|---:|---|\n";
 
 beforeEach(async () => {
   repo = await mkdtemp(path.join(tmpdir(), "mm-run-"));
@@ -99,10 +100,14 @@ describe("runEval --mode rules", () => {
     const { exitCode, lines } = await runEval({ evalDir, set: "dev", mode: "rules", notes: "fixture", now: TODAY });
     assert.equal(exitCode, 0);
 
-    const records = (await read("results.jsonl")).trim().split("\n").map((l) => JSON.parse(l));
+    const records = (await read("results.jsonl"))
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
     assert.equal(records.length, 1);
     const r = records[0];
-    for (const key of [...CONTRACT, "ts", "set", "mode", "git_sha", "n", "notes"]) assert.ok(key in r, `missing ${key}`);
+    for (const key of [...CONTRACT, "ts", "set", "mode", "git_sha", "n", "notes"])
+      assert.ok(key in r, `missing ${key}`);
     assert.equal(r.ts, TODAY);
     assert.equal(r.set, "dev");
     assert.equal(r.mode, "rules");
@@ -114,7 +119,13 @@ describe("runEval --mode rules", () => {
     assert.equal(r.by_source.consult.misses, 1);
 
     const results = await read("RESULTS.md");
-    assert.ok(results.endsWith("| 2026年11月3日 21:00 | dev | rules | 3 | 50.0% (1/2) | 0.0% (0/1) | 0 | " + r.p50_latency_ms + " | fixture |\n"));
+    assert.ok(
+      results.endsWith(
+        "| 2026年11月3日 21:00 | dev | rules | 3 | 50.0% (1/2) | 0.0% (0/1) | 0 | " +
+          r.p50_latency_ms +
+          " | fixture |\n",
+      ),
+    );
 
     const out = JSON.parse(await read("out/dev-latest.json"));
     assert.equal(out.cases.length, 3);
@@ -141,7 +152,14 @@ describe("runEval --mode rules", () => {
 
 describe("runEval --mode rules+claude", () => {
   it("stops with a clear error without ANTHROPIC_API_KEY, and records nothing", async () => {
-    const { exitCode, lines } = await runEval({ evalDir, set: "dev", mode: "rules+claude", notes: "", now: TODAY, apiKey: "" });
+    const { exitCode, lines } = await runEval({
+      evalDir,
+      set: "dev",
+      mode: "rules+claude",
+      notes: "",
+      now: TODAY,
+      apiKey: "",
+    });
     assert.equal(exitCode, 1);
     assert.match(lines.join("\n"), /ANTHROPIC_API_KEY/);
     await assert.rejects(read("results.jsonl"));
@@ -150,7 +168,15 @@ describe("runEval --mode rules+claude", () => {
 
   it("uses the judge it is given", async () => {
     const judge: Judge = async () => ({ level: 2 });
-    const { exitCode } = await runEval({ evalDir, set: "dev", mode: "rules+claude", notes: "", now: TODAY, judge, consult });
+    const { exitCode } = await runEval({
+      evalDir,
+      set: "dev",
+      mode: "rules+claude",
+      notes: "",
+      now: TODAY,
+      judge,
+      consult,
+    });
     assert.equal(exitCode, 0);
     const r = JSON.parse((await read("results.jsonl")).trim());
     assert.equal(r.mode, "rules+claude");
@@ -160,8 +186,17 @@ describe("runEval --mode rules+claude", () => {
 
   it("counts and prints the cases where Claude gave nothing and the rules stood alone", async () => {
     let n = 0;
-    const judge: Judge = async (_input, rule) => (n++ === 0 ? { level: rule.level ?? 2, checking: true } : { level: 2, checking: false });
-    const { exitCode, lines } = await runEval({ evalDir, set: "dev", mode: "rules+claude", notes: "", now: TODAY, judge, consult });
+    const judge: Judge = async (_input, rule) =>
+      n++ === 0 ? { level: rule.level ?? 2, checking: true } : { level: 2, checking: false };
+    const { exitCode, lines } = await runEval({
+      evalDir,
+      set: "dev",
+      mode: "rules+claude",
+      notes: "",
+      now: TODAY,
+      judge,
+      consult,
+    });
     assert.equal(exitCode, 0);
     const r = JSON.parse((await read("results.jsonl")).trim());
     assert.equal(r.claude_unanswered, 1);
@@ -183,8 +218,20 @@ describe("runEval --mode rules+claude", () => {
       note: "self-written",
     };
     await writeFile(path.join(evalDir, "cases", "dev", "fixture-unguided.jsonl"), `${JSON.stringify(extra)}\n`);
-    const judge: Judge = async () => ({ level: 3, checking: false, claude: { level: 3, reasons: ["公式のドメイン"], injection_suspected: false } });
-    const { exitCode, lines } = await runEval({ evalDir, set: "dev", mode: "rules+claude", notes: "", now: TODAY, judge, consult });
+    const judge: Judge = async () => ({
+      level: 3,
+      checking: false,
+      claude: { level: 3, reasons: ["公式のドメイン"], injection_suspected: false },
+    });
+    const { exitCode, lines } = await runEval({
+      evalDir,
+      set: "dev",
+      mode: "rules+claude",
+      notes: "",
+      now: TODAY,
+      judge,
+      consult,
+    });
     assert.equal(exitCode, 0);
     const r = JSON.parse((await read("results.jsonl")).trim());
     assert.equal(r.false_alarms, 1);
@@ -194,7 +241,11 @@ describe("runEval --mode rules+claude", () => {
     const out = JSON.parse(await read("out/dev-latest.json"));
     const byId = (id: string) => out.cases.find((c: { id: string }) => c.id === id);
     assert.equal(byId("dev-genuine-2").unguided_topic, true);
-    assert.deepEqual(byId("dev-genuine-1").claude, { level: 3, reasons: ["公式のドメイン"], injection_suspected: false });
+    assert.deepEqual(byId("dev-genuine-1").claude, {
+      level: 3,
+      reasons: ["公式のドメイン"],
+      injection_suspected: false,
+    });
     assert.equal(byId("dev-scam-2").claude.kind, "scam");
     assert.ok(!lines.join("\n").includes("FIXTURE-TEXT"), "printed case text");
   });
@@ -210,7 +261,14 @@ describe("runEval --mode rules+claude", () => {
       called++;
       return { level: 1 };
     };
-    const { exitCode, lines } = await runEval({ evalDir, set: "dev", mode: "rules+claude", notes: "", now: TODAY, judge });
+    const { exitCode, lines } = await runEval({
+      evalDir,
+      set: "dev",
+      mode: "rules+claude",
+      notes: "",
+      now: TODAY,
+      judge,
+    });
     assert.equal(exitCode, 1);
     assert.equal(called, 0);
     assert.match(lines.join("\n"), /budget/);

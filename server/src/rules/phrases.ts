@@ -40,7 +40,9 @@ export const NOTICE_IGNORE: PhraseRule = {
   kind: "notice_ignore",
   strength: "medium",
   reason: "この知らせを無視させようとしている",
-  patterns: [/(この|本)(通知|メッセージ|メール|sms).{0,6}(は誤り|は間違い|を無視|は無視|は気にしな|を止め|を消し|をオフに)/],
+  patterns: [
+    /(この|本)(通知|メッセージ|メール|sms).{0,6}(は誤り|は間違い|を無視|は無視|は気にしな|を止め|を消し|をオフに)/,
+  ],
 };
 
 // Parts of the fake-police script (警察庁「ニセ警察詐欺」の注意喚起). Two or more parts are level 1.
@@ -80,7 +82,9 @@ export const POLICE_SCRIPT: readonly PhraseRule[] = [
     kind: "police_video",
     strength: "medium",
     reason: "ビデオ通話や LINE に誘われている",
-    patterns: [/ビデオ通話|テレビ電話|(line|ライン).{0,4}(で|に|の).{0,8}(追加|話|連絡|移|友だち|事情聴取|取り調べ)|事情聴取.{0,10}(line|ライン|ビデオ)/],
+    patterns: [
+      /ビデオ通話|テレビ電話|(line|ライン).{0,4}(で|に|の).{0,8}(追加|話|連絡|移|友だち|事情聴取|取り調べ)|事情聴取.{0,10}(line|ライン|ビデオ)/,
+    ],
   },
 ];
 
@@ -89,7 +93,9 @@ export const MONEY_MOVE: PhraseRule = {
   kind: "money_move",
   strength: "weak",
   reason: "お金を動かす話がある",
-  patterns: [/送金|振り込|振込|口座を移|移し替え|別の口座|安全な口座|指定の口座|資産.{0,4}(調査|確認|保全)|現金.{0,6}(用意|渡|預|送)/],
+  patterns: [
+    /送金|振り込|振込|口座を移|移し替え|別の口座|安全な口座|指定の口座|資産.{0,4}(調査|確認|保全)|現金.{0,6}(用意|渡|預|送)/,
+  ],
 };
 
 // A caller who says he is the police, in her own words ("警察から電話", "警察署の人から"). It is a
@@ -115,16 +121,24 @@ export const POLICE_CALLER: PhraseRule = {
     // caller said, or her correcting herself, comes right after から, with a pause or without one
     // (#81). A pause alone is not enough (PR #105 review): 警察から、聞いたんやけど and 警察から、落とし物の
     // 通帳が are how she heard of it, and 警察からのお知らせ is a notice.
-    new RegExp(`${POLICE_NAME}から[、,\\s]*(?=いや|((${WHOSE})(の|に|が|は)?[、,\\s]*)?(口座|名義|逮捕|容疑|捜査)|[^、,\\s。!?\\n]{1,4}名義)`),
+    new RegExp(
+      `${POLICE_NAME}から[、,\\s]*(?=いや|((${WHOSE})(の|に|が|は)?[、,\\s]*)?(口座|名義|逮捕|容疑|捜査)|[^、,\\s。!?\\n]{1,4}名義)`,
+    ),
     // 警察署の人から, 警察官を名乗る人から, 警察を名乗る電話が, 警察って人が, 県警の者で
-    new RegExp(`${POLICE_NAME}(の|を名乗る|と名乗る|って名乗る|だと名乗る|って(いう|言う)?|という|と言う|だという|だって(いう|言う)?)(人|方|者|男性?|女性?|相手|電話)(から|が|で)`),
+    new RegExp(
+      `${POLICE_NAME}(の|を名乗る|と名乗る|って名乗る|だと名乗る|って(いう|言う)?|という|と言う|だという|だって(いう|言う)?)(人|方|者|男性?|女性?|相手|電話)(から|が|で)`,
+    ),
     // 警察署の人だって言う電話, 警察だという電話, 警察ですって電話
-    new RegExp(`${POLICE_NAME}(の(人|方))?((だ|です)(って|と)(いう|言う|名乗る)?|(って|と)(いう|言う|名乗る))(電話|人|相手)`),
+    new RegExp(
+      `${POLICE_NAME}(の(人|方))?((だ|です)(って|と)(いう|言う|名乗る)?|(って|と)(いう|言う|名乗る))(電話|人|相手)`,
+    ),
     // 警察名乗る電話が来て, 警察を名乗った人, 警察を名乗られて: saying he is the police is the
     // caller, whatever particle speech recognition keeps or drops after it (#78). Words may come
     // between the name and 名乗る (#81): 警察署の人と名乗る, 警視庁の捜査二課を名乗る, 県警の、何とか課の
     // 何とかって名乗る. Not another body's name in between: 警察署に行く途中で、銀行員を名乗る.
-    new RegExp(`${POLICE_NAME}((?!${OTHER_BODY})[^。!?\\n]){0,15}?(を|と|って|だと)?名乗(る|って|り|った|られ)${NOT_A_WARNING}`),
+    new RegExp(
+      `${POLICE_NAME}((?!${OTHER_BODY})[^。!?\\n]){0,15}?(を|と|って|だと)?名乗(る|って|り|った|られ)${NOT_A_WARNING}`,
+    ),
     // 警察をかたる, 警察官を騙る, 警察かたる電話 (#81). 語る is how speech recognition may write かたる,
     // and only after を or と: 警察官が語った話 is the police talking.
     new RegExp(`${POLICE_NAME}(の人|の者|署員)?を?(かた|騙)(る|って|り|った|られ)${NOT_A_WARNING}`),
@@ -144,7 +158,8 @@ export const POLICE_CALLER: PhraseRule = {
 // the forms he says them, so the warning words themselves stay: "口座が犯罪に使われてるから気をつけて"
 // (right after a part of the script), "最近詐欺が多いから調べてる", "ほかの電話には出ないで", "銀行が何か
 // 言っても信用しないで" are what he says to her, not a warning she heard.
-const QUOTED = "((って|と|て)?[^。!?\\n]{0,4}?(言われ|言って|言うて|ゆうて|話して|聞い|書いて|教えて|教わ|注意され)[^。!?\\n]{0,3})?";
+const QUOTED =
+  "((って|と|て)?[^。!?\\n]{0,4}?(言われ|言って|言うて|ゆうて|話して|聞い|書いて|教えて|教わ|注意され)[^。!?\\n]{0,3})?";
 const WARNING_PATTERNS = [
   // 気をつけて, 気ぃつけや, 用心して, 注意してください, 気をつけなあかん: "電話が多いから気をつけて",
   // "〜って電話、気をつけて". Not right after a part of the script and から or ので ("口座が犯罪に使われ
@@ -220,7 +235,9 @@ export const CONTENT_RULES: readonly PhraseRule[] = [
     kind: "gift_card",
     strength: "strong",
     reason: "電子マネーやギフトカードで払わせようとしている",
-    patterns: [/(電子マネー|ギフトカード|プリペイドカード|apple ?gift ?card|google ?play ?(ギフト)?カード|itunes ?カード).{0,15}(買|購入|番号|コード)/],
+    patterns: [
+      /(電子マネー|ギフトカード|プリペイドカード|apple ?gift ?card|google ?play ?(ギフト)?カード|itunes ?カード).{0,15}(買|購入|番号|コード)/,
+    ],
   },
   {
     kind: "credential",

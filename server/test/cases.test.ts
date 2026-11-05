@@ -28,7 +28,9 @@ let pushEnv: Env;
 
 beforeAll(async () => {
   // A throwaway P-256 key stands in for the .p8 from Apple.
-  const pair = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign"])) as CryptoKeyPair;
+  const pair = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
+    "sign",
+  ])) as CryptoKeyPair;
   const der = (await crypto.subtle.exportKey("pkcs8", pair.privateKey)) as ArrayBuffer;
   const b64 = btoa(String.fromCharCode(...new Uint8Array(der)));
   pushEnv = { ...env, APNS_KEY_P8: `-----BEGIN PRIVATE KEY-----\n${b64}\n-----END PRIVATE KEY-----` };
@@ -47,7 +49,10 @@ beforeEach(() => {
   sent = [];
   network.use(
     http.post(`${SANDBOX}/3/device/:token`, async ({ request, params }) => {
-      const payload = (await request.json()) as { aps: { alert: { title?: string; body: string } } } & Record<string, unknown>;
+      const payload = (await request.json()) as { aps: { alert: { title?: string; body: string } } } & Record<
+        string,
+        unknown
+      >;
       const { aps, ...data } = payload;
       sent.push({ token: String(params.token), title: aps.alert.title, body: aps.alert.body, data });
       return new HttpResponse(null, { status: 200 });
@@ -92,7 +97,14 @@ async function newAlert(familyId: string, opts: { level?: 1 | 2 | 3; summary?: s
   await env.DB.prepare(
     "INSERT INTO alerts (id, family_id, source, level, reasons, summary, created_at) VALUES (?, ?, 'call', ?, ?, ?, ?)",
   )
-    .bind(id, familyId, opts.level ?? 1, JSON.stringify(["警察を名乗り、口座の移し替えを求めた"]), opts.summary ?? "警察を名乗る電話の相談", Date.now())
+    .bind(
+      id,
+      familyId,
+      opts.level ?? 1,
+      JSON.stringify(["警察を名乗り、口座の移し替えを求めた"]),
+      opts.summary ?? "警察を名乗る電話の相談",
+      Date.now(),
+    )
     .run();
   return id;
 }
@@ -145,7 +157,9 @@ async function claimedBy(alertId: string, at: number): Promise<void> {
 }
 
 async function casesFor(alertId: string): Promise<number> {
-  const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM cases WHERE alert_id = ?").bind(alertId).first<{ n: number }>();
+  const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM cases WHERE alert_id = ?")
+    .bind(alertId)
+    .first<{ n: number }>();
   return row?.n ?? 0;
 }
 
@@ -184,7 +198,9 @@ describe("openCase", () => {
     const [a, b] = await Promise.all([open(alertId), open(alertId)]);
 
     expect(a?.id).toBe(b?.id);
-    const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM cases WHERE alert_id = ?").bind(alertId).first<{ n: number }>();
+    const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM cases WHERE alert_id = ?")
+      .bind(alertId)
+      .first<{ n: number }>();
     expect(n?.n).toBe(1);
     // Family members are told once, not twice.
     expect(to(f.author)).toHaveLength(1);
@@ -286,7 +302,10 @@ describe("openCase", () => {
     const alertId = await newAlert(f.familyId);
 
     // Nobody was told, so it is not told (#60): the protected person must not hear "家族に伝えました".
-    await expect(open(alertId, new ExternalBudget(0))).rejects.toMatchObject({ name: "CaseNoticeDeferred", reason: "not_delivered" });
+    await expect(open(alertId, new ExternalBudget(0))).rejects.toMatchObject({
+      name: "CaseNoticeDeferred",
+      reason: "not_delivered",
+    });
     expect((await caseOf(alertId))?.state).toBe("notified");
     expect((await caseOf(alertId))?.family_notified_at).toBeNull();
 
@@ -327,7 +346,10 @@ describe("the claim on the first notice", () => {
       { family_notified_at: null, family_notice_claimed_at: expect.any(Number), familyNotifiedAt: null },
       { family_notified_at: null, family_notice_claimed_at: expect.any(Number), familyNotifiedAt: null },
     ]);
-    expect(await caseOf(alertId)).toMatchObject({ family_notified_at: expect.any(Number), family_notice_claimed_at: null });
+    expect(await caseOf(alertId)).toMatchObject({
+      family_notified_at: expect.any(Number),
+      family_notice_claimed_at: null,
+    });
   });
 
   it("when the budget or APNs fails, only the claim is let go and the case stays untold", async () => {
@@ -344,7 +366,10 @@ describe("the claim on the first notice", () => {
     apns.ok = true;
     await open(alertId);
     expect(to(f.author)).toHaveLength(1);
-    expect(await caseOf(alertId)).toMatchObject({ family_notified_at: expect.any(Number), family_notice_claimed_at: null });
+    expect(await caseOf(alertId)).toMatchObject({
+      family_notified_at: expect.any(Number),
+      family_notice_claimed_at: null,
+    });
   });
 
   it("while another caller is sending, openCase sends nothing, takes no ticket, does not throw, and the case reads untold", async () => {
@@ -380,7 +405,10 @@ describe("the claim on the first notice", () => {
     await tick(Date.now());
     expect(to(f.author)).toHaveLength(1);
     expect(to(f.sister)).toHaveLength(1);
-    expect(await caseOf(alertId)).toMatchObject({ family_notified_at: expect.any(Number), family_notice_claimed_at: null });
+    expect(await caseOf(alertId)).toMatchObject({
+      family_notified_at: expect.any(Number),
+      family_notice_claimed_at: null,
+    });
   });
 
   it("a heavier notice that no device took puts the case back on the first notice's retry, with no claim left", async () => {
@@ -425,7 +453,9 @@ describe("taking a case over and replying are gone", () => {
     }
 
     expect(await caseRow(caseId)).toMatchObject({ state: "notified", assignee_member_id: null, accepted_at: null });
-    const relays = await env.DB.prepare("SELECT COUNT(*) AS n FROM relays WHERE case_id = ?").bind(caseId).first<{ n: number }>();
+    const relays = await env.DB.prepare("SELECT COUNT(*) AS n FROM relays WHERE case_id = ?")
+      .bind(caseId)
+      .first<{ n: number }>();
     expect(relays?.n).toBe(0);
     expect(sent).toHaveLength(0);
   });
@@ -478,7 +508,10 @@ describe("resolve", () => {
       call("POST", `/cases/${caseId}/resolve`, { deviceKey: f.sister.deviceKey, env: pushEnv }),
     ]);
     expect([a.status, s.status]).toEqual([200, 200]);
-    const views = [(await a.json()) as { resolvedBy: { memberId: string } }, (await s.json()) as { resolvedBy: { memberId: string } }];
+    const views = [
+      (await a.json()) as { resolvedBy: { memberId: string } },
+      (await s.json()) as { resolvedBy: { memberId: string } },
+    ];
     const winner = (await caseRow(caseId))?.assignee_member_id;
     expect(views.map((v) => v.resolvedBy.memberId)).toEqual([winner, winner]);
     // Only the other of the two hears it.
@@ -542,7 +575,8 @@ describe("GET /cases", () => {
   it("lists the family's cases with the alert and the AI's answer, and nothing from other families", async () => {
     const f = await family();
     const other = await family();
-    const mine = (await open(await newAlert(f.familyId, { level: 2, summary: "SMS 宅配の不在の知らせをかたっている" })))?.id ?? "";
+    const mine =
+      (await open(await newAlert(f.familyId, { level: 2, summary: "SMS 宅配の不在の知らせをかたっている" })))?.id ?? "";
     const theirs = (await open(await newAlert(other.familyId)))?.id ?? "";
 
     const res = await call("GET", "/cases", { deviceKey: f.author.deviceKey, env: pushEnv });
@@ -563,7 +597,8 @@ describe("GET /cases", () => {
       aiReply: null,
     });
     // Nothing of the hand-off is left in the shape.
-    for (const gone of ["assignee", "assigneeMemberId", "acceptedAt", "relays"]) expect(cases[0]).not.toHaveProperty(gone);
+    for (const gone of ["assignee", "assigneeMemberId", "acceptedAt", "relays"])
+      expect(cases[0]).not.toHaveProperty(gone);
     expect(typeof cases[0]?.notifiedAt).toBe("string");
   });
 
@@ -627,7 +662,9 @@ describe("the 30-minute watch", () => {
 
     expect(to(f.mother).map((s) => s.body)).toEqual([NO_REPLY_YET]);
     expect(NO_REPLY_YET).toBe("家族から返事がまだ。急ぐなら電話して");
-    expect(to(f.author)).toEqual([expect.objectContaining({ title: "まだ解決していません", body: "警察を名乗る電話の相談" })]);
+    expect(to(f.author)).toEqual([
+      expect.objectContaining({ title: "まだ解決していません", body: "警察を名乗る電話の相談" }),
+    ]);
     expect(to(f.sister)).toEqual([expect.objectContaining({ title: NOT_RESOLVED_YET })]);
     expect((await caseRow(caseId))?.renotified_at).not.toBeNull();
 

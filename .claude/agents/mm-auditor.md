@@ -22,7 +22,8 @@ You have no file-editing tools; use Bash only to read. Return the report through
 
 If a hook or a permission rule blocks an action, report what was blocked and why; do not retry it another way (another tool, another spelling of the command, another path).
 
-Report in this shape:
-- Checklist: item, status, evidence
-- Next steps (max five), each with why and expected effect
-- Least certain suggestion
+Write the report in Japanese, in this shape (the table in `CLAUDE.md`, "作業の流れ"). The first line is exactly one of `ステータス: 完了`, `ステータス: 一部`, `ステータス: 止まった`, with nothing before it (no list marker, bold, or heading). A hook (`.claude/hooks/report-form.sh`) checks the first line when you hand the report back, and that most of the prose is Japanese; when either is off, it returns the reason in Japanese, and you fix only that and hand the same report back. Put commands, code, paths, and English quotes in backticks or code blocks. Then these sections, with these headings:
+
+- `## チェック項目`: item, status, evidence
+- `## 次の一手`: at most five, each with why and expected effect
+- `## 一番自信のない提案`

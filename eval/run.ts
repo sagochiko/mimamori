@@ -100,7 +100,9 @@ function summary(set: string, mode: Mode, n: number, m: RunMetrics): string[] {
   ];
   for (const [source, s] of Object.entries(m.by_source)) {
     const note = source === "consult" ? unguided(s.false_alarms_unguided) : "";
-    lines.push(`  ${source.padEnd(8)} misses ${pct(s.misses, s.scam)}  false alarms ${pct(s.false_alarms, s.genuine)}${note}  level 1 genuine ${s.genuine_at_level1}`);
+    lines.push(
+      `  ${source.padEnd(8)} misses ${pct(s.misses, s.scam)}  false alarms ${pct(s.false_alarms, s.genuine)}${note}  level 1 genuine ${s.genuine_at_level1}`,
+    );
   }
   return lines;
 }
@@ -126,7 +128,8 @@ export async function runEval(options: RunOptions): Promise<{ exitCode: number; 
   if (mode === "rules+claude" && set === "dev") {
     const budget = await dailyBudget(repo);
     const used = countRunsOn(previous, ts.slice(0, 10));
-    if (used >= budget) return stop(`daily budget used: ${used} of ${budget} rules+claude dev runs today (CONDITIONS.md)`);
+    if (used >= budget)
+      return stop(`daily budget used: ${used} of ${budget} rules+claude dev runs today (CONDITIONS.md)`);
   }
 
   let scored;
@@ -163,7 +166,10 @@ export async function runEval(options: RunOptions): Promise<{ exitCode: number; 
   // Per-case results help tuning, so only the dev set gets them.
   if (set === "dev") {
     await mkdir(path.join(evalDir, "out"), { recursive: true });
-    await writeFile(path.join(evalDir, "out", "dev-latest.json"), `${JSON.stringify({ ...record, cases: scored }, null, 2)}\n`);
+    await writeFile(
+      path.join(evalDir, "out", "dev-latest.json"),
+      `${JSON.stringify({ ...record, cases: scored }, null, 2)}\n`,
+    );
   }
 
   lines.push(...summary(set, mode, cases.length, metrics));
@@ -185,7 +191,12 @@ async function main() {
     console.error("usage: eval/run.ts --set dev|holdout --mode rules|rules+claude [--notes text]");
     process.exit(2);
   }
-  const { exitCode, lines } = await runEval({ evalDir: import.meta.dirname, set, mode, notes: argValue(args, "--notes") ?? process.env.EVAL_NOTES ?? "" });
+  const { exitCode, lines } = await runEval({
+    evalDir: import.meta.dirname,
+    set,
+    mode,
+    notes: argValue(args, "--notes") ?? process.env.EVAL_NOTES ?? "",
+  });
   (exitCode === 0 ? console.log : console.error)(lines.join("\n"));
   process.exit(exitCode);
 }

@@ -62,11 +62,42 @@ interface NamedHost extends HostTrust {
 }
 
 const SUSPICIOUS_TLDS = new Set([
-  "top", "xyz", "icu", "cn", "shop", "buzz", "click", "live", "cc", "vip", "sbs", "cfd", "bond",
-  "rest", "monster", "cyou", "work", "fun", "online", "site", "store", "life", "club", "tk",
+  "top",
+  "xyz",
+  "icu",
+  "cn",
+  "shop",
+  "buzz",
+  "click",
+  "live",
+  "cc",
+  "vip",
+  "sbs",
+  "cfd",
+  "bond",
+  "rest",
+  "monster",
+  "cyou",
+  "work",
+  "fun",
+  "online",
+  "site",
+  "store",
+  "life",
+  "club",
+  "tk",
 ]);
 const SHORTENERS = new Set([
-  "bit.ly", "tinyurl.com", "t.co", "is.gd", "ow.ly", "cutt.ly", "rebrand.ly", "x.gd", "t.ly", "shorturl.at",
+  "bit.ly",
+  "tinyurl.com",
+  "t.co",
+  "is.gd",
+  "ow.ly",
+  "cutt.ly",
+  "rebrand.ly",
+  "x.gd",
+  "t.ly",
+  "shorturl.at",
 ]);
 
 const URL_IN_TEXT = /https?:\/\/[^\s<>"'()「」【】、。]+/g;
@@ -250,13 +281,18 @@ export function judgeByRules(input: RuleInput): RuleResult {
   // the warning describes, so they are not signs, and Claude answers it. Text aimed at the app still is.
   const passedOn = input.source === "consult" && tellingOf(text) === "passed_on";
   if (!passedOn) for (const rule of POLICE_SCRIPT) if (!(codeOnly && rule.kind === "police_secrecy")) check(rule);
-  for (const rule of CONTENT_RULES) check(codeOnly && rule.kind === CREDENTIAL_FROM_CODE.kind ? CREDENTIAL_FROM_CODE : rule);
+  for (const rule of CONTENT_RULES)
+    check(codeOnly && rule.kind === CREDENTIAL_FROM_CODE.kind ? CREDENTIAL_FROM_CODE : rule);
   check(URGENCY);
   check(MONEY_MOVE);
   if (unofficial.length > 0) for (const rule of LINK_BAIT) check(rule);
 
   if (signals.size === 0) {
-    return { level: null, reasons: codeOnly && input.source === "sms" ? ["認証コードの知らせに見える"] : [], confident: false };
+    return {
+      level: null,
+      reasons: codeOnly && input.source === "sms" ? ["認証コードの知らせに見える"] : [],
+      confident: false,
+    };
   }
 
   const signs = signsOf([...signals.values()]);
@@ -268,8 +304,7 @@ export function judgeByRules(input: RuleInput): RuleResult {
   // that adds an official link also stays out of the junk folder (eval/README.md). A domain written
   // without https://, as in "【Amazon.co.jp】", is a name that scams copy, so it does not count.
   const official = hosts.some((h) => h.trust === "official" && !h.bare);
-  const confident =
-    level === 1 && !official && signs.some((s) => s.strength === "strong") && independent >= 2;
+  const confident = level === 1 && !official && signs.some((s) => s.strength === "strong") && independent >= 2;
   const reasons = [...signals.values()].sort((a, b) => RANK[a.strength] - RANK[b.strength]).map((s) => s.reason);
   return { level, reasons, confident };
 }

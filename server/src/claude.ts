@@ -70,7 +70,8 @@ const JUDGMENT_SCHEMA = {
 // (CLAUDE.md). A reason that says it is replaced (decide); the level and injection_suspected are
 // kept, so writing 安全 in a message cannot get the judge's answer thrown away.
 // "問題ないか" is a question ("振込先に問題ないか家族に確かめて"), not a verdict.
-const SOUNDS_SAFE = /安全(です|だ|でしょう|と思|な(メッセージ|サイト|ページ|メール|もの|内容))|問題(は)?(ありません|ない(?!か))|心配(は)?(ありません|いりません|ない(?!か))|\bsafe\b/i;
+const SOUNDS_SAFE =
+  /安全(です|だ|でしょう|と思|な(メッセージ|サイト|ページ|メール|もの|内容))|問題(は)?(ありません|ない(?!か))|心配(は)?(ありません|いりません|ない(?!か))|\bsafe\b/i;
 // Quoting the message ("「この口座は安全です」と移し替えを求める") explains the scam; it is not a verdict.
 const QUOTED = /「[^」]*」|『[^』]*』|“[^”]*”|"[^"]*"/g;
 /** Used when every reason Claude gave sounded safe and the rules gave none. */
@@ -236,7 +237,9 @@ export function buildClaudeRequest(input: RuleInput, rule: RuleResult): ClaudeRe
   if (input.domain) fields.push(`ドメイン: ${neutralize(input.domain)}`);
   if (input.url) fields.push(`URL: ${neutralize(input.url)}`);
   if (input.text) fields.push(`本文:\n${neutralize(input.text)}`);
-  const content = [`経路: ${SOURCE_NAMES[input.source]}`, ruleLine, "<untrusted>", ...fields, "</untrusted>"].join("\n");
+  const content = [`経路: ${SOURCE_NAMES[input.source]}`, ruleLine, "<untrusted>", ...fields, "</untrusted>"].join(
+    "\n",
+  );
 
   return {
     model: CLAUDE_JUDGE_MODEL,
