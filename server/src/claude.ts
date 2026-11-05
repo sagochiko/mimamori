@@ -12,7 +12,7 @@
 //   default and counts toward max_tokens, so the reply can start with a thinking block.
 // - /docs/en/build-with-claude/effort: output_config.effort, default "medium" on Haiku 5.5.
 
-import type { RuleInput, RuleResult, RuleSource } from "./rules/index";
+import { FOREIGN_SENDER_REASON, type RuleInput, type RuleResult, type RuleSource } from "./rules/index";
 
 export type Level = 1 | 2 | 3;
 
@@ -201,15 +201,17 @@ export function decide(rule: RuleResult, claude: ClaudeJudgment | null): Decisio
 export const QUIET_WHEN_UNDECIDED: readonly RuleSource[] = ["sms", "gmail", "page"];
 
 /**
- * decide() for a job of the judge queue. On SMS, mail, and pages, what neither the rules nor Claude
- * decided is level 3, still marked as checking: these routes send Claude genuine messages and pages
- * the rules found nothing in, and a Claude failure must not send the family a level 2 for each of
- * them. Every other route, the consultation above all, keeps decide()'s level 2: the mother herself
- * asked and must hear back.
+ * decide() for a job of the judge queue. On SMS, mail, and pages, what the rules found no sign in (or
+ * only the overseas number) and Claude gave nothing for is level 3, still marked as checking: these
+ * routes send Claude genuine messages and pages the rules found nothing in, and a Claude failure must
+ * not send the family a level 2 for each of them. A sign without a level keeps decide()'s level 2 with
+ * 確かめ中, as before #137. Every other route, the consultation above all, keeps decide()'s level 2:
+ * the mother herself asked and must hear back.
  */
 export function decideFor(source: RuleSource, rule: RuleResult, claude: ClaudeJudgment | null): Decision {
   const decision = decide(rule, claude);
-  if (claude === null && rule.level === null && QUIET_WHEN_UNDECIDED.includes(source)) {
+  const noSign = rule.reasons.every((r) => r === FOREIGN_SENDER_REASON);
+  if (claude === null && rule.level === null && noSign && QUIET_WHEN_UNDECIDED.includes(source)) {
     return { ...decision, level: 3 };
   }
   return decision;

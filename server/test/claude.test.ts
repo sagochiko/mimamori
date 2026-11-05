@@ -242,6 +242,20 @@ describe("decide", () => {
       },
     );
 
+    it.each(["sms", "gmail", "page"] as const)(
+      "keeps %s at decide()'s level 2 when the rules saw a sign without a level and Claude gave nothing",
+      (source) => {
+        const weak: RuleResult = { level: null, reasons: ["急がせる言い回しがある"], confident: false };
+        expect(decideFor(source, weak, null)).toEqual(decide(weak, null));
+        expect(decideFor(source, weak, null)).toMatchObject({ level: 2, checking: true });
+      },
+    );
+
+    it("keeps an SMS whose only sign is the overseas number quiet, as one with no sign", () => {
+      const foreign: RuleResult = { level: null, reasons: ["海外の番号からの SMS"], confident: false };
+      expect(decideFor("sms", foreign, null).level).toBe(3);
+    });
+
     it.each(["consult", "call", "dns"] as const)("keeps level 2 for %s when neither decided, as decide does", (source) => {
       expect(decideFor(source, undecided, null)).toEqual(decide(undecided, null));
       expect(decideFor(source, undecided, null).level).toBe(2);

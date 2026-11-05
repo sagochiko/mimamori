@@ -130,7 +130,19 @@ describe("pages sent to Claude though the rules see no sign (#137)", () => {
 
   it.each([
     ["the shop page without a card field", FAKE_SHOP[0], FAKE_SHOP[1], false],
-    ["the brand's own sign-in page", "https://www.amazon.co.jp/ap/signin", "Amazon サインイン メールアドレスまたは携帯電話番号", false],
+    ["the brand's own sign-in page", "https://www.amazon.co.jp/ap/signin", "Amazon サインイン メールアドレスまたは携帯電話番号", true],
+    [
+      "a bank's own warning with its phone number",
+      "https://www.bk.mufg.jp/info/caution.html",
+      "三菱UFJ銀行 サポート窓口のご案内。ご不明な点は、お問い合わせ 0120-000-000 へ。",
+      false,
+    ],
+    [
+      "a news article whose header says log in, far from the company it names",
+      "https://www.nikkei.com/article/1",
+      "ログイン 会員登録 マーケット 経済 政治 ビジネス 国際 テクノロジー スポーツ 社会 地域 文化 オピニオン ランキング。楽天グループの決算を発表した。",
+      false,
+    ],
     ["a cafe page with its phone number", "https://www.example-cafe.jp/", "営業時間 11時から。お問い合わせ 03-0000-0000", false],
   ])("does not send %s", async (_label, url, text, hasSecretField) => {
     const m = await mother();

@@ -53,13 +53,21 @@
   // server can let Claude look at the page; what is typed in them is never read.
   const SECRET_FIELDS =
     'input[type="password" i], input[autocomplete~="cc-number" i], input[autocomplete~="cc-csc" i], input[autocomplete~="cc-exp" i]';
-  const CARD_NAME = /card|cc-?num|cvc|cvv|security-?code|カード/i;
+  // Whole words in the field's name or id, so "postcard" and "discard" are not card fields, while
+  // "cardnumber", "card-number", "card_number", "cc-number" and "creditCardNumber" are.
+  const CARD_NAME =
+    /(^|[^a-z])(card(no|num|number|holder|cvc|cvv|exp)?|cc-?(num|number|csc|exp)|cvc|cvv|security-?code)([^a-z]|$)|カード/i;
+
+  /** "creditCardNumber" -> "credit-Card-Number", so a camel-case name splits into its words. */
+  function words(name) {
+    return (name || "").replace(/([a-z0-9])([A-Z])/g, "$1-$2");
+  }
 
   function hasSecretField() {
     try {
       if (document.querySelector(SECRET_FIELDS)) return true;
       for (const input of document.querySelectorAll("input")) {
-        if (CARD_NAME.test(input.name || "") || CARD_NAME.test(input.id || "")) return true;
+        if (CARD_NAME.test(words(input.name)) || CARD_NAME.test(words(input.id))) return true;
       }
     } catch {
       // A page that breaks the query only loses this hint.

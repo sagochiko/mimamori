@@ -41,14 +41,37 @@ function host(page: PageSeen): string {
   }
 }
 
-/** The page names a company in BRAND_WORDS and talks to its customers, but its host is not the company's. */
+/** How far apart the company's name and a word to its customers may be (characters, either way). */
+const NEAR_CHARS = 30;
+
+/** Where the pattern matches in the text, as start indices. */
+function startsOf(pattern: RegExp, text: string): number[] {
+  const global = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`);
+  return [...text.matchAll(global)].map((m) => m.index);
+}
+
+/**
+ * The page names a company in BRAND_WORDS with a word to its customers close by ("Amazon サインイン"),
+ * but its host is not the company's. A news site's header ("ログイン 会員登録") far from an article
+ * that names a company is not that.
+ */
 export function speaksAsOtherBrand(page: PageSeen): boolean {
   const text = textOf(page);
-  if (!SPEAKS_AS_BRAND.test(text)) return false;
+  const spoken = startsOf(SPEAKS_AS_BRAND, text);
+  if (spoken.length === 0) return false;
   const own = officialBrandOf(host(page));
-  return Object.entries(BRAND_WORDS).some(
-    ([brand, words]) => brand !== own && words.some((w) => text.includes(w.normalize("NFKC").toLowerCase())),
-  );
+  return Object.entries(BRAND_WORDS).some(([brand, words]) => {
+    if (brand === own) return false;
+    return words.some((w) => {
+      const word = w.normalize("NFKC").toLowerCase();
+      let at = text.indexOf(word);
+      while (at !== -1) {
+        if (spoken.some((s) => Math.abs(s - at) <= NEAR_CHARS + word.length)) return true;
+        at = text.indexOf(word, at + 1);
+      }
+      return false;
+    });
+  });
 }
 
 /** A phone number with a warning or urgency around it, as fake support pages show. */
@@ -60,10 +83,13 @@ export function callsForSupport(page: PageSeen): boolean {
 
 /**
  * Whether a page from the mother's phone goes to Claude: a level or a sign from the rules, as before
- * #137, or one of the shapes above. Pages on her own network and from the family's phones are left out
+ * #137, or one of the shapes above. A field or a phone number counts only off the official domains. Pages on her own network and from the family's phones are left out
  * by the route (src/page.ts) before this.
  */
 export function pageWorthAsking(rule: RuleResult, page: PageSeen): boolean {
   if (rule.level !== null || rule.reasons.length > 0) return true;
-  return page.hasSecretField === true || speaksAsOtherBrand(page) || callsForSupport(page);
+  if (speaksAsOtherBrand(page)) return true;
+  // A company's own page asks for passwords and shows its phone number: its sign-in, its warnings.
+  if (officialBrandOf(host(page)) !== null) return false;
+  return page.hasSecretField === true || callsForSupport(page);
 }

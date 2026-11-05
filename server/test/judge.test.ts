@@ -421,6 +421,18 @@ describe("judge consumer", () => {
       expect(deps.opened).toHaveLength(0);
     });
 
+    it("still tells everyone with 確かめ中 when Claude gives nothing for an SMS with one weak sign", async () => {
+      // A sign too weak for a level was queued before #137 and told about at level 2 when Claude was
+      // down; only what has no sign (or the overseas number alone) is kept quiet.
+      const fam = await setupFamily();
+      const deps = fakes({ rule: { level: null, reasons: ["急がせる言い回しがある"], confident: false }, claude: null });
+      await run([smsJob(fam.familyId)], deps);
+      expect(await alertsOf(fam.familyId)).toMatchObject([{ level: 2, rule_level: null, claude_level: null }]);
+      expect(pushesTo([fam.tokens.mother])[0]?.body).toContain("確かめ中");
+      expect(pushesTo(fam.tokens.family)).toHaveLength(2);
+      expect(deps.opened).toHaveLength(1);
+    });
+
     it("tells the family about the broken-phone scam the rules find nothing in, once Claude gives it a level", async () => {
       // The real rules, so this breaks if they start to see a sign and the test no longer covers #137.
       const text = BROKEN_PHONE;
