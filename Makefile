@@ -53,7 +53,8 @@ apple-skills:
 	for s in swiftui-specialist swiftui-whats-new-27 modernize-tests; do rm -rf .claude/skills/$$s; cp -R "$$tmp/$$s" .claude/skills/; done && \
 	rm -rf "$$tmp" && echo "exported Apple skills into .claude/skills (ignored by git)"
 
-# The simulator the skills use, always named "mimamori iPhone": an iPhone 17 Pro on iOS 26.5. On this
+# The family-role simulator, always named "mimamori iPhone": an iPhone 17 Pro on iOS 26.5. It is joined
+# to the production family, so screens are checked and shot on "mimamori mother" (/mm-ios-verify). On this
 # Mac the iOS 27.1 runtime supports only iPhone Duo (iPhone 18 Pro fails with "Incompatible device"),
 # and a folding phone's outer display is not what the mother's iPhone looks like. The app targets
 # iOS 26.0, so 26.5 runs it; what only iOS 27 changes is checked on the real iPhone. The author chose

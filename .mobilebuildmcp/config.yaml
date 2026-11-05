@@ -3,5 +3,5 @@ enabledWorkflows: ["simulator", "ui-automation", "swift-package"]
 sessionDefaults:
   projectPath: "./ios/Mimamori.xcodeproj"
   scheme: "Mimamori"
-  simulatorName: "mimamori iPhone"
+  simulatorName: "mimamori mother"
 sentryDisabled: true
