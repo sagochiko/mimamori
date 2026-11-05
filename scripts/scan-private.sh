@@ -72,13 +72,16 @@ clock=(
 # lines (pre-commit), only documents (*.md): code keeps cron expressions and test times, and
 # eval/results.jsonl is a machine record whose ts the daily budget, pacer.sh, and the band read. Test
 # data and raw reports are skipped as for phone shapes (test_data): reviewers quote log stamps and the
-# app's hours verbatim. docs/design.md, docs/plan.md, and the READMEs describe the hours the app offers
-# (the daily check-in from 17 to 21), where the date alone means nothing. guard-private labels the part
-# of a body that is a saved raw report byte for byte "raw report <file>", which skips the rule too.
+# app's hours verbatim. Some documents write hours that are nobody's action, where the date alone means
+# nothing (hours_docs): docs/design.md, docs/plan.md, and the root README.md and README.ja.md describe
+# the hours the app offers (the daily check-in from 17 to 21), and CONDITIONS.md holds the event's
+# checkpoints, which are edited right before the deadline. eval/README.md and other READMEs below the
+# root are checked. guard-private labels the part of a body that is a saved raw report byte for byte
+# "raw report <file>", which this rule skips, and phone and email shapes there pass as at commit time.
 # The history mode does not apply it: commits are not rewritten, and the author decided that what is
 # already in them stays.
 docs_scope='\.md:[0-9]+$'
-spec_docs='^(docs/design\.md|docs/plan\.md|README(\.ja)?\.md):'
+hours_docs='^(docs/design\.md|docs/plan\.md|README(\.ja)?\.md|CONDITIONS\.md):'
 
 # scan <tsv>: each line is "<location>\t<text>". Prints "<location>: <rule>" per hit.
 scan() {
@@ -98,11 +101,12 @@ scan() {
     if [[ "$mode" != history ]]; then
       for re in "${clock[@]}"; do grep -nE "$re" "$tmp/clock" | cut -d: -f1; done | sed 's/$/ work-hour time/'
     fi
-  } | sort -u | sort -n -s -k1,1 | awk -v data="$test_data" -v mode="$mode" -v docs="$docs_scope" -v spec="$spec_docs" '
-    NR == FNR { where[NR] = $0; ex[NR] = ($0 ~ data); next }
+  } | sort -u | sort -n -s -k1,1 | awk -v data="$test_data" -v mode="$mode" -v docs="$docs_scope" -v hours="$hours_docs" '
+    # A raw report posted as saved (guard-private) gets the same exemptions as at commit time.
+    NR == FNR { where[NR] = $0; ex[NR] = ($0 ~ data || (mode == "text" && $0 ~ /^raw report /)); next }
     { n = $1; rule = $0; sub(/^[0-9]+ /, "", rule)
       if (rule == "work-hour time") {
-        if (mode == "staged" && (ex[n] || where[n] !~ docs || where[n] ~ spec)) next
+        if (mode == "staged" && (ex[n] || where[n] !~ docs || where[n] ~ hours)) next
         if (mode == "text" && where[n] ~ /^raw report /) next
       } else if (ex[n] && rule != "private term") next
       print where[n] ": " rule }' "$tmp/where" -
