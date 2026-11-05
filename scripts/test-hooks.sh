@@ -534,7 +534,7 @@ out=$(gate_in "$T/work" | "$H/stop-gate.sh" 2>&1)
 [[ -z "$out" ]] || { echo "hook test failed: stop-gate counts commits already on origin/main as this branch's change"; fail=1; }
 printf 'export const x = 1\n' >"$T/work/server/x.ts"
 out=$(gate_in "$T/work" | "$H/stop-gate.sh" 2>&1)
-[[ "$out" == *"$ASK"* && "$out" == *"npm ci in server/"* ]] ||
+[[ "$out" == *'"decision":"block"'* && "$out" == *"npm ci in server/"* ]] ||
   { echo "hook test failed: stop-gate must block, not pass, when server/ changed and node_modules is missing"; fail=1; }
 [[ ! -f "$T/work/.claude/state/stop-gate.pass" ]] || { echo "hook test failed: stop-gate recorded a pass it did not test"; fail=1; }
 rm -f "$T/work/server/x.ts"
