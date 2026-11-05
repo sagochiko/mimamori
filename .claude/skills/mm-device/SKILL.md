@@ -1,9 +1,11 @@
 ---
 name: mm-device
-description: Builds the mimamori app for the author's paired iPhone with automatic signing, installs it, and launches it. Use to put the current branch on the real phone ("実機に入れて", "iPhone で動かして", "/mm-device"). Checks that need a person looking at the phone still go to an 作者: issue.
+description: Builds a Debug mimamori app for the author's paired iPhone with automatic signing, installs it, and launches it. Use when a check on the real phone needs a Debug launch argument such as -mimamori-stub ("実機に入れて", "iPhone で動かして", "/mm-device"); a build the author only checks on the phone goes to TestFlight's internal group 「家族」 with /mm-release instead. Checks that need a person looking at the phone still go to an 作者: issue.
 ---
 
 # Put the app on the paired iPhone
+
+Use this only when the check needs a Debug build started with a launch argument, such as `-mimamori-stub` in step 4. Any other build the author checks on the iPhone goes to TestFlight's internal group 「家族」 with `/mm-release`, which needs no Apple review; the author decided this on 2026-11-05.
 
 Signing is automatic (team `CTK4XXPWH9` in `ios/project.yml`). `xcodebuild` reaches the developer portal through the Apple account in Xcode > Settings > Accounts. If the build prints `No Accounts: Add a new account in Accounts settings.`, open the sign-in sheet for the author so that only the password is left to type: bring Xcode to the front and click its Settings menu item with System Events (`tell application "System Events" to tell process "Xcode" to set frontmost to true`, then `click menu item "Settings…" of menu 1 of menu bar item 2 of menu bar 1`); do not send ⌘, as a keystroke, because keystrokes go to whichever app is in front. Ask the author only to enter the password (and a two-factor code). Wait for it with a background loop that exits when `defaults read com.apple.dt.Xcode DVTDeveloperAccountManagerAppleIDLists 2>/dev/null | grep -q identifier` succeeds (each signed-in account adds an `identifier` entry), then run the build again. Only test the value with `grep -q`; never print it, because it holds the author's Apple ID. Delete any screenshot you took of the sheet, because it shows the account. The first signed build registers the five bundle IDs, the App Group `group.com.sagochiko.mimamori`, and the Push Notifications, App Groups, and Associated Domains capabilities. Report what it registered and any `doesn't include the ... capability` lines word for word.
 

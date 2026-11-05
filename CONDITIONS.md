@@ -38,4 +38,4 @@ dev の精度の測定は1日10回まで。1回ごとに Claude API を呼ぶの
 
 ## 人が要ること
 
-実機での確認、Apple Developer と App Store Connect の画面、TestFlight の配布、母とのやり取りは作者がやる。その作業に当たったら、止まって待たずに「作者: 」で始まる Issue を立て(`/mm-human-queue`)、ほかに進められる Issue に移る。開いているものは `gh issue list --label needs-human --state open` で見る。
+実機での確認、Apple Developer と App Store Connect の画面、母とのやり取りは作者がやる。TestFlight の配布は、Submit Review も含めて Claude が `/mm-release` で進める(2026年11月5日に作者が決めた)。その作業に当たったら、止まって待たずに「作者: 」で始まる Issue を立て(`/mm-human-queue`)、ほかに進められる Issue に移る。開いているものは `gh issue list --label needs-human --state open` で見る。
