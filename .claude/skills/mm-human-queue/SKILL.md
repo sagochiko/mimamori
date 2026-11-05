@@ -1,6 +1,6 @@
 ---
 name: mm-human-queue
-description: Hands a step only the author can do (real iPhone checks, Apple Developer or App Store Connect, TestFlight, talking with the mother, registering secrets, unlocking the holdout) to the author as a GitHub issue titled "作者: ...", and moves on instead of waiting. Use whenever work hits such a step, and when the author reports the result of one.
+description: Hands a step only the author can do (real iPhone checks, Apple Developer or App Store Connect steps that need the author's own hands such as signing in, talking with the mother, registering secrets, unlocking the holdout; TestFlight distribution, Submit Review included, is Claude's through /mm-release) to the author as a GitHub issue titled "作者: ...", and moves on instead of waiting. Use whenever work hits such a step, and when the author reports the result of one.
 ---
 
 # Hand a step to the author
