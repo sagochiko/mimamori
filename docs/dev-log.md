@@ -470,4 +470,4 @@ TestFlight の配布は作者の持ち分なので、夜のうちには触らず
 
 2行あれば足りると思っていた。見本の段では、アクセシビリティ向けの大きな文字サイズを撮っていなかった。
 
-帯は、標準の大きさまでは2行まで、アクセシビリティ向けの大きさでは行数を決めずに折り返すようにした。急ぐときの「電話して」は母に必ず見えてほしいからだ。マイクと送るボタンの絵は extra-extra-extra-large より大きくせず、長押しで大きく見せる(`accessibilityShowsLargeContentViewer`)。丸も文字に合わせて大きくする案は、欄が細い1本でなくなるので採らなかった。使ったのは mm-implementer、advisor、xcodebuild、xcrun simctl。
+帯は、標準の大きさまでは2行まで、アクセシビリティ向けの大きさでは行数を決めずに折り返すようにした。急ぐときの「電話して」は母に必ず見えてほしいからだ。マイクと送るボタンの絵は extra-extra-extra-large より大きくせず、長押しで大きく見せる `accessibilityShowsLargeContentViewer` を付けた。長押しで実際に出るかは、母役のシミュレータに別の作業のビルドが入っていたので、上書きせずに検証役へ回した。丸も文字に合わせて大きくする案は、欄が細い1本でなくなるので採らなかった。使ったのは mm-implementer、advisor、xcodebuild、xcrun simctl。
