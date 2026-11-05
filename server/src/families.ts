@@ -1,13 +1,6 @@
 // Families, invites, and members.
 
-import {
-  hashDeviceKey,
-  newDeviceKey,
-  newFamilyToken,
-  newInviteCode,
-  requireMember,
-  type Role,
-} from "./auth";
+import { hashDeviceKey, newDeviceKey, newFamilyToken, newInviteCode, requireMember, type Role } from "./auth";
 import { deleteAgentSession } from "./agents";
 import { ExternalBudget } from "./budget";
 import { revokeGmailGrant } from "./gmail";
@@ -61,10 +54,7 @@ export async function createFamily(request: Request, env: Env): Promise<Response
     ),
     member.statement,
   ]);
-  return json(
-    { familyId, memberId: member.memberId, deviceKey: member.deviceKey, familyToken, role: "family" },
-    201,
-  );
+  return json({ familyId, memberId: member.memberId, deviceKey: member.deviceKey, familyToken, role: "family" }, 201);
 }
 
 /** POST /invites: a six-digit code for the caller's family, valid for 24 hours. */
@@ -76,9 +66,7 @@ export async function createInvite(request: Request, env: Env): Promise<Response
     const code = newInviteCode();
     // A code that was used or has expired can be handed out again.
     const [, inserted] = await env.DB.batch([
-      env.DB.prepare(
-        "DELETE FROM invites WHERE code = ? AND (used_at IS NOT NULL OR expires_at <= ?)",
-      ).bind(code, now),
+      env.DB.prepare("DELETE FROM invites WHERE code = ? AND (used_at IS NOT NULL OR expires_at <= ?)").bind(code, now),
       env.DB.prepare(
         "INSERT INTO invites (code, family_id, expires_at) VALUES (?, ?, ?) ON CONFLICT (code) DO NOTHING",
       ).bind(code, me.familyId, expiresAt),
@@ -97,12 +85,7 @@ export async function createInvite(request: Request, env: Env): Promise<Response
  * and each client address gets only a few tries a minute, so six digits cannot be walked through.
  * Everyone already in the family is told who joined.
  */
-export async function joinInvite(
-  request: Request,
-  env: Env,
-  ctx: ExecutionContext,
-  code: string,
-): Promise<Response> {
+export async function joinInvite(request: Request, env: Env, ctx: ExecutionContext, code: string): Promise<Response> {
   const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
   const { success } = await env.JOIN_LIMITER.limit({ key: `join:${ip}` });
   if (!success) throw new HttpError(429, "too_many_attempts");
@@ -134,7 +117,12 @@ export async function joinInvite(
 
   // After the response; a failed push must not undo the join.
   ctx.waitUntil(
-    sendPush(env, others.results.map((r) => r.id), { body: `${name}が入りました` }, new ExternalBudget()).then(
+    sendPush(
+      env,
+      others.results.map((r) => r.id),
+      { body: `${name}が入りました` },
+      new ExternalBudget(),
+    ).then(
       () => undefined,
       () => undefined,
     ),

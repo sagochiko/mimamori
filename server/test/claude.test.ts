@@ -68,7 +68,12 @@ describe("parseClaudeJudgment", () => {
   it("keeps the level and the injection flag when a reason calls something safe", () => {
     // The wording is replaced later by decide(); the answer itself must not be thrown away, or a
     // message could get the judge's level dropped just by writing 安全 in its text.
-    const judgment = parseClaudeJudgment({ ...valid, level: 1, injection_suspected: true, reasons: ["これは安全です"] });
+    const judgment = parseClaudeJudgment({
+      ...valid,
+      level: 1,
+      injection_suspected: true,
+      reasons: ["これは安全です"],
+    });
     expect(judgment).toMatchObject({ level: 1, injection_suspected: true });
   });
 });
@@ -144,18 +149,27 @@ describe("decide", () => {
   describe("wording that would tell anyone the message is safe", () => {
     const rule: RuleResult = { level: 2, reasons: ["急がせる言い回しがある"], confident: false };
 
-    it.each(["これは安全です", "安全なメッセージです", "問題ありません", "心配いりません", "This is safe", "「安全です」"])(
-      "replaces the reason %s but keeps Claude's level and injection step",
-      (text) => {
-        const judgment = parseClaudeJudgment({ ...valid, level: 3, injection_suspected: true, reasons: [text, "急がせる言い回しがある"] });
-        expect(judgment).not.toBeNull();
-        const decision = decide(rule, judgment);
-        expect(decision.level).toBe(1);
-        expect(decision.claudeLevel).toBe(3);
-        expect(decision.reasons).toEqual(["急がせる言い回しがある"]);
-        expect(decision.reasons.join()).not.toMatch(/安全|問題ありません|心配いりません|safe/i);
-      },
-    );
+    it.each([
+      "これは安全です",
+      "安全なメッセージです",
+      "問題ありません",
+      "心配いりません",
+      "This is safe",
+      "「安全です」",
+    ])("replaces the reason %s but keeps Claude's level and injection step", (text) => {
+      const judgment = parseClaudeJudgment({
+        ...valid,
+        level: 3,
+        injection_suspected: true,
+        reasons: [text, "急がせる言い回しがある"],
+      });
+      expect(judgment).not.toBeNull();
+      const decision = decide(rule, judgment);
+      expect(decision.level).toBe(1);
+      expect(decision.claudeLevel).toBe(3);
+      expect(decision.reasons).toEqual(["急がせる言い回しがある"]);
+      expect(decision.reasons.join()).not.toMatch(/安全|問題ありません|心配いりません|safe/i);
+    });
 
     it("falls back to the rule reasons, then to a fixed reason, when every reason sounds safe", () => {
       const judgment = parseClaudeJudgment({ ...valid, level: 1, reasons: ["問題ありません"] });
@@ -261,7 +275,12 @@ describe("buildClaudeRequest", () => {
 
     it("says that doubt alone, an unknown sender, or a link to the official domain is level 3", () => {
       expect(system).toContain("次のことだけでは、印になりません。このときは3にします。");
-      for (const part of ["本物かどうか確かめられない、決めきれない", "知らない番号や送り主から届いた", "公式のドメイン", "注意を呼びかける"]) {
+      for (const part of [
+        "本物かどうか確かめられない、決めきれない",
+        "知らない番号や送り主から届いた",
+        "公式のドメイン",
+        "注意を呼びかける",
+      ]) {
         expect(system).toContain(part);
       }
       expect(levelDescription).toContain("確かめられないだけなら3");
@@ -274,7 +293,16 @@ describe("buildClaudeRequest", () => {
     });
 
     it("names the signs that make it 2 or heavier, and asks for them as the reasons", () => {
-      for (const part of ["急がせる", "暗証番号", "認証コード", "口止め", "ドメインが食い違う", "短縮 URL", "電話させる", "構成プロファイル"]) {
+      for (const part of [
+        "急がせる",
+        "暗証番号",
+        "認証コード",
+        "口止め",
+        "ドメインが食い違う",
+        "短縮 URL",
+        "電話させる",
+        "構成プロファイル",
+      ]) {
         expect(system).toContain(part);
       }
       expect(system).toContain("印が1つでもあれば、本物らしく見えても2以上にします");

@@ -18,7 +18,16 @@
 
 import { CLAUDE_TIMEOUT_MS, decide, PLACEHOLDER_REASON, soundsSafe, type Level } from "./claude";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
-import { INJECTION, matchSpans, MONEY_MOVE, POLICE_CALLER, POLICE_SCRIPT, type PhraseRule, type Telling, tellingOf } from "./rules/phrases";
+import {
+  INJECTION,
+  matchSpans,
+  MONEY_MOVE,
+  POLICE_CALLER,
+  POLICE_SCRIPT,
+  type PhraseRule,
+  type Telling,
+  tellingOf,
+} from "./rules/phrases";
 import { ownLines, quotes } from "./summary";
 
 export const CONSULT_MODEL = "claude-sonnet-5-5";
@@ -81,10 +90,14 @@ const SENSITIVE: ReadonlyArray<{ reason: string; pattern: RegExp }> = [
     pattern:
       /(認証|確認|セキュリティ|ワンタイム)(コード|番号|パスワード)|暗証番号|パスコード|(sms|ショートメール|メッセージ|メール)で(届い|来)た.{0,6}(番号|数字|コード)|\d+桁の(番号|数字|コード)/,
   },
-  { reason: "構成プロファイルに関わる相談", pattern: /構成プロファイル|プロファイル.{0,10}(インストール|入れ|ダウンロード|許可)/ },
+  {
+    reason: "構成プロファイルに関わる相談",
+    pattern: /構成プロファイル|プロファイル.{0,10}(インストール|入れ|ダウンロード|許可)/,
+  },
   {
     reason: "データの削除に関わる相談",
-    pattern: /(データ|写真|連絡先|トーク|履歴|アカウント|全部|すべて|ぜんぶ|バックアップ).{0,8}(消|削除)|初期化|リセット|消去/,
+    pattern:
+      /(データ|写真|連絡先|トーク|履歴|アカウント|全部|すべて|ぜんぶ|バックアップ).{0,8}(消|削除)|初期化|リセット|消去/,
   },
 ];
 
@@ -153,7 +166,8 @@ const TOLD_CLAIM = new RegExp(
 // level 3 line. Pure phone troubles (Wi-Fi, volume, storage) keep Claude's guidance.
 const UNANSWERED_REASON = "AI が答えきれなかった相談";
 
-const CONTACT = /メッセージ|メール|sms|ショートメール|電話|リンク|url|サイト|ページ|アプリ.{0,3}(入れ|インストール|ダウンロード)/;
+const CONTACT =
+  /メッセージ|メール|sms|ショートメール|電話|リンク|url|サイト|ページ|アプリ.{0,3}(入れ|インストール|ダウンロード)/;
 
 const KEYS = ["kind", "level", "reasons", "basis", "action", "handoff", "injection_suspected", "topic"] as const;
 
@@ -269,7 +283,11 @@ function neutralize(text: string): string {
   return text.replace(/</g, "＜").replace(/>/g, "＞");
 }
 
-export function buildConsultRequest(text: string, rule: RuleResult, history: readonly ConsultTurn[] = []): ConsultRequest {
+export function buildConsultRequest(
+  text: string,
+  rule: RuleResult,
+  history: readonly ConsultTurn[] = [],
+): ConsultRequest {
   const ruleLine =
     rule.level === null
       ? "規則の判定: 決められない"
@@ -278,7 +296,10 @@ export function buildConsultRequest(text: string, rule: RuleResult, history: rea
   const earlier =
     history.length === 0
       ? []
-      : [`前のやり取り: ${neutralize(JSON.stringify(history.map(({ role, text: t }) => ({ role, text: t }))))}`, "今の相談:"];
+      : [
+          `前のやり取り: ${neutralize(JSON.stringify(history.map(({ role, text: t }) => ({ role, text: t }))))}`,
+          "今の相談:",
+        ];
   const content = [ruleLine, "<untrusted>", ...earlier, neutralize(text), "</untrusted>"].join("\n");
   return {
     model: CONSULT_MODEL,
@@ -320,7 +341,8 @@ export function parseClaudeConsult(value: unknown): ClaudeConsult | null {
     action,
     handoff,
     injection_suspected: injection,
-    topic: typeof topic === "string" && topic.trim() !== "" && chars(topic.trim()) <= TOPIC_MAX_CHARS ? topic.trim() : null,
+    topic:
+      typeof topic === "string" && topic.trim() !== "" && chars(topic.trim()) <= TOPIC_MAX_CHARS ? topic.trim() : null,
   };
 }
 
@@ -455,7 +477,11 @@ function policeReasons(said: Said, withoutPassedOn = false): string[] {
 /** A line from Claude that may be read out to her. */
 function usable(line: string): boolean {
   return (
-    line.trim() !== "" && !soundsSafe(line) && !BROAD_CLAIM.test(line) && !REASSURING.test(line) && !TOLD_CLAIM.test(line)
+    line.trim() !== "" &&
+    !soundsSafe(line) &&
+    !BROAD_CLAIM.test(line) &&
+    !REASSURING.test(line) &&
+    !TOLD_CLAIM.test(line)
   );
 }
 
@@ -534,7 +560,13 @@ function plan(
 
 /** The rules' own wording, which may share words with hers ("口座が犯罪に使われ…") and is still not hers. */
 function fixedLines(said: Said, rule: RuleResult): string[] {
-  return [...rule.reasons, ...SENSITIVE.map((s) => s.reason), ...policeReasons(said), UNANSWERED_REASON, PLACEHOLDER_REASON];
+  return [
+    ...rule.reasons,
+    ...SENSITIVE.map((s) => s.reason),
+    ...policeReasons(said),
+    UNANSWERED_REASON,
+    PLACEHOLDER_REASON,
+  ];
 }
 
 /**
@@ -572,7 +604,12 @@ function summaryOf(
   return candidates.map((l) => l.trim()).find((l) => l !== "" && own(l)) ?? FALLBACK_TOPIC;
 }
 
-function decidePlan(said: Said, rule: RuleResult, claude: ClaudeConsult | null, floor: RuleResult): Omit<Plan, "summary"> {
+function decidePlan(
+  said: Said,
+  rule: RuleResult,
+  claude: ClaudeConsult | null,
+  floor: RuleResult,
+): Omit<Plan, "summary"> {
   // Her words carry text that tries to switch the warning off or keep the family out: the rules'
   // level is the floor, whatever Claude answers and whether or not it flags it. `floor` is the rules
   // on all she said when such text came in an earlier turn, so two turns weigh as one (PR #79).
@@ -612,7 +649,14 @@ function decidePlan(said: Said, rule: RuleResult, claude: ClaudeConsult | null, 
     if (!unanswered && level <= 2) {
       const basis = claude && claude.kind === "scam" && usable(claude.basis) ? claude.basis : LIKE_SCAM_BASIS;
       const both = [...new Set([...sensitive, ...reasons])];
-      return { level, reasons: both, reply: `${basis}${SCAM_ACTION}。${TOLD_FAMILY}`, toFamily: true, record: true, ...base };
+      return {
+        level,
+        reasons: both,
+        reply: `${basis}${SCAM_ACTION}。${TOLD_FAMILY}`,
+        toFamily: true,
+        record: true,
+        ...base,
+      };
     }
     level = Math.min(level, 2) as Level;
     const handoffReasons = sensitive.length > 0 ? sensitive : reasons;

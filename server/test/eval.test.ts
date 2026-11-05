@@ -157,7 +157,10 @@ describe("scoreRun", () => {
   // #109: a genuine consultation on a topic the AI does not guide goes to the family by design
   // (decidePlan). It stays a false alarm, since the family was told, and is also counted on its own.
   it("counts the false alarms on topics the AI does not guide apart, inside false_alarms", () => {
-    const unguided = (isScam: boolean, level: 1 | 2 | 3 | null) => ({ ...scored("consult", isScam, level), unguided_topic: true });
+    const unguided = (isScam: boolean, level: 1 | 2 | 3 | null) => ({
+      ...scored("consult", isScam, level),
+      unguided_topic: true,
+    });
     const out = scoreRun([
       unguided(false, 2), // a false alarm, and one on such a topic
       unguided(true, 2), // a scam: no false alarm at all
@@ -344,13 +347,21 @@ describe("judgeCases", () => {
     for (const [i, c] of others.entries()) {
       const rule = judgeByRules(toRuleInput(c));
       expect(rule.level).not.toBe(1);
-      expect(scored[i]).toMatchObject({ level: rule.level, rule_level: rule.level, confident: rule.confident, reasons: rule.reasons });
+      expect(scored[i]).toMatchObject({
+        level: rule.level,
+        rule_level: rule.level,
+        confident: rule.confident,
+        reasons: rule.reasons,
+      });
       expect(scored[i]).not.toHaveProperty("consult_script");
     }
   });
 
   it("does not ask Claude for the script in rules+claude, as POST /consult does not", async () => {
-    const [scored] = await judgeCases([evalCase({ text: SCRIPT })], "rules+claude", { judge: refuse, consult: refuseConsult });
+    const [scored] = await judgeCases([evalCase({ text: SCRIPT })], "rules+claude", {
+      judge: refuse,
+      consult: refuseConsult,
+    });
     expect(scored).toMatchObject({ level: 1, consult_script: true });
     expect(scored).not.toHaveProperty("claude_answered");
   });
@@ -367,11 +378,22 @@ describe("judgeCases", () => {
   });
 
   it("combines the consultation answer as POST /consult does: level 3 help stays with her", async () => {
-    const help: ClaudeConsult = { ...scamAnswer, kind: "help", level: 3, reasons: [], basis: "", action: "設定を開いて Wi-Fi を選んで" };
-    const [scored] = await judgeCases([evalCase({ text: NOTHING, is_scam: false, expected_level: null })], "rules+claude", {
-      judge: refuse,
-      consult: async () => help,
-    });
+    const help: ClaudeConsult = {
+      ...scamAnswer,
+      kind: "help",
+      level: 3,
+      reasons: [],
+      basis: "",
+      action: "設定を開いて Wi-Fi を選んで",
+    };
+    const [scored] = await judgeCases(
+      [evalCase({ text: NOTHING, is_scam: false, expected_level: null })],
+      "rules+claude",
+      {
+        judge: refuse,
+        consult: async () => help,
+      },
+    );
     expect(scored).toMatchObject({ level: 3, claude_answered: true });
   });
 
@@ -398,16 +420,29 @@ describe("judgeCases", () => {
   // #109: which false alarms the family gets by design, and what Claude itself answered.
   describe("what a run keeps to tell the false alarms apart (#109)", () => {
     const SEND_MONEY = "振込のやり方を教えて";
-    const help: ClaudeConsult = { ...scamAnswer, kind: "help", level: 3, reasons: [], basis: "", action: "銀行の窓口で聞いてね" };
+    const help: ClaudeConsult = {
+      ...scamAnswer,
+      kind: "help",
+      level: 3,
+      reasons: [],
+      basis: "",
+      action: "銀行の窓口で聞いてね",
+    };
     const genuine = (text: string) => evalCase({ text, is_scam: false, expected_level: null });
 
     it("marks a consultation on a topic the AI does not guide, which reaches the family whatever Claude says", async () => {
-      const [scored] = await judgeCases([genuine(SEND_MONEY)], "rules+claude", { judge: refuse, consult: async () => help });
+      const [scored] = await judgeCases([genuine(SEND_MONEY)], "rules+claude", {
+        judge: refuse,
+        consult: async () => help,
+      });
       expect(scored).toMatchObject({ level: 2, unguided_topic: true, claude_answered: true });
     });
 
     it("does not mark a consultation Claude put at level 2 on its own", async () => {
-      const [scored] = await judgeCases([genuine(NOTHING)], "rules+claude", { judge: refuse, consult: async () => scamAnswer });
+      const [scored] = await judgeCases([genuine(NOTHING)], "rules+claude", {
+        judge: refuse,
+        consult: async () => scamAnswer,
+      });
       expect(scored).toMatchObject({ level: 2, unguided_topic: false });
     });
 
@@ -419,14 +454,26 @@ describe("judgeCases", () => {
 
     it("keeps the consultation Claude's own answer: kind, level, reasons, handoff, and the injection flag", async () => {
       const answer: ClaudeConsult = { ...help, reasons: ["通帳は本人しか見られない"], handoff: true };
-      const [scored] = await judgeCases([genuine(NOTHING)], "rules+claude", { judge: refuse, consult: async () => answer });
-      expect(scored?.claude).toEqual({ kind: "help", level: 3, reasons: ["通帳は本人しか見られない"], handoff: true, injection_suspected: false });
+      const [scored] = await judgeCases([genuine(NOTHING)], "rules+claude", {
+        judge: refuse,
+        consult: async () => answer,
+      });
+      expect(scored?.claude).toEqual({
+        kind: "help",
+        level: 3,
+        reasons: ["通帳は本人しか見られない"],
+        handoff: true,
+        injection_suspected: false,
+      });
       // Claude said 3 and the handoff took it to the family at 2: the record shows both.
       expect(scored?.level).toBe(2);
     });
 
     it("keeps nothing of Claude when it gave nothing", async () => {
-      const [scored] = await judgeCases([genuine(NOTHING)], "rules+claude", { judge: refuse, consult: async () => null });
+      const [scored] = await judgeCases([genuine(NOTHING)], "rules+claude", {
+        judge: refuse,
+        consult: async () => null,
+      });
       expect(scored).not.toHaveProperty("claude");
     });
 

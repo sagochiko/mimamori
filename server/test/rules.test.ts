@@ -184,11 +184,20 @@ describe("a consultation that passes on a warning", () => {
   it.each([
     // Two parts and no caller: the rules alone made this level 1 before.
     ["a newspaper, two parts", "新聞に、逮捕状が出てるとか潔白を証明しろとか言う電話は詐欺ですって載ってた"],
-    ["a police officer at a gathering", "お巡りさんが老人会に来て、口座が犯罪に使われてるなんて電話は全部詐欺だって話してくれた"],
+    [
+      "a police officer at a gathering",
+      "お巡りさんが老人会に来て、口座が犯罪に使われてるなんて電話は全部詐欺だって話してくれた",
+    ],
     ["the family telling her not to answer", "娘が、警察を名乗って口座が悪用されてるって言う電話には出ないでねって"],
-    ["the news, with a caller who pretends", "テレビのニュースで、警察官をかたってビデオ通話で事情聴取するのは詐欺だって"],
+    [
+      "the news, with a caller who pretends",
+      "テレビのニュースで、警察官をかたってビデオ通話で事情聴取するのは詐欺だって",
+    ],
     ["what the police never do", "防犯の講習で、警察が電話で逮捕状が出てるって言うことはありませんって教わった"],
-    ["a bank clerk, with a call that comes", "銀行の人が、マネロンに口座使われとる言うて警察から電話きても、絶対ニセモンやから気ぃつけやって"],
+    [
+      "a bank clerk, with a call that comes",
+      "銀行の人が、マネロンに口座使われとる言うて警察から電話きても、絶対ニセモンやから気ぃつけやって",
+    ],
     ["a warning told to her", "交番で、口座が事件に使われたって電話には気をつけてって言われた"],
     ["a poster", "郵便局のポスターに、警察から、あなたが容疑者になってるって電話が来たら詐欺って"],
     // PR #105 review, second round: warnings whose only warning words are 気をつけて, 詐欺が増えてる,
@@ -196,7 +205,10 @@ describe("a consultation that passes on a warning", () => {
     ["calls are many, so be careful", "警察の人が来て、口座が犯罪に使われてるって電話が多いから気をつけてって"],
     ["such scams are increasing", "警察の人が来て、口座が犯罪に使われてるって言う詐欺が増えてるって言ってた"],
     ["do not answer such calls", "警察の人が、口座が犯罪に使われてるって電話には出ないでって"],
-    ["do not answer, with a comma after 名乗って", "息子が、警察を名乗って、口座が悪用されてるって電話には出んといてって"],
+    [
+      "do not answer, with a comma after 名乗って",
+      "息子が、警察を名乗って、口座が悪用されてるって電話には出んといてって",
+    ],
     ["do not answer, with a comma before 出", "警察署の人が、逮捕状が出てるって電話、出たらあかんって"],
   ])("does not decide %s", (_label, text) => {
     const result = judge({ source: "consult", text });
@@ -274,7 +286,10 @@ describe("a caller from the police, in more of her words", () => {
     ["a notice to the neighborhood", "警察から、町内会に連絡があって、口座が犯罪に使われてるって電話が増えてるって"],
     ["a letter, after a space", "警察から 手紙が来てて 口座が犯罪に使われてるって電話は切ってって"],
     ["heard, then a call to hang up on", "警察から 聞いたんやけど 口座が犯罪に使われてるって電話が来たら切ってって"],
-    ["a genuine call about a lost bankbook", "警察から、落とし物の通帳が届いてるって。口座が悪用されてないか銀行で確認してって"],
+    [
+      "a genuine call about a lost bankbook",
+      "警察から、落とし物の通帳が届いてるって。口座が悪用されてないか銀行で確認してって",
+    ],
   ])("does not make 警察から with a pause a caller when it is %s", (_label, text) => {
     expect(matchSpans(POLICE_CALLER, text.normalize("NFKC").toLowerCase())).toEqual([]);
     expect(consultByRules(text).script).toBe(false);
@@ -301,8 +316,14 @@ describe("a call she got, with her own doubt or a warning beside it", () => {
     ["do not trust the bank", "警察の人から、口座が犯罪に使われてる、銀行の人は信用しないでって"],
     ["no arrest if she helps", "警察から電話で、協力すれば逮捕されることはないって言われた"],
     // PR #105 review: more of the caller's stock lines.
-    ["scams are frequent lately", "警察から電話があって、最近詐欺が多いから調べてるって。私の口座が犯罪に使われてるって"],
-    ["do not answer other calls, after 電話で", "警察から電話で、捜査中だから他の電話には出ないでって。口座が犯罪に使われてるって"],
+    [
+      "scams are frequent lately",
+      "警察から電話があって、最近詐欺が多いから調べてるって。私の口座が犯罪に使われてるって",
+    ],
+    [
+      "do not answer other calls, after 電話で",
+      "警察から電話で、捜査中だから他の電話には出ないでって。口座が犯罪に使われてるって",
+    ],
     ["do not answer other calls", "警察の人が、口座が犯罪に使われてるから、ほかの電話には出ないでって"],
     ["do not trust what the bank says", "警察の人が、口座が犯罪に使われてるから、銀行が何か言っても信用しないでって"],
     ["be careful, because the account was used", "警察から電話。口座が犯罪に使われてるから気をつけてって"],
@@ -321,7 +342,10 @@ describe("a call she got, with her own doubt or a warning beside it", () => {
 
   it.each([
     ["what she saw on TV", "警察から電話があって口座が犯罪に使われてるって言われた。テレビで見た詐欺と同じかな"],
-    ["what her daughter told her", "警察から電話があって、口座が犯罪に使われてるって。娘に話したら詐欺だからほっときって"],
+    [
+      "what her daughter told her",
+      "警察から電話があって、口座が犯罪に使われてるって。娘に話したら詐欺だからほっときって",
+    ],
   ])("leaves a call she got with %s to Claude, and keeps the rules' level", (_label, text) => {
     expect(consultByRules(text).script).toBe(false);
     expect(judge({ source: "consult", text }).level).not.toBeNull();
@@ -385,11 +409,46 @@ describe("official domains", () => {
   // level from being confident, so a genuine warning is never sent to the junk folder; Claude may
   // lower it. The trade-off: a scam that adds an official link avoids the junk folder too.
   it.each([
-    ["a police page quoting 'tell no one'", { source: "page", url: "https://www.npa.go.jp/example/warning.html", domain: "www.npa.go.jp", text: "警察官をかたり「あなたの口座が犯罪に使われている」「誰にも言わないで」と言う電話は詐欺です。" }],
-    ["a police page quoting 'do not consult the family'", { source: "page", url: "https://www.npa.go.jp/example/warning.html", domain: "www.npa.go.jp", text: "警察官をかたり「あなたの口座が犯罪に使われている」「家族に相談しないで」と言う電話は詐欺です。" }],
-    ["a bank's mail quoting 'do not tell the family'", { source: "gmail", sender: "info@rakuten-bank.co.jp", text: "楽天銀行より: 警察官を名乗り「口座が犯罪に使われている」「ご家族には言わないで」と指示する詐欺電話が増えています。" }],
-    ["a bank's SMS with its own link", { source: "sms", text: "【ゆうちょ銀行】警察官を名乗り「あなたの口座が犯罪に使われている」「家族に相談しないで」と言う詐欺電話にご注意ください。 https://www.jp-bank.japanpost.jp/" }],
-    ["a consumer centre SMS quoting a gift card scam", { source: "sms", text: "【国民生活センター】「ウイルスに感染しました」と表示させ、電子マネーを購入させる詐欺にご注意ください https://www.kokusen.go.jp/" }],
+    [
+      "a police page quoting 'tell no one'",
+      {
+        source: "page",
+        url: "https://www.npa.go.jp/example/warning.html",
+        domain: "www.npa.go.jp",
+        text: "警察官をかたり「あなたの口座が犯罪に使われている」「誰にも言わないで」と言う電話は詐欺です。",
+      },
+    ],
+    [
+      "a police page quoting 'do not consult the family'",
+      {
+        source: "page",
+        url: "https://www.npa.go.jp/example/warning.html",
+        domain: "www.npa.go.jp",
+        text: "警察官をかたり「あなたの口座が犯罪に使われている」「家族に相談しないで」と言う電話は詐欺です。",
+      },
+    ],
+    [
+      "a bank's mail quoting 'do not tell the family'",
+      {
+        source: "gmail",
+        sender: "info@rakuten-bank.co.jp",
+        text: "楽天銀行より: 警察官を名乗り「口座が犯罪に使われている」「ご家族には言わないで」と指示する詐欺電話が増えています。",
+      },
+    ],
+    [
+      "a bank's SMS with its own link",
+      {
+        source: "sms",
+        text: "【ゆうちょ銀行】警察官を名乗り「あなたの口座が犯罪に使われている」「家族に相談しないで」と言う詐欺電話にご注意ください。 https://www.jp-bank.japanpost.jp/",
+      },
+    ],
+    [
+      "a consumer centre SMS quoting a gift card scam",
+      {
+        source: "sms",
+        text: "【国民生活センター】「ウイルスに感染しました」と表示させ、電子マネーを購入させる詐欺にご注意ください https://www.kokusen.go.jp/",
+      },
+    ],
   ] as [string, RuleInput][])("raises %s but is never confident", (_, input) => {
     const result = judge(input);
     expect(result.level).toBe(1);
@@ -480,12 +539,39 @@ describe("official domains", () => {
 
 describe("confident needs a sign that genuine messages do not give", () => {
   it.each([
-    ["a brand's own short link with a delivery word", { source: "sms", sender: "+819000000000", text: "Amazon: ご注文の商品のお届け予定は本日です。配送状況の確認 https://amzn-short.example/d/abc123" }],
-    ["a brand's own short link with points", { source: "sms", text: "楽天市場: ポイントの有効期限が近づいています。こちらから確認 https://r10-short.example/abcd" }],
-    ["a code from abroad that says to ignore it", { source: "sms", sender: "+447000000000", text: "Your verification code is 123456. 心当たりがない場合、この通知は無視してください。" }],
+    [
+      "a brand's own short link with a delivery word",
+      {
+        source: "sms",
+        sender: "+819000000000",
+        text: "Amazon: ご注文の商品のお届け予定は本日です。配送状況の確認 https://amzn-short.example/d/abc123",
+      },
+    ],
+    [
+      "a brand's own short link with points",
+      {
+        source: "sms",
+        text: "楽天市場: ポイントの有効期限が近づいています。こちらから確認 https://r10-short.example/abcd",
+      },
+    ],
+    [
+      "a code from abroad that says to ignore it",
+      {
+        source: "sms",
+        sender: "+447000000000",
+        text: "Your verification code is 123456. 心当たりがない場合、この通知は無視してください。",
+      },
+    ],
     ["a family surprise", { source: "sms", text: "お母さんの誕生日のサプライズ、家族には内緒でね" }],
     ["a shop's mail", { source: "gmail", sender: "news@shop.example", text: "家族に内緒のごほうびスイーツ、本日限定" }],
-    ["a news page that quotes the fake-police script", { source: "page", url: "https://news.example/x.html", text: "警察官をかたり「あなたの口座が犯罪に使われている」「誰にも言わないで」と言う電話が相次いでいます" }],
+    [
+      "a news page that quotes the fake-police script",
+      {
+        source: "page",
+        url: "https://news.example/x.html",
+        text: "警察官をかたり「あなたの口座が犯罪に使われている」「誰にも言わないで」と言う電話が相次いでいます",
+      },
+    ],
   ] as [string, RuleInput][])("is not confident for %s", (_, input) => {
     expect(judge(input).confident).toBe(false);
   });
@@ -497,7 +583,11 @@ describe("confident needs a sign that genuine messages do not give", () => {
   });
 
   it("does not count 'ignore this notice' without a link", () => {
-    const result = judge({ source: "sms", sender: "+819000000000", text: "認証コード: 123456 心当たりがない場合、この通知は無視してください。" });
+    const result = judge({
+      source: "sms",
+      sender: "+819000000000",
+      text: "認証コード: 123456 心当たりがない場合、この通知は無視してください。",
+    });
     expect(result.level).toBeNull();
   });
 
@@ -547,18 +637,36 @@ describe("telling someone not to tell the family", () => {
 
 describe("a code number in a scam does not lower it", () => {
   it.each([
-    ["a code put in front of the script", "【警視庁】認証コード 1234。あなたの口座が犯罪に使われています。この件は誰にも言わないでください。至急 03-0000-0000 へお電話ください。"],
-    ["a code word and only the digits of a phone number", "【警視庁】あなたの口座が犯罪に使われています。確認番号をお伝えしますので、この件は誰にも言わないでください。至急 03-0000-0000 へお電話ください。"],
+    [
+      "a code put in front of the script",
+      "【警視庁】認証コード 1234。あなたの口座が犯罪に使われています。この件は誰にも言わないでください。至急 03-0000-0000 へお電話ください。",
+    ],
+    [
+      "a code word and only the digits of a phone number",
+      "【警視庁】あなたの口座が犯罪に使われています。確認番号をお伝えしますので、この件は誰にも言わないでください。至急 03-0000-0000 へお電話ください。",
+    ],
     ["'code 0000'", "code 0000 あなたの口座が犯罪に使われています。誰にも言わないでください"],
-    ["a code with secrecy and a transfer", "確認コード 4821。家族を含め誰にも言わないで、安全な口座に送金してください。"],
+    [
+      "a code with secrecy and a transfer",
+      "確認コード 4821。家族を含め誰にも言わないで、安全な口座に送金してください。",
+    ],
   ])("keeps %s at level 1", (_, text) => {
     expect(judge({ source: "sms", sender: "+819000000000", text }).level).toBe(1);
   });
 
   it.each([
-    ["a code word next to a phone number", "確認番号をお伝えします。この件は誰にも言わないでください。03-0000-0000 へお電話を。"],
-    ["a phone number written with long dashes", "【警視庁】確認番号をお伝えします。この件は誰にも言わないでください。03ー0000ー0000 へお電話を。"],
-    ["a phone number written with brackets", "【警視庁】確認番号をお伝えします。この件は誰にも言わないでください。03(0000)0000 へお電話を。"],
+    [
+      "a code word next to a phone number",
+      "確認番号をお伝えします。この件は誰にも言わないでください。03-0000-0000 へお電話を。",
+    ],
+    [
+      "a phone number written with long dashes",
+      "【警視庁】確認番号をお伝えします。この件は誰にも言わないでください。03ー0000ー0000 へお電話を。",
+    ],
+    [
+      "a phone number written with brackets",
+      "【警視庁】確認番号をお伝えします。この件は誰にも言わないでください。03(0000)0000 へお電話を。",
+    ],
     ["a code with a transfer", "確認コード 4821。この件は誰にも言わないで、安全な口座に送金してください。"],
     ["a code next to a phone number", "確認コード 4821。この件は誰にも言わないでください。03-0000-0000 へお電話を。"],
   ])("counts the secrecy in %s", (_, text) => {
@@ -589,7 +697,11 @@ describe("genuine code and bank notices", () => {
     ["sms", undefined, "認証コード 123456。このコードはご家族にも教えないでください。"],
     ["sms", undefined, "【〇〇銀行】ワンタイムパスワード 123456。家族にも絶対に教えないでください。"],
     ["gmail", "info@smbc.co.jp", "暗証番号はご家族にも教えないようにしましょう。"],
-    ["sms", undefined, "【〇〇銀行】認証コード 123456。心当たりがない場合、このメッセージは無視してください。お問い合わせ 0120-000-000"],
+    [
+      "sms",
+      undefined,
+      "【〇〇銀行】認証コード 123456。心当たりがない場合、このメッセージは無視してください。お問い合わせ 0120-000-000",
+    ],
   ] as const)("leaves a %s notice at null", (source, sender, text) => {
     const result = judge({ source, sender, text });
     expect(result.level).toBeNull();
@@ -599,11 +711,21 @@ describe("genuine code and bank notices", () => {
 
 describe("links to pages anyone can make", () => {
   it("counts a delivery notice that links to an Apps Script page", () => {
-    expect(judge({ source: "sms", text: "Amazon: お荷物をお届けできませんでした。再配達はこちら https://script.google.com/macros/s/example/exec" }).level).not.toBeNull();
+    expect(
+      judge({
+        source: "sms",
+        text: "Amazon: お荷物をお届けできませんでした。再配達はこちら https://script.google.com/macros/s/example/exec",
+      }).level,
+    ).not.toBeNull();
   });
 
   it("counts a storage warning that links to an iCloud shared file", () => {
-    expect(judge({ source: "sms", text: "Apple: iCloudストレージがいっぱいです。こちら https://www.icloud.com/iclouddrive/0example" }).level).not.toBeNull();
+    expect(
+      judge({
+        source: "sms",
+        text: "Apple: iCloudストレージがいっぱいです。こちら https://www.icloud.com/iclouddrive/0example",
+      }).level,
+    ).not.toBeNull();
   });
 
   it("looks at where a redirect link goes", () => {
@@ -623,30 +745,58 @@ describe("a link that looks like a redirect", () => {
   // Only a redirect on an official brand's host (google.com) stops counting as the brand speaking.
   // Any other host is checked itself, whatever it carries in its query.
   it.each([
-    ["a look-alike page with a return URL", { source: "page", url: "https://amazon-co-jp.top/signin?return=https://example.org/" }, 1],
-    ["an odd-shaped link with a URL in its query", { source: "sms", text: "ご確認ください https://kakunin-x.top/?u=https://example.org/" }, 2],
-    ["a look-alike SMS link with a URL in its query", { source: "sms", text: "【Amazon】お支払い方法を更新しないとアカウントが停止されます https://amazon-pay-update.top/?r=https://example.org/" }, 1],
-    ["a look-alike page that carries the bank's own URL", { source: "page", url: "https://smbc-login.top/?back=https://www.smbc.co.jp/", text: "三井住友銀行 ログイン" }, 1],
-    ["an IP address link that carries the bank's own URL", { source: "sms", text: "【三井住友】ご利用確認のため至急ログイン http://192.168.10.10/smbc?u=https://www.smbc.co.jp/" }, 1],
+    [
+      "a look-alike page with a return URL",
+      { source: "page", url: "https://amazon-co-jp.top/signin?return=https://example.org/" },
+      1,
+    ],
+    [
+      "an odd-shaped link with a URL in its query",
+      { source: "sms", text: "ご確認ください https://kakunin-x.top/?u=https://example.org/" },
+      2,
+    ],
+    [
+      "a look-alike SMS link with a URL in its query",
+      {
+        source: "sms",
+        text: "【Amazon】お支払い方法を更新しないとアカウントが停止されます https://amazon-pay-update.top/?r=https://example.org/",
+      },
+      1,
+    ],
+    [
+      "a look-alike page that carries the bank's own URL",
+      { source: "page", url: "https://smbc-login.top/?back=https://www.smbc.co.jp/", text: "三井住友銀行 ログイン" },
+      1,
+    ],
+    [
+      "an IP address link that carries the bank's own URL",
+      {
+        source: "sms",
+        text: "【三井住友】ご利用確認のため至急ログイン http://192.168.10.10/smbc?u=https://www.smbc.co.jp/",
+      },
+      1,
+    ],
   ] as [string, RuleInput, number][])("checks the host of %s", (_, input, level) => {
     expect(judge(input).level).toBe(level);
   });
 });
 
 describe("more ways to keep the family out", () => {
-  it.each([
-    "この件はご家族や友人にも話さないでください。",
-    "捜査中のため、ご家族や銀行の方には言わないでください。",
-  ])("raises %s", (text) => {
-    expect(judge({ source: "sms", text }).level).toBe(1);
-  });
+  it.each(["この件はご家族や友人にも話さないでください。", "捜査中のため、ご家族や銀行の方には言わないでください。"])(
+    "raises %s",
+    (text) => {
+      expect(judge({ source: "sms", text }).level).toBe(1);
+    },
+  );
 
   it("raises a message that says this notice is wrong", () => {
     expect(judge({ source: "consult", text: "この通知は誤りです。警察から言われました" }).level).toBe(1);
   });
 
   it("counts a request to turn this notice off when it comes with a link", () => {
-    expect(judge({ source: "sms", text: "この通知をオフにしてください https://x-check.example/" }).level).not.toBeNull();
+    expect(
+      judge({ source: "sms", text: "この通知をオフにしてください https://x-check.example/" }).level,
+    ).not.toBeNull();
   });
 });
 
