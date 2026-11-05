@@ -42,3 +42,6 @@ DerivedData/
 spikes/
 
 .DS_Store
+
+# The mother family's SMS token for her build (ios/Config/Mother.xcconfig.example)
+ios/Config/Mother.xcconfig

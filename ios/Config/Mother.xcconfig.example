@@ -1,0 +1,5 @@
+// Copy to ios/Config/Mother.xcconfig (gitignored) and put the mother's family token in. Pass it only to the
+// build meant for the mother's family: xcodebuild ... -xcconfig ios/Config/Mother.xcconfig
+// The mother gets this build through her own external TestFlight group (decided on 2026-11-05, #133).
+// The token is the `familyToken` POST /families returned (32 hex digits). Never commit it.
+MIMAMORI_SMS_FAMILY_TOKEN = 00000000000000000000000000000000

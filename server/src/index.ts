@@ -6,7 +6,9 @@ import { runScheduled } from "./cron";
 import { createFamily, createInvite, deleteEverything, joinInvite, leaveFamily, registerApns } from "./families";
 import { errorResponse, HttpError } from "./http";
 import { handleJudgeBatch } from "./judge";
+import { siteAssociation } from "./site-association";
 import { listSmiles, postSmile, setSmileDeadline, smilePhoto } from "./smiles";
+import { smsRoute } from "./sms";
 
 type Handler = (request: Request, env: Env, params: string[], ctx: ExecutionContext) => Promise<Response>;
 
@@ -17,6 +19,8 @@ const routes: Array<[method: string, pattern: RegExp, handler: Handler]> = [
   ["PUT", /^\/members\/me\/apns$/, (req, env) => registerApns(req, env)],
   ["DELETE", /^\/members\/([^/]+)$/, (req, env, [id]) => leaveFamily(req, env, id ?? "")],
   ["DELETE", /^\/families\/me$/, (req, env) => deleteEverything(req, env)],
+  ["POST", /^\/sms\/([^/]+)$/, (req, env, [token], ctx) => smsRoute(req, env, ctx, token ?? "")],
+  ["GET", /^\/\.well-known\/apple-app-site-association$/, async () => siteAssociation()],
   ["POST", /^\/consult$/, (req, env) => consultRoute(req, env)],
   ["GET", /^\/cases$/, (req, env) => listCases(req, env)],
   ["POST", /^\/cases\/([^/]+)\/resolve$/, (req, env, [id]) => resolveRoute(req, env, id ?? "")],

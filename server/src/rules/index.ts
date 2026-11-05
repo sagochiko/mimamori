@@ -224,6 +224,12 @@ function levelOf(signs: Sign[]): 1 | 2 | null {
   return null;
 }
 
+/** The weak sign for an SMS from a number outside Japan. Genuine overseas services send those too. */
+export const FOREIGN_SENDER_REASON = "海外の番号からの SMS";
+
+/** The one reason a message that is only a verification code gets. Its level stays null. */
+export const CODE_ONLY_REASON = "認証コードの知らせに見える";
+
 export function judgeByRules(input: RuleInput): RuleResult {
   const text = normalizeText(input.text ?? "");
   const hosts = hostsOf(input, text);
@@ -256,7 +262,7 @@ export function judgeByRules(input: RuleInput): RuleResult {
     add("brand_mismatch", "medium", "名乗る会社と違うドメインへ誘っている");
   }
   if (input.source === "sms" && /^\+(?!81)\d/.test((input.sender ?? "").replace(/\s/g, ""))) {
-    add("foreign_sender", "weak", "海外の番号からの SMS");
+    add("foreign_sender", "weak", FOREIGN_SENDER_REASON);
   }
 
   // A message that is only a verification code: typing the code in is what it is for, and "don't
@@ -290,7 +296,7 @@ export function judgeByRules(input: RuleInput): RuleResult {
   if (signals.size === 0) {
     return {
       level: null,
-      reasons: codeOnly && input.source === "sms" ? ["認証コードの知らせに見える"] : [],
+      reasons: codeOnly && input.source === "sms" ? [CODE_ONLY_REASON] : [],
       confident: false,
     };
   }
@@ -306,5 +312,8 @@ export function judgeByRules(input: RuleInput): RuleResult {
   const official = hosts.some((h) => h.trust === "official" && !h.bare);
   const confident = level === 1 && !official && signs.some((s) => s.strength === "strong") && independent >= 2;
   const reasons = [...signals.values()].sort((a, b) => RANK[a.strength] - RANK[b.strength]).map((s) => s.reason);
+  // A code with only weak signs (an overseas number) is still a code; the SMS route reads this reason
+  // to leave it off the judge queue (src/sms.ts).
+  if (level === null && codeOnly && input.source === "sms") reasons.push(CODE_ONLY_REASON);
   return { level, reasons, confident };
 }
