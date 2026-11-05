@@ -121,7 +121,7 @@ describe("runEval --mode rules", () => {
     const results = await read("RESULTS.md");
     assert.ok(
       results.endsWith(
-        "| 2026年11月3日 21:00 | dev | rules | 3 | 50.0% (1/2) | 0.0% (0/1) | 0 | " +
+        "| 2026年11月3日 | dev | rules | 3 | 50.0% (1/2) | 0.0% (0/1) | 0 | " +
           r.p50_latency_ms +
           " | fixture |\n",
       ),

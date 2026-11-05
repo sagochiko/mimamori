@@ -4,6 +4,8 @@
 # author's private list. The list is .claude/private-terms.local in the main working tree, one term
 # per line, "#" for comments, matched without regard to case. Only the author writes it; Claude never
 # reads it. Hits print only where they are and which rule matched, never the matched text.
+# Also a time of day in the author's weekday working hours ("work-hour time", issue #116), in
+# documents and messages only; see the rule below.
 #
 #   scripts/scan-private.sh staged                  added lines of the staged diff (.githooks/pre-commit);
 #                                                   while a merge is in progress, only the lines the merge
@@ -49,6 +51,39 @@ allowed='^[0-9]+:(noreply@anthropic\.com|[A-Za-z0-9._%+-]+@users\.noreply\.githu
 # the family's real numbers and addresses in the private list, which applies everywhere.
 test_data='^(commit [0-9a-f]+ )?(server/test/|server/src/rules/|eval/cases/|eval/test/|ios/Core/Tests/|docs/audits/raw/|scripts/test-hooks\.sh:)'
 
+# Times of day in the author's weekday working hours, from 10 to 12 and from 13 to 19 (issue #116). The
+# author asked on 2026-11-04 that what they did or decided in those hours be recorded by date alone, so a
+# public record does not read as private work during the working day. A hook cannot tell whose action,
+# or which day, a time records, so every such time stops, the weekend and Apple's review included:
+# 10:14, 15:00:01, 15時, 15時04分, 18時台, 午後3時, 夕方5時, 3:04 PM, 11am, in full-width digits too.
+# These pass: 15時間 (a duration), 9:30, 12:30, 19:00, 午後10時, an ISO time joined by T
+# (2026-11-08T17:00:00+09:00: the checkpoints in CONDITIONS.md and the log stamps make usage writes are
+# read by machines), and a time right after a colon (a line and column, docs/x.md:13:45). The hours
+# are written ten-to-twelve, not as a shape, in documents that describe this rule.
+clock=(
+  '(^|[^0-9:T])(1[01]|1[3-8]):[0-5][0-9]([^0-9]|$)'
+  '(^|[^0-9])(1[01]|1[3-8]) ?時'
+  '(午後|昼|夕方) ?[1-6]( ?時|:[0-5][0-9])'
+  '(^|[^0-9:])1[01](:[0-5][0-9])? ?[Aa]\.?[Mm]([^A-Za-z]|$)'
+  '(^|[^0-9:])[1-6](:[0-5][0-9])? ?[Pp]\.?[Mm]([^A-Za-z]|$)'
+)
+# Where the time rule applies. Messages (commit-msg) and the text of a gh write (guard-private) are
+# always checked; there the remedy for the app's own hours is to say 既定の時刻 instead. Of the staged
+# lines (pre-commit), only documents (*.md): code keeps cron expressions and test times, and
+# eval/results.jsonl is a machine record whose ts the daily budget, pacer.sh, and the band read. Test
+# data and raw reports are skipped as for phone shapes (test_data): reviewers quote log stamps and the
+# app's hours verbatim. Some documents write hours that are nobody's action, where the date alone means
+# nothing (hours_docs): docs/design.md, docs/plan.md, and the root README.md and README.ja.md describe
+# the hours the app offers (the daily check-in from 17 to 21). CONDITIONS.md is checked: it also records
+# the author's decisions, and its checkpoints sit in the frontmatter as ISO times joined by T, which the
+# text names by key. eval/README.md and other READMEs below the
+# root are checked. guard-private labels the part of a body that is a saved raw report byte for byte
+# "raw report <file>", which this rule skips, and phone and email shapes there pass as at commit time.
+# The history mode does not apply it: commits are not rewritten, and the author decided that what is
+# already in them stays.
+docs_scope='\.md:[0-9]+$'
+hours_docs='^(docs/design\.md|docs/plan\.md|README(\.ja)?\.md):'
+
 # scan <tsv>: each line is "<location>\t<text>". Prints "<location>: <rule>" per hit.
 scan() {
   cut -f1 "$1" >"$tmp/where"
@@ -56,14 +91,25 @@ scan() {
   # Phone numbers are also written with full-width digits and dashes.
   sed -e 's/０/0/g; s/１/1/g; s/２/2/g; s/３/3/g; s/４/4/g; s/５/5/g; s/６/6/g; s/７/7/g; s/８/8/g; s/９/9/g' \
     -e 's/－/-/g; s/‐/-/g; s/−/-/g; s/ー/-/g; s/＋/+/g' "$tmp/text" >"$tmp/digits"
+  # Times too, with a full-width colon. 時間 is a duration, and 午後10時, 夜11時, 10:30 PM are the
+  # evening, so their hours are taken out before the shapes are looked for.
+  sed -E -e 's/：/:/g' -e 's/時間/__/g' -e 's/(午後|夜|晩)(の)? ?1[0-2]/\1__/g' \
+    -e 's/(^|[^0-9])1[0-2](:[0-5][0-9])? ?([Pp]\.?[Mm])/\1__\2 \3/g' "$tmp/digits" >"$tmp/clock"
   {
     grep -nE "$phone" "$tmp/digits" | cut -d: -f1 | sed 's/$/ phone number/'
     grep -noE "$email" "$tmp/text" | grep -vE "$allowed" | cut -d: -f1 | sed 's/$/ email address/'
     if [[ -s "$tmp/terms" ]]; then grep -niF -f "$tmp/terms" "$tmp/text" | cut -d: -f1 | sed 's/$/ private term/'; fi
-  } | sort -u | sort -n -s -k1,1 | awk -v data="$test_data" '
-    NR == FNR { where[NR] = $0; ex[NR] = ($0 ~ data); next }
+    if [[ "$mode" != history ]]; then
+      for re in "${clock[@]}"; do grep -nE "$re" "$tmp/clock" | cut -d: -f1; done | sed 's/$/ work-hour time/'
+    fi
+  } | sort -u | sort -n -s -k1,1 | awk -v data="$test_data" -v mode="$mode" -v docs="$docs_scope" -v hours="$hours_docs" '
+    # A raw report posted as saved (guard-private) gets the same exemptions as at commit time.
+    NR == FNR { where[NR] = $0; ex[NR] = ($0 ~ data || (mode == "text" && $0 ~ /^raw report /)); next }
     { n = $1; rule = $0; sub(/^[0-9]+ /, "", rule)
-      if (ex[n] && rule != "private term") next
+      if (rule == "work-hour time") {
+        if (mode == "staged" && (ex[n] || where[n] !~ docs || where[n] ~ hours)) next
+        if (mode == "text" && where[n] ~ /^raw report /) next
+      } else if (ex[n] && rule != "private term") next
       print where[n] ": " rule }' "$tmp/where" -
 }
 
@@ -78,6 +124,7 @@ diff_lines() {
     !head && /^\+/ { printf "%s%s:%d\t%s\n", c, f, n, substr($0, 2); n++ }'
 }
 
+mode=$1
 case $1 in
   staged)
     # During a merge, compare with the merge partner instead of HEAD: the lines main already has were

@@ -163,6 +163,24 @@ for p in "${files[@]}" "${cds[@]}"; do
 done
 check "the command (title and body)" - "$text"
 
+# raw_tail <body file>: the saved raw report (docs/audits/raw/*.md, named in the body) that the body
+# ends with byte for byte, as /mm-task step 6 posts a review: a heading, then the file as it is. That
+# part is checked as "raw report <file>", which the work-hour time rule skips (scripts/scan-private.sh),
+# since reviews quote log stamps and the app's own hours verbatim. Phone and email shapes pass there as
+# they do at commit time (docs/audits/raw/, author, 2026-11-04), so a「(伏せた)」never has to break the
+# tail; private terms are still checked, and are fixed in the saved file itself (/mm-task step 6).
+wt=$(work_tree "$in")
+mt=$(main_tree "$wt")
+raw_tail() {
+  local p c
+  while IFS= read -r p; do
+    for c in "${cwd:-$PWD}/$p" "$wt/$p" ${mt:+"$mt/$p"}; do
+      [[ -f "$c" && -s "$c" ]] || continue
+      tail -c "$(($(wc -c <"$c")))" "$1" | cmp -s - "$c" && { echo "$c"; return 0; }
+    done
+  done < <(grep -oE 'docs/audits/raw/[A-Za-z0-9._-]+\.md' "$1" | sort -u)
+  return 1
+}
 for f in "${files[@]}"; do
   [[ "$f" == "~/"* ]] && f=$HOME/${f#\~/}
   if [[ "$f" != /* ]] && ((${#cds[@]})); then
@@ -170,10 +188,18 @@ for f in "${files[@]}"; do
   fi
   [[ "$f" == /* ]] || f=${cwd:-$PWD}/$f
   [[ -r "$f" ]] || block guard-private "blocked: cannot read the body file $f to check it for personal data. Pass it by absolute path."
-  check "body file $f" "$f"
+  if raw=$(raw_tail "$f"); then
+    check "body file $f" - "$(head -c "$(($(wc -c <"$f") - $(wc -c <"$raw")))" "$f")"
+    check "raw report $raw" "$raw"
+  else
+    check "body file $f" "$f"
+  fi
 done
 
 if [[ -n "$found" ]]; then
-  block guard-private "blocked: this would publish what looks like personal data (where and which rule; the text is not shown):$nl$found""Take it out and run the command again. Public issues and PRs never carry family names, numbers, addresses, or real messages."
+  hint="Take it out and run the command again. Public issues and PRs never carry family names, numbers, addresses, or real messages."
+  [[ "$found" == *": work-hour time$nl"* ]] &&
+    hint+=" A work-hour time is a time of day from ten to noon or from one to seven in the afternoon, the author's weekday working hours. Public records give the date alone, or 午後, for what happened then; the hook cannot tell whose action or which day a time records, so it stops every such time. Write the date alone or 午後 (for the app's own hours, 既定の時刻)."
+  block guard-private "blocked: this would publish what looks like personal data or a work-hour time (where and which rule; the text is not shown):$nl$found$hint"
 fi
 exit 0

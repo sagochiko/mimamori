@@ -1,6 +1,6 @@
 ---
 name: mm-release
-description: Uploads a mimamori build to App Store Connect for TestFlight - bumps the build number, archives Release, checks the archive, exports and uploads, then fills in the mother's internal group and the judges' external group in Chrome and leaves only Submit Review to the author. Use for "TestFlight に上げて", "母に新しい版を届けて", "/mm-release".
+description: Uploads a mimamori build to App Store Connect for TestFlight - bumps the build number, archives Release, checks the archive, exports and uploads, then hands it to the internal group 「家族」, the route for a build the author checks on the iPhone (no Apple review), and, for the mother and the judges, fills in the external group 「審査員と家族」 in Chrome and presses Submit Review itself. Use for "TestFlight に上げて", "実機で確かめる版を配って", "母に新しい版を届けて", "/mm-release".
 ---
 
 # Upload a build for TestFlight
@@ -10,7 +10,7 @@ description: Uploads a mimamori build to App Store Connect for TestFlight - bump
 Stop and say why if any of these fails.
 
 - The Apple account is in Xcode > Settings > Accounts (signing and upload both use it; `No Accounts` means it is missing).
-- The app record and the two TestFlight groups exist in App Store Connect (issue #34), and `ASC_APP_ID` in step 5 holds the app's Apple ID instead of the `<ASC_APP_ID>` mark. Internal testers must be App Store Connect users, so the mother is a user of the account (issue #26).
+- The app record and the two TestFlight groups exist in App Store Connect (issue #34): the internal group 「家族」 and the external group 「審査員と家族」. `ASC_APP_ID` in step 5 holds the app's Apple ID instead of the `<ASC_APP_ID>` mark. Internal testers must be App Store Connect users (issue #26); the mother gets builds through the external group until she is one (issue #2).
 - `grep MIMAMORI_API_HOST ios/Config/Shared.xcconfig` shows the deployed Workers host and the `/mm-deploy` smoke check passed for it. A build that points at `*.placeholder.invalid` cannot create a family, so beta review would reject it.
 - The tree is clean: `git status --short` prints nothing. Look before step 1 switches branches, so changes carried over from another branch show up here. Step 1 branches from `origin/main` and never switches this tree to `main`, which another worktree may hold.
 
@@ -62,7 +62,7 @@ The stub check reads every file in the `.app`, not only `Mimamori`, because a De
 
 ## 4. Export and upload
 
-Say in one line what is about to go up: build number, version (`MARKETING_VERSION` in `ios/project.yml`), API host, and that the build also goes into the mother's group once Apple has processed it ("処理のあと母のグループにも入れる"). Then run the export without waiting: since 2026-11-04 the author lets uploads to App Store Connect run unasked during development, and keeps only Submit Review in step 5. If a permission prompt or a hook still stops the export, do not reshape the command to get around it; report it.
+Say in one line what is about to go up: build number, version (`MARKETING_VERSION` in `ios/project.yml`), API host, and the route of step 5: a build for the author to check goes to 「家族」 only ("処理のあと「家族」に配る"), a build for the mother and the judges also goes to 「審査員と家族」 and its review ("処理のあと「家族」に配り、「審査員と家族」の審査へ出す"). Then run the export without waiting: since 2026-11-04 the author lets uploads to App Store Connect run unasked during development, and since 2026-11-05 Claude also presses Submit Review in step 5. If a permission prompt or a hook still stops the export, do not reshape the command to get around it; report it.
 
 ```sh
 xcodebuild -exportArchive -archivePath "$A" -exportOptionsPlist ios/ExportOptions.plist \
@@ -73,9 +73,16 @@ xcodebuild -exportArchive -archivePath "$A" -exportOptionsPlist ios/ExportOption
 
 After a successful upload, push the branch and open a PR so `main` carries the number: `git push -u origin release-build-$N`, then `gh pr create`.
 
-## 5. Fill in both groups and leave Submit Review to the author
+## 5. Hand the build to its groups
 
-The author does one thing here: press Submit Review, because it sends the build to Apple's beta review and cannot be taken back. Claude does everything before it in Chrome and notices the end by itself. Labels are the English ones from Apple's TestFlight help; the Japanese screen shows them translated.
+There are two routes, and step 4 already said which one this build takes.
+
+- A build for the author to check on the iPhone goes to the internal group 「家族」 only: 5a, then item 1 of 5b. Internal testing does not wait for Apple: Apple's TestFlight help ties beta review to external testers, and build 3 was in internal testing while the external review of build 2 was still pending (issue #2). Use `/mm-device` instead only when the check needs a Debug launch argument such as `-mimamori-stub`. The author decided this on 2026-11-05.
+- A build for the mother and the judges also goes to the external group 「審査員と家族」, which sends it to Apple's beta review: all of 5a to 5c. Claude presses Submit Review (審査へ提出) itself; the author decided on 2026-11-05 that Claude presses it, now and from then on (「君がおしていいです。これからも」). It cannot be taken back, so check the build number and the group on the sheet before pressing.
+
+While the mother is not an internal tester, a check build in 「家族」 does not reach her. When she becomes one, split the internal side before the next upload: one group for the author's checks and one for the mother, so a build nobody has checked does not land on her phone. Then name both groups here.
+
+Claude does everything in Chrome and notices the end by itself. Labels are the English ones from Apple's TestFlight help; the Japanese screen shows them translated.
 
 The app is opened by its Apple ID, never through the app list at `https://appstoreconnect.apple.com/apps`: that list shows the author's other apps, and this project keeps the author's earlier projects out of Claude's context. The Apple ID is a number, not a secret; App Store Connect shows it under App Information. Fill it in here after issue #34:
 
@@ -84,7 +91,7 @@ ASC_APP_ID=6830395335   # the app's Apple ID in App Store Connect (issue #34)
 BUILDS="https://appstoreconnect.apple.com/apps/$ASC_APP_ID/testflight/ios"
 ```
 
-Two Chrome tabs are used. The work tab is where the groups are filled in and where the Submit Review sheet stays open; once the sheet is open, never reload it or navigate it, or the sheet closes with the build choice and What to Test in it and there is nothing left for the author to press. The status tab shows `$BUILDS` (the iOS builds list) and is the only tab that is reloaded. A status look reloads the status tab and reads only build `$N`'s row with `find` (its build number and status); do not use `get_page_text` or take screenshots, which would pull in the rest of the page. Between looks, run `sleep 300` with `run_in_background` and do nothing until it ends; look at most six times (30 minutes), then ask once whether to wait again.
+Two Chrome tabs are used. The work tab is where the groups are filled in and where the Submit Review sheet stays open until 5c presses it; once the sheet is open, never reload it or navigate it, or the sheet closes with the build choice and What to Test in it and has to be filled in again. The status tab shows `$BUILDS` (the iOS builds list) and is the only tab that is reloaded. A status look reloads the status tab and reads only build `$N`'s row with `find` (its build number and status); do not use `get_page_text` or take screenshots, which would pull in the rest of the page. Between looks, run `sleep 300` with `run_in_background` and do nothing until it ends; look at most six times (30 minutes), then ask once whether to wait again.
 
 The App Store Connect API would let a shell loop wait without tokens, but it was not used for two reasons: signing in to it here would lean on code the author wrote before the event, which the hackathon rules keep out of this repository, and it would have Claude read the API key file, which the rule against reading secret files forbids. So the waits stay in Chrome.
 
@@ -104,22 +111,22 @@ Apple processes an upload before it can be added to a group. Read build `$N`'s r
 
 ### 5b. Fill in the groups in the work tab
 
-Open `$BUILDS` in a second new tab; this is the work tab. Fill in, without pressing any button that sends the build to testers outside the family's group or to Apple:
+Open `$BUILDS` in a second new tab; this is the work tab. Fill in, without pressing anything that sends the build to Apple before 5c:
 
-1. Internal Testing > the mother's group. If the group uses automatic distribution, build `$N` is already listed; go on. Otherwise use Add Builds, choose `$N`, write What to Test, and press Add. Claude presses this one: it reaches only the mother's internal group, which step 4 announced and the author's decision of 2026-11-04 covers.
+1. Internal Testing > 「家族」. If the group uses automatic distribution, build `$N` is already listed; go on. Otherwise use Add Builds, choose `$N`, write What to Test, and press Add. For a build the author checks, this is the end: report the build number and that it is in 「家族」, then go to step 6.
 2. Test Information. Beta App Description and Feedback Email must already be filled (issue #34). The feedback address is the author's, so do not type one; if either is empty, stop and point to issue #34. Paste the review note below into Review Notes in the beta app review information and save.
-3. External Testing > the judges' group > Add Builds. Choose `$N`, go on to What to Test and write it, and tick Automatically notify testers so the judges get the build as soon as it is approved. Stop with Submit Review on the screen (Start Testing when Apple does not review this build). Do not press it, and leave this tab alone from here on.
+3. External Testing > 「審査員と家族」 > Add Builds. Choose `$N`, go on to What to Test and write it, and tick Automatically notify testers so the mother and the judges get the build as soon as it is approved. Stop with Submit Review on the screen (Start Testing when Apple does not review this build), and leave this tab alone until 5c.
 
 Do not save screenshots of these pages to disk, and do not paste page text that shows the account's name or email.
 
-### 5c. Hand over the one press
+### 5c. Press Submit Review
 
-Reload the status tab, read build `$N`'s status in the iOS builds list, and keep the text; it is the status before the press. Then ask in one line ("Submit Review を押してください。終わったら自動で続けます") and wait as above, looking only at the status tab. The press is done when build `$N`'s status differs from the text you kept: waiting for review for the first build of a version, or testing when Apple lets a later build through without a full review. Report the status and the build number.
+Reload the status tab, read build `$N`'s status in the iOS builds list, and keep the text; it is the status before the press. In the work tab, read the sheet once with `find`: it must name build `$N` and 「審査員と家族」. If either differs, stop and report what it shows. Otherwise press Submit Review (審査へ提出), or Start Testing when that is the button, and wait as above, looking only at the status tab. The press went through when build `$N`'s status differs from the text you kept: waiting for review for the first build of a version, or testing when Apple lets a later build through without a full review. Report the status and the build number.
 
 ### What to write
 
 ```text
-What to Test(母のグループと審査員のグループ)
+What to Test(「家族」と「審査員と家族」)
 <この版で変わったこと>
 
 Review Notes(審査用のメモ)

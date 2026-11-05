@@ -9,8 +9,10 @@ description: Adds a dated entry to docs/dev-log.md when something in mimamori's 
 
 Append at the end, newest last. The example below is made up to show the format; it is not a real result.
 
+The heading is the date and a title, with no time of day. The repository goes public, and a time on a weekday from ten to noon or from one to seven in the afternoon would read as the author working on this during their job; the commit hook stops such a time in documents (`scripts/scan-private.sh`, issue #116). When the hour matters to the story, say 午後 or 夜 in the text.
+
 ```markdown
-## 2026年11月3日 14:20 Message Filter の待ち時間 (#5)
+## 2026年11月3日 Message Filter の待ち時間 (#5)
 
 知らない相手からの SMS を、サーバーの判定で迷惑フォルダに回すところを作っていた。
 

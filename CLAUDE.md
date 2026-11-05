@@ -27,8 +27,9 @@
 - 鍵は Workers の秘密の置き場と、手元の `.dev.vars` だけに置く。秘密のファイルは読まない(フックで止めている)
 - 開発中は、削除と取り返しのつかない操作のほかは作者の確認を待たずに進める(2026年11月4日に作者が決めた。許可待ちで開発が遅れていたため)。シミュレータの削除と初期化は、作業用の端末を片付けるために確認なしに通す(2026年11月5日に作者が決めた。家族役を消さない注意は [`docs/harness.md`](docs/harness.md) の「設定の範囲」)。`gh issue` と `gh pr` での GitHub の読み書き、`gh api` での読み出し、作業のブランチへの `git push`、裏側のデプロイとロールバック、秘密の登録、本番の D1 のマイグレーションと SQL、TestFlight へのアップロードがこれにあたる。`gh api` の書き込み(GET と HEAD のほかのメソッド、`-X GET` 無しのフィールド、graphql の mutation)、遠隔のブランチを消す push と main への push、`wrangler secret delete`、本番の D1 で DROP、DELETE、TRUNCATE を含む SQL とマイグレーションは作者に聞く(フックの `guard-prod.sh`)。wrangler の削除系、D1 の time-travel の restore、force push はフックと permissions の両方で、`git push --mirror` はフックで、`git reset --hard` は permissions の deny で止めている
 - Issue、PR、コメントの本文は `gh issue` と `gh pr` で書き、`gh api` では書かない。`gh api` で書くと、個人の情報の関門(`guard-private.sh`)とマージの関門(`guard-merge.sh`)を通らないため
-- 秘密の値は作者が入れる。Claude が `wrangler secret put` を流すときも、値を読まず、書かず、表示しない。`TOKEN_ENC_KEY` のような乱数を `openssl rand` からパイプで直に渡すのはよい。TestFlight の Submit Review を押すのは作者のまま
+- 秘密の値は作者が入れる。Claude が `wrangler secret put` を流すときも、値を読まず、書かず、表示しない。`TOKEN_ENC_KEY` のような乱数を `openssl rand` からパイプで直に渡すのはよい。TestFlight の Submit Review(「審査へ提出」)は、ビルドの番号とグループを確かめてから Claude が押す(2026年11月5日に作者が決めた。「君がおしていいです。これからも」)
 - 電話番号の形、メールアドレス、作者だけが書く非公開の語の一覧(`.claude/private-terms.local`、Claude は読まない)に当たる行は、コミットのとき(`.githooks/pre-commit` と `commit-msg`)と、gh で Issue や PR に書く前(`guard-private.sh`)に止まる。止まったら場所と規則だけが出るので、その行を直す。`--no-verify` で飛ばさない。バンドル ID の `com.sagochiko.mimamori` とチームの ID は公開してよく、止めない(仕組みは [`docs/harness.md`](docs/harness.md) の「git のフック」)
+- 平日の勤務時間(10〜12時と13〜19時)に作者がした操作や判断は、公開される記録(Issue、PR、コメント、コミットのメッセージ、`docs/` などの文書)に時刻を書かず、日付だけか「午後」にする。その時間帯に投稿する文では、作者の操作と読める主語(「作者が押した」)も避ける(2026年11月4日に作者が決めた)。だれの操作か、どの曜日かはフックに分からないので、その時間帯の時刻の形は、同じ3か所(`pre-commit` は `.md` の文書の行だけ)ですべて止まる。アプリが持つ時刻は `docs/design.md` と `docs/plan.md` に書き、メッセージや Issue では「既定の時刻」のように書く(仕組みは [`docs/harness.md`](docs/harness.md) の「git のフック」)
 
 ## 作業の流れ
 
@@ -72,6 +73,7 @@ gh で Issue、PR、コメントに書くコマンドは、書き込み1つだ�
 - `make verify` は変わった側のテスト(`ios/Core` の `swift test`、`server` の型検査と Vitest)をまとめて流す。出力は数行で、詳細は `.verify.log` に出る
 - `make eval` は試験用の例文の dev セットで精度を測り、[`eval/RESULTS.md`](eval/RESULTS.md) に1行足す。1日の回数は `CONDITIONS.md` の予算まで
 - 画面は `/mm-ios-verify` の手順でシミュレータに出して撮る。拡張機能(Message Filter、DNS、Safari、Call Directory)はシミュレータで確かめられないので、実機の確認を「作者: 」の Issue にする
+- 作者に実機で確かめてもらう版は、`/mm-release` で TestFlight に上げ、内部テストのグループ「家族」で配る。内部テストは Apple の審査を待たない。Debug の起動の引数(`-mimamori-stub` など)が要る確かめだけ、`/mm-device` で作者の iPhone に入れる。母は外部テストのグループ「審査員と家族」で受け取っているので、確かめ用の版は母に届かない。母が内部テスターに入ったら、確かめ用(作者だけ)と母用のグループを先に分ける(2026年11月5日に作者が決めた)
 - 応答を終えるとき、変わった側のテストをフックが流す。落ちたら直してから終える
 
 ## モデルの使い分け
