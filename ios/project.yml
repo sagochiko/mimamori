@@ -36,6 +36,8 @@ targets:
     type: application
     platform: iOS
     sources:
+      # Includes App/Settings.bundle (Settings > みまもり: the daily prompt's switch and hour, #99),
+      # which XcodeGen puts in the Resources phase by itself.
       - App
     dependencies:
       - package: Core
