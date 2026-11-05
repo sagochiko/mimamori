@@ -1,13 +1,14 @@
 import MimamoriCore
 import SwiftUI
 
-/// The family's screen: a card per case, newest first, then the invite.
+/// The family's screen: the morning smiles first, then a card per case, newest first, then the invite.
 struct FamilyHomeView: View {
   @Environment(AppModel.self) private var model
 
   var body: some View {
     ScrollView {
       VStack(spacing: 20) {
+        SmileSection()
         ForEach(model.familyCards, id: \.item.id) { card in
           CaseCardView(card: card)
         }
@@ -16,8 +17,78 @@ struct FamilyHomeView: View {
       }
       .padding(24)
     }
-    .refreshable { await model.loadCases() }
+    .refreshable {
+      await model.loadCases()
+      await model.loadSmiles()
+    }
     .task { await model.keepCasesFresh() }
+  }
+}
+
+/// Today's smile of the protected member, large, the two ways to answer, everyone's smiles, and the
+/// hour by which her smile is expected (after it, with no smile that day, the family is told quietly).
+private struct SmileSection: View {
+  @Environment(AppModel.self) private var model
+  @State private var camera = false
+  @State private var writing = false
+
+  var body: some View {
+    VStack(spacing: 16) {
+      if let today = model.smileBoard.todaysProtectedSmile(now: model.now) {
+        VStack(spacing: 8) {
+          SmilePhoto(smile: today)
+            .aspectRatio(1, contentMode: .fit)
+            .frame(maxWidth: 280)
+            .clipShape(RoundedRectangle(cornerRadius: 28))
+          Text(today.displayName).font(.title3.bold())
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("今日の\(today.spokenLabel)")
+      }
+      HStack(spacing: 12) {
+        Button("笑顔") { camera = true }
+          .buttonStyle(BigButtonStyle())
+          .accessibilityLabel("笑顔で返す")
+          .accessibilityHint("前のカメラに向かって笑うと、その場で撮って家族みんなに送ります")
+        Button("ひと言") { writing = true }
+          .buttonStyle(BigButtonStyle(prominent: false))
+          .accessibilityLabel("ひと言で返す")
+          .accessibilityHint("写真なしで、短い言葉を家族みんなに送ります")
+      }
+      if !model.smileBoard.smiles.isEmpty {
+        SmileStrip()
+      }
+      DeadlineMenu()
+    }
+    .fullScreenCover(isPresented: $camera) { SmileCaptureView() }
+    .sheet(isPresented: $writing) {
+      NoteSheet().presentationDetents([.medium])
+    }
+    .onAppear {
+      #if DEBUG
+        if ScreenshotStubTransport.cameraOpen { camera = true }
+      #endif
+    }
+  }
+}
+
+/// The hour (JST) by which her smile is expected. Only the number shows; what it means is read aloud.
+private struct DeadlineMenu: View {
+  @Environment(AppModel.self) private var model
+
+  var body: some View {
+    let hour = model.smileBoard.deadlineHour
+    Menu {
+      Picker("時刻", selection: Binding(get: { hour }, set: { new in Task { await model.setSmileDeadline(new) } })) {
+        ForEach(Array(SmileBoard.deadlineHours), id: \.self) { Text("\($0)時").tag($0) }
+      }
+    } label: {
+      Label("\(hour)時", systemImage: "bell")
+        .font(.headline)
+        .foregroundStyle(.secondary)
+    }
+    .accessibilityLabel("見守られる人の笑顔を待つ時刻、\(hour)時")
+    .accessibilityHint("この時刻までにその日の笑顔が届かなければ、家族にそっと知らせます。押すと時刻を変えられます")
   }
 }
 

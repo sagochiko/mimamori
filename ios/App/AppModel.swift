@@ -25,6 +25,10 @@ final class AppModel {
   private(set) var chat: ChatKeeper
   /// "さっきの電話、大丈夫だった？" while a long call waits for an answer.
   private(set) var followUpPrompt: String?
+  /// Everyone's smiles and replies (`GET /smiles`), newest first, with the hour her smile is expected by.
+  private(set) var smileBoard = SmileBoard()
+  /// Photos already fetched this run, by smile id. They never change, so they are not fetched again.
+  @ObservationIgnored private var photoCache: [String: Data] = [:]
 
   @ObservationIgnored private let session: Session
   @ObservationIgnored private lazy var speaker = ReplySpeaker()
@@ -63,6 +67,8 @@ final class AppModel {
       if route == .chooseRole {
         self?.invite = nil
         self?.cases = []
+        self?.smileBoard = SmileBoard()
+        self?.photoCache = [:]
         // The key is gone (a 401, or this iPhone left the family): her conversation goes with it.
         // Not before the first unlock, when the Keychain only reads as empty.
         if UIApplication.shared.isProtectedDataAvailable { self?.chat.clear() }
@@ -147,7 +153,57 @@ final class AppModel {
   func keepCasesFresh() async {
     while !Task.isCancelled {
       await loadCases()
+      await loadSmiles()
       try? await Task.sleep(for: .seconds(60))
+    }
+  }
+
+  // MARK: Smiles
+
+  /// Quiet on failure, like the cases: the screen keeps what it had.
+  func loadSmiles() async {
+    guard route != .chooseRole else { return }
+    guard let fresh = try? await session.smiles() else { return }
+    smileBoard = fresh
+  }
+
+  /// The photo of one smile, fetched with the device key. Nil while it cannot be read.
+  func photo(for smile: Smile) async -> Data? {
+    guard smile.hasPhoto else { return nil }
+    if let data = photoCache[smile.id] { return data }
+    guard let data = try? await session.smilePhoto(id: smile.id) else { return nil }
+    photoCache[smile.id] = data
+    return data
+  }
+
+  /// The photo the smile camera took. True once the server has it.
+  func sendSmile(jpeg: Data, score: Double) async -> Bool {
+    await sendSmileBody { try await $0.postSmile(photoJPEG: jpeg, score: score) }
+  }
+
+  /// A one-line reply without a photo.
+  func sendNote(_ text: String) async -> Bool {
+    let note = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !note.isEmpty else { return false }
+    return await sendSmileBody { try await $0.postSmile(note: note) }
+  }
+
+  private func sendSmileBody(_ body: (Session) async throws -> Smile) async -> Bool {
+    var sent = false
+    await run(joining: false) { [weak self] session in
+      let smile = try await body(session)
+      sent = true
+      self?.smileBoard.smiles.insert(smile, at: 0)
+    }
+    if sent { await loadSmiles() }
+    return sent
+  }
+
+  /// The hour (JST) by which her smile is expected; the family is told quietly after it.
+  func setSmileDeadline(_ hour: Int) async {
+    await run(joining: false) { [weak self] session in
+      let saved = try await session.setSmileDeadline(hour: hour)
+      self?.smileBoard.deadlineHour = saved
     }
   }
 
