@@ -73,6 +73,8 @@ const LOW_CONCERN_ACTION = "お金や暗証番号を聞かれたら止めて、�
 export const TOLD_FAMILY = "家族に伝えました";
 export const HANDOFF_REPLY = `これは家族と一緒にやろう。${TOLD_FAMILY}`;
 export const UNANSWERED_REPLY = "うまく答えられませんでした。家族に伝えました";
+/** Her question points back at nothing she said in this conversation (#114): she is asked what she means. */
+export const ASK_AGAIN_REPLY = "何のことか、もう一度くわしく教えて";
 /** The family's one line for the fake-police script. */
 export const POLICE_TOPIC = "警察を名乗る電話の相談";
 /** The family's one line when no topic or reason of its own is left. */
@@ -420,6 +422,21 @@ function topicWords(said: Said): string[] {
   return [said.text, ...(last !== undefined && pointsBack(said.text) ? [last] : [])].map(normalize);
 }
 
+/** Words that say what she means: more than a question that points back, a message or a call, or a topic the AI does not guide. */
+function namesSomething(text: string): boolean {
+  const t = normalize(text);
+  return !pointsBack(text) || CONTACT.test(t) || SENSITIVE.some(({ pattern }) => pattern.test(t));
+}
+
+/**
+ * Her question only points back, and none of her words in this conversation say at what (#114). The
+ * app sends the turns of the last 60 minutes, so the conversation she means may be older than that;
+ * her earlier words that only point back too ("それってどういうこと" again) say nothing either.
+ */
+function pointsAtNothing(said: Said): boolean {
+  return [said.text, ...said.earlier].every((t) => !namesSomething(t));
+}
+
 /**
  * The parts of the script in one stretch of her words. A warning she passes on (tellingOf, #81) has
  * none: the parts in it are what the warning describes, not what was said to her.
@@ -505,6 +522,13 @@ export interface Plan {
   toFamily: boolean;
   /** Written to alerts even without a case: a scam consultation at level 3, as the judge does. */
   record: boolean;
+  /**
+   * The level is 1 or 2 because the rules or Claude saw a sign of a scam. A consultation the family
+   * takes only because the AI does not answer it is level 2 without one. Such a sign at level 2 moves
+   * the line of her open case at level 2 that had none, and the family is told again (src/consult.ts,
+   * #114).
+   */
+  sign: boolean;
   ruleLevel: Level | null;
   claudeLevel: Level | null;
   /**
@@ -530,6 +554,7 @@ function policePlan(said: Said, rule: RuleResult): Plan {
     reply: `${MATCH_BASIS}${POLICE_ACTION}`,
     toFamily: true,
     record: true,
+    sign: true,
     ruleLevel: rule.level,
     claudeLevel: null,
     unguided: false,
@@ -642,6 +667,14 @@ function decidePlan(
   // Her own words only (Plan.unguided): guidance Claude wrote that hits such a topic is Claude's answer.
   const base = { ruleLevel: decision.ruleLevel, claudeLevel: decision.claudeLevel, unguided: ownSensitive.length > 0 };
 
+  // "それってどういうこと" with nothing of hers in the conversation to point at (#114): Claude cannot tell
+  // what "それ" is and says it cannot answer, which is no trouble for the family. She is asked what she
+  // means, the same way each time. A sign Claude or the rules see, a topic the AI does not guide, and
+  // no answer from Claude at all still go on below.
+  if (claude?.handoff && sensitive.length === 0 && level === 3 && rule.level === null && pointsAtNothing(said)) {
+    return { level, reasons, reply: ASK_AGAIN_REPLY, toFamily: false, record: false, sign: false, ...base };
+  }
+
   // A topic the AI does not guide, or one Claude cannot answer: the family takes it, at any level, and
   // Claude's action is not read out (it may be the very guidance that is not given). At level 2 or
   // heavier she still hears the warning and what to do, then that the family was told.
@@ -655,34 +688,44 @@ function decidePlan(
         reply: `${basis}${SCAM_ACTION}。${TOLD_FAMILY}`,
         toFamily: true,
         record: true,
+        sign: true,
         ...base,
       };
     }
+    // Level 2 so the family is told, with no sign of a scam behind it.
     level = Math.min(level, 2) as Level;
     const handoffReasons = sensitive.length > 0 ? sensitive : reasons;
-    return { level, reasons: handoffReasons, reply: HANDOFF_REPLY, toFamily: true, record: true, ...base };
+    return {
+      level,
+      reasons: handoffReasons,
+      reply: HANDOFF_REPLY,
+      toFamily: true,
+      record: true,
+      sign: false,
+      ...base,
+    };
   }
   if (!unanswered && level <= 2) {
     // A warning, not guidance: what was seen, then what to do.
     const basis = claude && claude.kind === "scam" && usable(claude.basis) ? claude.basis : LIKE_SCAM_BASIS;
     const action = claude && claude.kind === "scam" && usable(claude.action) ? claude.action : SCAM_ACTION;
-    return { level, reasons, reply: `${basis}${action}`, toFamily: true, record: true, ...base };
+    return { level, reasons, reply: `${basis}${action}`, toFamily: true, record: true, sign: true, ...base };
   }
   if (claude !== null && claude.kind === "scam") {
     // Level 3: little concern, and still never "safe".
     const basis = usable(claude.basis) ? claude.basis : "";
     const reply = lowConcernReply(basis, usable(claude.action) ? claude.action : null);
-    return { level, reasons, reply, toFamily: false, record: true, ...base };
+    return { level, reasons, reply, toFamily: false, record: true, sign: false, ...base };
   }
   if (claude !== null && claude.kind === "help" && (told.some((t) => CONTACT.test(t)) || rule.reasons.length > 0)) {
     // About a message, a call, or a link, or the rules saw something: not Claude's free guidance.
-    return { level: 3, reasons, reply: LOW_CONCERN_ACTION, toFamily: false, record: true, ...base };
+    return { level: 3, reasons, reply: LOW_CONCERN_ACTION, toFamily: false, record: true, sign: false, ...base };
   }
   if (unanswered || claude === null || !usable(claude.action)) {
     const why = reasons.length > 0 ? reasons : [UNANSWERED_REASON];
-    return { level: 2, reasons: why, reply: UNANSWERED_REPLY, toFamily: true, record: true, ...base };
+    return { level: 2, reasons: why, reply: UNANSWERED_REPLY, toFamily: true, record: true, sign: false, ...base };
   }
-  return { level, reasons, reply: claude.action, toFamily: false, record: false, ...base };
+  return { level, reasons, reply: claude.action, toFamily: false, record: false, sign: false, ...base };
 }
 
 /** Her words in this turn and her earlier turns, never the AI's. */
