@@ -59,18 +59,26 @@ struct SmileAPITests {
     #expect(smile.id == "s9")
   }
 
-  @Test("ひと言だけなら写真も点数も送らない")
+  @Test("ひと言だけなら決まった語の ID を送り、写真も点数も送らない")
   func postNote() async throws {
     let transport = StubTransport(
       status: 201,
-      body:
-        #"{"id":"s9","memberId":"m-1","displayName":"作者","role":"family","score":null,"note":"いい笑顔","hasPhoto":false,"createdAt":"2026-11-06T21:30:00.000Z"}"#
+      body: #"{"id":"s9","memberId":"m-1","displayName":"作者","role":"family","score":null,"note":"いい笑顔","hasPhoto":false,"createdAt":"2026-11-06T21:30:00.000Z"}"#
     )
-    _ = try await client(transport).postSmile(note: "いい笑顔")
+    _ = try await client(transport).postSmile(note: .niceSmile)
     let body = try bodyJSON(try #require(transport.requests.first))
-    #expect(body["note"] as? String == "いい笑顔")
+    #expect(body["note"] as? String == "nice-smile")
     #expect(body["photo"] == nil)
     #expect(body["score"] == nil)
+  }
+
+  @Test("決まった語は裏側と同じ ID と言葉で、4〜6個")
+  func setWords() {
+    #expect((4...6).contains(SmileNote.allCases.count))
+    #expect(
+      SmileNote.allCases.map { "\($0.rawValue)=\($0.text)" } == [
+        "good-morning=おはよう", "nice-smile=いい笑顔", "thanks=ありがとう", "doing-fine=元気だよ", "see-you=またね",
+      ])
   }
 
   @Test("写真は鍵を付けて GET /smiles/{id}/photo から受け取る")

@@ -53,7 +53,7 @@ private struct SmileSection: View {
         Button("ひと言") { writing = true }
           .buttonStyle(BigButtonStyle(prominent: false))
           .accessibilityLabel("ひと言で返す")
-          .accessibilityHint("写真なしで、短い言葉を家族みんなに送ります")
+          .accessibilityHint("写真なしで、「おはよう」などの決まった言葉から選んで家族みんなに送ります")
       }
       if !model.smileBoard.smiles.isEmpty {
         SmileStrip()
@@ -62,7 +62,7 @@ private struct SmileSection: View {
     }
     .fullScreenCover(isPresented: $camera) { SmileCaptureView() }
     .sheet(isPresented: $writing) {
-      NoteSheet().presentationDetents([.medium])
+      NoteSheet().presentationDetents([.medium, .large])
     }
     .onAppear {
       #if DEBUG

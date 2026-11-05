@@ -91,12 +91,13 @@ public final class APIClient: Sendable {
     try await send("GET", "smiles", body: Empty?.none, auth: true)
   }
 
-  /// `POST /smiles`. A photo (JPEG) with its score, a one-line reply, or both.
+  /// `POST /smiles`. A photo (JPEG) with its score, one of the set words, or both.
   @discardableResult
-  public func postSmile(photoJPEG: Data? = nil, score: Double? = nil, note: String? = nil) async throws -> Smile {
+  public func postSmile(photoJPEG: Data? = nil, score: Double? = nil, note: SmileNote? = nil) async throws -> Smile {
     try await send(
       "POST", "smiles",
-      body: SmileBody(photo: photoJPEG?.base64EncodedString(), score: photoJPEG == nil ? nil : score, note: note),
+      body: SmileBody(
+        photo: photoJPEG?.base64EncodedString(), score: photoJPEG == nil ? nil : score, note: note?.rawValue),
       auth: true)
   }
 

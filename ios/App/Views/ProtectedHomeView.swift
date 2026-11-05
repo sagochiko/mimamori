@@ -20,6 +20,7 @@ struct ProtectedHomeView: View {
   @State private var noticesHeight: CGFloat = 0
   @State private var screenHeight: CGFloat = 0
   @State private var camera = false
+  @State private var choosingNote = false
 
   private static let liveID = "live"
 
@@ -35,6 +36,9 @@ struct ProtectedHomeView: View {
     .onGeometryChange(for: CGFloat.self, of: \.size.height) { screenHeight = $0 }
     .task { await model.keepCasesFresh() }
     .fullScreenCover(isPresented: $camera) { SmileCaptureView() }
+    .sheet(isPresented: $choosingNote) {
+      NoteSheet().presentationDetents([.medium, .large])
+    }
     .onAppear {
       model.loadChat()
       model.refreshFollowUp()
@@ -63,7 +67,7 @@ struct ProtectedHomeView: View {
           NoticeStrip(notices: notices, open: $noticesOpen)
         }
         // The family's smiles and replies, and her own (#14).
-        SmileStrip(onCamera: { camera = true })
+        SmileStrip(onCamera: { camera = true }, onNote: { choosingNote = true })
       }
       .padding(.horizontal, 16)
       .padding(.vertical, 8)

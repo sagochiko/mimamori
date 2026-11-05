@@ -91,7 +91,7 @@ public final class Session {
   }
 
   @discardableResult
-  public func postSmile(photoJPEG: Data? = nil, score: Double? = nil, note: String? = nil) async throws -> Smile {
+  public func postSmile(photoJPEG: Data? = nil, score: Double? = nil, note: SmileNote? = nil) async throws -> Smile {
     try await call { try await $0.postSmile(photoJPEG: photoJPEG, score: score, note: note) }
   }
 

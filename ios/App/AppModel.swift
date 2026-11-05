@@ -181,11 +181,9 @@ final class AppModel {
     await sendSmileBody { try await $0.postSmile(photoJPEG: jpeg, score: score) }
   }
 
-  /// A one-line reply without a photo.
-  func sendNote(_ text: String) async -> Bool {
-    let note = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !note.isEmpty else { return false }
-    return await sendSmileBody { try await $0.postSmile(note: note) }
+  /// One of the set words, without a photo.
+  func sendNote(_ note: SmileNote) async -> Bool {
+    await sendSmileBody { try await $0.postSmile(note: note) }
   }
 
   private func sendSmileBody(_ body: (Session) async throws -> Smile) async -> Bool {

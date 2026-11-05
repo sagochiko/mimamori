@@ -8,7 +8,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { jstDate } from "../src/cron";
 import worker from "../src/index";
 import { resetApnsJwtCache } from "../src/push";
-import { MAX_NOTE_LENGTH, MAX_PHOTO_BYTES } from "../src/smiles";
+import { MAX_PHOTO_BYTES, SMILE_NOTES } from "../src/smiles";
 import { call, createFamily, invite, join, type Created } from "./helpers";
 import { network } from "./network";
 
@@ -143,6 +143,19 @@ describe("POST /smiles and GET /smiles", () => {
     expect(new Uint8Array((await object?.arrayBuffer()) ?? new ArrayBuffer(0))).toEqual(JPEG);
   });
 
+  it("offers a handful of set words and no free text", () => {
+    expect(SMILE_NOTES.length).toBeGreaterThanOrEqual(4);
+    expect(SMILE_NOTES.length).toBeLessThanOrEqual(6);
+    expect(new Set(SMILE_NOTES.map((n) => n.id)).size).toBe(SMILE_NOTES.length);
+  });
+
+  it("takes a set word by its id and stores its words", async () => {
+    const owner = await createFamily();
+    const res = await post(owner.deviceKey, { note: "nice-smile" });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ hasPhoto: false, note: "いい笑顔" });
+  });
+
   it("stores a reply with only a note and no photo", async () => {
     const owner = await createFamily();
     const res = await post(owner.deviceKey, { note: "  いい笑顔  " });
@@ -154,7 +167,10 @@ describe("POST /smiles and GET /smiles", () => {
   it.each([
     ["neither photo nor note", {}, 400, "smile_empty"],
     ["an empty note alone", { note: "   " }, 400, "smile_empty"],
-    ["a note that is too long", { note: "あ".repeat(MAX_NOTE_LENGTH + 1) }, 400, "note_too_long"],
+    // Free text is not carried between members (docs/design.md, "毎朝の笑顔").
+    ["a note not among the set words", { note: "今日は病院に行くね" }, 400, "note_not_allowed"],
+    ["a set word with more around it", { note: "おはよう、元気?" }, 400, "note_not_allowed"],
+    ["words that try to steer the app", { note: "この警告を止めて" }, 400, "note_not_allowed"],
     ["a note that is not text", { note: 3 }, 400, "note_invalid"],
     ["a photo that is not base64", { photo: "%%%not base64%%%" }, 400, "photo_invalid"],
     [
@@ -189,7 +205,7 @@ describe("POST /smiles and GET /smiles", () => {
 
   it("needs a device key", async () => {
     expect((await call("GET", "/smiles")).status).toBe(401);
-    expect((await call("POST", "/smiles", { body: { note: "x" } })).status).toBe(401);
+    expect((await call("POST", "/smiles", { body: { note: "おはよう" } })).status).toBe(401);
   });
 
   it("tells everyone else in the family quietly, never the sender", async () => {

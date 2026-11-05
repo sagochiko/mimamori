@@ -16,8 +16,19 @@ import { jstDate, jstMidnight } from "./time";
 
 /** Bytes of one photo. The app sends about 640 pixels wide, well under this. */
 export const MAX_PHOTO_BYTES = 500_000;
-/** Characters of one reply. */
-export const MAX_NOTE_LENGTH = 60;
+/**
+ * The words a one-line reply can be. No free text is carried from one member to another: the author
+ * chose set words on 2026-11-05, for the reason the case relays were taken out (docs/design.md,
+ * "毎朝の笑顔"). The app has the same list (ios/Core, SmileNote); a note is sent as its id, and the
+ * words themselves are accepted too.
+ */
+export const SMILE_NOTES = [
+  { id: "good-morning", text: "おはよう" },
+  { id: "nice-smile", text: "いい笑顔" },
+  { id: "thanks", text: "ありがとう" },
+  { id: "doing-fine", text: "元気だよ" },
+  { id: "see-you", text: "またね" },
+] as const;
 /** What GET /smiles returns: the last week, at most this many. */
 const LIST_DAYS = 7;
 const LIST_LIMIT = 50;
@@ -81,8 +92,9 @@ function readNote(value: unknown): string | null {
   if (typeof value !== "string") throw new HttpError(400, "note_invalid");
   const note = value.trim();
   if (note === "") return null;
-  if ([...note].length > MAX_NOTE_LENGTH) throw new HttpError(400, "note_too_long");
-  return note;
+  const set = SMILE_NOTES.find((n) => n.id === note || n.text === note);
+  if (!set) throw new HttpError(400, "note_not_allowed");
+  return set.text;
 }
 
 function readScore(value: unknown): number | null {

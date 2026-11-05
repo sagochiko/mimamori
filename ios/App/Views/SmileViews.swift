@@ -2,10 +2,13 @@ import MimamoriCore
 import SwiftUI
 
 /// Everyone's smiles and replies in one row, newest first, on both home screens. A tap opens one
-/// large. With `onCamera`, the row starts with the button that opens the smile camera.
+/// large. With `onCamera` (and `onNote`), the row starts with the buttons that open the smile camera
+/// (and the set words).
 struct SmileStrip: View {
   @Environment(AppModel.self) private var model
   var onCamera: (() -> Void)?
+  /// With it, a second button opens the set words.
+  var onNote: (() -> Void)?
   @State private var opened: Smile?
 
   var body: some View {
@@ -13,6 +16,9 @@ struct SmileStrip: View {
       HStack(alignment: .top, spacing: 12) {
         if let onCamera {
           CameraButton(action: onCamera)
+        }
+        if let onNote {
+          NoteButton(action: onNote)
         }
         ForEach(model.smileBoard.smiles) { smile in
           Button {
@@ -47,6 +53,23 @@ private struct CameraButton: View {
     .buttonStyle(.plain)
     .accessibilityLabel("笑顔を撮る")
     .accessibilityHint("前のカメラに向かって笑うと、その場で撮って家族に送ります。ボタンを押す必要はありません")
+  }
+}
+
+private struct NoteButton: View {
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Image(systemName: "text.bubble")
+        .font(.title)
+        .foregroundStyle(Color.accentColor)
+        .frame(width: 72, height: 72)
+        .background(Circle().fill(Color.accentColor.opacity(0.15)))
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("ひと言を送る")
+    .accessibilityHint("「おはよう」などの決まった言葉から選んで、家族みんなに送ります")
   }
 }
 
@@ -151,6 +174,7 @@ struct SmileCaptureView: View {
       Color.black.ignoresSafeArea()
       if let taken {
         Image(uiImage: taken).resizable().scaledToFit()
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
           .accessibilityLabel("撮れました。家族に送っています")
         ProgressView().tint(.white).controlSize(.large)
       } else {
@@ -185,7 +209,10 @@ struct SmileCaptureView: View {
 
   @ViewBuilder private var liveCamera: some View {
     if SmileCamera.isSupported {
+      // Takes the size it is given, like the stand-in, so nothing is pushed off the screen.
       SmileCameraPreview { captured($0, $1) }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
         .ignoresSafeArea()
         .accessibilityLabel("前のカメラ")
         .accessibilityHint("カメラに向かって笑うと、その場で撮って家族に送ります")
@@ -209,43 +236,34 @@ struct SmileCaptureView: View {
   }
 }
 
-/// "ひと言": one line to the family, without a photo.
+/// "ひと言": one of the set words to the family, without a photo. No free text: the author chose set
+/// words on 2026-11-05 (docs/design.md, "毎朝の笑顔"). A tap sends at once.
 struct NoteSheet: View {
   @Environment(AppModel.self) private var model
   @Environment(\.dismiss) private var dismiss
-  @State private var text = ""
-  @State private var sending = false
-  @FocusState private var focused: Bool
-
-  private static let limit = 60
+  @State private var sending: SmileNote?
 
   var body: some View {
-    VStack(spacing: 16) {
-      TextField("ひと言", text: $text, axis: .vertical)
-        .font(.title3)
-        .lineLimit(1...3)
-        .focused($focused)
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
-        .onChange(of: text) { _, new in
-          if new.count > Self.limit { text = String(new.prefix(Self.limit)) }
+    ScrollView {
+      VStack(spacing: 12) {
+        ForEach(SmileNote.allCases) { note in
+          Button {
+            guard sending == nil else { return }
+            sending = note
+            Task {
+              if await model.sendNote(note) { dismiss() }
+              sending = nil
+            }
+          } label: {
+            if sending == note { ProgressView() } else { Text(note.text) }
+          }
+          .buttonStyle(BigButtonStyle(prominent: false))
+          .disabled(sending != nil)
+          .accessibilityLabel(note.text)
+          .accessibilityHint("押すと、このひと言を家族みんなに送ります")
         }
-        .accessibilityHint("家族みんなに届く、\(Self.limit)字までのひと言を書きます")
-      Button {
-        sending = true
-        Task {
-          if await model.sendNote(text) { dismiss() }
-          sending = false
-        }
-      } label: {
-        if sending { ProgressView().tint(.white) } else { Text("送る") }
       }
-      .buttonStyle(BigButtonStyle())
-      .disabled(sending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-      .accessibilityLabel("ひと言を送る")
-      Spacer(minLength: 0)
+      .padding(24)
     }
-    .padding(24)
-    .onAppear { focused = true }
   }
 }

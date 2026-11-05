@@ -188,8 +188,11 @@
     /// As the stub's own member ("m-stub"), named after the role it joined as.
     func add(_ body: [String: Any]) -> (Int, String) {
       let photo = (body["photo"] as? String).flatMap { Data(base64Encoded: $0) }
-      let note = (body["note"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard photo != nil || !(note ?? "").isEmpty else { return (400, #"{"error":"smile_empty"}"#) }
+      // Set words only, as on the server: an id or the words themselves.
+      let sent = body["note"] as? String
+      let note = SmileNote.allCases.first { $0.rawValue == sent || $0.text == sent }?.text
+      if sent != nil && note == nil { return (400, #"{"error":"note_not_allowed"}"#) }
+      guard photo != nil || note != nil else { return (400, #"{"error":"smile_empty"}"#) }
       let role = ScreenshotStubTransport.joinedAs?.role ?? .family
       let id = "s-\(UUID().uuidString.prefix(8))"
       let row = Self.row(

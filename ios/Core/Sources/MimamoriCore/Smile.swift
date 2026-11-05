@@ -1,5 +1,28 @@
 import Foundation
 
+/// The words a one-line reply can be, the same list as the server's (`SMILE_NOTES` in
+/// server/src/smiles.ts). No free text goes from one member to another: the author chose set words
+/// on 2026-11-05 (docs/design.md, "毎朝の笑顔"). Sent as the raw value.
+public enum SmileNote: String, CaseIterable, Sendable, Identifiable {
+  case goodMorning = "good-morning"
+  case niceSmile = "nice-smile"
+  case thanks = "thanks"
+  case doingFine = "doing-fine"
+  case seeYou = "see-you"
+
+  public var id: String { rawValue }
+
+  public var text: String {
+    switch self {
+    case .goodMorning: "おはよう"
+    case .niceSmile: "いい笑顔"
+    case .thanks: "ありがとう"
+    case .doingFine: "元気だよ"
+    case .seeYou: "またね"
+    }
+  }
+}
+
 /// A row of `GET /smiles`: a smile, a one-line reply, or both, from anyone in the family.
 public struct Smile: Codable, Hashable, Sendable, Identifiable {
   public let id: String
