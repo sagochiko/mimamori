@@ -682,6 +682,11 @@ done
 for name in mm-reviewer mm-auditor mm-judge; do
   [[ "$(fm ".claude/agents/$name.md" model)" == opus ]] || { echo "agent test failed: $name runs on opus"; fail=1; }
 done
+# The verifier may get sonnet for checks that take and judge no simulator screen (the author, 2026-11-06);
+# a screen check stays on the table's Opus, in CLAUDE.md and in mm-task alike.
+grep -q 'シミュレータの画面を撮らず見ない確かめ.*`mm-verifier` に `sonnet`' CLAUDE.md &&
+  grep -q 'takes and judges no simulator screen.*the verifier may get `sonnet`' .claude/skills/mm-task/SKILL.md ||
+  { echo "agent test failed: CLAUDE.md and mm-task let the verifier run on sonnet only for checks without a simulator screen"; fail=1; }
 jq -e '.advisorModel == "fable"' .claude/settings.json >/dev/null || { echo "settings test failed: the advisor stays on Fable"; fail=1; }
 ! grep -q -i 'Fable of its definition\|reviewer off Fable' .claude/skills/mm-endgame/SKILL.md .claude/skills/mm-task/SKILL.md ||
   { echo "skill test failed: mm-task and mm-endgame say the subagents run on Opus, not Fable"; fail=1; }
