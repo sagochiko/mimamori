@@ -16,6 +16,10 @@ struct ProtectedHomeView: View {
   /// Keeps the answer in view while the notices above it change after a handoff. Scrolling herself
   /// stops it.
   @State private var followsConsult = false
+  /// From the opening until she scrolls or starts a consult: while the rows are still being laid
+  /// out, the conversation keeps its end in view.
+  @State private var opening = true
+  @State private var position = ScrollPosition(edge: .bottom)
   @State private var noticesOpen = false
   @State private var noticesHeight: CGFloat = 0
   /// Where the strip ends inside the top, so the top is never shorter than the closed strip (#134).
@@ -143,7 +147,9 @@ struct ProtectedHomeView: View {
       // end first.
       .defaultScrollAnchor(.bottom, for: .initialOffset)
       .defaultScrollAnchor(.bottom, for: .alignment)
+      .scrollPosition($position)
       .onChange(of: model.voice.phase) { _, phase in
+        opening = false
         followsConsult = phase.followsNotices
         reveal(phase, with: proxy)
       }
@@ -155,16 +161,24 @@ struct ProtectedHomeView: View {
         if case .answered = model.voice.phase { followsConsult = false }
       }
       .onScrollPhaseChange { _, phase in
-        if phase == .interacting { followsConsult = false }
+        if phase == .interacting {
+          followsConsult = false
+          opening = false
+        }
       }
       // The conversation opens at the newest, and then gets shorter from above or below: the notices
       // load and appear, open, or come up taller with a large text size, and the keyboard comes up.
       // If the newest was in view, it stays in view. Without this, at accessibility-large the newest
       // answer was left under the field from its fourth line on (#86). During a consult the reveal
-      // above decides instead.
+      // above decides instead. While it opens, the content growing does the same: at
+      // accessibility-large a conversation longer than the screen opened with the time under the
+      // newest answer half under the field (#113). The bottom edge, padding included, is the target;
+      // the empty live row was not enough.
       .onScrollGeometryChange(for: ConversationViewport.self, of: ConversationViewport.init) { old, new in
-        guard new.height != old.height, old.showsEnd, !new.showsEnd, !followsConsult else { return }
-        proxy.scrollTo(Self.liveID, anchor: .bottom)
+        let shrank = new.height != old.height
+        let grew = opening && new.contentHeight != old.contentHeight
+        guard shrank || grew, old.showsEnd || opening, !new.showsEnd, !followsConsult else { return }
+        position.scrollTo(edge: .bottom)
       }
     }
   }
@@ -274,10 +288,12 @@ struct ProtectedHomeView: View {
 /// How tall the conversation's visible part is, and whether its end is in it.
 private struct ConversationViewport: Equatable {
   let height: CGFloat
+  let contentHeight: CGFloat
   let showsEnd: Bool
 
   init(_ geometry: ScrollGeometry) {
     height = geometry.containerSize.height
+    contentHeight = geometry.contentSize.height
     // A point of slack for rounding.
     showsEnd = geometry.visibleRect.maxY >= geometry.contentSize.height - 1
   }
