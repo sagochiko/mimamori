@@ -108,6 +108,15 @@ struct ProtectedHomeView: View {
       .onScrollPhaseChange { _, phase in
         if phase == .interacting { followsConsult = false }
       }
+      // The conversation opens at the newest, and then gets shorter from above or below: the notices
+      // load and appear, open, or come up taller with a large text size, and the keyboard comes up.
+      // If the newest was in view, it stays in view. Without this, at accessibility-large the newest
+      // answer was left under the field from its fourth line on (#86). During a consult the reveal
+      // above decides instead.
+      .onScrollGeometryChange(for: ConversationViewport.self, of: ConversationViewport.init) { old, new in
+        guard new.height != old.height, old.showsEnd, !new.showsEnd, !followsConsult else { return }
+        proxy.scrollTo(Self.liveID, anchor: .bottom)
+      }
     }
   }
 
@@ -210,6 +219,18 @@ struct ProtectedHomeView: View {
     }
     .accessibilityLabel(model.voice.micLabel)
     .accessibilityHint(model.voice.micHint)
+  }
+}
+
+/// How tall the conversation's visible part is, and whether its end is in it.
+private struct ConversationViewport: Equatable {
+  let height: CGFloat
+  let showsEnd: Bool
+
+  init(_ geometry: ScrollGeometry) {
+    height = geometry.containerSize.height
+    // A point of slack for rounding.
+    showsEnd = geometry.visibleRect.maxY >= geometry.contentSize.height - 1
   }
 }
 
