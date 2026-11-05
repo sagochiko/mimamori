@@ -17,6 +17,7 @@
 		3792C21DC96CFB08E303BF69 /* ProtectedHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC84E1DC90613B9EB0164B49 /* ProtectedHomeView.swift */; };
 		38A272F7AE944C9DF6A7E596 /* FamilyHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 516788DAB13E4B039651659A /* FamilyHomeView.swift */; };
 		3B224EED8B6094CD0792121D /* icon-48.png in Resources */ = {isa = PBXBuildFile; fileRef = 37FA4151507E2DD9222D61D8 /* icon-48.png */; };
+		42D563BF82AF5DBCD95A0ECC /* CallEndWatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A5DCBCDB127D92299354AAC /* CallEndWatcherTests.swift */; };
 		43B9311E811375C7729B1D8E /* CaseCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9CA9B42DD3FC3299CFAB648 /* CaseCardView.swift */; };
 		4799E09B550CE33AF47CF9CB /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = DE1A428163B195BBC1D9C552 /* InfoPlist.strings */; };
 		4B33968B0F409367195FDDED /* RoleSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06074B0D983CF3372440534D /* RoleSelectionView.swift */; };
@@ -119,6 +120,7 @@
 		419E10C36BDE538278F82BD1 /* FileChatLogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileChatLogStore.swift; sourceTree = "<group>"; };
 		4EDF58AC7BF0B880A61FAE9D /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		516788DAB13E4B039651659A /* FamilyHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FamilyHomeView.swift; sourceTree = "<group>"; };
+		5A5DCBCDB127D92299354AAC /* CallEndWatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallEndWatcherTests.swift; sourceTree = "<group>"; };
 		5B1160E3057AE1DBB06229E3 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		6347632638B2BBB1D921BC29 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		6636D20FA1E1AADEB45C6CB1 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
@@ -241,6 +243,7 @@
 		CAB1D113E56051C0633A3F33 /* AppTests */ = {
 			isa = PBXGroup;
 			children = (
+				5A5DCBCDB127D92299354AAC /* CallEndWatcherTests.swift */,
 				8FE0A1F8B5B0B0C8F791B5C8 /* MessageFieldTests.swift */,
 			);
 			path = AppTests;
@@ -619,6 +622,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				42D563BF82AF5DBCD95A0ECC /* CallEndWatcherTests.swift in Sources */,
 				89FAA146B103F89E0CA95418 /* MessageFieldTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

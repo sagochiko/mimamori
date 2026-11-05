@@ -44,6 +44,14 @@ struct CallTrackerTests {
     )
   }
 
+  @Test("開き直すたびに見始め直しても、測っている通話の始まりは動かさない")
+  func startedAgainKeepsStart() {
+    var tracker = CallTracker()
+    tracker.started(with: [(id: "a", hasConnected: true, hasEnded: false)], at: Self.at(0))
+    tracker.started(with: [(id: "a", hasConnected: true, hasEnded: false)], at: Self.at(60))
+    #expect(tracker.changed(id: "a", hasConnected: true, hasEnded: true, at: Self.at(300))?.duration == 300)
+  }
+
   @Test("同じ通話の終わりが2回来ても、2回は返さない")
   func endedOnce() {
     var tracker = CallTracker()
