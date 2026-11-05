@@ -985,7 +985,10 @@ staged 0 docs/design.md '毎日の声かけは既定で18時に出す' "the desi
 staged 0 docs/plan.md '- [ ] 声かけの時刻を17時から21時で選ぶ' "the plan keeps the app's own hours"
 staged 0 README.md 'The daily check-in comes at 6 pm' "the README keeps the app's own hours"
 staged 0 README.ja.md '毎日の声かけは既定で18時に出す' "the Japanese README keeps the app's own hours"
-staged 0 CONDITIONS.md '11月8日 17:00 からは提出だけをする' "the event's schedule in CONDITIONS.md keeps its times"
+# CONDITIONS.md also records the author's decisions, so it is checked like any document (PR #119, second
+# review). Its checkpoints live in the frontmatter as ISO times joined by T, and the text names their keys.
+staged 1 CONDITIONS.md '11月8日 17:00 からは提出だけをする' "a time in the text of CONDITIONS.md is refused"
+staged 0 CONDITIONS.md 'submit_window: 2026-11-08T17:00:00+09:00' "a checkpoint in the frontmatter of CONDITIONS.md passes"
 staged 1 eval/README.md '作者が 15:04 に測った' "only the root READMEs are exempt, not eval/README.md"
 # make usage writes docs/claude-usage.md, which /mm-endgame commits: the line saying when it counted gives
 # the date alone, so the commit is not stopped for the time of day it ran.
