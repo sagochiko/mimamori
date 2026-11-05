@@ -89,7 +89,13 @@ gh で Issue、PR、コメントに書くコマンドは、書き込み1つだ�
 | 審査員の立場での採点 | `mm-judge` | Fable | medium | 作った側と別の強い目で、審査の4基準から提出物の弱いところを探す |
 | 試験用の例文集め | `mm-eval-curator` | Opus | medium | 手順は決まっているが、詐欺と本物の境目の例と注入の例を見分けて形を揃える |
 
-主の Opus と Fable の effort は [`.claude/settings.json`](.claude/settings.json) の `modelSettings`、サブエージェントの model と effort は `.claude/agents/*.md` の frontmatter で決める。Agent ツールで呼ぶときは model を省くか、表と同じものを渡す。呼ぶときの model は定義より優先されるので、作者のグローバルの「単純な作業は Sonnet」の決まりはこの表の役には当てはめない。effort の `max` は使わない。理由は [`docs/harness.md`](docs/harness.md) の「サブエージェント」に書いた。
+主の Opus と Fable の effort は [`.claude/settings.json`](.claude/settings.json) の `modelSettings`、サブエージェントの model と effort は `.claude/agents/*.md` の frontmatter で決める。Agent ツールで呼ぶときは model を省くか、表と同じものを渡す。呼ぶときの model は定義より優先されるので、表の役に Sonnet を渡すのは次の軽い作業だけにする(2026年11月6日に作者が決めた。「軽めのレビューとか作業」は Sonnet に振る)。
+
+- `mm-reviewer` に、挙動の変わらない小さな差分を読ませるとき。ビルド番号だけの PR、`docs/audits/raw/` の原文や文書の数行の直し。コード、フック、設定、プロンプト、規則を変える PR は表どおり Fable で読む
+- `mm-verifier` に、状態を見るだけの確かめ(ビルドが通るか、ファイルや設定の値を読む)をさせるとき。シミュレータの画面が設計どおりかを見るときは表どおり Opus
+- Web や公式文書の調べもの、リポジトリの探しもの(`web-fetch`、`Explore`、`general-purpose`)
+
+effort の `max` は使わない。理由は [`docs/harness.md`](docs/harness.md) の「サブエージェント」に書いた。
 
 作品の中で使うモデルは別で、判定に `claude-haiku-5-5`、母との会話とスクショに `claude-sonnet-5-5`、急がない調べものと引き継ぎに Managed Agents を使う(`docs/design.md`)。モデル ID や API の形は記憶で書かず `claude-docs` の MCP か `/claude-api` で確かめる。
 
