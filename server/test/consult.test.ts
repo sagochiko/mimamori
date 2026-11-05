@@ -2500,7 +2500,14 @@ describe("a question with nothing to point at, and a sign after a case without o
   it.each([
     ["the police in this turn", "これ、警察から", []],
     ["the police's staff in this turn", "それ警察の人", []],
-    ["a part of the script in this turn", "それって逮捕状のこと", []],
+    // Review of PR #117, second round: the rules see nothing in this turn, so only the earlier words or
+    // MONEY_MOVE say what it is.
+    [
+      "a part of the script in her earlier words",
+      UNCLEAR,
+      [turn("protected", "それって逮捕状のこと"), turn("ai", ASK_AGAIN)],
+    ],
+    ["moving money in this turn", "それって安全な口座のこと", []],
     ["the police in her earlier words", UNCLEAR, [turn("protected", "これ、警察から"), turn("ai", ASK_AGAIN)]],
   ])("still hands it to the family when Claude cannot answer and %s names it", async (_label, text, history) => {
     const fam = await setupFamily();
