@@ -654,6 +654,20 @@ function cardReasons(said: Said, rule: RuleResult, reasons: string[], steered: b
  * text aimed at the AI or at keeping the family out (`steered`), only the fixed lines are used, never
  * Claude's topic or reasons: they are the lines such text would try to steer.
  */
+/**
+ * Her question only points back, her earlier words told the script, and what it points at is part of
+ * it: her last earlier turn that says something (namesSomething; "どういうこと?" in between says
+ * nothing) has a part of the script. "それってどういうこと" after "Wi-Fi がつながらない" is about the
+ * Wi-Fi, even with the script told before it (#128).
+ */
+function pointsBackAtScript(said: Said): boolean {
+  if (!pointsBack(said.text) || !scriptTold(said.earlier)) return false;
+  const last = said.earlier.findLast((t) => namesSomething(t));
+  if (last === undefined) return false;
+  const parts = scriptParts(last);
+  return parts.police.length > 0 || parts.caller || parts.money;
+}
+
 function summaryOf(
   said: Said,
   rule: RuleResult,
@@ -661,13 +675,13 @@ function summaryOf(
   reasons: string[],
   steered: boolean,
 ): string {
+  // A fixed line, used as it is like the rules' ones: steered or not, and even when she said
+  // "警察を名乗る電話" herself.
+  if (pointsBackAtScript(said)) return POLICE_TOPIC;
   const fixed = new Set(fixedLines(said, rule));
   // Not even "安全な…" as a name for the case: the family must not read it as a verdict.
   const own = (line: string) =>
     fixed.has(line) || (!steered && usable(line) && !/安全/.test(line) && !quotes(line, allOf(said)));
-  // A fixed line, used as it is like the rules' ones: steered or not, and even when she said
-  // "警察を名乗る電話" herself.
-  if (pointsBack(said.text) && scriptTold(said.earlier)) return POLICE_TOPIC;
   const topic = claude?.topic && !steered ? [claude.topic] : [];
   const candidates = [...topic, ...reasons.filter((r) => r !== PLACEHOLDER_REASON), ...rule.reasons];
   return candidates.map((l) => l.trim()).find((l) => l !== "" && own(l)) ?? FALLBACK_TOPIC;
