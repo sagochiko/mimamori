@@ -56,6 +56,20 @@ const APP_RETURN = "mimamori://gmail";
 const EXPIRED_BODY = "Gmail の許可の取り直しが要ります";
 const RENEW_SOON_BODY = "Gmail の許可がもうすぐ切れます";
 
+/**
+ * The Google OAuth client, or null while the author has not set it up. GOOGLE_CLIENT_ID and
+ * GOOGLE_CLIENT_SECRET are left out of secrets.required in wrangler.jsonc on purpose: `wrangler deploy`
+ * fails while a required secret is missing (developers.cloudflare.com/workers/wrangler/configuration/
+ * #secrets-configuration-property), and the rest of the server must keep deploying until the author
+ * has made the client. So they are not in the generated Env, and are read here by name.
+ */
+function googleClient(env: Env): { id: string; secret: string } | null {
+  const vars = env as unknown as Record<string, unknown>;
+  const id = vars.GOOGLE_CLIENT_ID;
+  const secret = vars.GOOGLE_CLIENT_SECRET;
+  return typeof id === "string" && id !== "" && typeof secret === "string" && secret !== "" ? { id, secret } : null;
+}
+
 interface GrantState {
   /** Family id. */
   f: string;
@@ -82,13 +96,14 @@ function back(result: "connected" | "denied" | "failed"): Response {
 export async function connectRoute(request: Request, env: Env): Promise<Response> {
   const me = await requireMember(request, env);
   if (me.role !== "protected") return errorResponse(403, "protected_only");
-  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return errorResponse(503, "gmail_not_configured");
+  const client = googleClient(env);
+  if (!client) return errorResponse(503, "gmail_not_configured");
 
   // Sealed (AES-GCM), so it can be neither read nor made outside the server.
   const state: GrantState = { f: me.familyId, t: Date.now() };
   const url = new URL(AUTH_URL);
   url.search = new URLSearchParams({
-    client_id: env.GOOGLE_CLIENT_ID,
+    client_id: client.id,
     redirect_uri: redirectUri(request),
     response_type: "code",
     scope: GMAIL_SCOPE,
@@ -129,6 +144,8 @@ export async function callbackRoute(request: Request, env: Env): Promise<Respons
   const code = params.get("code");
   if (!code) return back("failed");
 
+  const client = googleClient(env);
+  if (!client) return back("failed");
   const family = await env.DB.prepare("SELECT id FROM families WHERE id = ?").bind(state.f).first<{ id: string }>();
   if (!family) return back("failed");
 
@@ -137,8 +154,8 @@ export async function callbackRoute(request: Request, env: Env): Promise<Respons
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       code,
-      client_id: env.GOOGLE_CLIENT_ID,
-      client_secret: env.GOOGLE_CLIENT_SECRET,
+      client_id: client.id,
+      client_secret: client.secret,
       redirect_uri: redirectUri(request),
       grant_type: "authorization_code",
     }).toString(),
@@ -224,7 +241,7 @@ async function currentHistoryId(accessToken: string): Promise<string | null> {
 
 type Refreshed = { kind: "ok"; accessToken: string } | { kind: "dead" } | { kind: "error" };
 
-async function refresh(env: Env, sealed: string): Promise<Refreshed> {
+async function refresh(env: Env, client: { id: string; secret: string }, sealed: string): Promise<Refreshed> {
   let refreshToken: string;
   try {
     refreshToken = await openText(env.TOKEN_ENC_KEY, sealed);
@@ -236,8 +253,8 @@ async function refresh(env: Env, sealed: string): Promise<Refreshed> {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: env.GOOGLE_CLIENT_ID,
-      client_secret: env.GOOGLE_CLIENT_SECRET,
+      client_id: client.id,
+      client_secret: client.secret,
       grant_type: "refresh_token",
       refresh_token: refreshToken,
     }).toString(),
@@ -507,7 +524,8 @@ function htmlToText(html: string): string {
  * access token, then the mail that came since last_history_id. Oldest grants first, a few per tick, each only when the budget can at least refresh and read one page.
  */
 export async function watchGmail(env: Env, now: number, budget: ExternalBudget): Promise<void> {
-  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return;
+  const client = googleClient(env);
+  if (!client) return;
   const rows = await env.DB.prepare(
     `SELECT family_id, refresh_token_enc, granted_at, last_history_id, expired_notified_at
        FROM gmail_auth ORDER BY granted_at LIMIT ?`,
@@ -518,7 +536,7 @@ export async function watchGmail(env: Env, now: number, budget: ExternalBudget):
   for (const grant of rows.results) {
     await warnBeforeExpiry(env, grant, now, budget);
     if (budget.remaining < CALLS_TO_START || !budget.take()) break;
-    const token = await refresh(env, grant.refresh_token_enc);
+    const token = await refresh(env, client, grant.refresh_token_enc);
     if (token.kind === "dead") {
       await endGrant(env, grant, budget);
       continue;

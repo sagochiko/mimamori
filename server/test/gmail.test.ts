@@ -31,6 +31,9 @@ const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me";
 const SANDBOX = "https://api.sandbox.push.apple.com";
 const DAY = 24 * 3600_000;
+/** Set in vitest.config.ts; not in the generated Env (see googleClient in src/gmail.ts). */
+const GOOGLE_ID = "test-client.apps.googleusercontent.com";
+const GOOGLE_SECRET = "test-client-secret";
 
 /** Level 1 by the rules (a look-alike domain and a deadline), not confident: Claude should look. */
 const SCAM_SUBJECT = "【国税庁】未納の税金のお知らせ";
@@ -90,7 +93,7 @@ function useFakeGoogle() {
     http.post(TOKEN_URL, async ({ request }) => {
       calls.token += 1;
       const form = new URLSearchParams(await request.text());
-      if (form.get("client_id") !== env.GOOGLE_CLIENT_ID || form.get("client_secret") !== env.GOOGLE_CLIENT_SECRET) {
+      if (form.get("client_id") !== GOOGLE_ID || form.get("client_secret") !== GOOGLE_SECRET) {
         return HttpResponse.json({ error: "invalid_client" }, { status: 401 });
       }
       if (form.get("grant_type") === "refresh_token") {
@@ -317,7 +320,7 @@ describe("GET /gmail/connect", () => {
     const url = new URL(body.url);
     expect(url.origin + url.pathname).toBe("https://accounts.google.com/o/oauth2/v2/auth");
     const q = url.searchParams;
-    expect(q.get("client_id")).toBe(env.GOOGLE_CLIENT_ID);
+    expect(q.get("client_id")).toBe(GOOGLE_ID);
     expect(q.get("redirect_uri")).toBe("https://mimamori.test/gmail/callback");
     expect(q.get("response_type")).toBe("code");
     expect(q.get("scope")).toBe("https://www.googleapis.com/auth/gmail.readonly");
@@ -640,8 +643,9 @@ describe("the 5-minute watch", () => {
     const { queueEnv } = fakeQueue();
     vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    // The refresh call only; nothing left for the two devices.
-    await watchGmail(queueEnv, Date.now(), new ExternalBudget(1));
+    // The refresh call, and one ticket left for the two devices.
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget(2));
+    expect(calls.token).toBe(1);
     expect(pushed).toHaveLength(0);
     expect(await authRow(f.owner.familyId)).not.toBeNull();
 
@@ -680,6 +684,20 @@ describe("the 5-minute watch", () => {
     deliver(box, { id: "m1", from: SCAM_FROM, subject: SCAM_SUBJECT, body: SCAM_BODY });
     await watchGmail(queueEnv, grantedAt + RENEW_NOTICE_AFTER_MS + 10 * 60_000, new ExternalBudget());
     expect(sent).toHaveLength(1);
+  });
+
+  it("gives the advance notice back to a later tick when the budget cannot cover the family", async () => {
+    const f = await family();
+    await grant(f.owner.familyId, { grantedAt: Date.now() - RENEW_NOTICE_AFTER_MS - 60_000 });
+    const { queueEnv } = fakeQueue();
+
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget(1));
+    expect(pushed).toHaveLength(0);
+    expect((await authRow(f.owner.familyId))?.expired_notified_at).toBeNull();
+
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(pushed.map((p) => p.token).sort()).toEqual([f.tok.owner, f.tok.sister].sort());
+    expect((await authRow(f.owner.familyId))?.expired_notified_at).not.toBeNull();
   });
 
   it("tells the family that the grant ran out even after the advance notice", async () => {

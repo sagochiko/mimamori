@@ -39,8 +39,11 @@
     "APNS_TOPIC": "com.sagochiko.mimamori"
   },
 
-  // Set by the author with `wrangler secret put`; the shape is in .dev.vars.example.
+  // Set by the author with `wrangler secret put`; the shape is in .dev.vars.example. GOOGLE_CLIENT_ID and
+  // GOOGLE_CLIENT_SECRET (Gmail, src/gmail.ts) are set the same way but not listed here, since deploy
+  // fails while a listed secret is missing and the Google client comes later. Until they are set, the
+  // Gmail routes answer 503 and the watch does nothing. Add them here once the author has set them.
   "secrets": {
-    "required": ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID", "ANTHROPIC_API_KEY", "TOKEN_ENC_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]
+    "required": ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID", "ANTHROPIC_API_KEY", "TOKEN_ENC_KEY"]
   }
 }

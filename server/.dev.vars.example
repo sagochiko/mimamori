@@ -16,5 +16,6 @@ TOKEN_ENC_KEY="..."
 
 # Google OAuth client (Web application) for reading the protected member's Gmail (src/gmail.ts).
 # Made by the author in Google Cloud; the redirect URI registered there is https://<host>/gmail/callback.
+# Not in secrets.required yet (wrangler.jsonc), so `wrangler dev` does not load these two until they are.
 GOOGLE_CLIENT_ID="....apps.googleusercontent.com"
 GOOGLE_CLIENT_SECRET="..."

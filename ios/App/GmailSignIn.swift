@@ -28,8 +28,8 @@ enum GmailSignIn {
         continuation.resume(returning: result)
       }
       session.presentationContextProvider = anchor
-      // No cookies kept between grants: she signs in to her own account each time.
-      session.prefersEphemeralWebBrowserSession = true
+      // Safari's sign-in is shared (not ephemeral), so taking the grant again every 7 days is mostly a tap
+      // on her account instead of typing the password.
       current = session
       if !session.start() {
         current = nil
