@@ -50,10 +50,11 @@ public enum DailyCheckIn {
   public static let prompt = "今日、知らない人から電話や連絡はあった？"
   /// One notification per day for this many days from today, rebuilt each time the app comes to the
   /// front. A repeating trigger cannot skip the day a call was already asked about, so each day is
-  /// its own request. iOS keeps only so many pending local notifications (UILocalNotification's
-  /// documentation names the soonest 64; UNUserNotificationCenter's names no number), so this stays
-  /// at half of that and leaves room for the other prompts. If she opens the app less than once a
-  /// month, the prompt stops until she does.
+  /// its own request. iOS keeps only so many pending local notifications: UILocalNotification's page
+  /// says "the system keeps the soonest-firing 64 notifications", and the page of
+  /// UNUserNotificationCenter.add(_:) names no number (both read on 2026年11月5日). This stays at
+  /// half of 64 and leaves room for the other prompts. If she opens the app less than once a month,
+  /// the prompt stops until she does.
   public static let daysAhead = 30
 
   /// The days and hour to ask, soonest first, as year, month, day, hour and minute in `calendar`
