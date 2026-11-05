@@ -2411,3 +2411,288 @@ describe("the conversation so far", () => {
     expect(familyPushes(fam)).toHaveLength(0);
   });
 });
+
+// #114, on the author's iPhone: "それってどういうこと" under the day before's conversation went to the
+// family as a level 2 case. The app sends the turns of the last 60 minutes only (ChatLog.history), so
+// nothing told Claude what "それ" was; Claude said it could not answer, and every handoff opened a
+// case. Then the fake police at level 2 joined that open case at the same level: the card kept the
+// question's line, and nobody was told again. And speech recognition wrote 警察を名乗る as 警察を乗る,
+// so the rules did not see the caller.
+describe("a question with nothing to point at, and a sign after a case without one (#114)", () => {
+  const ASK_AGAIN = "何のことか、もう一度くわしく教えて";
+  const HANDOFF = "これは家族と一緒にやろう。家族に伝えました";
+  const LOW_CONCERN = "お金や暗証番号を聞かれたら止めて、家族に確かめて";
+  const UNCLEAR = "それってどういうこと";
+  // One part of the script (潔白), and no caller the rules see: Claude is asked.
+  const ONE_PART = "知らない番号から電話があって、潔白を証明してって";
+  const turn = (role: "protected" | "ai", text: string): ConsultTurn => ({ role, text });
+  // What Claude may say when it cannot tell what "それ" is.
+  const cannotTell = () =>
+    help({ action: "前のお話が分からないので、家族に聞いてみてね", handoff: true, topic: "質問の意味の確認" });
+  const policeSign = (over: Partial<ClaudeConsult> = {}) =>
+    scam({
+      level: 2,
+      reasons: ["警察を名乗る相手が潔白の証明を求めた"],
+      basis: "警察を名乗る相手の話は、詐欺で使われる説明と一致しています。",
+      action: "お金や口座の話には応じず、いったん電話を切って家族に確かめて",
+      topic: "警察を名乗る電話の相談",
+      ...over,
+    });
+
+  it("asks her what she means and tells nobody when Claude cannot answer it with nothing before it", async () => {
+    const fam = await setupFamily();
+    const deps = fakes(cannotTell());
+    const answer = await consult(consultEnv, motherOf(fam), UNCLEAR, new ExternalBudget(), deps);
+    expect(deps.claudeCalls).toBe(1);
+    expect(answer).toEqual({ reply: ASK_AGAIN, speak: ASK_AGAIN, handoff: false });
+    expect(await alertsOf(fam.familyId)).toHaveLength(0);
+    expect(await casesOf(fam.familyId)).toHaveLength(0);
+    expect(familyPushes(fam)).toHaveLength(0);
+  });
+
+  it("asks again, the same way, when her earlier words in the conversation only point back too", async () => {
+    const fam = await setupFamily();
+    // As the author's iPhone sent it the third time.
+    const history = [
+      turn("protected", UNCLEAR),
+      turn("ai", HANDOFF),
+      turn("protected", UNCLEAR),
+      turn("ai", LOW_CONCERN),
+    ];
+    const answer = await consult(
+      consultEnv,
+      motherOf(fam),
+      UNCLEAR,
+      new ExternalBudget(),
+      fakes(cannotTell()),
+      history,
+    );
+    expect(answer).toEqual({ reply: ASK_AGAIN, speak: ASK_AGAIN, handoff: false });
+    expect(await casesOf(fam.familyId)).toHaveLength(0);
+    expect(familyPushes(fam)).toHaveLength(0);
+  });
+
+  it("still hands it to the family when Claude cannot answer a question that points back at her trouble", async () => {
+    const fam = await setupFamily();
+    const answer = await consult(consultEnv, motherOf(fam), UNCLEAR, new ExternalBudget(), fakes(cannotTell()), [
+      turn("protected", "ストレージがいっぱいと出た"),
+      turn("ai", "設定の「一般」から「iPhone ストレージ」を開くと、空きを作れます"),
+    ]);
+    expect(answer).toMatchObject({ reply: HANDOFF, handoff: true });
+    expect(await casesOf(fam.familyId)).toHaveLength(1);
+    expect(familyPushes(fam)).toHaveLength(2);
+  });
+
+  it("still hands a topic the AI does not guide to the family with nothing before it", async () => {
+    const fam = await setupFamily();
+    const answer = await consult(
+      consultEnv,
+      motherOf(fam),
+      "それってどうやって初期化するの",
+      new ExternalBudget(),
+      fakes(cannotTell()),
+    );
+    expect(answer).toMatchObject({ reply: HANDOFF, handoff: true });
+    expect(await casesOf(fam.familyId)).toHaveLength(1);
+  });
+
+  it("still warns her and tells the family when Claude sees a sign in it", async () => {
+    const fam = await setupFamily();
+    const answer = await consult(
+      consultEnv,
+      motherOf(fam),
+      UNCLEAR,
+      new ExternalBudget(),
+      fakes(policeSign({ handoff: true })),
+    );
+    expect(answer.handoff).toBe(true);
+    expect((await alertsOf(fam.familyId))[0]?.level).toBe(2);
+    expect(familyPushes(fam)).toHaveLength(2);
+  });
+
+  it("still hands it to the family when Claude gives nothing", async () => {
+    const fam = await setupFamily();
+    const answer = await consult(consultEnv, motherOf(fam), UNCLEAR, new ExternalBudget(), fakes(null));
+    expect(answer).toMatchObject({ reply: "うまく答えられませんでした。家族に伝えました", handoff: true });
+  });
+
+  it.each([
+    [
+      "Claude could not answer",
+      "よく分からない画面が出て困ってる",
+      () => help({ handoff: true, topic: "画面の表示の相談" }),
+    ],
+    [
+      "it is a topic the AI does not guide",
+      "写真を全部消したいんだけど、どうすればいい？",
+      () => help({ topic: "写真の削除の相談" }),
+    ],
+    ["Claude gave nothing", "よく分からない画面が出て困ってる", () => null],
+  ])(
+    "puts a sign of a scam on the card and tells the family when it joins a level 2 case opened because %s",
+    async (_label, first, claude) => {
+      const fam = await setupFamily();
+      await consult(consultEnv, motherOf(fam), first, new ExternalBudget(), fakes(claude()));
+      const [opened] = await alertsOf(fam.familyId);
+      expect(opened?.level).toBe(2);
+      pushes = [];
+
+      const answer = await consult(
+        consultEnv,
+        motherOf(fam),
+        ONE_PART,
+        new ExternalBudget(),
+        fakes(policeSign(), T0 + 3 * 60_000),
+      );
+      expect(answer.handoff).toBe(true);
+      expect(await casesOf(fam.familyId)).toHaveLength(1);
+      const [joined] = await alertsOf(fam.familyId);
+      expect(joined).toMatchObject({ id: opened?.id, level: 2, summary: "警察を名乗る電話の相談" });
+      expect(JSON.parse(joined?.reasons ?? "[]")).toEqual(["警察を名乗る相手が潔白の証明を求めた"]);
+      expect(familyPushes(fam).map((p) => [p.title, p.body])).toEqual([
+        ["2段階", "警察を名乗る電話の相談"],
+        ["2段階", "警察を名乗る電話の相談"],
+      ]);
+    },
+  );
+
+  it("tells nobody again for the next sign of the same level once the card shows one", async () => {
+    const fam = await setupFamily();
+    await consult(
+      consultEnv,
+      motherOf(fam),
+      "よく分からない画面が出て困ってる",
+      new ExternalBudget(),
+      fakes(help({ handoff: true })),
+    );
+    await consult(consultEnv, motherOf(fam), ONE_PART, new ExternalBudget(), fakes(policeSign(), T0 + 3 * 60_000));
+    pushes = [];
+
+    await consult(
+      consultEnv,
+      motherOf(fam),
+      "また同じ人から電話がかかってきた",
+      new ExternalBudget(),
+      fakes(policeSign({ topic: "同じ相手からの電話の相談" }), T0 + 4 * 60_000),
+    );
+    expect((await alertsOf(fam.familyId))[0]?.summary).toBe("警察を名乗る電話の相談");
+    expect(familyPushes(fam)).toHaveLength(0);
+  });
+
+  it("keeps the card and tells nobody again when a sign of the same level joins a case that had one", async () => {
+    const fam = await setupFamily();
+    await consult(
+      consultEnv,
+      motherOf(fam),
+      POLICE_CALL,
+      new ExternalBudget(),
+      fakes(scam({ level: 2, topic: "警察を名乗る人からの電話" })),
+    );
+    pushes = [];
+    await consult(
+      consultEnv,
+      motherOf(fam),
+      ONE_PART,
+      new ExternalBudget(),
+      fakes(policeSign({ topic: "潔白の証明を求める電話" }), T0 + 3 * 60_000),
+    );
+    expect((await alertsOf(fam.familyId))[0]?.summary).toBe("警察を名乗る人からの電話");
+    expect(familyPushes(fam)).toHaveLength(0);
+  });
+
+  it("does not let a handoff of the same level take the line of a case that had no sign either", async () => {
+    const fam = await setupFamily();
+    await consult(
+      consultEnv,
+      motherOf(fam),
+      "よく分からない画面が出て困ってる",
+      new ExternalBudget(),
+      fakes(help({ handoff: true, topic: "画面の表示の相談" })),
+    );
+    pushes = [];
+    await consult(
+      consultEnv,
+      motherOf(fam),
+      "LINE のトーク履歴を消したい",
+      new ExternalBudget(),
+      fakes(help({ topic: "トーク履歴の相談" }), T0 + 3 * 60_000),
+    );
+    expect((await alertsOf(fam.familyId))[0]?.summary).toBe("画面の表示の相談");
+    expect(familyPushes(fam)).toHaveLength(0);
+  });
+
+  it("says 'not reached' when the notice of that sign could not go out", async () => {
+    const fam = await setupFamily();
+    await consult(
+      consultEnv,
+      motherOf(fam),
+      "よく分からない画面が出て困ってる",
+      new ExternalBudget(),
+      fakes(help({ handoff: true })),
+    );
+    network.use(http.post(`${SANDBOX}/3/device/:token`, () => new HttpResponse(null, { status: 500 })));
+    const original = console.error;
+    console.error = () => {};
+    let answer;
+    try {
+      answer = await consult(
+        consultEnv,
+        motherOf(fam),
+        ONE_PART,
+        new ExternalBudget(),
+        fakes(policeSign(), T0 + 3 * 60_000),
+      );
+    } finally {
+      console.error = original;
+    }
+    expect(answer.reply).toBe(
+      "警察を名乗る相手の話は、詐欺で使われる説明と一致しています。お金や口座の話には応じず、いったん電話を切って家族に確かめて。家族に届いていません。急ぐなら電話して",
+    );
+    expect((await casesOf(fam.familyId))[0]?.family_notified_at).toBeNull();
+  });
+
+  it("goes as on the author's iPhone: no case for the questions, and the misheard fake police is the script", async () => {
+    const fam = await setupFamily();
+    // Claude's answers to the three questions changed each time on the author's iPhone.
+    const answers = [
+      cannotTell(),
+      scam({ level: 3, reasons: [], basis: "", action: LOW_CONCERN, topic: null }),
+      cannotTell(),
+    ];
+    const history: ConsultTurn[] = [];
+    for (const [i, claude] of answers.entries()) {
+      const answer = await consult(
+        consultEnv,
+        motherOf(fam),
+        UNCLEAR,
+        new ExternalBudget(),
+        fakes(claude, T0 + i * 20_000),
+        history.slice(-6),
+      );
+      expect(answer.handoff).toBe(false);
+      history.push(turn("protected", UNCLEAR), turn("ai", answer.reply));
+    }
+    expect(await casesOf(fam.familyId)).toHaveLength(0);
+    expect(familyPushes(fam)).toHaveLength(0);
+
+    const deps = fakes(policeSign(), T0 + 3 * 60_000);
+    const answer = await consult(
+      consultEnv,
+      motherOf(fam),
+      "警察を乗る電話が来て潔白を証明してって",
+      new ExternalBudget(),
+      deps,
+      history.slice(-6),
+    );
+    expect(deps.claudeCalls).toBe(0);
+    expect(answer).toEqual({ reply: POLICE_REPLY, speak: POLICE_REPLY, handoff: true });
+    const cases = await casesOf(fam.familyId);
+    expect(cases).toHaveLength(1);
+    const alert = (await alertsOf(fam.familyId)).find((a) => a.id === cases[0]?.alert_id);
+    expect(alert).toMatchObject({ level: 1, summary: "警察を名乗る電話の相談" });
+    expect(familyPushes(fam).map((p) => [p.title, p.body])).toEqual([
+      ["1段階", "警察を名乗る電話の相談"],
+      ["1段階", "警察を名乗る電話の相談"],
+    ]);
+  });
+});
