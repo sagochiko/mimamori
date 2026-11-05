@@ -245,10 +245,14 @@ function percent(count: number, total: number): string {
   return total === 0 ? "-" : `${((count / total) * 100).toFixed(1)}% (${count}/${total})`;
 }
 
+/**
+ * The date alone, "2026年11月5日". RESULTS.md is public, and public records give the date alone; the
+ * full ts stays in results.jsonl.
+ */
 function japaneseDate(ts: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(ts);
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ts);
   if (!m) return ts;
-  return `${m[1]}年${Number(m[2])}月${Number(m[3])}日 ${m[4]}:${m[5]}`;
+  return `${m[1]}年${Number(m[2])}月${Number(m[3])}日`;
 }
 
 export interface RunRecord {
