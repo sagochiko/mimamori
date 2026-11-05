@@ -95,6 +95,9 @@ final class MessageTextView: UITextView {
     textContainerInset = .zero
     textContainer.lineFragmentPadding = 0
     isScrollEnabled = false
+    // Left to UIKit, this was false on a simulator where accessibility had never been on
+    // (com.apple.Accessibility AccessibilityEnabled 0) and true once it had been (#86).
+    isAccessibilityElement = true
 
     placeholderLabel.textColor = .placeholderText
     placeholderLabel.adjustsFontForContentSizeCategory = true
