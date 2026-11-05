@@ -296,6 +296,39 @@ describe("a caller from the police, in more of her words", () => {
   });
 });
 
+// #114: on the author's iPhone, speech recognition wrote 警察を名乗る as 警察を乗る (な dropped), and
+// the script was missed. 乗る, or 載る for the same sound, right after を or って is not how one rides
+// anything ("車に乗る"). After と it is (review of PR #117: "警察官と乗った車で"), and 乗り越える is not 名乗る.
+describe("a caller from the police, with 名乗る heard as 乗る (#114)", () => {
+  it.each([
+    ["を乗る", "警察を乗る電話が来て潔白を証明してって"],
+    ["を乗った", "警察を乗った人から電話で、口座が犯罪に使われてるって"],
+    ["を乗り with a pause", "警察を乗り、逮捕状が出てるって言われた"],
+    ["って乗る", "警察って乗る人から、ほかの人には言わないでって言われた"],
+    ["を載る, the same sound in another kanji", "警察を載る電話が来て潔白を証明してって"],
+    ["署の人を載った", "警察署の人を載った男から、逮捕状が出てるって"],
+  ])("makes %s next to a part of the script the script", (_label, text) => {
+    expect(consultByRules(text).script).toBe(true);
+  });
+
+  it.each([
+    ["riding in a police car", "警察の車に乗るように言われて、潔白を証明してって"],
+    ["a bus to the police station", "警察署へ行くバスに乗って、口座が悪用されてないか聞いてきた"],
+    ["riding with an officer", "警察官とパトカーに乗って、逮捕状のことを聞いた"],
+    ["a warning about the scam", "警察を乗る詐欺が増えてて、潔白を証明しろって言うらしい"],
+    // Review of PR #117: riding with someone, and getting over something.
+    ["a car she rode in with an officer", "警察官と乗った車で、口座のことを聞かれた"],
+    ["riding home with an officer", "おまわりさんと乗って帰ってきた、口座が犯罪に使われてるって"],
+    ["getting over the police", "警察を乗り越えて潔白を証明"],
+    ["a lift with the station's staff", "警察署の人と乗るエレベーターで逮捕状の話を聞いた"],
+    // Review of PR #117, second round: 載る after って is how one says something was shown or printed.
+    ["the police shown on the screen", "画面に警察って載ってたけど、逮捕状って何"],
+  ])("does not make %s a caller", (_label, text) => {
+    expect(matchSpans(POLICE_CALLER, text.normalize("NFKC").toLowerCase())).toEqual([]);
+    expect(consultByRules(text).script).toBe(false);
+  });
+});
+
 // #81: she got the call herself and adds what she thinks ("詐欺かも"). That is not passing on a
 // warning, so the script stays level 1 by the rules alone. When her words also pass on a warning
 // she heard, the rules do not take it on themselves, and Claude, which reads all of it, answers.

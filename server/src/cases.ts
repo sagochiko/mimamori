@@ -290,7 +290,8 @@ async function sendCaseNotice(
 
 /**
  * Tells the family again about a case they were already told of, because its level just became
- * heavier (a later consultation in the same conversation). When the budget or APNs fails, it is
+ * heavier (a later consultation in the same conversation), or a sign of a scam came to a level 2
+ * case that had none (#114, src/consult.ts). When the budget or APNs fails, it is
  * logged and the case goes back to waiting for its first notice, so the 5-minute tick
  * (sendFirstNotices) sends it with the heavier level. Returns whether a family device took it.
  */
