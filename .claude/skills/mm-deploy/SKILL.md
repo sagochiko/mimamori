@@ -109,7 +109,7 @@ rm -rf "$DD"
 
 Expect `https://<HOST>` and `messagefilter:<HOST>` twice. `<scratchpad>` is this session's scratchpad directory.
 
-3. Commit (`chore(ios): API の宛先を本番の Workers にする`) and open a PR. Then `/mm-device` puts it on the author's phone and `/mm-release` sends it to TestFlight; the changed Associated Domains entry makes the next signed build refresh its profiles.
+3. Commit (`chore(ios): API の宛先を本番の Workers にする`) and open a PR. After it merges, `/mm-release` sends a build to TestFlight, to the internal group 「家族」 for the author to check on the iPhone; `/mm-device` is only for a check that needs a Debug launch argument. The changed Associated Domains entry makes the next signed build refresh its profiles.
 
 The SMS extension can only defer to the server once the Worker serves `/.well-known/apple-app-site-association` with a `messagefilter` entry. Apple's "Creating a message filter app extension" says to set the domain up as for Shared Web Credentials, with `messagefilter` in place of `webcredentials`. That belongs to task 5; until then the step 5 request stays 404.
 
