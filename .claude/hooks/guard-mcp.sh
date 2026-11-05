@@ -24,4 +24,4 @@ case $tool in
   *) exit 0 ;;
 esac
 [[ -n "$agent" ]] || exit 0
-block guard-mcp "blocked: $tool from the subagent $agent would change the simulator, project, or scheme for the whole session. Use the defaults the main session set (session_show_defaults shows them) or pass the simulator's udid on each call. If the defaults are wrong, say so in the report and the main session changes them."
+block guard-mcp "blocked: $tool from the subagent $agent would change the simulator, project, or scheme for the whole session. Use the defaults the main session set (session_show_defaults shows them); the UI tools take no simulator argument. If the defaults are wrong, do not use mobilebuildmcp, say so in the report, and the main session changes them."
