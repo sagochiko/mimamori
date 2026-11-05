@@ -76,7 +76,7 @@ chmod +x "$launcher"
 open -a Terminal "$launcher"
 ```
 
-The heredoc is unquoted on purpose: the repository path, the model, the prompt with the brief path, and the `claude` binary are filled in now, from this shell where `claude` is on the PATH. The session starts in the main checkout, so it loads the project's settings and hooks. `--model` takes an alias such as `opus` and applies to the launched session only (https://code.claude.com/docs/en/cli-reference, https://code.claude.com/docs/en/model-config). It is passed even though Opus is the default, so a model the author picked earlier with `/model` does not carry into the new window. The project's `modelSettings` sets `medium` effort for Opus 5.5.
+The heredoc is unquoted on purpose: the repository path, the model, the prompt with the brief path, and the `claude` binary are filled in now, from this shell where `claude` is on the PATH. The session starts in the main checkout, so it loads the project's settings and hooks. `--model` takes an alias such as `opus` and applies to the launched session only (https://code.claude.com/docs/en/cli-reference, https://code.claude.com/docs/en/model-config). It is passed even though Opus is the default, because "`/model` saves your choice as the default for new sessions by writing the `model` field in your user settings" (model-config): a model the author picked earlier with `/model` would otherwise carry into the new window. The project's `modelSettings` sets `medium` effort for Opus 5.5.
 
 Open the `.command` file with `open -a Terminal`. Do not drive Terminal with AppleScript (`tell application "Terminal" to do script`): called from a Claude Code shell it times out. Opening a `.command` file needs no extra permission.
 
