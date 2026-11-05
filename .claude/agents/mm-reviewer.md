@@ -3,7 +3,7 @@ name: mm-reviewer
 description: Independent reviewer for one mimamori change. Reads the diff against the plan, design, and hackathon rules and reports real defects. Cannot edit. Use after mm-implementer and mm-verifier, before merging.
 disallowedTools: Edit, Write, NotebookEdit
 model: fable
-effort: xhigh
+effort: medium
 color: purple
 maxTurns: 40
 ---

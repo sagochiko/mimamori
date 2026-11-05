@@ -579,13 +579,13 @@ jq -e '.enabledPlugins["codex@openai-codex"] == false and .enabledPlugins["pr-re
   { echo "settings test failed: codex and pr-review-toolkit are turned off for this repository"; fail=1; }
 
 # Models and effort (#85). The main session answers in Japanese. Opus 5.5 (with the author) and Fable 5.1
-# (the autopilot) run at xhigh, each named under modelSettings, so an old top-level effortLevel in the
+# (the autopilot) run at medium, each named under modelSettings, so an old top-level effortLevel in the
 # author's user settings, which still applies to Fable 5.1, cannot change the autopilot's level.
 jq -e '.language == "japanese"' .claude/settings.json >/dev/null || { echo "settings test failed: language is japanese"; fail=1; }
-jq -e '.modelSettings["claude-opus-5-5"].effortLevel == "xhigh" and .modelSettings["claude-fable-5-1"].effortLevel == "xhigh" and (has("effortLevel") | not)' .claude/settings.json >/dev/null ||
-  { echo "settings test failed: Opus 5.5 and Fable 5.1 run at xhigh through modelSettings, with no top-level effortLevel"; fail=1; }
-grep -q '| 作者と話す主の会話と段取り | メインのセッション | Opus | xhigh |' CLAUDE.md &&
-  grep -q '| 作者がいないあいだの主 | `/mm-autopilot` のセッション | Fable | xhigh |' CLAUDE.md ||
+jq -e '.modelSettings["claude-opus-5-5"].effortLevel == "medium" and .modelSettings["claude-fable-5-1"].effortLevel == "medium" and (has("effortLevel") | not)' .claude/settings.json >/dev/null ||
+  { echo "settings test failed: Opus 5.5 and Fable 5.1 run at medium through modelSettings, with no top-level effortLevel"; fail=1; }
+grep -q '| 作者と話す主の会話と段取り | メインのセッション | Opus | medium |' CLAUDE.md &&
+  grep -q '| 作者がいないあいだの主 | `/mm-autopilot` のセッション | Fable | medium |' CLAUDE.md ||
   { echo "agent test failed: the CLAUDE.md table gives the main sessions the levels in modelSettings"; fail=1; }
 # Each subagent's model and effort are the ones the two tables in CLAUDE.md and docs/harness.md give,
 # so a judge reading the reasons reads what actually runs.
@@ -594,7 +594,7 @@ row() { awk -F'|' -v n="\`$2\`" -v m="$3" -v e="$4" '{ for (i = 2; i < NF - 1; i
 for f in .claude/agents/mm-*.md; do
   name=$(basename "$f" .md) model=$(fm "$f" model) effort=$(fm "$f" effort)
   case $model in opus | fable) ;; *) echo "agent test failed: $name runs on opus or fable, not '$model'"; fail=1 ;; esac
-  case $effort in high | xhigh) ;; *) echo "agent test failed: $name runs at high or xhigh, not '$effort' (max is prone to overthinking)"; fail=1 ;; esac
+  case $effort in medium) ;; *) echo "agent test failed: $name runs at medium, not '$effort' (max is prone to overthinking)"; fail=1 ;; esac
   row CLAUDE.md "$name" "$model" "$effort" || { echo "agent test failed: the CLAUDE.md table row of $name says $model and $effort"; fail=1; }
   row docs/harness.md "$name" "$model" "$effort" || { echo "agent test failed: the docs/harness.md table row of $name says $model and $effort"; fail=1; }
 done

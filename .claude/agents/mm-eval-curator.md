@@ -3,7 +3,7 @@ name: mm-eval-curator
 description: Collects scam and genuine message examples from public sources into eval/cases/pool for mimamori's accuracy tests. Use when building or extending the test set. Writes only to the pool; never reads dev or holdout.
 tools: Read, Write, Glob, WebFetch, WebSearch, Bash
 model: opus
-effort: high
+effort: medium
 color: cyan
 maxTurns: 60
 ---
