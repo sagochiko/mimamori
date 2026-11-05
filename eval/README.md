@@ -73,9 +73,11 @@
 
 本物を1段階にしたもの(迷惑フォルダ行き、DNS で止める)は、誤判定とは別に `genuine_at_level1` として数える。
 
+家族に知らせた本物の相談のうち、母の言葉が AI の案内しない話題(送金、認証コード、構成プロファイル、データの削除)に当たったものは、誤判定に数えたまま、その内訳として `false_alarms_unguided` に別に数える。こうした相談は Claude が何と答えても家族に回す決まり(`decidePlan`)で、家族に知らせが届いたことは変わらないので、誤判定からは外さない。別に出すのは、Claude の判定で減らせる誤判定と、決まりで家族に回した分を、README とデモで分けて言えるようにするためだ。Claude が自分で答えきれないとした相談(`handoff`)と、前の会話で話題が出たあとに Claude の案内の文が話題に当たって家族に回した相談は、内訳に入れない。どちらも Claude の答えで決まり、指示で直す対象だからだ(後のほうは前のやり取りを付けない今の測り方には出ない)。内訳は `rules+claude` の行にだけ出る。`rules` の行は話題で家族に回さないので、いつも0になる。数は `results.jsonl` の `false_alarms_unguided` と経路ごとの `by_source`、画面の合計の行に出し、`RESULTS.md` の表の列は変えない。2026年11月5日 10:14 の `rules+claude` の数字(誤判定 36/54)を見たあとで足した内訳で、誤判定の数え方そのものは変えていない(#109)。
+
 時間は、1件の判定にかかった時間の中央値(p50)と、遅いほう1割の境目(p90)を出す。`rules` では規則だけ、`rules+claude` では Claude の呼び出しを含む。届いてから家族の端末に知らせが出るまでの時間と、届かなかった通知の数は、キューと APNs を通る実際の流れでしか測れないので、タスク6とタスク10で実機の記録から数え、ここに足す。
 
-出すのは計画の形 `{ misses, miss_rate, false_alarms, false_alarm_rate, unneeded_family_pushes, p50_latency_ms, by_source }` に、`p90_latency_ms`、`genuine_at_level1`、分母の `scam` と `genuine` を足したものだ。
+出すのは計画の形 `{ misses, miss_rate, false_alarms, false_alarm_rate, unneeded_family_pushes, p50_latency_ms, by_source }` に、`p90_latency_ms`、`genuine_at_level1`、分母の `scam` と `genuine`、誤判定の内訳の `false_alarms_unguided` を足したものだ。
 
 ## 許容する失敗
 
@@ -103,7 +105,7 @@ cd server && npx tsx --test ../eval/test/*.test.ts   # split と run のテス�
 cd server && npx tsc --noEmit -p ../eval/tsconfig.json  # eval/ の型検査
 ```
 
-1回ごとに `eval/results.jsonl` に1行(数字に `ts`、`set`、`mode`、`git_sha`、`n`、`notes` を足したもの)、[`RESULTS.md`](RESULTS.md) に表の1行が増える。dev の例文ごとの結果は `eval/out/dev-latest.json` に出る。
+1回ごとに `eval/results.jsonl` に1行(数字に `ts`、`set`、`mode`、`git_sha`、`n`、`notes` を足したもの)、[`RESULTS.md`](RESULTS.md) に表の1行が増える。dev の例文ごとの結果は `eval/out/dev-latest.json` に出る。`rules+claude` の回では、例文ごとに Claude 自身の答え(`claude`。段階、理由、`injection_suspected`、相談なら `kind` と `handoff`)と、相談が案内しない話題に当たったか(`unguided_topic`)も残す。最後の段階が Claude の段階なのか、規則の下限、仕込みの1段の上乗せ、相談の決まり(案内しない話題、`handoff`、読み上げられない答え)で変わったのかを、見比べて分けるためだ。2026年11月5日 10:14 の回にはこれが無く、SMS、メール、ページの誤判定20件は Claude の理由を見られなかった(#109)。
 
 `rules+claude` は、判定のキューと同じ [`server/src/claude.ts`](../server/src/claude.ts) の `requestClaudeJudgment` と `decide` で段階を決め(声の相談だけは母の相談と同じ道で決める。下の「相談の測り方」)、1と2を家族に届くものとして数える。鍵は環境変数 `ANTHROPIC_API_KEY` から読む。鍵が無ければ、Claude を呼ばず何も記録せずに止まる。`make eval` は流す前に鍵の有無を見て、無ければ `rules` の行も書かずに止まる。鍵の無いところで規則の変更を見るときは `make eval-rules` を流す。Claude が形の合う答えを返さなかった例文は規則だけで数え(相談は本番と同じく、規則が決められなければ2段階)、その件数を `results.jsonl` の `claude_unanswered` と画面に出す。この数が多い回は、ほとんど規則だけの数字になっている。
 
@@ -111,7 +113,7 @@ cd server && npx tsc --noEmit -p ../eval/tsconfig.json  # eval/ の型検査
 
 声の相談(`consult`)の例文は、母の相談(`POST /consult`)と同じ道で段階を決める。判定の中身は [`server/src/consult-judge.ts`](../server/src/consult-judge.ts) にあり、本番の [`server/src/consult.ts`](../server/src/consult.ts) と [`eval/lib/score.ts`](lib/score.ts) が同じ関数を呼ぶ。前のやり取りは付けず、1回の相談として測る。
 
-`rules` の行では Claude を呼ばない。母の言葉がニセ警察の筋書き(`tellsPoliceScript`)に当たれば1段階、当たらなければ `judgeByRules` の段階をそのまま使う。本番で Claude が答えられなかったときは、規則が決められない相談も2段階で家族に知らせるが、この行はそれを数えない。数えると、規則が何も見つけない相談がすべて家族に届き、規則だけで何が分かるかが見えなくなるからだ。送金、認証コード、構成プロファイル、データの削除の話題は、本番では Claude の答えに関係なく家族に回す(`decidePlan`)が、これも `rules` の行には出ず、`rules+claude` の行にだけ出る。dev では本物の相談の2件(c-gb-06、c-gp-02)がこれに当たるので、`rules+claude` の consult の誤判定は、Claude が何と答えても2件以上になる。
+`rules` の行では Claude を呼ばない。母の言葉がニセ警察の筋書き(`tellsPoliceScript`)に当たれば1段階、当たらなければ `judgeByRules` の段階をそのまま使う。本番で Claude が答えられなかったときは、規則が決められない相談も2段階で家族に知らせるが、この行はそれを数えない。数えると、規則が何も見つけない相談がすべて家族に届き、規則だけで何が分かるかが見えなくなるからだ。送金、認証コード、構成プロファイル、データの削除の話題は、本番では Claude の答えに関係なく家族に回す(`decidePlan`)が、これも `rules` の行には出ず、`rules+claude` の行にだけ出る。dev では本物の相談の4件(c-gb-06、c-gp-02 と、#81 で足した c-hs-ip-06、c-hs-pp-04)がこれに当たるので、`rules+claude` の consult の誤判定は、Claude が何と答えても4件以上になる。この4件が `false_alarms_unguided` に入る。2026年11月5日に、Claude の答えをすべて3段階にした差し替えで dev の写しを流し(Claude は呼んでいない)、本物の誤判定がこの4件だけになり、4件とも内訳に入ることを確かめた(#109)。
 
 `rules+claude` の行では、筋書きに当たった相談は本番と同じく Claude を呼ばずに1段階にする。当たらない相談は、判定のキューの `requestClaudeJudgment` ではなく、相談用の `requestClaudeConsult`(Sonnet)に聞き、本番と同じ `judgeConsult` で段階を決める。相談用の Claude が形の合う答えを返さなかったときは、本番と同じく段階は規則の段階か、規則が決められなければ2になり、`claude_unanswered` に数える。筋書きで決まって Claude を呼ばなかった例文は `claude_unanswered` に数えない。`eval/out/dev-latest.json` の例文ごとの結果には、筋書きで決まったかを `consult_script` で残す。
 
