@@ -3,7 +3,7 @@ import MimamoriCore
 import SafariServices
 
 /// The native side of the Safari extension. The background script (Resources/background.js) hands it
-/// `{ type: "page", url, text }` with `browser.runtime.sendNativeMessage`, since content scripts cannot
+/// `{ type: "page", url, text, hasSecretField }` with `browser.runtime.sendNativeMessage`, since content scripts cannot
 /// message the native side themselves (Apple, "Messaging between the app and JavaScript in a Safari web
 /// extension"). It sends `POST /page` with this device's key from the shared Keychain group and answers
 /// `{ checked: true, level?: 1 | 2 }`, or `{}` when the check did not get through. The device key never reaches the JavaScript, so the extension needs no

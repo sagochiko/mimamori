@@ -265,15 +265,31 @@ describe("judge consumer", () => {
     await expectNothingSaysSafe(fam.familyId);
   });
 
-  it("sends no push for level 3 and opens no case, but keeps the alert for the app", async () => {
+  it.each([
+    ["sms", (familyId: string): JudgeJob => smsJob(familyId)],
+    ["gmail", (familyId: string): JudgeJob => ({ familyId, source: "gmail", payload: { sender: "news@shop.example", text: "今週のおすすめ" } })],
+    ["page", (familyId: string): JudgeJob => ({ familyId, source: "page", payload: { url: "https://shop.example/", text: "ご注文" } })],
+  ])("sends no push for a level-3 %s, opens no case, and writes no row, so no log of her mail or pages is kept", async (_source, job) => {
+    // #137: these routes now send most of what she receives or opens to Claude; a row for each
+    // would keep a record of her inbox and her browsing.
     const fam = await setupFamily();
     const deps = fakes({ claude: claudeSays({ level: 3, reasons: ["公式のドメインから届いた"] }) });
-    await run([smsJob(fam.familyId)], deps);
+    const { result } = await run([job(fam.familyId)], deps);
 
-    expect(await alertsOf(fam.familyId)).toMatchObject([{ level: 3, claude_level: 3 }]);
+    expect(await alertsOf(fam.familyId)).toEqual([]);
     expect(pushes).toHaveLength(0);
     expect(deps.opened).toHaveLength(0);
-    await expectNothingSaysSafe(fam.familyId);
+    expect(result.explicitAcks).toHaveLength(1);
+    expect(result.retryMessages).toHaveLength(0);
+  });
+
+  it("keeps the row of a level-3 consultation, which the conversation's later turns update", async () => {
+    const fam = await setupFamily();
+    const deps = fakes({ claude: claudeSays({ level: 3, reasons: ["手口は見当たらない"] }) });
+    await run([{ familyId: fam.familyId, source: "consult", payload: { text: "Wi-Fi がつながらない" } }], deps);
+    expect(await alertsOf(fam.familyId)).toMatchObject([{ level: 3, claude_level: 3, source: "consult" }]);
+    expect(pushes).toHaveLength(0);
+    expect(deps.opened).toHaveLength(0);
   });
 
   it("makes the level one step heavier when Claude suspects an injection", async () => {
@@ -339,7 +355,7 @@ describe("judge consumer", () => {
     const fam = await setupFamily();
     const deps = fakes({ rule: { level: 3, reasons: ["x"], confident: false }, claude: null });
     await run([smsJob(fam.familyId)], deps);
-    expect(await alertsOf(fam.familyId)).toMatchObject([{ level: 3, claude_level: null }]);
+    expect(await alertsOf(fam.familyId)).toEqual([]);
     expect(pushes).toHaveLength(0);
   });
 
@@ -360,6 +376,90 @@ describe("judge consumer", () => {
     expect(pushesTo(fam.tokens.family)).toHaveLength(2);
     expect((await caseOf(alert?.id))?.family_notified_at).not.toBeNull();
     await expectNothingSaysSafe(fam.familyId);
+  });
+
+  describe("a message, mail or page with no sign from the rules (#137)", () => {
+    // A genuine one the rules find nothing in now goes to Claude too, so when Claude gives nothing
+    // these routes must stay quiet: a delivery notice, a newsletter, or a recipe page must not reach
+    // the family as level 2 just because Claude was down.
+    const BROKEN_PHONE = "お母さん、携帯が壊れて番号が変わった。新しい番号に連絡して";
+    const GENUINE = "【ヤマト運輸】お荷物のお届け予定のお知らせです。https://www.kuronekoyamato.co.jp/";
+    const undecided: RuleResult = { level: null, reasons: [], confident: false };
+    const jobs = (familyId: string): Array<[string, JudgeJob]> => [
+      ["sms", smsJob(familyId, { text: GENUINE, url: "https://www.kuronekoyamato.co.jp/" })],
+      ["gmail", { familyId, source: "gmail", payload: { sender: "news@shop.example", text: "今週のおすすめ" } }],
+      ["page", { familyId, source: "page", payload: { url: "https://cookpad.com/recipe/1", text: "肉じゃがの作り方" } }],
+    ];
+
+    it.each(["sms", "gmail", "page"])(
+      "tells neither the mother nor the family when Claude gives nothing for an unmarked %s",
+      async (source) => {
+        const fam = await setupFamily();
+        const job = jobs(fam.familyId).find(([s]) => s === source)?.[1];
+        const deps = fakes({ rule: undecided, claude: null });
+        const { result } = await run([job], deps);
+
+        expect(deps.claudeCalls).toBe(1);
+        expect(pushes).toHaveLength(0);
+        expect(deps.opened).toHaveLength(0);
+        // Level 3 with neither the rules' nor Claude's level, and no row is written for it.
+        expect(await alertsOf(fam.familyId)).toEqual([]);
+        expect(result.explicitAcks).toHaveLength(1);
+        expect(result.retryMessages).toHaveLength(0);
+        await expectNothingSaysSafe(fam.familyId);
+      },
+    );
+
+    it.each([
+      ["the Claude call fails", () => Promise.reject(new Error("network"))],
+      ["Claude's answer is broken", () => Promise.resolve(parseClaudeJudgment({ level: "2" }))],
+    ])("stays quiet for an unmarked SMS when %s", async (_label, claude) => {
+      const fam = await setupFamily();
+      const deps = fakes({ rule: undecided, claude });
+      await run([smsJob(fam.familyId, { text: GENUINE })], deps);
+      expect(pushes).toHaveLength(0);
+      expect(deps.opened).toHaveLength(0);
+    });
+
+    it("still tells everyone with 確かめ中 when Claude gives nothing for an SMS with one weak sign", async () => {
+      // A sign too weak for a level was queued before #137 and told about at level 2 when Claude was
+      // down; only what has no sign (or the overseas number alone) is kept quiet.
+      const fam = await setupFamily();
+      const deps = fakes({ rule: { level: null, reasons: ["急がせる言い回しがある"], confident: false }, claude: null });
+      await run([smsJob(fam.familyId)], deps);
+      expect(await alertsOf(fam.familyId)).toMatchObject([{ level: 2, rule_level: null, claude_level: null }]);
+      expect(pushesTo([fam.tokens.mother])[0]?.body).toContain("確かめ中");
+      expect(pushesTo(fam.tokens.family)).toHaveLength(2);
+      expect(deps.opened).toHaveLength(1);
+    });
+
+    it("tells the family about the broken-phone scam the rules find nothing in, once Claude gives it a level", async () => {
+      // The real rules, so this breaks if they start to see a sign and the test no longer covers #137.
+      const text = BROKEN_PHONE;
+      expect(judgeByRules({ source: "sms", sender: "+819000000001", text })).toEqual(undecided);
+      const fam = await setupFamily();
+      const deps = {
+        ...fakes({ claude: claudeSays({ level: 2, reasons: ["家族を名乗り新しい番号へ誘う"] }) }),
+        judgeByRules,
+      };
+      await run([smsJob(fam.familyId, { sender: "+819000000001", text, url: undefined })], deps);
+
+      expect(await alertsOf(fam.familyId)).toMatchObject([{ level: 2, rule_level: null, claude_level: 2 }]);
+      expect(pushesTo(fam.tokens.family)).toHaveLength(2);
+      const [toMother] = pushesTo([fam.tokens.mother]);
+      expect(toMother?.body).toBe("家族を名乗り新しい番号へ誘う");
+      expect(toMother?.data).toMatchObject({ level: 2, checking: false });
+      expect(deps.opened).toHaveLength(1);
+    });
+
+    it("still tells everyone with 確かめ中 when Claude gives nothing but the rules saw a level", async () => {
+      const fam = await setupFamily();
+      const deps = fakes({ rule: { level: 2, reasons: ["急がせる言い回しがある"], confident: false }, claude: null });
+      await run([jobs(fam.familyId)[2]?.[1]], deps);
+      expect(await alertsOf(fam.familyId)).toMatchObject([{ level: 2, rule_level: 2, claude_level: null }]);
+      expect(pushesTo([fam.tokens.mother])[0]?.body).toContain("確かめ中");
+      expect(pushesTo(fam.tokens.family)).toHaveLength(2);
+    });
   });
 
   it("keeps Claude's level and injection step when a reason says 安全, and replaces only the wording", async () => {
@@ -487,7 +587,8 @@ describe("judge consumer", () => {
 
     it("leaves out the reason when only the placeholder is left, and the domain when there is none", async () => {
       const fam = await setupFamily();
-      const deps = fakes({ rule: { level: null, reasons: [], confident: false }, claude: null });
+      // A level the rules gave without a reason, so the row is written and only the placeholder is left.
+      const deps = fakes({ rule: { level: 2, reasons: [], confident: false }, claude: null });
       await run([smsJob(fam.familyId, { url: undefined, text: "至急ご確認ください" })], deps);
       const [alert] = await alertsOf(fam.familyId);
       expect(alert?.summary).toBe("SMS");

@@ -20,8 +20,9 @@ import { ExternalBudget } from "./budget";
 import { CaseNoticeDeferred, openCase } from "./cases";
 import {
   ALERT_SOURCES,
-  decide,
+  decideFor,
   PLACEHOLDER_REASON,
+  QUIET_WHEN_UNDECIDED,
   requestClaudeJudgment,
   type AlertSource,
   type ClaudeJudgment,
@@ -366,9 +367,11 @@ async function judgeOne(
   } catch {
     claude = null;
   }
-  // When neither the rules nor Claude decided, this is level 2 with 確かめ中 at once, like any other
-  // time Claude gives nothing: a consultation from the mother must not wait on Claude coming back.
-  const decision = decide(rule, claude);
+  // When neither the rules nor Claude decided, a consultation is level 2 with 確かめ中 at once, like
+  // any other time Claude gives nothing: one from the mother must not wait on Claude coming back. An
+  // SMS, a mail, or a page is level 3 and tells no one, since those routes queue genuine ones the
+  // rules found no sign in (decideFor, #137).
+  const decision = decideFor(job.source, rule, claude);
   const level = decision.level;
   const steered = rule.reasons.includes(INJECTION.reason) || (claude?.injection_suspected ?? false);
   const reasons = cardReasons(job, rule, decision.reasons, steered);
@@ -378,7 +381,12 @@ async function judgeOne(
   const senderKey = await keyFor(job.familyId, "sender", normalizeSender(job.payload.sender));
   const domainKey = await keyFor(job.familyId, "domain", domain);
 
-  // Levels 1 and 2 notify; level 3 is only listed in the app (docs/design.md, データの扱い).
+  // An SMS, a mail, or a page at level 3, and one no one decided (decideFor), leaves no row: these routes
+  // send Claude most of what she receives or opens, and a row for each would keep a log of her inbox
+  // and her browsing (docs/design.md, データの扱い; #137). Nothing was told, so the message is done.
+  if (level === 3 && QUIET_WHEN_UNDECIDED.includes(job.source)) return "done";
+
+  // Levels 1 and 2 notify; a level-3 consultation is only kept (docs/design.md, データの扱い).
   let notify = level <= 2;
   if (notify && (senderKey !== null || domainKey !== null)) {
     const recent = await env.DB.prepare(

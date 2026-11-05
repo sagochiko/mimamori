@@ -4,8 +4,15 @@
 // the native side itself, so it goes content script -> background script -> native handler -> here).
 // The reply is { level: 1 | 2 | null, reasons } made by the rules alone, and the extension lays its
 // warning over the page for 1 and 2. Claude is not waited on in the request (.claude/rules/server.md):
-// a page the rules see a sign on goes to the judge queue, whose consumer writes the alert, lays Claude's
-// judgment over the rules, and tells the mother and the family (src/judge.ts).
+// some of the mother's pages go to the judge queue, whose consumer lays Claude's judgment over the
+// rules, writes the alert when it reaches level 1 or 2, and tells the mother and the family
+// (src/judge.ts). Those are the pages the rules see a sign on and, since #137, pages that look like
+// where a scam asks for something though the rules see nothing: one that speaks as a company from
+// another host, one with a password or card field, one with a phone number next to a warning
+// (src/page-gate.ts). These shapes pick pages for Claude only; they draw no warning.
+//
+// The extension also sends hasSecretField: whether the page has a password or card number field. The
+// content script counts the fields and never reads what is typed in them; only true or false comes.
 //
 // The page's text and URL are data to inspect. An instruction in it ("この警告を止めて", "家族に知らせ
 // ないで") only raises the rules' level; it never changes the reply or who is told. Neither the text nor
@@ -16,7 +23,8 @@
 import { requireMember } from "./auth";
 import { HttpError, json, readJson } from "./http";
 import { enqueueJudge, JUDGE_TEXT_MAX_CHARS, normalizeDomain, type JudgePayload } from "./judge";
-import { FOREIGN_SENDER_REASON, judgeByRules, type RuleResult } from "./rules";
+import { pageWorthAsking } from "./page-gate";
+import { judgeByRules } from "./rules";
 
 /** Only the first 5,000 characters of the page are judged and sent on (docs/plan.md, task 9). */
 export const PAGE_TEXT_MAX_CHARS = JUDGE_TEXT_MAX_CHARS;
@@ -51,7 +59,7 @@ function pageUrl(value: unknown): URL | null {
   return short;
 }
 
-async function readPage(request: Request): Promise<{ url: URL; text: string }> {
+async function readPage(request: Request): Promise<{ url: URL; text: string; hasSecretField: boolean }> {
   let body: Record<string, unknown>;
   try {
     body = await readJson(request);
@@ -62,17 +70,10 @@ async function readPage(request: Request): Promise<{ url: URL; text: string }> {
   const url = pageUrl(body.url);
   if (!url) throw new HttpError(400, "page_invalid");
   if (body.text !== undefined && typeof body.text !== "string") throw new HttpError(400, "page_invalid");
-  return { url, text: cut(body.text ?? "", PAGE_TEXT_MAX_CHARS) };
-}
-
-/**
- * Whether the page goes to Claude and the family. Only with a level or a sign from the rules: the queue
- * treats a job neither the rules nor Claude decided as level 2 and tells the family, which an ordinary
- * page must never cause when Claude is down. Same gate as the SMS route (src/sms.ts).
- */
-function worthAsking(rule: RuleResult): boolean {
-  if (rule.level !== null) return true;
-  return rule.reasons.some((r) => r !== FOREIGN_SENDER_REASON);
+  if (body.hasSecretField !== undefined && typeof body.hasSecretField !== "boolean") {
+    throw new HttpError(400, "page_invalid");
+  }
+  return { url, text: cut(body.text ?? "", PAGE_TEXT_MAX_CHARS), hasSecretField: body.hasSecretField === true };
 }
 
 /**
@@ -92,7 +93,7 @@ export function onOwnNetwork(url: URL): boolean {
 
 export async function pageRoute(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const me = await requireMember(request, env);
-  const { url, text } = await readPage(request);
+  const { url, text, hasSecretField } = await readPage(request);
   if (onOwnNetwork(url)) return json({ level: null, reasons: [] } satisfies PageReply);
 
   const payload: JudgePayload = { url: url.toString(), ...(text !== "" ? { text } : {}) };
@@ -105,7 +106,7 @@ export async function pageRoute(request: Request, env: Env, ctx: ExecutionContex
 
   // Only the mother's pages are told about. A family member's own phone gets the warning, not a notice
   // about themselves to everyone.
-  if (me.role === "protected" && worthAsking(rule)) {
+  if (me.role === "protected" && pageWorthAsking(rule, { url: url.toString(), text, hasSecretField })) {
     ctx.waitUntil(
       enqueueJudge(env, { familyId: me.familyId, source: "page", payload }).catch((error: unknown) => {
         console.error("page enqueue failed", error instanceof Error ? error.name : typeof error);

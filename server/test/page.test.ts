@@ -76,12 +76,14 @@ describe("a page's own address is where she is, not a link she is led to", () =>
     ["https://xn--wgv71a119e.jp/", "日本語のドメインのお店です。"],
     ["https://cookpad.com/recipe/1", "肉じゃがの作り方。"],
     ["https://www.yahoo.co.jp/", "今日のニュース。天気は晴れ。"],
-  ])("leaves %s undecided", async (url, text) => {
+  ])("leaves %s undecided and does not send it to Claude", async (url, text) => {
     expect(judgeByRules({ source: "page", url, text })).toEqual({ level: null, reasons: [], confident: false });
     const m = await mother();
     const { sent, queueEnv } = fakeQueue();
     const { body } = await ask(m.deviceKey, { url, text }, queueEnv);
     expect(body).toEqual({ level: null, reasons: [] });
+    // Naming a brand in an article is not speaking as the brand (src/page-gate.ts), so these pages are
+    // not among the ones Claude is asked about (#137).
     expect(sent).toHaveLength(0);
   });
 
@@ -92,6 +94,93 @@ describe("a page's own address is where she is, not a link she is led to", () =>
   it("still counts a link in the page's text that leads elsewhere", () => {
     const text = "楽天カードのご利用確認はこちら https://rakuten-check.example/login";
     expect(judgeByRules({ source: "page", url: "https://www.nikkei.com/article/x", text }).level).toBe(2);
+  });
+});
+
+// #137: pages the rules leave undecided but that look like where a scam asks for something. They get
+// no level and no warning; they only go to Claude, and the family hears only of a level Claude gives.
+describe("pages sent to Claude though the rules see no sign (#137)", () => {
+  const undecided = { level: null, reasons: [], confident: false };
+  const FAKE_SIGNIN = ["https://secure-account-check.com/login", "Amazon サインイン メールアドレスまたは携帯電話番号"] as const;
+  const FAKE_SHOP = ["https://shop-outlet.example/checkout", "人気のバッグが90%オフ。お支払い情報を入力して注文を確定してください。"] as const;
+  const FAKE_SUPPORT = ["https://help-desk.example/", "セキュリティ警告。お使いの端末に問題が見つかりました。サポート窓口 050-0000-0000"] as const;
+
+  it.each([
+    ["a page that speaks as a brand from a host that is not the brand's", FAKE_SIGNIN, false],
+    ["a shop page with a card number field", FAKE_SHOP, true],
+    ["a support warning with a phone number", FAKE_SUPPORT, false],
+  ])("sends %s to Claude, with no warning on the page", async (_label, [url, text], hasSecretField) => {
+    expect(judgeByRules({ source: "page", url, text })).toEqual(undecided);
+    const m = await mother();
+    const { sent, queueEnv } = fakeQueue();
+    const { body } = await ask(m.deviceKey, { url, text, hasSecretField }, queueEnv);
+    expect(body).toEqual({ level: null, reasons: [] });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ familyId: m.familyId, source: "page", payload: { url, text } });
+  });
+
+  it.each([
+    ["a fake support page on Google Sites", "https://sites.google.com/view/help-desk", "サポート窓口 050-0000-0000 まで", false],
+    ["a form on Google Docs with a password field", "https://docs.google.com/forms/d/e/x/viewform", "ご本人様確認のお願い", true],
+    ["a fake support note shared from iCloud", "https://www.icloud.com/notes/0abc", "サポート窓口 050-0000-0000 まで", false],
+  ])("sends %s, since anyone can put a page there", async (_label, url, text, hasSecretField) => {
+    // These hosts are on a company's domain, but they are not the company speaking (USER_CONTENT_HOSTS
+    // and USER_CONTENT_PATHS in src/rules/domains.ts).
+    expect(judgeByRules({ source: "page", url, text })).toEqual(undecided);
+    const m = await mother();
+    const { sent, queueEnv } = fakeQueue();
+    const { body } = await ask(m.deviceKey, { url, text, hasSecretField }, queueEnv);
+    expect(body).toEqual({ level: null, reasons: [] });
+    expect(sent).toHaveLength(1);
+  });
+
+  it("still sends the page the rules see a sign on: a suspended Amazon account on another host", async () => {
+    const url = "https://secure-account-check.com/login";
+    const text = "Amazon アカウントが一時停止されました";
+    const m = await mother();
+    const { sent, queueEnv } = fakeQueue();
+    await ask(m.deviceKey, { url, text }, queueEnv);
+    expect(sent).toHaveLength(1);
+  });
+
+  it.each([
+    ["the shop page without a card field", FAKE_SHOP[0], FAKE_SHOP[1], false],
+    ["the brand's own sign-in page", "https://www.amazon.co.jp/ap/signin", "Amazon サインイン メールアドレスまたは携帯電話番号", true],
+    [
+      "a bank's own warning with its phone number",
+      "https://www.bk.mufg.jp/info/caution.html",
+      "三菱UFJ銀行 サポート窓口のご案内。ご不明な点は、お問い合わせ 0120-000-000 へ。",
+      false,
+    ],
+    [
+      "a news article whose header says log in, far from the company it names",
+      "https://www.nikkei.com/article/1",
+      "ログイン 会員登録 マーケット 経済 政治 ビジネス 国際 テクノロジー スポーツ 社会 地域 文化 オピニオン ランキング。楽天グループの決算を発表した。",
+      false,
+    ],
+    ["a cafe page with its phone number", "https://www.example-cafe.jp/", "営業時間 11時から。お問い合わせ 03-0000-0000", false],
+  ])("does not send %s", async (_label, url, text, hasSecretField) => {
+    const m = await mother();
+    const { sent, queueEnv } = fakeQueue();
+    await ask(m.deviceKey, { url, text, hasSecretField }, queueEnv);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("sends nothing from the family's own phones or from her own network, even with a password field", async () => {
+    const m = await mother();
+    const { sent, queueEnv } = fakeQueue();
+    await ask(m.familyKey, { url: FAKE_SIGNIN[0], text: FAKE_SIGNIN[1], hasSecretField: true }, queueEnv);
+    await ask(m.deviceKey, { url: "http://192.168.0.1/login", text: "ルーターの設定", hasSecretField: true }, queueEnv);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("does not pass the field's flag on to the queue, and refuses one that is not true or false", async () => {
+    const m = await mother();
+    const { sent, queueEnv } = fakeQueue();
+    await ask(m.deviceKey, { url: FAKE_SHOP[0], text: FAKE_SHOP[1], hasSecretField: true }, queueEnv);
+    expect(Object.keys(sent[0]?.payload ?? {}).sort()).toEqual(["domain", "text", "url"]);
+    const { res } = await ask(m.deviceKey, { url: FAKE_SHOP[0], text: FAKE_SHOP[1], hasSecretField: "yes" }, queueEnv);
+    expect(res.status).toBe(400);
   });
 });
 
@@ -122,7 +211,7 @@ describe("POST /page", () => {
     expect(sent).toHaveLength(1);
   });
 
-  it("queues nothing for an ordinary page, so a Claude failure cannot tell the family about a recipe", async () => {
+  it("queues nothing for an ordinary page", async () => {
     const m = await mother();
     const { sent, queueEnv } = fakeQueue();
     const { res, body } = await ask(m.deviceKey, { url: RECIPE_URL, text: RECIPE }, queueEnv);

@@ -401,7 +401,7 @@ async function saveHistoryId(env: Env, grant: GrantRow & { last_history_id: stri
 }
 
 /**
- * Fetches one mail and hands it to the rules, and to the judge queue when they are unsure. True when
+ * Fetches one mail and hands it to the rules and to the judge queue (worthAsking). True when
  * the mail is dealt with (including gone or unreadable), false when it should be tried again.
  */
 async function judgeMessage(env: Env, familyId: string, id: string, auth: Record<string, string>): Promise<boolean> {

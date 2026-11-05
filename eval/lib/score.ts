@@ -8,6 +8,8 @@
 // No Node APIs here, so the server's Vitest (in workerd) can import this file.
 
 import { consultByRules, judgeConsult } from "../../server/src/consult-judge";
+import { worthAsking } from "../../server/src/inbound";
+import { pageWorthAsking } from "../../server/src/page-gate";
 import { judgeByRules, type RuleInput } from "../../server/src/rules/index";
 import type { CaseSource, EvalCase } from "./cases";
 import type { ClaudeSeen, ConsultJudge, Judge } from "./judge";
@@ -209,7 +211,12 @@ export async function judgeCases(
     }
     const input = toRuleInput(c);
     const rule = judgeByRules(input);
-    const combined = mode === "rules" ? null : await claude.judge(input, rule);
+    // rules+claude asks Claude about the cases the routes would queue (#137): SMS and mail but a bare
+    // verification code (worthAsking), and pages by the page gate. A dev case carries no form, so a
+    // page's card or password field is never seen here (eval/README.md).
+    const asked =
+      c.source === "page" ? pageWorthAsking(rule, { url: c.url ?? "", text: c.text ?? "" }) : worthAsking(rule);
+    const combined = mode === "rules" || !asked ? null : await claude.judge(input, rule);
     const level = combined === null ? rule.level : combined.level;
     const latency = now() - start;
     scored.push({

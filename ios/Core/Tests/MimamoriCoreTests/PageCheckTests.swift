@@ -94,6 +94,28 @@ struct PageCheckTests {
     #expect(request.timeoutInterval <= PageCheck.timeout)
   }
 
+  @Test("パスワードかカード番号の欄があったかを true か false だけで送る(#137)")
+  func secretField() throws {
+    var withField = message()
+    withField["hasSecretField"] = true
+    let sent = try #require(
+      PageCheck.request(baseURL: testBaseURL, deviceKey: "dk_x", message: withField)
+    )
+    let raw = String(decoding: try #require(sent.httpBody), as: UTF8.self)
+    #expect(raw.contains(#""hasSecretField":true"#))
+
+    // Absent, or anything other than a boolean from the script, is false: the server only takes a boolean.
+    for value: Any? in [nil, "yes"] {
+      var other = message()
+      other["hasSecretField"] = value
+      let request = try #require(
+        PageCheck.request(baseURL: testBaseURL, deviceKey: "dk_x", message: other)
+      )
+      let body = String(decoding: try #require(request.httpBody), as: UTF8.self)
+      #expect(body.contains(#""hasSecretField":false"#))
+    }
+  }
+
   @Test("ページの文は先頭の5,000字だけを送る(絵文字も1字に数え、途中で割らない)")
   func cutsText() throws {
     let long = "警告" + String(repeating: "😀", count: 6000)
