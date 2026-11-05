@@ -87,13 +87,13 @@ function firstLink(text: string): string | undefined {
 
 /**
  * Whether Claude should look. A level from the rules, or a sign too weak for a level, means unsure. A
- * message with no sign at all, or one that is only a verification code, is not queued: when Claude
- * fails, the queue treats an undecided message as level 2 and tells the family, which a genuine code
- * or delivery notice must not cause.
+ * message with no sign at all, or one the rules read as only a verification code (even with a weak
+ * sign such as an overseas number), is not queued: when Claude fails, the queue treats an undecided
+ * message as level 2 and tells the family, which a genuine code or delivery notice must not cause.
  */
 function unsure(rule: RuleResult): boolean {
   if (rule.level !== null) return true;
-  return rule.reasons.some((r) => r !== CODE_ONLY_REASON);
+  return rule.reasons.length > 0 && !rule.reasons.includes(CODE_ONLY_REASON);
 }
 
 function demoCard(job: JudgeJob, rule: RuleResult): DemoCard | null {

@@ -309,5 +309,8 @@ export function judgeByRules(input: RuleInput): RuleResult {
   const official = hosts.some((h) => h.trust === "official" && !h.bare);
   const confident = level === 1 && !official && signs.some((s) => s.strength === "strong") && independent >= 2;
   const reasons = [...signals.values()].sort((a, b) => RANK[a.strength] - RANK[b.strength]).map((s) => s.reason);
+  // A code with only weak signs (an overseas number) is still a code; the SMS route reads this reason
+  // to leave it off the judge queue (src/sms.ts).
+  if (level === null && codeOnly && input.source === "sms") reasons.push(CODE_ONLY_REASON);
   return { level, reasons, confident };
 }

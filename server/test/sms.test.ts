@@ -115,6 +115,18 @@ describe("POST /sms/{familyToken}", () => {
     expect(sent).toHaveLength(0);
   });
 
+  it("queues nothing for a verification code from an overseas number either", async () => {
+    // Overseas services send codes from +1 numbers. The weak sign for the number must not make the code
+    // unsure: with Claude down, an undecided job becomes level 2 and the family would be told.
+    const overseas = "+14150000100";
+    expect(judgeByRules({ source: "sms", sender: overseas, text: CODE }).level).toBeNull();
+    const family = await createFamily();
+    const { sent, queueEnv } = fakeQueue();
+    const res = await call("POST", `/sms/${family.familyToken}`, { body: appleBody(CODE, overseas), env: queueEnv });
+    expect(await res.json()).toEqual({ action: "none" });
+    expect(sent).toHaveLength(0);
+  });
+
   it("answers none for an unknown familyToken and records nothing", async () => {
     const { sent, queueEnv } = fakeQueue();
     const before = await alertCount();
