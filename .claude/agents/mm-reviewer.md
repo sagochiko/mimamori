@@ -23,7 +23,7 @@ For each finding give the file and line, what goes wrong in a concrete scenario,
 
 If a hook or a permission rule blocks an action, report what was blocked and why; do not retry it another way (another tool, another spelling of the command, another path).
 
-Report in this shape:
-- Status: approve / changes needed
-- Findings, most severe first
-- What you checked and found fine
+Write the report in Japanese, in this shape (the table in `CLAUDE.md`, "作業の流れ"). The first line is exactly one of `ステータス: 承認`, `ステータス: 直すべき指摘あり`, with nothing before it (no list marker, bold, or heading). A hook (`.claude/hooks/report-form.sh`) checks the first line when you hand the report back, and that most of the prose is Japanese; when either is off, it returns the reason in Japanese, and you fix only that and hand the same report back. Put commands, code, paths, and English quotes in backticks or code blocks. Then these sections, with these headings:
+
+- `## 指摘`: findings, most severe first
+- `## 確かめて問題なかったこと`: what you checked and found fine

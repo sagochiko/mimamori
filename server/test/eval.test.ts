@@ -318,13 +318,21 @@ describe("judgeCases", () => {
     for (const [i, c] of others.entries()) {
       const rule = judgeByRules(toRuleInput(c));
       expect(rule.level).not.toBe(1);
-      expect(scored[i]).toMatchObject({ level: rule.level, rule_level: rule.level, confident: rule.confident, reasons: rule.reasons });
+      expect(scored[i]).toMatchObject({
+        level: rule.level,
+        rule_level: rule.level,
+        confident: rule.confident,
+        reasons: rule.reasons,
+      });
       expect(scored[i]).not.toHaveProperty("consult_script");
     }
   });
 
   it("does not ask Claude for the script in rules+claude, as POST /consult does not", async () => {
-    const [scored] = await judgeCases([evalCase({ text: SCRIPT })], "rules+claude", { judge: refuse, consult: refuseConsult });
+    const [scored] = await judgeCases([evalCase({ text: SCRIPT })], "rules+claude", {
+      judge: refuse,
+      consult: refuseConsult,
+    });
     expect(scored).toMatchObject({ level: 1, consult_script: true });
     expect(scored).not.toHaveProperty("claude_answered");
   });
@@ -341,11 +349,22 @@ describe("judgeCases", () => {
   });
 
   it("combines the consultation answer as POST /consult does: level 3 help stays with her", async () => {
-    const help: ClaudeConsult = { ...scamAnswer, kind: "help", level: 3, reasons: [], basis: "", action: "設定を開いて Wi-Fi を選んで" };
-    const [scored] = await judgeCases([evalCase({ text: NOTHING, is_scam: false, expected_level: null })], "rules+claude", {
-      judge: refuse,
-      consult: async () => help,
-    });
+    const help: ClaudeConsult = {
+      ...scamAnswer,
+      kind: "help",
+      level: 3,
+      reasons: [],
+      basis: "",
+      action: "設定を開いて Wi-Fi を選んで",
+    };
+    const [scored] = await judgeCases(
+      [evalCase({ text: NOTHING, is_scam: false, expected_level: null })],
+      "rules+claude",
+      {
+        judge: refuse,
+        consult: async () => help,
+      },
+    );
     expect(scored).toMatchObject({ level: 3, claude_answered: true });
   });
 

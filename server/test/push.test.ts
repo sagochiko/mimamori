@@ -33,7 +33,9 @@ function decodeJwt(jwt: string) {
 }
 
 async function newP8(): Promise<string> {
-  const pair = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign"])) as CryptoKeyPair;
+  const pair = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
+    "sign",
+  ])) as CryptoKeyPair;
   return toPem((await crypto.subtle.exportKey("pkcs8", pair.privateKey)) as ArrayBuffer);
 }
 
@@ -81,7 +83,12 @@ describe("sendPush", () => {
     const memberId = await memberWithToken("aa".repeat(32));
     const now = Date.now();
 
-    const results = await sendPush(pushEnv, [memberId], { title: "見守り", body: "確かめてください" }, new ExternalBudget());
+    const results = await sendPush(
+      pushEnv,
+      [memberId],
+      { title: "見守り", body: "確かめてください" },
+      new ExternalBudget(),
+    );
     expect(results).toEqual([{ memberId, status: "sent", httpStatus: 200 }]);
 
     const auth = seen[0]?.headers.get("authorization") ?? "";
@@ -114,7 +121,9 @@ describe("sendPush", () => {
     expect(await tokenAt(49 * 60_000)).toBe(first);
     const rebuilt = await tokenAt(50 * 60_000 + 1000);
     expect(rebuilt).not.toBe(first);
-    expect(Number(decodeJwt((rebuilt ?? "").slice(7)).claims.iat)).toBe(Math.floor((start + 50 * 60_000 + 1000) / 1000));
+    expect(Number(decodeJwt((rebuilt ?? "").slice(7)).claims.iat)).toBe(
+      Math.floor((start + 50 * 60_000 + 1000) / 1000),
+    );
     // The new token is reused in turn.
     expect(await tokenAt(60 * 60_000)).toBe(rebuilt);
   });
@@ -182,7 +191,12 @@ describe("sendPush", () => {
     const seen = captureApns();
     const memberId = await memberWithToken("ff".repeat(32));
 
-    await sendPush(pushEnv, [memberId], { title: "見守り", body: "本文", data: { caseId: "c1" }, threadId: "case-c1" }, new ExternalBudget());
+    await sendPush(
+      pushEnv,
+      [memberId],
+      { title: "見守り", body: "本文", data: { caseId: "c1" }, threadId: "case-c1" },
+      new ExternalBudget(),
+    );
     const request = seen[0];
     expect(request?.headers.get("apns-topic")).toBe(env.APNS_TOPIC);
     expect(request?.headers.get("apns-push-type")).toBe("alert");

@@ -6,14 +6,17 @@
 #     empty, also when there is none yet.
 #   handoff-started.sh check <projects> <list> <brief> [<skill line>]
 #     Exit 0 and print the path when a transcript that is not in <list> holds <brief>, the <skill line>
-#     when one is given, and an answer from Claude with a tool call in it. Exit 1 when there is none
-#     yet. Exit 2 when <list> is missing: then the old session's own transcript, which holds the same
-#     brief, answers, and skill line, cannot be told apart, so nothing counts.
+#     when one is given, and an answer from Claude with a tool call in it whose result is there too.
+#     Exit 1 when there is none yet. Exit 2 when <list> is missing: then the old session's own
+#     transcript, which holds the same brief, answers, and skill line, cannot be told apart, so nothing
+#     counts.
 #
 # An API error is kept in the transcript as an assistant line with "isApiErrorMessage": true, so an
 # assistant line alone does not show a turn ran. Both launch prompts start by reading a file (the brief,
-# CONDITIONS.md), so a real first turn has a tool call. Lines are read one at a time and a half-written
-# last line is skipped.
+# CONDITIONS.md), so a real first turn has a tool call. The call is written before a permission prompt
+# is answered, and the brief is outside the working directory, where the first read can ask; so the
+# call's tool_result (a user line with the same tool_use_id) must be there too (PR #90, third review).
+# Lines are read one at a time and a half-written last line is skipped.
 shopt -s nullglob
 case $1 in
 before)
@@ -29,8 +32,12 @@ check)
     grep -qxF -- "$f" "$list" && continue
     grep -qF -- "$brief" "$f" || continue
     [[ -z "$skill" ]] || grep -qF -- "$skill" "$f" || continue
-    jq -Rn '[inputs | fromjson? | select(.type == "assistant" and .isApiErrorMessage != true)
-      | select(any(.message.content[]?; .type? == "tool_use"))] | length > 0' "$f" 2>/dev/null |
+    jq -Rn '[inputs | fromjson?] as $lines
+      | [$lines[] | select(.type == "assistant" and .isApiErrorMessage != true)
+         | .message.content[]? | select(.type? == "tool_use") | .id] as $calls
+      | [$lines[] | select(.type == "user") | .message.content[]? | select(.type? == "tool_result")
+         | .tool_use_id] as $results
+      | any($calls[]; . as $c | any($results[]; . == $c))' "$f" 2>/dev/null |
       grep -qx true || continue
     printf '%s\n' "$f"
     exit 0
