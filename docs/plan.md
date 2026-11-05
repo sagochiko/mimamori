@@ -111,6 +111,8 @@ mimamori/
 | `gmail_auth` | `family_id`、`refresh_token_enc`、`granted_at`、`last_history_id`、`expired_notified_at` |
 | `usage_daily` | `date`、`doh_requests` |
 
+相談(`source` が `consult`)の行は、同じ会話の相談が加わってカードを動かすたびに、`level`、`reasons`、`summary` と一緒に `rule_level` と `claude_level` も書き替える。この2列は、相談を開いたときの判定ではなく、最後にカードを動かした判定を指す(2026年11月5日、#114)。
+
 ### 決まった規則の判定
 
 `rules/` は次の形で答える。入力は経路ごとに違っても、出力は同じ形にする。
