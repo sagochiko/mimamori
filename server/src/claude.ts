@@ -73,21 +73,27 @@ const JUDGMENT_SCHEMA = {
 // (CLAUDE.md). A reason that says it is replaced (decide); the level and injection_suspected are
 // kept, so writing 安全 in a message cannot get the judge's answer thrown away.
 // A question is not a verdict: "振込先に問題ないか家族に確かめて", "大丈夫かどうか", "大丈夫ですか",
-// "詐欺ではないか". NOT_ASKED skips a か after the verdict word (and after の, です or でしょう), but
-// not the か of から: "大丈夫ですから" and "詐欺ではないから" tell her it is fine (review 1 of PR #175).
+// "本当に大丈夫なのか", "大丈夫かと家族に聞いて". NOT_ASKED skips a か after the verdict word (and after
+// の, なの, です or でしょう), but not the か of から: "大丈夫ですから" tells her it is fine (review 1
+// of PR #175), nor the か of かと思: "問題ないかと思います" is a hedged verdict (review 2). Only for
+// 詐欺ではな- is かと思 a doubt ("詐欺ではないかと思います"), so that branch uses DOUBTED.
 // 大丈夫, 詐欺ではな-, 心配いらない, 問題なし and 危険(性)はな- say it is fine without the word 安全
-// (#53, 5), so they are matched by their stem ("大丈夫だと思います", "詐欺ではなさそう"), as REASSURING
-// in src/consult-judge.ts does for what she hears. 危険 counts only with は or も: "危険なリンク" is a
-// warning.
-const NOT_ASKED = "(?!(の|です|でしょう|だろう)?か(?!ら))";
+// (#53, 5), so they are matched by their stem and its spellings ("大丈夫だと思います", "だいじょうぶ",
+// "詐欺ではなかった", "問題無いです", "問題がないので", "問題ございません"), as REASSURING in
+// src/consult-judge.ts does for what she hears. 危険 counts only with は, も or が: "危険なリンク" is
+// a warning.
+const ASKED_BEFORE = "(の|なの|です|でしょう|だろう)?か";
+const NOT_ASKED = `(?!${ASKED_BEFORE}(?!ら|と思|と存じ))`;
+const DOUBTED = `(?!${ASKED_BEFORE}(?!ら))`;
+const NOT_THERE = "(ありません|ございません|な[いさしくか]|無[いし])";
 const SOUNDS_SAFE = new RegExp(
   [
     "安全(です|だ|でしょう|と思|な(メッセージ|サイト|ページ|メール|もの|内容))",
-    `問題(は|も)?(ありません|ない|なさ|なし)${NOT_ASKED}`,
-    `心配(は|も)?(ありません|いりません|いらない|ない|なさ|無用)${NOT_ASKED}`,
-    `大丈夫${NOT_ASKED}`,
-    `詐欺(では|じゃ)(ありません|ない|なさ|なく)${NOT_ASKED}`,
-    `危険(性)?(は|も)(ありません|ない|なさ|なし)${NOT_ASKED}`,
+    `問題(は|も|が)?${NOT_THERE}${NOT_ASKED}`,
+    `心配(は|も|が)?(${NOT_THERE}|いりません|いらない|無用|不要)${NOT_ASKED}`,
+    `(大丈夫|だいじょうぶ)${NOT_ASKED}`,
+    `詐欺(では|じゃ)${NOT_THERE}${DOUBTED}`,
+    `危険(性)?(は|も|が)${NOT_THERE}${NOT_ASKED}`,
     "\\bsafe\\b",
   ].join("|"),
   "i",

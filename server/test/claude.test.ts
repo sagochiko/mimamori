@@ -303,6 +303,23 @@ describe("decide", () => {
       "大丈夫でしょう",
       "詐欺ではなさそう",
       "危険性はありません",
+      // PR #175 review 2: かと思 hedges a verdict, and other spellings of the same words.
+      "大丈夫かと思います",
+      "問題ないかと思います",
+      "心配ないかと思います",
+      "問題無いです",
+      "心配無い",
+      "危険は無い",
+      "詐欺ではなかった",
+      "問題なかった",
+      "危険はなかった",
+      "問題がないので",
+      "危険がないので",
+      "危険性がない",
+      "だいじょうぶです",
+      "心配不要です",
+      "問題ございません",
+      "詐欺ではございません",
     ])("replaces the reason %s but keeps Claude's level and injection step", (text) => {
       const judgment = parseClaudeJudgment({
         ...valid,
@@ -343,6 +360,10 @@ describe("decide", () => {
       "詐欺ではありませんかと家族に聞いて",
       "「大丈夫です」と言って急がせる",
       "危険なリンクが書かれている",
+      "詐欺ではないかと思います",
+      "本当に大丈夫なのか家族に確かめて",
+      "大丈夫かと家族に聞いて",
+      "問題がないか家族に確かめて",
     ])("keeps a reason that only quotes the message or advises checking (%s)", (text) => {
       const judgment = parseClaudeJudgment({ ...valid, level: 1, reasons: [text] });
       expect(decide(rule, judgment).reasons).toEqual([text]);

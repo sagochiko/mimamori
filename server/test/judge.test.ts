@@ -237,7 +237,7 @@ async function expectNothingSaysSafe(familyId: string) {
   // Written out here as well, so a word dropped from soundsSafe still fails this check.
   for (const text of [JSON.stringify(alerts), JSON.stringify(pushes)])
     expect(text).not.toMatch(
-      /安全|safe|大丈夫(?!(の|です|でしょう|だろう)?か(?!ら))|(問題|心配)(は|も)?(ありません|いりません|いらない|ない|なさ|なし)(?!(の|です|でしょう)?か(?!ら))|詐欺(では|じゃ)(ありません|ない|なさ|なく)(?!(の|です|でしょう)?か(?!ら))|危険(性)?(は|も)(ありません|ない|なさ|なし)(?!(の|です|でしょう)?か(?!ら))/i,
+      /安全|safe|(大丈夫|だいじょうぶ)(?!(の|なの|です|でしょう|だろう)?か(?!ら|と思))|(問題|心配)(は|も|が)?(ありません|ございません|いりません|いらない|な[いさしくか]|無[いし]|無用|不要)(?!(の|です|でしょう)?か(?!ら|と思))|詐欺(では|じゃ)(ありません|ございません|な[いさしくか]|無[いし])(?!(の|です|でしょう)?か(?!ら))|危険(性)?(は|も|が)(ありません|ございません|な[いさしくか]|無[いし])(?!(の|です|でしょう)?か(?!ら|と思))/i,
     );
 }
 
@@ -512,6 +512,11 @@ describe("judge consumer", () => {
     "詐欺ではないから",
     "大丈夫だと思います",
     "危険性はありません",
+    // PR #175 review 2.
+    "問題ないかと思います",
+    "詐欺ではなかった",
+    "問題無いです",
+    "心配不要です",
   ])(
     "keeps the verdict %s out of everything stored and sent",
     async (verdict) => {
