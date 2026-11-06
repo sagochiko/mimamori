@@ -282,24 +282,27 @@ if [[ "$text" =~ gh[[:space:]]+api && "$text" =~ (-X|--method)[[:space:]=]*[\'\"
   ask "gh api DELETE: confirm with the author"
 fi
 
-# read_only_select: the line runs one `d1 execute`, its SQL is a --command in single quotes (so the
-# shell cannot change it), and that SQL is one SELECT with no word that writes. The rest of that
-# command, from the start of its simple command to the next ) | ; & < > or line end, holds no $,
-# backtick, or --file, so no variable can add another --command or a file. A $ elsewhere in the line,
-# such as t=$(... --json) around it or a redirect after the ), does not reach the SQL (#151).
+# read_only_select: a read the author need not confirm (#151). Its SQL is a --command in single quotes
+# (so the shell cannot change it), and that SQL is one SELECT with no word that writes. The whole line must be one of two shapes, nothing else on it (review 1 of PR #172 found that cutting
+# the raw text at ) | ; & < > let a second --command after a redirect, a quoted |, a line continuation,
+# a quoted "execute", or xargs through):
+#   [npx] wrangler d1 execute <db> <flags> [> <file>]
+#   <name>=$([npx] wrangler d1 execute <db> <flags>)
+# where <flags> are only --remote, --json, and exactly one --command '<sql>' (or --command='<sql>'),
+# and <file> is a plain path or "$HOME/<plain path>". Any other line keeps the old check.
 read_only_select() {
-  local n rest sql head tail lower
-  n=$(grep -oE 'd1[[:space:]]+execute' <<<"$cmd" | wc -l)
-  ((n == 1)) || return 1
-  [[ "$cmd" =~ d1[[:space:]]+execute(.*)$ ]] || return 1
-  rest=${BASH_REMATCH[1]}
-  [[ "$rest" =~ --command(=|[[:space:]]+)\'([^\']*)\' ]] || return 1
+  local sql lower sp='[[:space:]]+' flag line
+  [[ "$cmd" == *$'\n'* || "$cmd" == *'\'* ]] && return 1
+  flag="(--remote|--json|--command(=|$sp)'[^']*')"
+  line="^[[:space:]]*(npx$sp)?wrangler${sp}d1${sp}execute$sp[A-Za-z0-9_-]+($sp$flag)+"
+  line+="([[:space:]]*>[[:space:]]*([A-Za-z0-9_./-]+|\"\\\$HOME/[A-Za-z0-9_./-]+\"))?[[:space:]]*$"
+  if [[ ! "$cmd" =~ $line ]]; then
+    line="^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=\\\$\\((npx$sp)?wrangler${sp}d1${sp}execute$sp[A-Za-z0-9_-]+($sp$flag)+[[:space:]]*\\)[[:space:]]*$"
+    [[ "$cmd" =~ $line ]] || return 1
+  fi
+  [[ $(grep -o -- '--command' <<<"$cmd" | wc -l) -eq 1 ]] || return 1
+  [[ "$cmd" =~ --command(=|$sp)\'([^\']*)\' ]] || return 1
   sql=${BASH_REMATCH[2]}
-  rest=${rest/"${BASH_REMATCH[0]}"/}
-  tail=${rest%%[)|;&<>$'\n']*}
-  head=${cmd%%d1*execute*}
-  head=${head##*[(|;&$'\n']}
-  [[ "$tail$head" == *'$'* || "$tail$head" == *'`'* || "$tail" == *--file* ]] && return 1
   lower=$(tr '[:upper:]' '[:lower:]' <<<"$sql")
   [[ "$lower" =~ ^[[:space:]]*select[[:space:]] ]] || return 1
   [[ "${lower%%;*}" == "$lower" || "${lower#*;}" =~ ^[[:space:]]*$ ]] || return 1
