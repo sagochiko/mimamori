@@ -335,11 +335,18 @@ function storedReasons(text: string): string[] {
   }
 }
 
+/** A research to start once every notice of the batch went out (see handleJudgeBatch). */
+interface PendingResearch {
+  alertId: string;
+  input: ResearchInput;
+}
+
 async function judgeOne(
   env: Env,
   message: Message<unknown>,
   budget: ExternalBudget,
   deps: JudgeDeps,
+  research: PendingResearch[] = [],
 ): Promise<Outcome> {
   const job = parseJob(message.body);
   if (!job) {
@@ -446,18 +453,14 @@ async function judgeOne(
 
   const notice = { level, reasons, checking: decision.checking };
   const outcome = await finishNotices(env, alertId, notice, { mother: true, family: true }, members, budget, deps);
-  // After the notices, with the tickets they left. Only here, on the first delivery: the text is not
-  // in D1, so a redelivery cannot start it, and a research that is lost leaves the card as it is.
+  // Only here, on the first delivery: the text is not in D1, so a redelivery cannot start it, and a
+  // research that is lost leaves the card as it is. It starts after the whole batch (handleJudgeBatch).
   if (deps.investigate && RESEARCHED.includes(job.source)) {
     const input: ResearchInput = { source: job.source };
     if (job.payload.sender) input.sender = job.payload.sender;
     if (domain) input.domain = domain;
     if (job.payload.text) input.text = job.payload.text;
-    try {
-      await deps.investigate(env, alertId, input, budget);
-    } catch (error) {
-      console.error("investigation failed", error instanceof Error ? error.name : typeof error);
-    }
+    research.push({ alertId, input });
   }
   return outcome;
 }
@@ -472,14 +475,24 @@ export async function handleJudgeBatch(
   deps: JudgeDeps = defaultJudgeDeps,
 ): Promise<void> {
   const budget = new ExternalBudget();
+  const research: PendingResearch[] = [];
   for (const message of batch.messages) {
     try {
-      const outcome = await judgeOne(env, message, budget, deps);
+      const outcome = await judgeOne(env, message, budget, deps, research);
       if (outcome === "retry") message.retry({ delaySeconds: RETRY_DELAY_SECONDS });
       else message.ack();
     } catch (error) {
       console.error("judge failed", error instanceof Error ? error.name : typeof error);
       message.retry({ delaySeconds: RETRY_DELAY_SECONDS });
+    }
+  }
+  // The research comes last, with the tickets every notice of the batch left, so an extra on the card
+  // never sends a later notice of the same batch to a retry (review 1 of PR #183).
+  for (const { alertId, input } of research) {
+    try {
+      await deps.investigate?.(env, alertId, input, budget);
+    } catch (error) {
+      console.error("investigation failed", error instanceof Error ? error.name : typeof error);
     }
   }
 }

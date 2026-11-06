@@ -1305,6 +1305,24 @@ describe("research in the background", () => {
     expect(consult.calls).toHaveLength(0);
   });
 
+  it("starts the research only after every notice of the batch, so it never takes their tickets", async () => {
+    const fam = await setupFamily();
+    // Eight level-1 jobs from different senders: 8 x (Claude + 3 devices) = 32 of the 40 tickets.
+    let pushesAtFirstStart = -1;
+    const { deps, calls } = withResearch(fakes(), async (_e, _id, _input, budget) => {
+      if (pushesAtFirstStart < 0) pushesAtFirstStart = pushes.length;
+      return budget.takeMany(3);
+    });
+    const jobs = Array.from({ length: 8 }, (_, i) => smsJob(fam.familyId, { sender: `+8190000000${i}`, url: `https://bank-${i}.example/` }));
+    const { result } = await run(jobs, deps);
+    expect(result.explicitAcks).toHaveLength(8);
+    expect(result.retryMessages).toHaveLength(0);
+    expect(pushes).toHaveLength(24);
+    expect(pushesAtFirstStart).toBe(24);
+    // What is left after the notices (8 tickets) goes to the research, three each.
+    expect(calls.map((c) => c.remaining)).toEqual([8, 5, 2, 2, 2, 2, 2, 2]);
+  });
+
   it("tells everyone the same when the research throws, and is not tried again on a redelivery", async () => {
     const fam = await setupFamily();
     const { deps, calls } = withResearch(fakes(), async () => {

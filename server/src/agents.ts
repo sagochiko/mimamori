@@ -54,6 +54,7 @@ export async function deleteAgentSession(env: Env, sessionId: string): Promise<b
     const res = await fetch(`${API}/sessions/${encodeURIComponent(sessionId)}`, {
       method: "DELETE",
       headers: agentHeaders(env),
+      signal: AbortSignal.timeout(AGENTS_TIMEOUT_MS),
     });
     return res.ok || res.status === 404;
   } catch {
@@ -141,7 +142,7 @@ const RESEARCH_SYSTEM = `あなたは、離れて住む家族の iPhone に届�
 - text: 分かったことを${EVIDENCE_TEXT_MAX_CHARS}字以内で(例「同じ手口の偽 SMS に宅配会社が注意を呼びかけている」「警察庁がこの手口の詐欺を注意喚起している」)
 - url: その根拠を読んだ公式のページの https の URL
 
-text には、メッセージの文を写さない、かぎかっこを使わない、電話番号、URL、ドメインを書かない。「安全」「問題ない」「心配ない」「詐欺ではない」とは書かないでください。注意喚起が見つからないことは、安全の根拠になりません。見つからなければ items を空にして呼びます。`;
+text には、公式のページが何に注意を呼びかけているかだけを書きます。本物の連絡と同じだった、注意喚起が見つからなかった、のようなことは書きません。メッセージの文を写さない、かぎかっこを使わない、電話番号、URL、ドメインを書かない。「安全」「問題ない」「心配ない」「詐欺ではない」とは書かないでください。注意喚起が見つからないことは、安全の根拠になりません。見つからなければ items を空にして呼びます。`;
 
 const REPORT_TOOL_DEF = {
   type: "custom",
@@ -219,13 +220,21 @@ export function researchMessage(input: ResearchInput): string {
   ].join("\n");
 }
 
+/** Each call to Managed Agents gives up after this, so a slow API cannot hold the queue or a tick. */
+export const AGENTS_TIMEOUT_MS = 10_000;
+
 async function postJson(env: Env, path: string, body: unknown): Promise<Record<string, unknown> | null> {
   const res = await fetch(`${API}${path}`, {
     method: "POST",
     headers: { ...agentHeaders(env), "content-type": "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(AGENTS_TIMEOUT_MS),
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    // The path and the status only: the body could carry the received text.
+    console.error("managed agents refused", path, res.status);
+    return null;
+  }
   const value: unknown = await res.json();
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
 }
@@ -295,7 +304,11 @@ export async function startInvestigation(
     )
       .bind(session.id, alertId)
       .run();
-    return saved.meta.changes === 1;
+    if (saved.meta.changes === 1) return true;
+    // The alert went away meanwhile ("delete everything" or the cleanup): nothing would delete the
+    // session, and it holds the received text.
+    if (budget.take()) await deleteAgentSession(env, session.id);
+    return false;
   } catch (error) {
     console.error("investigation not started", error instanceof Error ? error.name : typeof error);
     return false;
@@ -315,6 +328,14 @@ export interface Evidence {
  * what arrived, sounds safe, or carries a number or an address is dropped, and so is one whose source
  * is not an official site (a page the agent read could have told it to cite the scam's link).
  */
+// A line of evidence must say what an official page warns about (review 1 of PR #183). Lines that
+// would reassure the family pass soundsSafe() in other words ("同じ連絡を送っている", "見つからなかった",
+// "正規の案内として載っている"), and text inside the message can ask the research for one, so a line
+// has to carry a warning word and none of these.
+const WARNS = /注意|偽|なりすまし|詐欺|フィッシング|呼びかけ|呼び掛け|警告|被害|手口/;
+const REASSURES =
+  /正規|本物|実在|見つから|見当たら|該当(なし|しない|しません)|(同じ|同様)の?(連絡|案内|通知|SMS|メール|お知らせ)を(送|出|配信)|(公式|本物|正規)の?(案内|連絡|通知|お知らせ)と(一致|同じ)/i;
+
 export function parseEvidence(value: unknown, received: readonly string[]): Evidence[] {
   if (typeof value !== "object" || value === null) return [];
   const items = (value as Record<string, unknown>).items;
@@ -328,6 +349,7 @@ export function parseEvidence(value: unknown, received: readonly string[]): Evid
     const line = text.trim();
     if (line === "" || [...line].length > EVIDENCE_TEXT_MAX_CHARS) continue;
     if (soundsSafe(line) || quotes(line, received) || carriesContact(line)) continue;
+    if (!WARNS.test(line) || REASSURES.test(line)) continue;
     if (!onOfficialSite(url)) continue;
     if (out.some((e) => e.url === url && e.text === line)) continue;
     out.push({ text: line, url });
@@ -374,7 +396,10 @@ function textOf(content: unknown): string[] {
 }
 
 async function getJson(env: Env, path: string): Promise<{ status: number; body: Record<string, unknown> | null }> {
-  const res = await fetch(`${API}${path}`, { headers: agentHeaders(env) });
+  const res = await fetch(`${API}${path}`, {
+    headers: agentHeaders(env),
+    signal: AbortSignal.timeout(AGENTS_TIMEOUT_MS),
+  });
   if (!res.ok) return { status: res.status, body: null };
   const value: unknown = await res.json();
   return { status: res.status, body: typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null };
@@ -424,6 +449,12 @@ export async function collectInvestigation(
   if (!alert) return "none";
 
   const tooOld = now - alert.created_at > RESEARCH_GIVE_UP_MS;
+  // Giving up still tries once to delete the session, so the received text does not wait 30 days.
+  const giveUp = async (): Promise<boolean> => {
+    if (!(await finish(env, alert.id, [], now))) return false;
+    await dropSession(env, alert.id, sessionId, budget);
+    return true;
+  };
   try {
     if (!budget.take()) return "unknown";
     const session = await getJson(env, `/sessions/${encodeURIComponent(sessionId)}`);
@@ -433,12 +464,12 @@ export async function collectInvestigation(
       return "added";
     }
     if (session.body === null) {
-      if (tooOld && (await finish(env, alert.id, [], now))) return "added";
+      if (tooOld && (await giveUp())) return "added";
       return "unknown";
     }
     const status = session.body.status;
     if (status !== "idle" && status !== "terminated") {
-      if (tooOld && (await finish(env, alert.id, [], now))) return "added";
+      if (tooOld && (await giveUp())) return "added";
       return "pending";
     }
 
@@ -450,13 +481,15 @@ export async function collectInvestigation(
       `/sessions/${encodeURIComponent(sessionId)}/events?types[]=user.message&types[]=agent.custom_tool_use&order=desc&limit=50`,
     );
     if (events.body === null) {
-      if (tooOld && (await finish(env, alert.id, [], now))) return "added";
+      if (tooOld && (await giveUp())) return "added";
       return "unknown";
     }
     const data = Array.isArray(events.body.data) ? (events.body.data as SessionEvent[]) : [];
     const report = data.find((e) => e.type === "agent.custom_tool_use" && e.name === REPORT_TOOL);
     const sent = data.filter((e) => e.type === "user.message").flatMap((e) => textOf(e.content).map(untrustedPart));
-    const evidence = report ? parseEvidence(report.input, [alert.summary, ...sent]) : [];
+    // Without our own message to compare with, a line copied from what arrived could not be caught,
+    // so nothing is added (review 1 of PR #183).
+    const evidence = report && sent.length > 0 ? parseEvidence(report.input, [alert.summary, ...sent]) : [];
     const wrote = await finish(env, alert.id, evidence, now);
     await dropSession(env, alert.id, sessionId, budget);
     return wrote ? "added" : "none";
@@ -471,6 +504,18 @@ export async function collectInvestigation(
  * no webhook does. Each takes up to three outside calls, and the rest wait for the next tick.
  */
 export async function watchInvestigations(env: Env, now: number, budget: ExternalBudget): Promise<void> {
+  // Sessions whose result was read but whose delete failed: one call each, tried again every tick.
+  const undeleted = await env.DB.prepare(
+    `SELECT id, investigation_session_id AS session FROM alerts
+      WHERE investigation_session_id IS NOT NULL AND investigated_at IS NOT NULL
+      ORDER BY investigated_at LIMIT ?`,
+  )
+    .bind(RESEARCH_PER_TICK)
+    .all<{ id: string; session: string }>();
+  for (const row of undeleted.results) {
+    if (budget.remaining < 1) return;
+    await dropSession(env, row.id, row.session, budget);
+  }
   if (budget.remaining < 3) return;
   const due = await env.DB.prepare(
     `SELECT investigation_session_id AS id FROM alerts

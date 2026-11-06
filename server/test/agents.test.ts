@@ -44,7 +44,7 @@ let reports: Map<string, unknown>;
 /** Runs while the session is read, as when the webhook and the tick read the same session at once. */
 let duringGet: (() => Promise<void>) | null;
 
-function mockApi(opts: { sessionStatus?: number } = {}) {
+function mockApi(opts: { sessionStatus?: number; noUserMessage?: boolean; refuseDelete?: boolean } = {}) {
   network.use(
     http.post(`${API}/agents`, async ({ request }) => {
       seen.betaHeaders.push(request.headers.get("anthropic-beta"));
@@ -72,7 +72,7 @@ function mockApi(opts: { sessionStatus?: number } = {}) {
       if (reports.has(id)) {
         data.push({ type: "agent.custom_tool_use", id: "sevt_2", name: "report_evidence", input: reports.get(id) });
       }
-      data.push({
+      if (!opts.noUserMessage) data.push({
         type: "user.message",
         id: "sevt_1",
         content: [{ type: "text", text: sent ? String(sent.__text) : `<untrusted>\n本文:\n${SMS_TEXT}\n</untrusted>` }],
@@ -88,6 +88,7 @@ function mockApi(opts: { sessionStatus?: number } = {}) {
       return HttpResponse.json({ id, status });
     }),
     http.delete(`${API}/sessions/:id`, ({ params }) => {
+      if (opts.refuseDelete) return HttpResponse.json({ type: "error" }, { status: 400 });
       seen.deletes.push(String(params.id));
       statuses.delete(String(params.id));
       return HttpResponse.json({ id: params.id, type: "session_deleted" });
@@ -242,6 +243,36 @@ describe("startInvestigation", () => {
     expect(await alertRow(alertId)).toEqual(before);
   });
 
+  it("deletes the session it made when the alert went away meanwhile (delete everything)", async () => {
+    mockApi();
+    const family = await createFamily();
+    const alertId = await seedAlert(family);
+    network.use(
+      http.post(`${API}/sessions`, async () => {
+        await env.DB.prepare("DELETE FROM alerts WHERE id = ?").bind(alertId).run();
+        return HttpResponse.json({ id: "sesn_orphan", status: "running" });
+      }),
+    );
+    expect(await startInvestigation(env, alertId, INPUT, new ExternalBudget(), T0)).toBe(false);
+    expect(seen.deletes).toEqual(["sesn_orphan"]);
+  });
+
+  it("logs only the status when the API refuses", async () => {
+    mockApi({ sessionStatus: 400 });
+    const family = await createFamily();
+    const alertId = await seedAlert(family);
+    const logged: unknown[][] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => void logged.push(args);
+    try {
+      await startInvestigation(env, alertId, INPUT, new ExternalBudget(), T0);
+    } finally {
+      console.error = original;
+    }
+    expect(logged).toContainEqual(["managed agents refused", "/sessions", 400]);
+    expect(JSON.stringify(logged)).not.toContain(SMS_TEXT);
+  });
+
   it("does not start a second session for the same alert", async () => {
     mockApi();
     const family = await createFamily();
@@ -273,6 +304,23 @@ describe("parseEvidence", () => {
       GOOD,
     ];
     expect(parseEvidence({ items }, received)).toEqual([GOOD]);
+  });
+
+  it("keeps only lines that warn, and drops lines that would reassure", () => {
+    const warn = [
+      { text: "宅配会社がなりすましの SMS に注意を呼びかけている", url: GOOD.url },
+      { text: "警察庁が同じ手口のフィッシングを注意喚起している", url: "https://www.npa.go.jp/" },
+    ];
+    const reassure = [
+      { text: "日本郵便も同じ不在の連絡を SMS で送っている", url: GOOD.url },
+      { text: "公式の注意喚起は見つからなかった", url: GOOD.url },
+      { text: "公式サイトに正規の案内として載っている", url: GOOD.url },
+      { text: "本物の連絡と同じ形式である", url: GOOD.url },
+      { text: "該当なし", url: GOOD.url },
+      { text: "宅配会社の公式の案内と一致している", url: GOOD.url },
+      { text: "偽物ではなく本物の案内と分かった", url: GOOD.url },
+    ];
+    expect(parseEvidence({ items: [...reassure, ...warn] }, received)).toEqual(warn);
   });
 
   it("keeps at most three, and reads anything else as none", () => {
@@ -311,6 +359,43 @@ describe("collectInvestigation", () => {
     expect(await collectInvestigation(env, sessionId, new ExternalBudget(), T0 + 400_000)).toBe("none");
     expect(seen.gets.length + seen.eventGets.length).toBe(calls);
     expect(JSON.parse((await alertRow(alertId))?.evidence ?? "null")).toEqual([GOOD]);
+  });
+
+  it("adds no evidence when its own first message could not be read back to check for quotes", async () => {
+    mockApi({ noUserMessage: true });
+    const family = await createFamily();
+    const { alertId, sessionId } = await started(family);
+    statuses.set(sessionId, "idle");
+    reports.set(sessionId, { items: [GOOD, { text: "お荷物をお届けにあがりましたが不在のため注意", url: GOOD.url }] });
+    expect(await collectInvestigation(env, sessionId, new ExternalBudget(), T0 + 60_000)).toBe("added");
+    expect(JSON.parse((await alertRow(alertId))?.evidence ?? "null")).toEqual([]);
+  });
+
+  it("deletes the session when it gives up on it", async () => {
+    mockApi();
+    const family = await createFamily();
+    const { alertId, sessionId } = await started(family);
+    statuses.set(sessionId, "idle-but-unknown");
+    await collectInvestigation(env, sessionId, new ExternalBudget(), T0 + RESEARCH_GIVE_UP_MS + 1);
+    expect(seen.deletes).toEqual([sessionId]);
+    expect((await alertRow(alertId))?.investigation_session_id).toBeNull();
+  });
+
+  it("deletes again on a later tick a session it could not delete after reading it", async () => {
+    mockApi({ refuseDelete: true });
+    const family = await createFamily();
+    const { alertId, sessionId } = await started(family);
+    statuses.set(sessionId, "idle");
+    reports.set(sessionId, { items: [GOOD] });
+    await collectInvestigation(env, sessionId, new ExternalBudget(), T0 + 60_000);
+    expect((await alertRow(alertId))?.investigation_session_id).toBe(sessionId);
+
+    mockApi();
+    await watchInvestigations(env, T0 + 300_000, new ExternalBudget());
+    expect(seen.deletes).toEqual([sessionId]);
+    const row = await alertRow(alertId);
+    expect(row?.investigation_session_id).toBeNull();
+    expect(JSON.parse(row?.evidence ?? "null")).toEqual([GOOD]);
   });
 
   it("writes nothing when the other reader finished the alert while this one was reading", async () => {

@@ -467,7 +467,8 @@ describe("research sessions", () => {
     );
     await tick(cleanupTick);
     expect(deleted).toContain("sesn_research_old");
-    expect(deleted).not.toContain("sesn_research_new");
+    // The recent one's result was read, so the 5-minute watch deletes its session too (review 1 of
+    // PR #183); its alert row stays, since it is younger than 30 days.
     const left = await env.DB.prepare("SELECT id FROM alerts WHERE family_id = ?")
       .bind(family.familyId)
       .all<{ id: string }>();
