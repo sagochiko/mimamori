@@ -1,7 +1,9 @@
 // Scoring one run. The definitions are fixed in eval/README.md before any measurement:
 // - a miss is a scam that does not reach the family: level null (the rules could not decide) or 3
 // - a false alarm is a genuine case at level 1 or 2, which sends the family a push it did not need
-// - genuine_at_level1 counts genuine cases at level 1 (junk folder, DNS block); the target is 0
+// - genuine_at_level1 counts genuine cases at level 1, confident or not; the target is 0. Only a
+//   confident level 1 from the rules goes to the junk folder or is blocked by DNS, so this is not the
+//   count of those: they are inside it, told apart by each case's confident (#51)
 // - false_alarms_unguided counts the false alarms that are consultations on a topic the AI does not
 //   guide (sending money, codes, profiles, deleting data), which go to the family whatever Claude says
 //   (decidePlan in server/src/consult-judge.ts). They stay in false_alarms too (#109).

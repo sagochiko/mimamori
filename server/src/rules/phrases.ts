@@ -33,6 +33,17 @@ export const INJECTION: PhraseRule = {
   ],
 };
 
+// Someone told her to switch this notice off ("警察の人に、この通知を止めてと言われました", #51). Only
+// in her consultation: genuine warnings in an SMS, a mail, or a page quote the same words ("と指示される
+// ことがあります", "と言われた場合は"; review 1 of PR #176), and the strong injection sign would send them
+// to the junk folder. Only the told form, so her own "この通知を止めたい" or how-to stays hers, and not
+// "言われたら", which is a warning about what scams say. Only this notice or the app's: "LINEの通知を止めて"
+// is another app. The same kind and reason as INJECTION, so the consultation's floor and the family's
+// card treat it as injected text (consult-judge.ts).
+const TOLD_TO_SILENCE =
+  /(この|その|あの|本|見守り(アプリ)?の)(通知|お知らせ|知らせ)(を|は)?(止め|とめ|消し|切っ|オフにし|無視し)(てください|てくれ|なさい|て|ろ)?[」』"]?(と|って)[^。!?\n]{0,8}?(言われ|頼まれ|指示され)(?!たら|ても)/;
+export const CONSULT_INJECTION: PhraseRule = { ...INJECTION, patterns: [...INJECTION.patterns, TOLD_TO_SILENCE] };
+
 // "心当たりがない場合、このメッセージは無視してください" is in genuine code messages, some with a
 // number to call. It counts only when the message also leads to a link that is not official
 // (judgeByRules checks that).

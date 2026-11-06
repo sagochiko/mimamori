@@ -12,6 +12,7 @@
 
 import { BRAND_WORDS, type HostTrust, imitatedBrandOf, normalizeHost, trustOf } from "./domains";
 import {
+  CONSULT_INJECTION,
   CONTENT_RULES,
   CREDENTIAL_FROM_CODE,
   INJECTION,
@@ -295,7 +296,8 @@ export function judgeByRules(input: RuleInput): RuleResult {
     OTP_ONLY.test(text) &&
     OTP_DIGITS.test(text.replace(new RegExp(PHONE_NUMBER.source, "g"), " "));
 
-  check(INJECTION);
+  // In her consultation, being told to switch the notice off counts too (CONSULT_INJECTION).
+  check(input.source === "consult" ? CONSULT_INJECTION : INJECTION);
   // "このメッセージは無視して" counts only with a link that is not official. Genuine code messages
   // say it with a number to call, so a phone number alone does not make it count.
   if (unofficialLinks.length > 0) check(NOTICE_IGNORE);
