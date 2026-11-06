@@ -26,10 +26,17 @@ while read -r k r; do
 done < <(gh_calls)
 # The same merge as text after an operator, a ( or a backtick: this also finds one inside $(...),
 # backticks, a heredoc, or bash -c "...; gh pr merge", which the words do not show as a command.
+# Since 2026-11-06 the text counts only when something could run it: $(...) or a backtick, or a shell
+# word in the command (bash -c, sh, eval, source, exec, env, sudo). The words "gh pr merge" in the text
+# of a python heredoc or a grep pattern then pass (docs/harness.md, "gh の書き込みを止めなくなった").
 at='(^|[;&|(`]|'"$nl"')[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:];&|]*[[:space:]]+)*([^[:space:];&|()`]*/)?gh[[:space:]]+((-R|--repo)([=[:space:]]+)[^[:space:];&|]+[[:space:]]+)*pr[[:space:]]+merge'
+runs_text=$EXPANDS
+for w in "${WORDS[@]}"; do
+  case ${w##*/} in bash | sh | zsh | dash | ksh | eval | source | exec | env | sudo) runs_text=1 ;; esac
+done
 texts=0
 rest=$cmd
-while [[ "$rest" =~ $at ]]; do
+while ((runs_text)) && [[ "$rest" =~ $at ]]; do
   texts=$((texts + 1))
   rest=${rest#*"${BASH_REMATCH[0]}"}
 done

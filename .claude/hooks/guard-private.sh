@@ -85,8 +85,11 @@ while read -r k r; do
   behind_xargs "$k" && xargs_write=1
   writes+=("$((k + 2))")
 done < <(gh_calls)
-# A bare xargs adds words from stdin, such as the body after --body, which the scan cannot see.
-((xargs_write)) && block guard-private "blocked: gh issue/pr behind xargs takes words from stdin, so the personal-data check cannot see the body. Write the body with the Write tool to a file and pass it with --body-file and an absolute path."
+# Since 2026-11-06 a body the scan cannot see (behind xargs, inside bash -c, $(...), a variable, stdin)
+# is no longer blocked: the author chose to leave that to Claude, who writes bodies with the Write tool
+# and passes them with --body-file and an absolute path (CLAUDE.md). What the scan can see is still
+# checked, and scripts/scan-private.sh history reads issues and PRs again before the repository goes
+# public (docs/harness.md, "gh の書き込みを止めなくなった").
 at='(^|[;&|(`]|'"$nl"')[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:];&|]*[[:space:]]+)*([^[:space:];&|()`]*/)?gh[[:space:]]+((-R|--repo)([=[:space:]]+)[^[:space:];&|]+[[:space:]]+)*(issue|pr)[[:space:]]+(create|edit|comment|close|reopen|review)'
 texts=0
 rest=$cmd
@@ -95,15 +98,6 @@ while [[ "$rest" =~ $at ]]; do
   rest=${rest#*"${BASH_REMATCH[0]}"}
 done
 ((${#writes[@]} + texts)) || exit 0
-# A write the words do not show as a command (bash -c "...; gh issue create", a heredoc fed to bash)
-# would go unread: its --body-file is never opened.
-if ((texts > ${#writes[@]})); then
-  block guard-private "blocked: run gh issue/pr as a plain command, not inside bash -c, a heredoc, \$(...), or another command, so the personal-data check can read its body. Write the body with the Write tool to a file and pass it with --body-file and an absolute path."
-fi
-
-unseen() { block guard-private "blocked: $1, so the personal-data check cannot see the body. Write the body with the Write tool to a file and pass it with --body-file and an absolute path."; }
-((EXPANDS)) && unseen "the command runs \$(...) or a backtick, whose output becomes part of the issue or PR"
-((HIDDEN)) && unseen "the command expands a variable or \$'...', whose text is not in the command"
 
 scan="$PROJECT_DIR/scripts/scan-private.sh"
 cwd=$(jq -r '.cwd // empty' <<<"$in")
@@ -146,14 +140,21 @@ for k in "${writes[@]}"; do
       -F?*) f=${w#-F} ;;
       *) continue ;;
     esac
-    if [[ "$f" == "-" ]]; then
-      ((heredoc)) || unseen "the body comes from stdin (-F -, --body-file -) without a heredoc"
-      continue
-    fi
-    [[ "$f" == /dev/* || "$f" == /proc/* ]] && unseen "the body file $f is a device, not a file"
+    # stdin and devices are not read (the hook's own stdin is the tool call), nor a path built at run time.
+    [[ "$f" == "-" || "$f" == /dev/* || "$f" == /proc/* || "$f" == *'$'* || "$f" == *'`'* ]] && continue
     files+=("$f")
   done
 done
+# A write the words do not show as a command (bash -c "...; gh issue create --body-file /x.md") still has
+# its literal --body-file paths read from the text.
+if ((texts > ${#writes[@]})); then
+  rest=$cmd
+  bf='(--body-file|-F)[=[:space:]]+["'"'"']?(/[^[:space:]"'"'"';&|)`$]+)'
+  while [[ "$rest" =~ $bf ]]; do
+    files+=("${BASH_REMATCH[2]}")
+    rest=${rest#*"${BASH_REMATCH[0]}"}
+  done
+fi
 
 # The command holds --title and --body. The paths of body files and of a cd are not published (and
 # hold the user name of this Mac), so they are taken out before the scan; the files are read below.
