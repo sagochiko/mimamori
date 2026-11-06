@@ -182,7 +182,13 @@ field() { # <-f|-F> <name=value>: -F reads @file, -f takes the text as it is
   local v
   v=$(upper "$2")
   [[ "$v" == VISIBILITY=* || "$v" == PRIVATE=* ]] && publishes=1
-  [[ "$v" == BRANCH=* ]] && branch=${v#BRANCH=}
+  # The key as written (GitHub reads "branch", not "Branch"); a value from @file is unreadable, and
+  # refs/heads/main is main.
+  if [[ "$2" == branch=* ]]; then
+    branch=$(upper "${2#branch=}")
+    branch=${branch#REFS/HEADS/}
+    [[ "$1" == -F && "$branch" == @* ]] && branch=MAIN
+  fi
   if [[ "$v" == QUERY=* && "$v" == *MUTATION* ]]; then
     [[ "$v" == *DELETE* ]] && deletes=1
     [[ "$v" == *MERGE* ]] && merges=1
@@ -249,8 +255,10 @@ while read -r k _; do
       ask "gh api -X $method to an endpoint the hook cannot read, which may merge a PR: confirm with the author"
     elif [[ "$endpoint" =~ (^|/)pulls/[0-9]+/merge/?(\?|$) || "$endpoint" =~ (^|/)merges/?(\?|$) ]]; then
       ask "gh api $endpoint merges, which skips the merge gate (guard-merge.sh): confirm with the author. Merge with gh pr merge <number> --merge."
-    elif ((input || HIDDEN || EXPANDS)); then
-      ask "gh api -X $method with a body the hook cannot read (--input, a variable, or \$(...)), which may publish the repository or move main: confirm with the author"
+    elif ((input || HIDDEN || EXPANDS)) && [[ "${endpoint%%\?*}" =~ (^|/)repos/[^/]+/[^/]+/?$ || "$endpoint" =~ (^|/)(contents|git/refs|branches)(/|\?|$) ]]; then
+      # Only where an unread body could publish the repository or move main. An issue or a comment with
+      # a body from $(...) or --input passes, as the author chose (docs/harness.md).
+      ask "gh api -X $method to $endpoint with a body the hook cannot read (--input, a variable, or \$(...)), which may publish the repository or move main: confirm with the author"
     elif ((publishes)); then
       ask "gh api changes the repository's visibility, which publishes it: confirm with the author"
     elif [[ "$endpoint" =~ (^|/)git/refs/heads/main/?(\?|$) || "$endpoint" =~ (^|/)branches/main(/|\?|$) ]]; then
