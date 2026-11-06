@@ -37,6 +37,8 @@ export const DEADLINE_HOURS = { min: 5, max: 12 } as const;
 const UNKNOWN_NAME = "家族";
 /** Families looked at per tick; more wait for the next tick. */
 const MISSED_PER_TICK = 20;
+/** D1 calls of one family's notice in the tick (#178): the claim, the members, the tokens, giving the claim back. */
+const MISSED_D1 = 4;
 
 interface SmileRow {
   id: string;
@@ -229,6 +231,7 @@ export async function setSmileDeadline(request: Request, env: Env): Promise<Resp
  * devices, the claim goes back and a later tick tries again.
  */
 export async function notifyMissedSmiles(env: Env, now: number, budget: ExternalBudget): Promise<void> {
+  if (budget.d1Remaining < 1 + MISSED_D1) return;
   const today = jstDate(now);
   const midnight = jstMidnight(now);
   const due = await env.DB.prepare(
@@ -249,6 +252,7 @@ export async function notifyMissedSmiles(env: Env, now: number, budget: External
     .all<{ id: string; told_on: string | null; name: string | null }>();
 
   for (const family of due.results) {
+    if (budget.d1Remaining < MISSED_D1) break;
     const claim = await env.DB.prepare(
       `UPDATE families SET smile_missed_notified_on = ?
         WHERE id = ? AND (smile_missed_notified_on IS NULL OR smile_missed_notified_on != ?)`,

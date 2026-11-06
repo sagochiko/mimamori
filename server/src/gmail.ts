@@ -47,6 +47,12 @@ export const MESSAGES_PER_FAMILY = 10;
 const FAMILIES_PER_TICK = 5;
 /** Refresh and one page of history, at least, before a family is started. */
 const CALLS_TO_START = 2;
+/**
+ * D1 calls one grant can take in the tick (#178): the advance notice (its claim, the members, the
+ * tokens, giving the claim back), then the notice that the grant ended (the members, the tokens, the
+ * delete), or one save of where the reading stopped.
+ */
+const GRANT_D1 = 7;
 const SENDER_MAX_CHARS = 500;
 const LINKS_KEPT = 5;
 
@@ -626,7 +632,7 @@ function htmlToText(html: string): string {
  */
 export async function watchGmail(env: Env, now: number, budget: ExternalBudget): Promise<void> {
   const client = googleClient(env);
-  if (!client) return;
+  if (!client || budget.d1Remaining < 1 + GRANT_D1) return;
   const rows = await env.DB.prepare(
     `SELECT family_id, refresh_token_enc, granted_at, last_history_id, expired_notified_at,
             partial_record_id, partial_message_ids
@@ -637,6 +643,7 @@ export async function watchGmail(env: Env, now: number, budget: ExternalBudget):
     .all<GrantRow>();
 
   for (const grant of rows.results) {
+    if (budget.d1Remaining < GRANT_D1) break;
     await warnBeforeExpiry(env, grant, now, budget);
     if (budget.remaining < CALLS_TO_START || !budget.take()) break;
     const token = await refresh(env, client, grant.refresh_token_enc);
