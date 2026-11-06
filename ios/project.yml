@@ -62,6 +62,9 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleLocalizations: [ja, en]
         MimamoriAPIBaseURL: https://$(MIMAMORI_API_HOST)
+        # The judges' tour shows only when this is `demo` (MimamoriCore DemoMode, #100). The same token
+        # is already in the Message Filter extension's URL, so no build carries anything new.
+        MimamoriSMSFamilyToken: $(MIMAMORI_SMS_FAMILY_TOKEN)
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIBackgroundModes: [remote-notification]

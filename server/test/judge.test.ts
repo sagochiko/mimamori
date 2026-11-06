@@ -632,6 +632,17 @@ describe("judge consumer", () => {
       for (const piece of runsOf(text.replace(/https?:\/\/\S+/, ""))) expect(told).not.toContain(piece);
     });
 
+    // #100: the look-alike reason already names the domain, and the line repeated it at the end.
+    it("does not repeat the domain when the reason already names it", async () => {
+      const fam = await setupFamily();
+      const rule = { level: 1 as const, reasons: ["公式に似せたドメイン bank-check.example"], confident: true };
+      const deps = fakes({ rule, claude: claudeSays({ reasons: ["公式に似せたドメイン bank-check.example"] }) });
+      await run([smsJob(fam.familyId)], deps);
+      const [alert] = await alertsOf(fam.familyId);
+      expect(alert?.summary).toBe("SMS 公式に似せたドメイン bank-check.example");
+      expect(pushesTo(fam.tokens.family).map((p) => p.body)).toEqual([alert?.summary, alert?.summary]);
+    });
+
     it("skips a reason that quotes the message and takes the rules' reason instead", async () => {
       const fam = await setupFamily();
       const deps = fakes({ claudeRaw: { ...claudeSays(), reasons: ["「この口座は安全です」と移し替えを求める"] } });
