@@ -19,4 +19,12 @@ struct ProblemTests {
     #expect(Problem(APIError.unauthorized, joining: false) == nil)
     #expect(Problem(APIError.unauthorized, joining: true) == nil)
   }
+
+  @Test("「すべて消す」の失敗は「消せなかった」と伝え、401 だけは画面の切り替えに任せる")
+  func deletingFailureIsNotDeleted() {
+    #expect(Problem(deleting: APIError.http(status: 502)) == .notDeleted)
+    #expect(Problem(deleting: APIError.http(status: 500)) == .notDeleted)
+    #expect(Problem(deleting: URLError(.notConnectedToInternet)) == .notDeleted)
+    #expect(Problem(deleting: APIError.unauthorized) == nil)
+  }
 }

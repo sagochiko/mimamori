@@ -125,6 +125,14 @@ public final class APIClient: Sendable {
     return answer.deadlineHour
   }
 
+  /// `DELETE /families/me` ("すべて消す"). The server deletes the whole family, this device's member
+  /// included, so the stored key is cleared only after a 2xx. Any failure (502 `cleanup_failed` when
+  /// Google or Anthropic refused, offline) leaves the key as it was, and pressing again finishes the job.
+  public func deleteEverything() async throws {
+    try await perform("DELETE", "families/me", body: Empty?.none, auth: true)
+    store.clear()
+  }
+
   // MARK: Plumbing
 
   static let decoder: JSONDecoder = {

@@ -132,6 +132,22 @@ final class AppModel {
     }
   }
 
+  // MARK: Deleting everything
+
+  /// "すべて消す" (`DELETE /families/me`). Once the server answers 2xx the key is cleared, and the
+  /// route change to role selection clears her conversation and what this run kept (the handler in
+  /// `init`). On failure nothing here is deleted and the screen says it was not deleted.
+  func deleteEverything() async {
+    isBusy = true
+    defer { isBusy = false }
+    do {
+      try await session.deleteEverything()
+      problem = nil
+    } catch {
+      problem = Problem(deleting: error)
+    }
+  }
+
   // MARK: Cases
 
   var familyCards: [FamilyCard] {
