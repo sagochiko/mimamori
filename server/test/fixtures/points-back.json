@@ -108,7 +108,11 @@
   { "text": "ねこの飼い方を教えて", "pointsBack": false },
   { "text": "ねこのこと", "pointsBack": false },
   { "text": "ねこれ", "pointsBack": false },
-  { "text": "うんそれってどういうこと", "pointsBack": false },
+  { "text": "うんそれってどういうこと", "pointsBack": true },
   { "text": "あのおそれがある", "pointsBack": false },
-  { "text": "ねえそれってなに", "pointsBack": false }
+  { "text": "ねえそれってなに", "pointsBack": true },
+  { "text": "あのーそれってなに", "pointsBack": true },
+  { "text": "えーっとそれってなに", "pointsBack": true },
+  { "text": "うーーんそれってなに", "pointsBack": false },
+  { "text": "ちょっとおそれ本当", "pointsBack": false }
 ]
