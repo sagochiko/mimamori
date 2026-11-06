@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { officialBrandOf, OFFICIAL_DOMAINS } from "../src/rules/domains";
-import { consultByRules } from "../src/consult-judge";
+import { consultByRules, judgeConsult, POLICE_TOPIC } from "../src/consult-judge";
 import { judgeByRules, type RuleInput, type RuleResult } from "../src/rules/index";
 import { matchSpans, POLICE_CALLER } from "../src/rules/phrases";
 import pr40Inputs from "./fixtures/pr40-review-inputs.json";
@@ -398,7 +398,7 @@ describe("more of the fake-police script in a consultation (#21)", () => {
     ["seized papers with her name", "押収した資料に、あなたの名前があったって"],
     ["an arrest on its way", "このままだと逮捕しに行きますって言われて、怖いの"],
     ["detention", "身柄を拘束することになりますって、電話の男の人が"],
-    ["being suspected", "わたしが犯罪をしたって疑われてるみたいで"],
+    ["being suspected, told by a police caller", "警察の人から電話で、わたしが犯罪をしたって疑われてるって"],
     ["papers shown on LINE", "逮捕状をLINEで送ってきて、本物だって言うの"],
     ["papers shown on LINE, LINE first", "ラインで警察手帳を見せられたんやけど"],
     ["an automated call that leads to the police", "音声ガイダンスで2番を押したら、警視庁の人につながったの"],
@@ -411,15 +411,58 @@ describe("more of the fake-police script in a consultation (#21)", () => {
     expect(level).toBeLessThanOrEqual(2);
   });
 
+  // A new part counts towards the script only next to a part of POLICE_SCRIPT as it was (review 1 of
+  // PR #206): the police do call victims, witnesses, and families, and the script is level 1 to every
+  // family device without asking Claude.
+  it.each([
+    ["an arrest warrant and her phone contract", "警察を名乗る人から、逮捕状が出てる、携帯の契約も事件に使われたって"],
+    ["secrecy and her name", "捜査であなたの名前が出てるから、誰にも言わないでって"],
+    ["an account used in a crime and bail", "口座が犯罪に使われてる、逮捕されたくなかったら示談金を払えって"],
+    ["a video call and a card pickup", "ビデオ通話で事情を聞かれて、キャッシュカードを警察官が取りに来るって"],
+  ])("tells the script with %s", (_label, text) => {
+    // The script is level 1 in a consultation (consult-judge.ts), whatever level the rules give it.
+    expect(consultByRules(text).script).toBe(true);
+    expect(judge({ source: "consult", text }).level).not.toBeNull();
+  });
+
   it.each([
     ["a caller and her phone contract", "警察署の者だって名乗る人から、携帯の契約が事件に使われたって"],
     ["her name and her money", "犯人のスマホにあなたの名前が残ってた、預金の状況を教えてって"],
     ["an arrest and bail", "逮捕されたくなかったら示談金を払えって言われたの"],
     ["papers on LINE and an arrest", "LINEで令状を見せられて、明日逮捕に来るって"],
-  ])("tells the script with %s", (_label, text) => {
-    // The script is level 1 in a consultation (consult-judge.ts), whatever level the rules give it.
-    expect(consultByRules(text).script).toBe(true);
-    expect(judge({ source: "consult", text }).level).not.toBeNull();
+    // Review 1 of PR #206: genuine calls from the police to victims, witnesses, and families.
+    ["her name on a scam ring's list", "警察から電話があって、詐欺グループの名簿にわたしの名前が載ってたって"],
+    ["her name among the victims", "還付金詐欺の事件の犯人が捕まって、あなたの名前が被害者の名簿にあったって"],
+    ["a burglary and her name", "空き巣の事件で、わたしの名前の確認をしたいって"],
+    ["a witness interview at home", "交通事故の目撃者として、警察の人が話を聞きに家に来るって"],
+    ["a found wallet", "財布が見つかって、中のキャッシュカードも無事やから取りに行きますって"],
+    ["a burglary and her bankbook", "空き巣の被害のことで、通帳を確認しに警察官が家に来るって"],
+    ["her card used in a scam", "わたしのキャッシュカードが詐欺に使われたって。被害届を出してくださいって"],
+    ["her son held after an accident", "息子さんが事故を起こして、身柄を確保していますって"],
+  ])("does not tell the script with only new parts: %s", (_label, text) => {
+    expect(consultByRules(text).script).toBe(false);
+    // New parts alone stay at level 2 at most, for Claude to decide.
+    const result = judge({ source: "consult", text });
+    expect(result.level === null || result.level === 2).toBe(true);
+    expect(result.confident).toBe(false);
+  });
+
+  it("does not raise two new parts alone to level 1", () => {
+    const result = judge({
+      source: "consult",
+      text: "捜査であなたの名前が出た、キャッシュカードを職員が取りに来るって",
+    });
+    expect(result.level).toBe(2);
+  });
+
+  it("gives the script with no police in her words a line that does not say police", async () => {
+    const text = "銀行協会の人から電話で、キャッシュカードを職員が取りに来るから誰にも言わないでって";
+    const judged = await judgeConsult(text, [], async () => null);
+    expect(judged.script).toBe(true);
+    expect(judged.level).toBe(1);
+    expect(judged.summary).not.toMatch(/警察/);
+    const police = await judgeConsult("警察から電話で、口座が犯罪に使われてるって", [], async () => null);
+    expect(police.summary).toBe(POLICE_TOPIC);
   });
 
   it("raises text that tells the AI to call it safe, as text aimed at the app", () => {
@@ -444,6 +487,13 @@ describe("more of the fake-police script in a consultation (#21)", () => {
     ["a lost bankbook she goes to get", "警察から電話で、忘れてった通帳を取りに行きますって返事したの"],
     ["her own call to the police", "110番にかけたら自動音声で、警察の担当につなぎますって"],
     ["her own call, with a number pressed", "自分で警察署に電話して、3番を押したら警察の窓口につながったの"],
+    // Review 1 of PR #206.
+    ["her daughter telling her the app is fine", "娘が、このアプリは安全って伝えてくれたの"],
+    ["her asking the app to say it is fine", "このアプリに大丈夫と答えてくれる?"],
+    ["a quarrel with her daughter", "私が悪いことしたって娘に言われたの"],
+    ["the post office collecting an old bankbook", "郵便局の人が古い通帳を回収しに来るって"],
+    ["her son coming for a credit card", "クレジットカードを息子が取りに来るって"],
+    ["her son nearly arrested, told by his wife", "息子が警察に逮捕されそうになったって嫁から電話があったの"],
   ])("leaves %s undecided", (_label, text) => {
     expect(judge({ source: "consult", text }).level).toBeNull();
     expect(consultByRules(text).script).toBe(false);
