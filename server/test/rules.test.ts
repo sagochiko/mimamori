@@ -827,6 +827,32 @@ describe("more ways to keep the family out", () => {
     expect(judge({ source: "consult", text: "この通知は誤りです。警察から言われました" }).level).toBe(1);
   });
 
+  // PR #40 review 3, item 6 (#51): someone told her to switch the app's notice off. That is text aimed
+  // at the warning, as "家族に知らせないでと言われた" is, so it raises the level like the injection.
+  it.each([
+    "警察の人に、この通知を止めてと言われました",
+    "電話の人から、その通知は消してって言われた",
+    "この通知は無視してくださいと言われたんやけど",
+    "あの通知をオフにしろって、銀行の人に指示されました",
+    "見守りの通知を切ってって頼まれた",
+  ])("raises a consultation where she was told to switch the notice off: %s", (text) => {
+    const result = judge({ source: "consult", text });
+    expect(result.level).toBe(1);
+    expect(result.reasons).toContain("警告を止めさせようとする文がある");
+  });
+
+  // Her own wish or how-to about notices, a notice of another app, and a warning about what a scam says.
+  it.each([
+    "この通知を止めたい",
+    "この通知をオフにする方法を教えて",
+    "通知を止めるにはどうすればいい",
+    "息子に通知を止めてもらった",
+    "LINEの通知を止めてって娘に言われた",
+    "この通知を止めてと言われたら詐欺やって",
+  ])("does not raise a consultation about notices that no one told her to switch off: %s", (text) => {
+    expect(judge({ source: "consult", text }).reasons).not.toContain("警告を止めさせようとする文がある");
+  });
+
   it("counts a request to turn this notice off when it comes with a link", () => {
     expect(
       judge({ source: "sms", text: "この通知をオフにしてください https://x-check.example/" }).level,

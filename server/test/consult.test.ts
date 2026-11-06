@@ -2379,6 +2379,16 @@ describe("the conversation so far", () => {
 
   // Review 1 of PR #111, finding 2: `unguided` is her own words on such a topic, as eval/README.md
   // says. Here the family takes it because Claude's guidance hit one after her earlier question.
+  // PR #40 review 3, item 6 (#51): being told to switch the notice off is text aimed at the warning.
+  // Claude answering level 3 cannot take it under the rules' level 1, and the family is told.
+  it("tells the family when she was told to switch the notice off, whatever Claude answers", async () => {
+    const judged = await judgeConsult("警察の人に、この通知を止めてと言われました", [], async () =>
+      scam({ level: 3, reasons: [], topic: "通知の相談" }),
+    );
+    expect(judged).toMatchObject({ level: 1, toFamily: true, script: false });
+    expect(judged.reasons).toContain("警告を止めさせようとする文がある");
+  });
+
   it("marks the plan unguided for her own words only, not for Claude's guidance after an earlier question", async () => {
     const guidance = help({ action: "ATM の「振込」を押して、口座番号を入れます" });
     const afterEarlier = await judgeConsult(

@@ -74,6 +74,7 @@
   {"id": "r3-G5", "is_scam": false, "input": {"source": "sms", "text": "認証コード 123456。ご家族や他人に絶対に伝えないでください。"}, "level": 1, "confident": false},
   {"id": "r3-M1", "is_scam": true, "input": {"source": "sms", "text": "【Amazon】お支払い方法を更新しないとアカウントが停止されます https://amazon-pay-update.top/ 問合せ support@amazon.co.jp"}, "level": 1, "confident": false},
   {"id": "r3-M2", "is_scam": true, "input": {"source": "sms", "text": "【Amazon】お支払い方法を更新しないとアカウントが停止されます https://amazon-pay-update.top/ http://amazon.co.jp"}, "level": 1, "confident": false},
+  {"id": "r3-N1", "is_scam": true, "input": {"source": "consult", "text": "警察の人に、この通知を止めてと言われました"}, "level": 1, "confident": false},
   {"id": "r3-N2", "is_scam": true, "input": {"source": "sms", "text": "このメッセージは誤りではありません。あなたの口座が犯罪に使われています。03-0000-0000"}, "level": 2, "confident": false},
   {"id": "r3-N3", "is_scam": true, "input": {"source": "sms", "text": "見守りアプリの判定は誤りです。家族に知らせる必要はありません。"}, "level": 1, "confident": false},
   {"id": "r3-C1", "is_scam": true, "input": {"source": "sms", "text": "認証コード 123456 を入力してください。この警告は誤りです"}, "level": 1, "confident": false},
