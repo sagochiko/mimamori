@@ -81,8 +81,9 @@ const JUDGMENT_SCHEMA = {
 // (#53, 5), so they are matched by their stem and its spellings ("大丈夫だと思います", "だいじょうぶ",
 // "詐欺ではなかった", "問題無いです", "問題がないので", "問題ございません"), as REASSURING in
 // src/consult-judge.ts does for what she hears. 危険 counts only with は, も or が: "危険なリンク" is
-// a warning.
-const ASKED_BEFORE = "(の|なの|です|でしょう|だろう)?か";
+// a warning. った lets a past question through as well ("問題なかったか家族に確かめて", review 3 of
+// PR #175), while "詐欺ではなかった" and "問題なかったかと思います" still count.
+const ASKED_BEFORE = "(った|の|なの|です|でしょう|だろう)?か";
 const NOT_ASKED = `(?!${ASKED_BEFORE}(?!ら|と思|と存じ))`;
 const DOUBTED = `(?!${ASKED_BEFORE}(?!ら))`;
 const NOT_THERE = "(ありません|ございません|な[いさしくか]|無[いし])";

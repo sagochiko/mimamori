@@ -320,6 +320,8 @@ describe("decide", () => {
       "心配不要です",
       "問題ございません",
       "詐欺ではございません",
+      "問題なかったかと思います",
+      "危険はなかったから",
     ])("replaces the reason %s but keeps Claude's level and injection step", (text) => {
       const judgment = parseClaudeJudgment({
         ...valid,
@@ -364,6 +366,8 @@ describe("decide", () => {
       "本当に大丈夫なのか家族に確かめて",
       "大丈夫かと家族に聞いて",
       "問題がないか家族に確かめて",
+      "問題なかったか家族に確かめて",
+      "詐欺ではなかったか確かめて",
     ])("keeps a reason that only quotes the message or advises checking (%s)", (text) => {
       const judgment = parseClaudeJudgment({ ...valid, level: 1, reasons: [text] });
       expect(decide(rule, judgment).reasons).toEqual([text]);
