@@ -29,6 +29,38 @@ extension Problem {
     switch self {
     case .badCode: "コードが違います"
     case .unreachable: "つながりません"
+    case .notDeleted: "消せませんでした"
+    }
+  }
+}
+
+/// The menu on both home screens with "すべて消す", and the check before it: "消す" or "やめる",
+/// nothing else on screen. What goes is read aloud only.
+struct WipeMenu: View {
+  @Environment(AppModel.self) private var model
+  @State private var confirming = false
+
+  var body: some View {
+    Menu {
+      Button("すべて消す", systemImage: "trash", role: .destructive) { confirming = true }
+        .accessibilityHint("家族の知らせ、相談、笑顔、Gmail の許可を裏側からすべて消し、この iPhone の鍵と会話も消して、役を選ぶ画面に戻ります。家族のみんなが使えなくなります")
+    } label: {
+      Image(systemName: model.isBusy ? "hourglass" : "ellipsis.circle")
+        .font(.title2)
+        .foregroundStyle(.secondary)
+        .frame(width: 44, height: 44)
+        .contentShape(Rectangle())
+    }
+    .disabled(model.isBusy)
+    .accessibilityLabel("その他")
+    .alert("すべて消す", isPresented: $confirming) {
+      Button("消す", role: .destructive) { Task { await model.deleteEverything() } }
+      Button("やめる", role: .cancel) {}
+    }
+    .onAppear {
+      #if DEBUG
+        if ScreenshotStubTransport.wipeOpen { confirming = true }
+      #endif
     }
   }
 }

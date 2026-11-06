@@ -25,6 +25,18 @@ struct CallFollowUpTests {
     return (CallFollowUp(store: store, calendar: Self.tokyo), store)
   }
 
+  @Test("忘れると、待っていた問いかけも、聞いた日の記録も消える(すべて消す、401、家族を抜けたとき)")
+  func forgetClearsEverything() {
+    let (followUp, store) = make()
+    #expect(followUp.callEnded(Self.call(minutes: 10)) == .notifyNow)
+    #expect(followUp.promptToShow(at: Self.at(15, 1)) == CallFollowUp.prompt)
+
+    followUp.forget()
+
+    #expect(followUp.promptToShow(at: Self.at(15, 1)) == nil)
+    #expect(store.load() == CallFollowUpState())
+  }
+
   @Test("3分以上の通話が終わったら1回だけ通知で聞く")
   func longCallAsksOnce() {
     let (followUp, _) = make()

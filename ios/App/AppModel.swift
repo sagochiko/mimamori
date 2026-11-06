@@ -75,6 +75,11 @@ final class AppModel {
         // The key is gone (a 401, or this iPhone left the family): her conversation goes with it.
         // Not before the first unlock, when the Keychain only reads as empty.
         if UIApplication.shared.isProtectedDataAvailable { self?.chat.clear() }
+        // What was asked after her calls goes too, and the question still waiting on her screen or in
+        // Notification Center.
+        self?.followUp.forget()
+        self?.followUpPrompt = nil
+        CallFollowUpNotifier.removeDelivered()
       }
       // Joined as the protected member, or no longer: the call watch and the daily prompt follow.
       self?.cameToFront()
@@ -129,6 +134,22 @@ final class AppModel {
     await run(joining: false) { [weak self] session in
       let invite = try await session.createInvite()
       self?.invite = invite
+    }
+  }
+
+  // MARK: Deleting everything
+
+  /// "すべて消す" (`DELETE /families/me`). Once the server answers 2xx the key is cleared, and the
+  /// route change to role selection clears her conversation and what this run kept (the handler in
+  /// `init`). On failure nothing here is deleted and the screen says it was not deleted.
+  func deleteEverything() async {
+    isBusy = true
+    defer { isBusy = false }
+    do {
+      try await session.deleteEverything()
+      problem = nil
+    } catch {
+      problem = Problem(deleting: error)
     }
   }
 
