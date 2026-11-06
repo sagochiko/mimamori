@@ -720,6 +720,27 @@ describe("judge consumer", () => {
       expect(pushesTo([fam.tokens.mother])).toHaveLength(2);
     });
 
+    // #53 (2): the mother's push is retried only by the queue, so an alert she never got must not keep
+    // the next one from the same sender from reaching her.
+    it("does not count an alert whose push never reached the mother", async () => {
+      const fam = await setupFamily();
+      failingTokens.add(fam.tokens.mother);
+      await run([smsJob(fam.familyId)], fakes({ now: T0 }));
+      expect(pushesTo([fam.tokens.mother])).toHaveLength(0);
+
+      failingTokens.clear();
+      await run([smsJob(fam.familyId)], fakes({ now: T0 + 10 * 60_000 }));
+      expect(pushesTo([fam.tokens.mother])).toHaveLength(1);
+    });
+
+    it("still counts an alert for a mother with no device, who counts as told", async () => {
+      const fam = await setupFamily();
+      await env.DB.prepare("UPDATE members SET apns_token = NULL WHERE id = ?").bind(fam.mother).run();
+      await run([smsJob(fam.familyId)], fakes({ now: T0 }));
+      await run([smsJob(fam.familyId)], fakes({ now: T0 + 10 * 60_000 }));
+      expect(pushesTo(fam.tokens.family)).toHaveLength(2);
+    });
+
     it("does not dedupe across families", async () => {
       const a = await setupFamily();
       const b = await setupFamily();
