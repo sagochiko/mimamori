@@ -185,7 +185,7 @@ const MORE_OF_KIND: Readonly<Record<string, readonly RegExp[]>> = {
   // alone: 仕事で拘束される is her day.
   police_arrest: [
     /逮捕(しに|に)(行|来|伺|向か)|逮捕(する|します|されちゃ|されそう|されたく)|身柄を|拘束されたく|勾留/,
-    new RegExp(`(${WHOSE})が${NOT_SENT}{0,4}(悪いこと|犯罪|罪)${NOT_SENT}{0,8}(言われ|疑われ)`),
+    new RegExp(`(${WHOSE})が${NOT_SENT}{0,4}(悪いこと|犯罪|(?<!謝)罪)${NOT_SENT}{0,8}(言われ|疑われ)`),
   ],
   // Papers shown on LINE: 逮捕状をLINEで送ってきた, ラインで警察手帳を見せられた. Only the papers the
   // script shows, not photos, which the family sends on LINE every day.
@@ -201,6 +201,10 @@ const MORE_OF_KIND: Readonly<Record<string, readonly RegExp[]>> = {
     ),
   ],
 };
+// Not a line she called herself: 110番にかけたら, 自分で警察署に電話して.
+const NOT_HER_CALL = `(?<!(110|かけたら|かけて|自分で|自分から|こちらから)${NOT_SENT}{0,12})`;
+// Not a card she lost: the police or a 交番 calling about one she dropped or left is genuine.
+const NOT_LOST = `(?<!(落と|拾|忘れ)${NOT_SENT}{0,12})`;
 // New parts of the script, only in a consultation.
 const CONSULT_ONLY_PARTS: readonly PhraseRule[] = [
   {
@@ -231,27 +235,30 @@ const CONSULT_ONLY_PARTS: readonly PhraseRule[] = [
   },
   {
     // An automated call that leads to someone who says he is the police. Not an automated line with
-    // no police in it, such as a bank's she called herself.
+    // no police in it, such as a bank's, and not a line she called herself (110番にかけたら).
     kind: "police_ivr",
     strength: "medium",
     reason: "自動音声のあとで警察を名乗る相手につながった",
     patterns: [
-      new RegExp(`(自動音声|音声ガイダンス|ガイダンス|機械の声|録音の声)${NOT_SENT}{0,30}${POLICE_NAME}`),
-      new RegExp(`\\d番?を押${NOT_SENT}{0,15}${POLICE_NAME}`),
+      new RegExp(
+        `${NOT_HER_CALL}(自動音声|音声ガイダンス|ガイダンス|機械の声|録音の声)${NOT_SENT}{0,30}${POLICE_NAME}`,
+      ),
+      new RegExp(`${NOT_HER_CALL}\\d番?を押${NOT_SENT}{0,15}${POLICE_NAME}`),
     ],
   },
   {
     // Someone coming to her home for her card or bankbook (キャッシュカード詐欺盗). Not her going to
-    // pick up a lost card ("受け取りに来てください"), or a card sent by post.
+    // pick up a lost card ("受け取りに来てください", "取りに来られますか"), a card she dropped or left
+    // somewhere, or a card sent by post.
     kind: "card_pickup",
     strength: "medium",
     reason: "カードや通帳を人が受け取りに来る話がある",
     patterns: [
       new RegExp(
-        `(カード|通帳)${NOT_SENT}{0,20}(取りに|預かりに|受け取りに|回収しに|回収に)(来る|来ます|来られ|行く|行きます|伺|参)`,
+        `${NOT_LOST}(カード|通帳)${NOT_SENT}{0,20}(取りに|預かりに|受け取りに|回収しに|回収に)(来る|来ます|行く|行きます|伺|参)`,
       ),
       new RegExp(
-        `(カード|通帳)${NOT_SENT}{0,15}(人|者|職員|警察官|銀行員)が(来る|来ます|家に|うちに|伺|行く|行きます)`,
+        `${NOT_LOST}(カード|通帳)${NOT_SENT}{0,15}(人|者|職員|警察官|銀行員)が(来る|来ます|家に|うちに|伺|行く|行きます)`,
       ),
     ],
   },

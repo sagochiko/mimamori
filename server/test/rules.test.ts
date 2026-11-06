@@ -438,6 +438,12 @@ describe("more of the fake-police script in a consultation (#21)", () => {
     ["a lost card she goes to pick up", "落としたキャッシュカードが交番に届いてて、受け取りに来てくださいって"],
     ["a passed-on warning about card pickup", "回覧板に、警察官がキャッシュカードを取りに来るのは詐欺って書いてあった"],
     ["a passed-on warning about an automated call", "テレビで、自動音声のあとに警察につながる電話は詐欺ですって"],
+    // Review of the first commit: genuine shapes next to the new wording.
+    ["an apology she was asked for", "わたしが謝罪しろって言われたの"],
+    ["a lost card she may come for", "交番から電話で、落としたキャッシュカードが届いてるので取りに来られますかって"],
+    ["a lost bankbook she goes to get", "警察から電話で、忘れてった通帳を取りに行きますって返事したの"],
+    ["her own call to the police", "110番にかけたら自動音声で、警察の担当につなぎますって"],
+    ["her own call, with a number pressed", "自分で警察署に電話して、3番を押したら警察の窓口につながったの"],
   ])("leaves %s undecided", (_label, text) => {
     expect(judge({ source: "consult", text }).level).toBeNull();
     expect(consultByRules(text).script).toBe(false);
