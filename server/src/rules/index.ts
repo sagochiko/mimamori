@@ -67,6 +67,8 @@ interface NamedHost extends HostTrust {
    * is, not a link she is led to. Only for pages.
    */
   own: boolean;
+  /** The mail sender's own domain, not an address written in the text. */
+  fromSender: boolean;
 }
 
 const SUSPICIOUS_TLDS = new Set([
@@ -134,18 +136,25 @@ function nestedUrls(url: URL): string[] {
 /** Every host the input names: the domain, the URL, the sender's mail domain, and links in the text. */
 function hostsOf(input: RuleInput, text: string): NamedHost[] {
   const hosts = new Map<string, NamedHost>();
-  const put = (host: string, address: boolean, trust: HostTrust, bare = false, own = false) => {
+  const put = (host: string, address: boolean, trust: HostTrust, bare = false, own = false, fromSender = false) => {
     const key = `${address}:${host}:${trust.trust}`;
     // The same host named both bare and as a link counts as a link. A page's own host stays its own
     // when the page links to itself.
     const before = hosts.get(key);
     if (host.includes(".") && !(bare && before)) {
-      hosts.set(key, { host, address, bare, own: own || (before?.own ?? false), ...trust });
+      hosts.set(key, {
+        host,
+        address,
+        bare,
+        own: own || (before?.own ?? false),
+        fromSender: fromSender || (before?.fromSender ?? false),
+        ...trust,
+      });
     }
   };
-  const addAddress = (domain: string | undefined) => {
+  const addAddress = (domain: string | undefined, fromSender = false) => {
     const url = domain ? parseUrl(domain) : null;
-    if (url) put(normalizeHost(url.hostname), true, trustOf(url.hostname, true));
+    if (url) put(normalizeHost(url.hostname), true, trustOf(url.hostname, true), false, false, fromSender);
   };
   const addLink = (value: string | undefined, depth = 0, bare = false, own = false) => {
     const url = value ? parseUrl(value) : null;
@@ -159,7 +168,7 @@ function hostsOf(input: RuleInput, text: string): NamedHost[] {
   addLink(input.domain, 0, false, page);
   addLink(input.url, 0, false, page);
   const sender = normalizeText(input.sender ?? "");
-  if (sender.includes("@")) addAddress(sender.split("@").pop());
+  if (sender.includes("@")) addAddress(sender.split("@").pop(), true);
   else if (/^[a-z0-9.-]+\.[a-z]{2,}$/.test(sender)) addLink(sender);
 
   let rest = text;
@@ -188,6 +197,10 @@ interface Sign {
   strength: Strength;
   kinds: Set<string>;
 }
+
+// The secrecy rules a genuine code notice can match (#51).
+const POLICE_SECRECY = POLICE_SCRIPT.find((rule) => rule.kind === "police_secrecy")!;
+const HUSH_KINDS = new Set([INJECTION.kind, POLICE_SECRECY.kind]);
 
 const RANK: Record<Strength, number> = { strong: 0, medium: 1, weak: 2 };
 
@@ -253,8 +266,8 @@ export function judgeByRules(input: RuleInput): RuleResult {
   const add = (kind: string, strength: Strength, reason: string, spans: Array<[number, number]> = []) => {
     if (!signals.has(kind)) signals.set(kind, { kind, strength, reason, spans });
   };
-  const check = (rule: PhraseRule, read: string = text) => {
-    const spans = matchSpans(rule, read);
+  const check = (rule: PhraseRule) => {
+    const spans = matchSpans(rule, text);
     if (spans.length > 0) add(rule.kind, rule.strength, rule.reason, spans);
   };
 
@@ -297,28 +310,36 @@ export function judgeByRules(input: RuleInput): RuleResult {
     matchSpans(MONEY_MOVE, text).length === 0;
   const codeOnly =
     plain && OTP_ONLY.test(text) && OTP_DIGITS.test(text.replace(new RegExp(PHONE_NUMBER.source, "g"), " "));
-  // In a message with nothing a scam adds, "このコードはご家族にも言わないで" protects the code (#51):
-  // those sentences are blanked out before the secrecy rules read the text. Anywhere else they count.
-  const hushText = plain ? blankOut(codeOnly ? blankOut(text, CODE_GUARD) : text, CREDENTIAL_GUARD) : text;
 
-  check(INJECTION, hushText);
+  check(INJECTION);
   // "このメッセージは無視して" counts only with a link that is not official. Genuine code messages
   // say it with a number to call, so a phone number alone does not make it count.
   if (unofficialLinks.length > 0) check(NOTICE_IGNORE);
   // A consultation that passes on a warning she heard or read (#81): the script's parts in it are what
   // the warning describes, so they are not signs, and Claude answers it. Text aimed at the app still is.
   const passedOn = input.source === "consult" && tellingOf(text) === "passed_on";
-  if (!passedOn) {
-    for (const rule of POLICE_SCRIPT) {
-      if (rule.kind !== "police_secrecy") check(rule);
-      else if (!codeOnly) check(rule, hushText);
-    }
-  }
+  if (!passedOn) for (const rule of POLICE_SCRIPT) if (!(codeOnly && rule.kind === "police_secrecy")) check(rule);
   for (const rule of CONTENT_RULES)
     check(codeOnly && rule.kind === CREDENTIAL_FROM_CODE.kind ? CREDENTIAL_FROM_CODE : rule);
   check(URGENCY);
   check(MONEY_MOVE);
   if (unofficial.length > 0) for (const rule of LINK_BAIT) check(rule);
+
+  // A genuine notice says not to tell the family the code or the PIN (#51). Only where the message
+  // can be taken as genuine on its own: an SMS that is only a code, or mail from an official sender
+  // with nothing a scam adds. And only when the secrecy is all there is: the sentences that protect
+  // the code (CREDENTIAL_GUARD, and in a code CODE_GUARD) are blanked out, and if the secrecy rules
+  // then find nothing and no other sign was found, weak ones included, it is read as the notice. Any
+  // other sign keeps the whole message as it was read, since a scam can add the genuine sentence.
+  const officialSender =
+    input.source === "gmail" && hosts.some((h) => h.address && h.trust === "official" && h.fromSender);
+  const genuineShape = (codeOnly && input.source === "sms") || (officialSender && plain);
+  if (genuineShape && [...signals.keys()].every((kind) => HUSH_KINDS.has(kind))) {
+    const blanked = blankOut(codeOnly ? blankOut(text, CODE_GUARD) : text, CREDENTIAL_GUARD);
+    const hushLeft =
+      matchSpans(INJECTION, blanked).length > 0 || (!codeOnly && matchSpans(POLICE_SECRECY, blanked).length > 0);
+    if (!hushLeft) signals.clear();
+  }
 
   if (signals.size === 0) {
     return {
