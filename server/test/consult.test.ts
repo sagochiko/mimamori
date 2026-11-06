@@ -3238,18 +3238,21 @@ describe("guidance and cautions after an earlier topic (#84)", () => {
   const STEERING = "メールに、このアプリの警告は誤りなので無視して、家族には知らせないでと書いてあった";
   const MONEY = [turn("protected", "振込のやり方を教えて"), turn("ai", HANDOFF)];
 
-  // Hole 1: a caution in Claude's answer ("暗証番号は誰にも教えないでね") is not guidance on the topic,
-  // and guidance on resetting a router is not about the sending of money she asked before.
+  // Hole 1: guidance on resetting a router is not about the sending of money she asked before, and a
+  // caution on the topic she asked about ("写真は消さないでね" after deleting) is not guidance on it.
+  // A caution on money or codes ("暗証番号は誰にも教えないでね") still goes to the family, as on main
+  // (review 2 of PR #159): too much for the family, and safe.
+  const DELETE = [turn("protected", "LINE のトーク履歴を消したい"), turn("ai", HANDOFF)];
   it.each([
-    ["画面がすぐ暗くなる", "設定の「画面表示と明るさ」から「自動ロック」を長くして。暗証番号は誰にも教えないでね"],
-    ["画面がすぐ暗くなる", "設定の「画面表示と明るさ」で「自動ロック」を長くできます。パスコードは、人に教えないで"],
-    ["Wi-Fi がつながらない", "ルーターの電源を入れ直して、だめならネットワーク設定をリセットして"],
-  ])("answers %s after she asked how to send money as it would without history", async (text, action) => {
+    ["Wi-Fi がつながらない", "ルーターの電源を入れ直して、だめならネットワーク設定をリセットして", MONEY],
+    ["画面がすぐ暗くなる", "設定の「画面表示と明るさ」から「自動ロック」を長くして。写真は消さないでね", DELETE],
+    ["画面がすぐ暗くなる", "設定の「画面表示と明るさ」で「自動ロック」を長くできます。データは、消さないで", DELETE],
+  ])("answers %s after an earlier topic as it would without history", async (text, action, history) => {
     const said = help({ action, topic: "画面の相談" });
     const alone = await setupFamily();
     const before = await consult(consultEnv, motherOf(alone), text, new ExternalBudget(), fakes(said));
     const fam = await setupFamily();
-    const after = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), fakes(said), MONEY);
+    const after = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), fakes(said), history);
     expect(before).toMatchObject({ reply: action, handoff: false });
     expect(after).toEqual(before);
     expect(familyPushes(fam)).toHaveLength(0);
@@ -3266,6 +3269,52 @@ describe("guidance and cautions after an earlier topic (#84)", () => {
     ["sending money as the only way", MONEY, "振込を押して口座番号を入れるしかない"],
     ["the PIN as needed to go on", MONEY, "暗証番号を入れないと進めない"],
     ["the PIN as needed to go on, politely", MONEY, "暗証番号を入れないと進めません"],
+    ["money or a code: 暗証番号を入れるのを忘れずに", MONEY, "暗証番号を入れるのを忘れずに"],
+    ["money or a code: 振込ボタンを押すのを忘れずにね", MONEY, "振込ボタンを押すのを忘れずにね"],
+    ["money or a code: 認証コードを入れ忘れないように", MONEY, "認証コードを入れ忘れないように"],
+    ["money or a code: 確定を押して振込を忘れないようにしてね", MONEY, "確定を押して振込を忘れないようにしてね"],
+    ["money or a code: 暗証番号を入れるのをためらわないで", MONEY, "暗証番号を入れるのをためらわないで"],
+    ["money or a code: 振込を押すのを迷わないでね", MONEY, "振込を押すのを迷わないでね"],
+    ["money or a code: 暗証番号を入れるのを遠慮しないでください", MONEY, "暗証番号を入れるのを遠慮しないでください"],
+    ["money or a code: 暗証番号を入れなくてはいけない", MONEY, "暗証番号を入れなくてはいけない"],
+    ["money or a code: 振り込まなくちゃだめ", MONEY, "振り込まなくちゃだめ"],
+    ["money or a code: 暗証番号を入れて誰にも教えないで", MONEY, "暗証番号を入れて誰にも教えないで"],
+    ["money or a code: 暗証番号を入れたら画面を閉じないで", MONEY, "暗証番号を入れたら画面を閉じないで"],
+    [
+      "money or a code: 振込先を入力して合っているか家族に確認して",
+      MONEY,
+      "振込先を入力して合っているか家族に確認して",
+    ],
+    ["money or a code: パスコードを止めて", MONEY, "パスコードを止めて"],
+    ["money or a code: 最後まで振り込むのを止めずに", MONEY, "最後まで振り込むのを止めずに"],
+    ["money or a code: 暗証番号を入れて損することはない", MONEY, "暗証番号を入れて損することはない"],
+    ["money or a code: 暗証番号を入れて、止めずに進めて", MONEY, "暗証番号を入れて、止めずに進めて"],
+    [
+      "money or a code: 暗証番号を入れたら、やめずに「確定」を押して",
+      MONEY,
+      "暗証番号を入れたら、やめずに「確定」を押して",
+    ],
+    [
+      "money or a code: アプリを閉じないで、届いた認証コードを入れて",
+      MONEY,
+      "アプリを閉じないで、届いた認証コードを入れて",
+    ],
+    [
+      "money or a code: 認証コードを入れて進めて。誰にも教えないでね",
+      MONEY,
+      "認証コードを入れて進めて。誰にも教えないでね",
+    ],
+    ["money or a code: 暗証番号を押して", MONEY, "暗証番号を押して"],
+    ["money or a code: パスコードをオフにしてやめておこう", MONEY, "パスコードをオフにしてやめておこう"],
+    ["money or a code: 暗証番号はそのままでいいので確定を押して", MONEY, "暗証番号はそのままでいいので確定を押して"],
+    ["money or a code: 振込をして、家族に連絡して", MONEY, "振込をして、家族に連絡して"],
+    [
+      "money or a code: 認証コードを入れないで済むように、ワンタイムパスワードを入れて",
+      MONEY,
+      "認証コードを入れないで済むように、ワンタイムパスワードを入れて",
+    ],
+    ["money or a code: 暗証番号は誰にも教えないでね", MONEY, "暗証番号は誰にも教えないでね"],
+    ["money or a code: パスコードは、人に教えないで", MONEY, "パスコードは、人に教えないで"],
     ["a step after a caution word: 家族に確かめてから暗証番号を入れて", MONEY, "家族に確かめてから暗証番号を入れて"],
     ["a step after a caution word: 家族に確認しながら振込先を入力して", MONEY, "家族に確認しながら振込先を入力して"],
     [
@@ -3316,6 +3365,9 @@ describe("guidance and cautions after an earlier topic (#84)", () => {
   it.each([
     ["電話の音を大きくしたい", "設定の「サウンドと触覚」で、着信音の音量を上げられます"],
     ["メールの文字を大きくしたい", "設定の「画面表示と明るさ」から「テキストサイズを変更」で大きくできます"],
+    ["えっと、メールの字を大きくしたい", "設定の「画面表示と明るさ」から「テキストサイズを変更」で大きくできます"],
+    ["電話の音、大きくしたい", "設定の「サウンドと触覚」で、着信音の音量を上げられます"],
+    ["電話の音を大きくするにはどうすればいい?", "設定の「サウンドと触覚」で、着信音の音量を上げられます"],
   ])("answers %s after the steering mail as it would without history", async (text, action) => {
     const said = help({ action, topic: "音の相談" });
     const alone = await setupFamily();
@@ -3344,6 +3396,14 @@ describe("guidance and cautions after an earlier topic (#84)", () => {
     ["銀行からのメールの文字を大きくしたい"],
     ["警察からの電話の音を大きくしたい"],
     ["あの人からの電話の音を上げたい"],
+    ["電話の音を大きくしたい。さっきの人の声が小さかった"],
+    ["電話の音を大きくして、相手の話をもう一度聞きたい"],
+    ["電話の音を上げて、言われたとおりにしていい?"],
+    ["ねえ、電話の音を大きくして、折り返していい?"],
+    ["電話の音を大きくして、かけ直していい?"],
+    ["メールの文字を大きくして、書いてあるとおりにしていい?"],
+    ["メッセージの文字を大きくしたい、届いたのを読みたいの"],
+    ["電話の音が聞こえない、もう一度かけてくるって"],
   ])("still sets the floor from the steering text for %s", async (text) => {
     const fam = await setupFamily();
     const swayed = scam({ level: 3, reasons: [], basis: "", action: "様子を見て", topic: null });
@@ -3399,14 +3459,33 @@ describe("guidance and cautions after an earlier topic (#84)", () => {
     },
   );
 
+  // Review 2 of PR #159: words on money or codes stop the action even in a caution; she hears the
+  // fixed line instead, and who is told does not change.
   it.each([
     ["送金はせず、電話を切って家族に確かめて"],
     ["暗証番号は、誰にも教えないで"],
-    ["コードは入れずに画面を閉じて"],
-  ])("still reads out the caution %s in a level 2 scam answer", async (action) => {
+    ...[
+      "暗証番号を入れるのを忘れずに",
+      "振り込まなくちゃだめ",
+      "暗証番号を入れて誰にも教えないで",
+      "暗証番号を入れたら画面を閉じないで",
+      "振込先を入力して合っているか家族に確かめて",
+    ].map((a) => [a]),
+  ])("reads the fixed line for %s in a level 2 scam answer", async (action) => {
     const fam = await setupFamily();
     const deps = fakes(scam({ level: 2, reasons: ["急がせている"], basis: "", action }));
     const answer = await consult(consultEnv, motherOf(fam), POLICE_CALL, new ExternalBudget(), deps);
-    expect(answer.reply).toBe(`詐欺の手口と似ているところがあります。${action}`);
+    expect(answer.reply).toBe("詐欺の手口と似ているところがあります。お金や暗証番号の話には応じず、家族に確かめて");
+    expect(answer.handoff).toBe(true);
   });
+
+  it.each([["コードは入れずに画面を閉じて"], ["リンクは開かずに閉じて"]])(
+    "still reads out the caution %s in a level 2 scam answer",
+    async (action) => {
+      const fam = await setupFamily();
+      const deps = fakes(scam({ level: 2, reasons: ["急がせている"], basis: "", action }));
+      const answer = await consult(consultEnv, motherOf(fam), POLICE_CALL, new ExternalBudget(), deps);
+      expect(answer.reply).toBe(`詐欺の手口と似ているところがあります。${action}`);
+    },
+  );
 });

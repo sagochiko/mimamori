@@ -172,12 +172,21 @@ const UNANSWERED_REASON = "AI が答えきれなかった相談";
 const CONTACT =
   /メッセージ|メール|sms|ショートメール|電話|リンク|url|サイト|ページ|アプリ.{0,3}(入れ|インストール|ダウンロード)/;
 
-// The phone's own sound or letters, named by the app they are in and made louder, bigger, or changed
-// ("電話の音を大きくしたい", "メールの文字を大きくしたい"): a setting, not a call or a message (#84).
-// Only at the head of her words, or after a stop or a set filler: with anything before it
-// ("その電話の", "届いたメールの", "警察からの電話の", review 1 of PR #159) it is about that call or mail.
-const OWN_SETTING =
-  /(^|[\s\p{P}])((ねえ|ねぇ|えっと|えーと|ちょっと|うーん)[\s\p{P}]*)*(電話|メール|メッセージ|sms|ショートメール)の?(着信音|呼び出し音|通知音|音量|音|文字|字)(を|が|の|は)?(大き|小さ|上げ|下げ|変え|聞こえ|鳴ら)/gu;
+// The whole question asks for the phone's own sound or letters and nothing more ("電話の音を大きくしたい",
+// "えっと、メールの字を大きくしたい", "電話の音を大きくするにはどうすればいい?"): a setting, not a call
+// or a message (#84). Anything before the words of the setting ("その電話の", "警察からの電話の") or
+// after its fixed endings ("…して、折り返していい?", review 2 of PR #159) is about that call or mail.
+const OWN_SETTING_ONLY = new RegExp(
+  [
+    "^((ねえ|ねぇ|えっと|えーと|ちょっと|うーん)[\\s\\p{P}]*)*",
+    "(電話|メール|メッセージ|sms|ショートメール)の?(着信音|呼び出し音|通知音|音量|音|文字|字)[\\s\\p{P}]*(を|が|は)?",
+    "(大きく|小さく|上げ|下げ|変え|聞こえ)",
+    "(たい|したい|して(ほしい)?|できる|できない|られる|られない|ない|する|る)?",
+    "(には|方法|の|ん)?(どうやるの|どうやる|どうすれば(いい)?|どうしたら(いい)?|は)?",
+    "(か|の|ね|よ|けど|んだけど)?[\\s\\p{P}\\p{S}]*$",
+  ].join(""),
+  "u",
+);
 
 const KEYS = ["kind", "level", "reasons", "basis", "action", "handoff", "injection_suspected", "topic"] as const;
 
@@ -568,8 +577,13 @@ function guidedIn(line: string): string[] {
       return carry === "" ? out : [...out, carry];
     })
     .map((part) => part.trim())
-    .filter((part) => part !== "" && !cautions(part));
-  return SENSITIVE.filter(({ pattern }) => parts.some((part) => pattern.test(part))).map((s) => s.reason);
+    .filter((part) => part !== "");
+  // Money and codes count wherever their words are, a caution or not, as before #84: a list of
+  // caution forms kept letting steps through ("暗証番号を入れるのを忘れずに", "振り込まなくちゃだめ",
+  // review 2 of PR #159). Only the other topics are spared a caution.
+  return SENSITIVE.filter(({ reason, pattern }) =>
+    parts.some((part) => pattern.test(part) && (ALWAYS_GUARDED.includes(reason) || !cautions(part))),
+  ).map((s) => s.reason);
 }
 
 /** A line from Claude that tells no one it is fine, nor that the family was told. */
@@ -600,7 +614,18 @@ function readable(line: string): boolean {
  * about one (decidePlan); a scam answer always, since it is read out too (#84).
  */
 function readsOut(action: string): boolean {
-  return readable(action) && guidedIn(action).length === 0;
+  return readable(action) && (guidedIn(action).length === 0 || asksFamilyOnly(action));
+}
+
+/**
+ * The whole action only asks her to check with the family, with no step before it ("振込先に問題ないか
+ * 家族に確かめて", a line main reads out and its tests keep). For a scam answer only: phone guidance
+ * on money or codes goes to the family even in this form.
+ */
+function asksFamilyOnly(action: string): boolean {
+  return /^[^、。,て]*か家族に(確かめ|確認し|相談し|聞い)て(ね|よ|ください)*[。!?！？]*$/.test(
+    normalize(action).trim(),
+  );
 }
 
 /**
@@ -924,9 +949,10 @@ export async function judgeConsult(
   // or one the rules see something in. "Wi-Fi がつながらない" after it is answered as on its own
   // (review of PR #79, second round). Her earlier words only: an "ai" turn is what the device kept
   // of the server's answers, not hers.
-  // "電話の音を大きくしたい" names the phone's own sound, not a call or a message (#84): such words are
-  // taken out before looking for one. CONTACT itself is left as it is.
-  const aboutContact = CONTACT.test(normalize(text).replace(OWN_SETTING, ""));
+  // "電話の音を大きくしたい" asks for the phone's own sound and nothing more, not about a call or a
+  // message (#84, OWN_SETTING_ONLY). CONTACT itself is left as it is.
+  const t = normalize(text).trim();
+  const aboutContact = CONTACT.test(t) && !OWN_SETTING_ONLY.test(t);
   const goesOn = pointsBack(text) || aboutContact || rule.reasons.length > 0;
   const earlierKeepsOut = goesOn && said.earlier.some((t) => matchSpans(INJECTION, normalize(t)).length > 0);
   const floor = earlierKeepsOut ? rules({ source: "consult", text: allOf(said).join("\n") }) : rule;
