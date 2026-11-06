@@ -11,7 +11,9 @@ import Foundation
 // family; only the SMS goes to the server, to `/sms/demo`, without a device key.
 
 /// Whether this build is the judges' one. The switch is the SMS token itself: the mother's build sets
-/// her family's token (ios/Config/Mother.xcconfig), so it can never show the tour.
+/// her family's token (ios/Config/Mother.xcconfig), so it can never show the tour. Until #133 is done
+/// the mother still gets the `demo` build, so the tour shows on her role selection too (it sends
+/// nothing to anyone).
 public enum DemoMode {
   public static let smsFamilyToken = "demo"
 
@@ -51,8 +53,10 @@ public struct DemoTour: Equatable, Sendable {
   public static let answer = "詐欺で使われる説明と一致しています。送金せず、いったん電話を切って家族に確かめて"
   /// server/src/consult-judge.ts POLICE_TOPIC, the family's one line.
   public static let topic = "警察を名乗る電話の相談"
-  /// server/src/rules/phrases.ts, the reason the rules give for the fake police.
-  public static let reason = "警察を名乗る相手から連絡があった"
+  /// The reasons the server gives for `herWords` (server/src/rules/phrases.ts POLICE_SCRIPT), as the
+  /// family's card reads them aloud. server/test/demo-tour.test.ts runs her words through the server's
+  /// judgment and compares, so this cannot drift.
+  public static let reasons = ["口座が犯罪に使われたという話がある", "ほかの人に話さないよう言われている"]
   /// server/src/cases.ts NOT_RESOLVED_YET, the title of the family's second notice.
   public static let notResolvedYet = "まだ解決していません"
 
@@ -128,7 +132,7 @@ public struct DemoTour: Equatable, Sendable {
       resolvedBy: resolved ? CaseMember(memberId: "demo-family", displayName: "家族") : nil,
       renotifiedAt: renotifiedAt,
       alert: CaseAlert(
-        level: .doNotOpen, source: .consult, summary: Self.topic, reasons: [Self.reason]),
+        level: .doNotOpen, source: .consult, summary: Self.topic, reasons: Self.reasons),
       aiReply: Self.answer, familyNotifiedAt: consultedAt)
   }
 

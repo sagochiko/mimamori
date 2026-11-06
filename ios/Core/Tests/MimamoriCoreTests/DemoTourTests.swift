@@ -55,7 +55,7 @@ private let start = Date(timeIntervalSince1970: 1_793_000_000)
     #expect(item.alert?.level == .doNotOpen)
     #expect(item.alert?.source == .consult)
     #expect(item.alert?.summary == DemoTour.topic)
-    #expect(item.alert?.reasons == [DemoTour.reason])
+    #expect(item.alert?.reasons == DemoTour.reasons)
     #expect(item.aiReply == DemoTour.answer)
     #expect(item.familyWasTold)
 
@@ -67,13 +67,16 @@ private let start = Date(timeIntervalSince1970: 1_793_000_000)
     #expect(tour.canChoose)
   }
 
-  /// The answer and the family's line are the server's fixed lines for the fake-police script
-  /// (server/src/consult-judge.ts MATCH_BASIS + POLICE_ACTION, POLICE_TOPIC; the reason is
-  /// server/src/rules/phrases.ts), so the tour shows what her phone and the family's would.
-  @Test func usesTheServersFixedLinesForTheFakePolice() {
-    #expect(DemoTour.answer == "詐欺で使われる説明と一致しています。送金せず、いったん電話を切って家族に確かめて")
-    #expect(DemoTour.topic == "警察を名乗る電話の相談")
-    #expect(DemoTour.reason == "警察を名乗る相手から連絡があった")
+  /// The lines are checked against the server's own judgment of `herWords` in
+  /// server/test/demo-tour.test.ts, which reads this package's DemoTour.swift. Here: the card reads
+  /// every reason, and the family's lines carry none of her words.
+  @Test func theFamilySeesNoneOfHerWords() throws {
+    var tour = DemoTour()
+    tour.consult(at: start)
+    let item = try #require(tour.familyCase)
+    #expect(item.alert?.reasons.count == 2)
+    let told = [item.alert?.summary ?? ""] + (item.alert?.reasons ?? []) + [tour.familyPush?.body ?? ""]
+    for line in told { #expect(!line.contains(DemoTour.herWords)) }
   }
 
   @Test func resolvingTakesTheCaseOffHerScreen() throws {
