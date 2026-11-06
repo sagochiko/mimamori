@@ -3347,6 +3347,63 @@ describe("guidance and cautions after an earlier topic (#84)", () => {
       [turn("protected", "LINE のトーク履歴を消したい"), turn("ai", HANDOFF)],
       "設定の「一般」から「リセット」を開いて",
     ],
+    ["a code across a comma after money: メールで届いた、番号を入れて", MONEY, "メールで届いた、番号を入れて"],
+    [
+      "a code across a comma after code: メールで届いた、番号を入れて",
+      [turn("protected", "認証コードってどこに入れるの"), turn("ai", HANDOFF)],
+      "メールで届いた、番号を入れて",
+    ],
+    ["a code across a comma after money: smsで来た、数字を入れて", MONEY, "smsで来た、数字を入れて"],
+    [
+      "a code across a comma after code: smsで来た、数字を入れて",
+      [turn("protected", "認証コードってどこに入れるの"), turn("ai", HANDOFF)],
+      "smsで来た、数字を入れて",
+    ],
+    [
+      "deleting across a comma: 写真、まとめて消すには選択を押して",
+      [turn("protected", "写真を全部消したい"), turn("ai", HANDOFF)],
+      "写真、まとめて消すには選択を押して",
+    ],
+    [
+      "deleting across a comma: 写真はまとめて、消して",
+      [turn("protected", "写真を全部消したい"), turn("ai", HANDOFF)],
+      "写真はまとめて、消して",
+    ],
+    [
+      "deleting across a comma: 連絡先、削除して",
+      [turn("protected", "写真を全部消したい"), turn("ai", HANDOFF)],
+      "連絡先、削除して",
+    ],
+    [
+      "deleting across a comma: トーク、消すなら設定から",
+      [turn("protected", "写真を全部消したい"), turn("ai", HANDOFF)],
+      "トーク、消すなら設定から",
+    ],
+    [
+      "deleting across a comma: データは全部、消してから戻して",
+      [turn("protected", "写真を全部消したい"), turn("ai", HANDOFF)],
+      "データは全部、消してから戻して",
+    ],
+    [
+      "deleting across a comma: 写真を、選んで消して",
+      [turn("protected", "写真を全部消したい"), turn("ai", HANDOFF)],
+      "写真を、選んで消して",
+    ],
+    [
+      "deleting across a comma: 全部、消去して",
+      [turn("protected", "写真を全部消したい"), turn("ai", HANDOFF)],
+      "全部、消去して",
+    ],
+    [
+      "a profile across a comma: プロファイル、インストールを押して",
+      [turn("protected", "構成プロファイルを入れたい"), turn("ai", HANDOFF)],
+      "プロファイル、インストールを押して",
+    ],
+    [
+      "a profile across a comma: プロファイルは、インストールを押して",
+      [turn("protected", "構成プロファイルを入れたい"), turn("ai", HANDOFF)],
+      "プロファイルは、インストールを押して",
+    ],
   ])("still hands guidance on %s to the family after the earlier question", async (_label, history, action) => {
     const fam = await setupFamily();
     const answer = await consult(
@@ -3470,6 +3527,10 @@ describe("guidance and cautions after an earlier topic (#84)", () => {
       "暗証番号を入れて誰にも教えないで",
       "暗証番号を入れたら画面を閉じないで",
       "振込先を入力して合っているか家族に確かめて",
+      "暗証番号を入れる!そのあと振込先に問題ないか家族に確かめて",
+      "暗証番号を入力\n問題ないか家族に確かめて",
+      "暗証番号を入れろ?問題ないか家族に確認して",
+      "暗証番号を入れる！振込先に問題ないか家族に確かめて",
     ].map((a) => [a]),
   ])("reads the fixed line for %s in a level 2 scam answer", async (action) => {
     const fam = await setupFamily();

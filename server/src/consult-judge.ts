@@ -563,7 +563,8 @@ function cautions(part: string): boolean {
  * ending as a caution (CAUTION_END). A part that ends in a particle ("暗証番号は、") goes on into the next (#84).
  */
 function guidedIn(line: string): string[] {
-  const parts = normalize(line)
+  const whole = normalize(line);
+  const parts = whole
     .split(/[。!?！？\n]+/)
     .flatMap((sentence) => {
       const out: string[] = [];
@@ -581,9 +582,14 @@ function guidedIn(line: string): string[] {
   // Money and codes count wherever their words are, a caution or not, as before #84: a list of
   // caution forms kept letting steps through ("暗証番号を入れるのを忘れずに", "振り込まなくちゃだめ",
   // review 2 of PR #159). Only the other topics are spared a caution.
-  return SENSITIVE.filter(({ reason, pattern }) =>
-    parts.some((part) => pattern.test(part) && (ALWAYS_GUARDED.includes(reason) || !cautions(part))),
-  ).map((s) => s.reason);
+  // The whole line is matched as before #84, so words split by a comma still count ("メールで届いた、
+  // 番号を入れて", "写真はまとめて、消して", review 3 of PR #159). A topic is let go only when every part
+  // it matches ends as a caution: the one way this counts less than before #84.
+  return SENSITIVE.filter(({ reason, pattern }) => {
+    const hits = parts.filter((part) => pattern.test(part));
+    if (!pattern.test(whole) && hits.length === 0) return false;
+    return ALWAYS_GUARDED.includes(reason) || hits.length === 0 || !hits.every(cautions);
+  }).map((s) => s.reason);
 }
 
 /** A line from Claude that tells no one it is fine, nor that the family was told. */
@@ -623,7 +629,7 @@ function readsOut(action: string): boolean {
  * on money or codes goes to the family even in this form.
  */
 function asksFamilyOnly(action: string): boolean {
-  return /^[^、。,て]*か家族に(確かめ|確認し|相談し|聞い)て(ね|よ|ください)*[。!?！？]*$/.test(
+  return /^[^、。,て!?！？\n]*か家族に(確かめ|確認し|相談し|聞い)て(ね|よ|ください)*[。!?！？]*$/.test(
     normalize(action).trim(),
   );
 }
