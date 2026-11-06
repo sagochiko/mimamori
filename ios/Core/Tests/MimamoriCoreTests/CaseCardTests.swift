@@ -495,3 +495,44 @@ struct ProtectedTopHeightTests {
     #expect(ProtectedNotice.topHeight(content: 300, screen: 0, closedStripBottom: nil) == 120)
   }
 }
+
+/// Task 11: what the research in the background found, on the alert of `GET /cases`.
+@Suite("調べものの根拠")
+struct CaseEvidenceTests {
+  @Test("根拠を出典の URL つきで読む")
+  func decodesEvidence() throws {
+    let json = #"""
+      {"id":"c-1","alertId":"a-1","state":"notified","notifiedAt":"2026-11-03T10:00:00.000Z",
+       "resolvedAt":null,
+       "alert":{"level":1,"source":"sms","summary":"SMS 宅配便を名乗る example.top","reasons":[],
+                "evidence":[{"text":"日本郵政グループの注意喚起",
+                             "url":"https://www.post.japanpost.jp/notification/"}]}}
+      """#
+    let item = try decodeCase(json)
+    #expect(
+      item.alert?.evidence == [
+        CaseEvidence(
+          text: "日本郵政グループの注意喚起",
+          url: URL(string: "https://www.post.japanpost.jp/notification/")!)
+      ])
+  }
+
+  @Test("根拠の欄が無い古い裏側の形は、根拠なしとして読む")
+  func decodesWithoutEvidence() throws {
+    let item = try decodeCase(caseJSON())
+    #expect(item.alert?.evidence == [])
+    #expect(item.alert?.summary == "警察を名乗る電話の相談")
+  }
+
+  @Test("https でない出典の根拠は読まない")
+  func dropsNonHTTPS() throws {
+    let json = #"""
+      {"id":"c-1","alertId":"a-1","state":"notified","notifiedAt":"2026-11-03T10:00:00.000Z",
+       "resolvedAt":null,
+       "alert":{"level":2,"source":"sms","summary":"x","reasons":[],
+                "evidence":[{"text":"a","url":"http://www.npa.go.jp/"},{"text":"b","url":"javascript:alert(1)"},
+                            {"text":"c","url":"https://www.npa.go.jp/"}]}}
+      """#
+    #expect(try decodeCase(json).alert?.evidence.map(\.text) == ["c"])
+  }
+}

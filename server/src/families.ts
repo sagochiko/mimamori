@@ -213,21 +213,27 @@ export async function deleteEverything(request: Request, env: Env): Promise<Resp
     }
   }
 
+  // Case sessions, and the research sessions on alerts (task 11), whose transcripts hold the received text.
   const sessions = await env.DB.prepare(
-    "SELECT DISTINCT agent_session_id AS id FROM cases WHERE family_id = ? AND agent_session_id IS NOT NULL",
+    `SELECT agent_session_id AS id FROM cases WHERE family_id = ? AND agent_session_id IS NOT NULL
+     UNION
+     SELECT investigation_session_id AS id FROM alerts WHERE family_id = ? AND investigation_session_id IS NOT NULL`,
   )
-    .bind(familyId)
+    .bind(familyId, familyId)
     .all<{ id: string }>();
   const outcomes = await Promise.all(
     sessions.results.map(async (s) => (budget.take() && (await deleteAgentSession(env, s.id)) ? s.id : null)),
   );
   const done = outcomes.filter((id): id is string => id !== null);
   if (done.length > 0) {
-    await env.DB.prepare(
-      "UPDATE cases SET agent_session_id = NULL WHERE family_id = ? AND agent_session_id IN (SELECT value FROM json_each(?))",
-    )
-      .bind(familyId, JSON.stringify(done))
-      .run();
+    await env.DB.batch([
+      env.DB.prepare(
+        "UPDATE cases SET agent_session_id = NULL WHERE family_id = ? AND agent_session_id IN (SELECT value FROM json_each(?))",
+      ).bind(familyId, JSON.stringify(done)),
+      env.DB.prepare(
+        "UPDATE alerts SET investigation_session_id = NULL WHERE family_id = ? AND investigation_session_id IN (SELECT value FROM json_each(?))",
+      ).bind(familyId, JSON.stringify(done)),
+    ]);
   }
   if (done.length < sessions.results.length) pending.push("agent_sessions");
 

@@ -19,3 +19,8 @@ TOKEN_ENC_KEY="..."
 # Not in secrets.required yet (wrangler.jsonc), so `wrangler dev` does not load these two until they are.
 GOOGLE_CLIENT_ID="....apps.googleusercontent.com"
 GOOGLE_CLIENT_SECRET="..."
+
+# Signing secret of the Managed Agents webhook endpoint (src/agents.ts, POST /agents/webhook), the
+# whsec_ value the Claude Console shows once when the endpoint is made. Not in secrets.required
+# (wrangler.jsonc): without it the route answers 503 and the 5-minute tick still reads every result.
+ANTHROPIC_WEBHOOK_SIGNING_KEY="whsec_..."
