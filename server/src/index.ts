@@ -7,6 +7,7 @@ import { consultRoute } from "./consult";
 import { runScheduled } from "./cron";
 import { createFamily, createInvite, deleteEverything, joinInvite, leaveFamily, registerApns } from "./families";
 import { callbackRoute, connectRoute } from "./gmail";
+import { heartbeatRoute } from "./heartbeat";
 import { errorResponse, HttpError } from "./http";
 import { handleJudgeBatch } from "./judge";
 import { pageRoute } from "./page";
@@ -35,6 +36,8 @@ const routes: Array<[method: string, pattern: RegExp, handler: Handler]> = [
   ["PUT", /^\/families\/me\/smile-deadline$/, (req, env) => setSmileDeadline(req, env)],
   ["GET", /^\/gmail\/connect$/, (req, env) => connectRoute(req, env)],
   ["GET", /^\/gmail\/callback$/, (req, env) => callbackRoute(req, env)],
+  // The protected member's iPhone says it is still watching (task 17, src/heartbeat.ts).
+  ["POST", /^\/heartbeat$/, (req, env) => heartbeatRoute(req, env)],
   // Managed Agents tells us a research session went idle or ended (src/agents.ts).
   ["POST", /^\/agents\/webhook$/, (req, env) => webhookRoute(req, env, new ExternalBudget())],
 ];
