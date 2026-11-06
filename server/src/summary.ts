@@ -47,3 +47,21 @@ export function ownLines(
   const kept = lines.filter((l) => l.trim() !== "" && (fixed.includes(l) || !quotes(l, sources)));
   return kept.length > 0 ? kept : [...fallback];
 }
+
+// A number to call or a place to open, in a line for the mother (#53, review 4 of PR #41). A reason
+// Claude wrote can carry the scam's callback number or a fake address, and her notice would show it
+// as the app's own words. Eight digits or more in a row, once spaces, hyphens of any width, the long
+// vowel mark, brackets, and dots between them are taken out, are a phone number: the Japanese ones
+// have ten or eleven. Dates ("2026年11月6日") and amounts ("100,000円") stay under it. Short codes
+// such as 110 or #9110 are left alone on purpose; they are public numbers, not the scam's.
+const PHONE_GAPS = /[\s\-‐‑‒–—―−ー－()（）.]/g;
+const PHONE = /\+81|\d{8,}/;
+// A scheme, www., or a bare domain ("bank-check.example"), which also catches a mail address. The
+// last label must be letters, so "1.2.3" is not one.
+const ADDRESS = /https?:\/\/|www\.|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/;
+
+/** True when the line has something that looks like a phone number or a web or mail address. */
+export function carriesContact(line: string): boolean {
+  const text = line.normalize("NFKC").toLowerCase();
+  return PHONE.test(text.replace(PHONE_GAPS, "")) || ADDRESS.test(text);
+}
