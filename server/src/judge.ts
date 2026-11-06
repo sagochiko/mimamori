@@ -206,7 +206,9 @@ export function summarize(job: JudgeJob, domain: string | null, rule: RuleResult
   const received = receivedOf(job);
   const own = (r: string) => r !== PLACEHOLDER_REASON && (rule.reasons.includes(r) || !quotes(r, received));
   const reason = [...reasons, ...rule.reasons].map((r) => r.trim()).find((r) => r !== "" && own(r));
-  return [SOURCE_LABELS[job.source], reason ?? "", domain ?? ""].filter((s) => s !== "").join(" ");
+  // The look-alike reason already names the domain ("公式に似せたドメイン x.example"); name it once (#100).
+  const named = domain !== null && reason !== undefined && reason.includes(domain);
+  return [SOURCE_LABELS[job.source], reason ?? "", named ? "" : (domain ?? "")].filter((s) => s !== "").join(" ");
 }
 
 interface Recipient {

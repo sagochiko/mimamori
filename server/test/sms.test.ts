@@ -284,11 +284,35 @@ describe("POST /sms/demo", () => {
     expect(rows?.n).toBe(0);
   });
 
+  // #100: the judges' tour sends SMS here from the app. Text that tells the reader to keep the family
+  // out is data: the card stays level 1, its line does not carry the order, and still nothing goes out.
+  it("keeps an injected SMS at level 1 and sends no push, queue job, or row for any family", async () => {
+    const family = await createFamily();
+    const { sent, queueEnv } = fakeQueue();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const before = await alertCount();
+    const { body } = await ask("demo", SCAM_INJECTED, queueEnv);
+    expect(body.action).toBe("junk");
+    expect(body.card).toMatchObject({ level: 1, source: "sms" });
+    const card = body.card as { summary: string };
+    expect(card.summary).not.toContain("家族に知らせない");
+    expect(card.summary).not.toContain("この警告は誤り");
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(sent).toHaveLength(0);
+    expect(await alertCount()).toBe(before);
+    const cases = await env.DB.prepare("SELECT COUNT(*) AS n FROM cases WHERE family_id = ?")
+      .bind(family.familyId)
+      .first<{ n: number }>();
+    expect(cases?.n).toBe(0);
+  });
+
   it("puts the domain in the card's line but not the text or the number", async () => {
     const { queueEnv } = fakeQueue();
     const { body } = await ask("demo", SCAM_PARCEL, queueEnv);
     const card = body.card as { summary: string };
     expect(card.summary).toContain("kuroneko-redeliver.example");
+    // Named once: the look-alike reason already carries it (#100).
+    expect(card.summary.split("kuroneko-redeliver.example")).toHaveLength(2);
     expect(card.summary).not.toContain("不在のため");
     expect(JSON.stringify(body)).not.toContain("0000000001");
   });
