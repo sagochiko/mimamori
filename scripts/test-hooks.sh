@@ -1433,4 +1433,18 @@ out=$(cd "$rw" && "$rr" 33334444 1 HEAD "$T/rr-x.md" 2>&1) &&
 [[ "$out" == *"20261107-0001-mm-reviewer-33334444.md"* && "$out" == *"20261107-0002-mm-reviewer-33334444.md"* &&
   -s "$rm_/docs/audits/raw/20261107-0001-mm-reviewer-33334444.md" ]] ||
   { echo "review-record test failed: an id with two saved reports names both and moves neither"; fail=1; }
+rm -f "$rm_/docs/audits/raw/20261107-0001-mm-reviewer-33334444.md" "$rw/docs/audits/raw/20261107-0002-mm-reviewer-33334444.md"
+# The second round goes to the same reviewer by SendMessage, so its report has the same id (PR #185's
+# review). Round 1 is already committed on the branch and round 2 waits in the main tree: the id
+# picks round 2, and a retry of round 2 after its commit picks it again.
+r1=20261107-0010-mm-reviewer-55556666.md r2=20261107-0020-mm-reviewer-55556666.md
+printf 'ステータス: 直すべき指摘あり\n\n1回目\n' >"$rm_/docs/audits/raw/$r1"
+( cd "$rw" && "$rr" "$r1" 1 HEAD "$T/rr-r.md" >/dev/null 2>&1 ) || { echo "review-record test failed: round 1 by name did not finish"; fail=1; }
+printf 'ステータス: 承認\n\n2回目\n' >"$rm_/docs/audits/raw/$r2"
+( cd "$rw" && "$rr" 55556666 2 HEAD "$T/rr-r.md" >/dev/null 2>&1 ) && grep -q '^2回目$' "$T/rr-r.md" && ! grep -q '^1回目$' "$T/rr-r.md" &&
+  grep -q "保存した原文は \`docs/audits/raw/$r2\`" "$T/rr-r.md" && [[ ! -e "$rm_/docs/audits/raw/$r2" ]] &&
+  git -C "$rw" ls-files --error-unmatch "docs/audits/raw/$r2" >/dev/null 2>&1 ||
+  { echo "review-record test failed: an id whose round 1 is committed picks round 2 from the main tree"; fail=1; }
+( cd "$rw" && "$rr" 55556666 2 HEAD "$T/rr-r.md" >/dev/null 2>&1 ) && grep -q '^2回目$' "$T/rr-r.md" ||
+  { echo "review-record test failed: a retry of round 2 by id, both rounds committed, picks the newest"; fail=1; }
 exit $fail

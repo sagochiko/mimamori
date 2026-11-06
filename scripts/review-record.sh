@@ -7,8 +7,9 @@
 # The report is what save-report.sh saved under docs/audits/raw/ in the main tree. It is moved into
 # this tree (or used where it already is, after a failed run), so it is committed with the branch.
 # Name it by the first 8 hex characters of the reviewer's agent id, and the script finds the one
-# `*-mm-reviewer-<id>.md` in the main tree's or this tree's docs/audits/raw/; none or more than one
-# stops it with the names. The full file name is still taken. The id exists so the caller never
+# `*-mm-reviewer-<id>.md` in the main tree's or this tree's docs/audits/raw/. A follow-up round has
+# the same id, so reports this branch already tracks are left out; none, or more than one not yet on
+# the branch, stops it with the names. The full file name is still taken. The id exists so the caller never
 # builds the name with $(ls ... | grep <id>): that line drew permission prompts on 2026-11-06 and 2026-11-07.
 # The reviewed commit is the one the reviewer read, as a hash or any ref git rev-parse takes, such
 # as HEAD while nothing has been committed since the review. A retry with HEAD after this script
@@ -29,11 +30,21 @@ if [[ "$name" =~ ^[0-9a-f]{8}$ ]]; then
   found=$({ find "$main_tree/docs/audits/raw" docs/audits/raw -maxdepth 1 -type f -name "*-mm-reviewer-$name.md" 2>/dev/null || true; } |
     sed 's|.*/||' | sort -u)
   count=$(grep -c . <<<"$found" || true)
+  # A follow-up round goes to the same reviewer, so its report has the same id. Reports already
+  # tracked on this branch are earlier rounds; when only tracked ones are left, this is a retry
+  # after a failed post, and the newest (the names start with the time) is the round to retry.
+  if [[ "$count" -ge 2 ]]; then
+    fresh=$(while read -r f; do
+      git ls-files --error-unmatch -- "docs/audits/raw/$f" >/dev/null 2>&1 || echo "$f"
+    done <<<"$found")
+    if [[ -n "$fresh" ]]; then found=$fresh; else found=$(tail -n 1 <<<"$found"); fi
+    count=$(grep -c . <<<"$found" || true)
+  fi
   if [[ "$count" -ne 1 ]]; then
     if [[ "$count" -eq 0 ]]; then
       echo "no saved reviewer report for $name in $main_tree/docs/audits/raw or docs/audits/raw" >&2
     else
-      echo "more than one saved reviewer report for $name; pass the file name instead:" >&2
+      echo "more than one saved reviewer report for $name not yet on this branch; pass the file name instead:" >&2
       sed 's/^/  /' <<<"$found" >&2
     fi
     exit 1
