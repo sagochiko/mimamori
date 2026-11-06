@@ -99,11 +99,11 @@ The App Store Connect API would let a shell loop wait without tokens, but it was
 
 Load the Claude in Chrome tools in one ToolSearch call (the `chrome-browser` skill) and open `$BUILDS` in a new tab; this is the status tab.
 
-If the sign-in page appears instead, click into its password field so that only the password is left to type, and ask the author only to sign in (password and two-factor code). Before asking, run the check below once; if it already succeeds, another tab is signed in, so reload this tab instead of asking. Then wait with `run_in_background`. The pattern is anchored to the start of the URL and includes the app's ID, so a sign-in URL that carries the same address in its query does not match, and neither does the app list.
+If the sign-in page appears instead, click into its password field so that only the password is left to type, and ask the author only to sign in (password and two-factor code). Before asking, run the check below once; if it already succeeds, another tab is signed in, so reload this tab instead of asking. Then wait with `run_in_background`. The pattern is anchored to the start of the URL and includes the app's ID, so a sign-in URL that carries the same address in its query does not match, and neither does the app list. Since 2026-11-07 a signed-in page can carry the team in its path (`https://appstoreconnect.apple.com/teams/<team id>/apps/<app id>/testflight/ios`), so the pattern accepts that form too; the older one missed a finished sign-in for 30 minutes.
 
 ```sh
 on_app() { osascript -e 'tell application "Google Chrome" to get URL of every tab of every window' 2>/dev/null \
-  | tr ',' '\n' | grep -q "^ *https://appstoreconnect\.apple\.com/apps/$ASC_APP_ID/testflight"; }
+  | tr ',' '\n' | grep -q -E "^ *https://appstoreconnect\.apple\.com/(teams/[^/]+/)?apps/$ASC_APP_ID/testflight"; }
 for i in $(seq 360); do on_app && exit 0; sleep 5; done; exit 1
 ```
 
@@ -113,7 +113,7 @@ Apple processes an upload before it can be added to a group. Read build `$N`'s r
 
 Open `$BUILDS` in a second new tab; this is the work tab. Fill in, without pressing anything that sends the build to Apple before 5c:
 
-1. Internal Testing > 「家族」. If the group uses automatic distribution, build `$N` is already listed; go on. Otherwise use Add Builds, choose `$N`, write What to Test, and press Add. For a build the author checks, this is the end: report the build number and that it is in 「家族」, then go to step 6.
+1. Internal Testing > 「家族」. If the group uses automatic distribution, build `$N` is already listed; go on. 「家族」 did on 2026-11-07: build 8 was already installed on the author's iPhone before anything was pressed, so read the group first. Otherwise use Add Builds, choose `$N`, write What to Test, and press Add. For a build the author checks, this is the end: report the build number and that it is in 「家族」, then go to step 6.
 2. Test Information. Beta App Description and Feedback Email must already be filled (issue #34). The feedback address is the author's, so do not type one; if either is empty, stop and point to issue #34. Paste the review note below into Review Notes in the beta app review information and save.
 3. External Testing > 「審査員と家族」 > Add Builds. Choose `$N`, go on to What to Test and write it, and tick Automatically notify testers so the mother and the judges get the build as soon as it is approved. Stop with Submit Review on the screen (Start Testing when Apple does not review this build), and leave this tab alone until 5c.
 
