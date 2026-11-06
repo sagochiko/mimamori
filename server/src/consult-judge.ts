@@ -19,6 +19,7 @@
 import { CLAUDE_TIMEOUT_MS, decide, PLACEHOLDER_REASON, soundsSafe, talksJudgment, type Level } from "./claude";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
 import {
+  CONSULT_INJECTION,
   INJECTION,
   matchSpans,
   MONEY_MOVE,
@@ -633,7 +634,7 @@ function plan(
   const p = decidePlan(said, rule, claude, floor);
   // Text aimed at the AI or at keeping the family out, in this turn or in any earlier one (an "ai"
   // turn too: it came from her device, and Claude read it).
-  const earlierSteers = history.some((t) => matchSpans(INJECTION, normalize(t.text)).length > 0);
+  const earlierSteers = history.some((t) => matchSpans(CONSULT_INJECTION, normalize(t.text)).length > 0);
   const steered = rule.reasons.includes(INJECTION.reason) || earlierSteers || (claude?.injection_suspected ?? false);
   // The floor's reasons are the rules' own wording too, so they count as fixed lines.
   const fixedRule = floor === rule ? rule : { ...rule, reasons: [...new Set([...rule.reasons, ...floor.reasons])] };
@@ -877,7 +878,7 @@ export async function judgeConsult(
   // (review of PR #79, second round). Her earlier words only: an "ai" turn is what the device kept
   // of the server's answers, not hers.
   const goesOn = pointsBack(text) || CONTACT.test(normalize(text)) || rule.reasons.length > 0;
-  const earlierKeepsOut = goesOn && said.earlier.some((t) => matchSpans(INJECTION, normalize(t)).length > 0);
+  const earlierKeepsOut = goesOn && said.earlier.some((t) => matchSpans(CONSULT_INJECTION, normalize(t)).length > 0);
   const floor = earlierKeepsOut ? rules({ source: "consult", text: allOf(said).join("\n") }) : rule;
   return { ...plan(said, rule, claude, history, floor), script, rule };
 }
