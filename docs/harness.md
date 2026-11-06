@@ -174,11 +174,11 @@ PR #157 の1回目のレビューで、同じ種類の穴があと2つ見つか�
 
 - [`guard-prod.sh`](../.claude/hooks/guard-prod.sh) は `gh api` の書き込み(POST、PATCH、PUT、フィールド付きの呼び出し、graphql の mutation)を聞かずに通す
 - `guard-private.sh` は、本文が見えない書き込み(xargs の後ろ、`bash -c` の中、`$(...)`、バッククォート、変数、stdin、`/dev/*`)を止めない。`bash -c` の中でも、文字のままの `--body-file` の道筋は読んで調べる
-- [`guard-merge.sh`](../.claude/hooks/guard-merge.sh) は、`gh pr merge` の語が文字として出るだけのコマンド(python の heredoc の中の文書、grep の調べの語)を止めない。文字を照合するのは、`$(...)` かバッククォートがあるときと、コマンドに `bash`、`sh`、`eval`、`source`、`exec`、`env`、`sudo` のような走らせる言葉があるときだけにした
+- [`guard-merge.sh`](../.claude/hooks/guard-merge.sh) は、`gh pr merge` の語が文字として出るだけのコマンド(python の heredoc の中の文書、grep の調べの語)を止めない。文字を照合するのは、`$(...)` かバッククォートがあるときと、コマンドに `bash`、`sh`、`fish`、`eval`、`ssh`、`su`、`watch`、`script` のような中の文字を走らせる言葉があるときだけにした。python、perl、ruby、node は、文字の中に `subprocess` や `os.system` のような外のコマンドを走らせる呼び出しがあるときだけ数える。`env gh pr merge` や `sudo gh pr merge` のように前置きの言葉の後ろにマージを置く形は、この PR の前から関門の言葉の読み取り(`lib.sh` の `command_starts`)が拾っておらず、今も auto mode の判定だけが見る(PR #161 のレビュー)
 
 残したもの。
 
-- `guard-prod.sh` は、`gh api` の DELETE(取り消せない)、PR のマージのエンドポイントと graphql のマージ(`guard-merge.sh` を飛ばす)、リポジトリの公開(visibility と private のフィールド、graphql の visibility)、main の ref の書き換えを作者に聞く。公開と main は `CLAUDE.md` が作者に聞くと決めているものだ。中身を読めない method、endpoint、graphql の query も聞く
+- `guard-prod.sh` は、`gh api` の DELETE(取り消せない)、PR のマージのエンドポイントと graphql のマージ(`guard-merge.sh` を飛ばす)、リポジトリの公開(visibility と private のフィールド、graphql の visibility)、main の書き換え(`git/refs/heads/main`、`branches/main/` の下、ブランチを名指ししないか main を名指しする `contents/` への書き込み、graphql の `createCommitOnBranch` と `updateRef`)を作者に聞く。公開と main は `CLAUDE.md` が作者に聞くと決めているものだ。中身を読めない method、endpoint、graphql の query、`--input` や変数の本文も聞く。graphql は `/graphql` や完全な URL で書いても graphql として読む(PR #161 のレビュー)
 - `guard-private.sh` は、見える本文(`--title`、`--body`、文字のままの `--body-file`)の中の電話番号、メール、時刻、非公開の語を今までどおり止める
 - `guard-merge.sh` は、言葉として見えるマージを今までどおり関門に通し、`$(...)` の中のマージを止める
 

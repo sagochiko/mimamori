@@ -32,7 +32,13 @@ done < <(gh_calls)
 at='(^|[;&|(`]|'"$nl"')[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:];&|]*[[:space:]]+)*([^[:space:];&|()`]*/)?gh[[:space:]]+((-R|--repo)([=[:space:]]+)[^[:space:];&|]+[[:space:]]+)*pr[[:space:]]+merge'
 runs_text=$EXPANDS
 for w in "${WORDS[@]}"; do
-  case ${w##*/} in bash | sh | zsh | dash | ksh | eval | source | exec | env | sudo) runs_text=1 ;; esac
+  case ${w##*/} in
+    bash | sh | zsh | dash | ksh | fish | eval | source | exec | env | sudo | su | ssh | watch | script) runs_text=1 ;;
+    # An interpreter counts only when its text can run a shell command; the words in a document it
+    # writes do not (a PR body made with a python heredoc).
+    python | python3 | perl | ruby | node)
+      [[ "$cmd" =~ (subprocess|os\.system|os\.popen|os\.exec|system[[:space:]]*\(|exec[[:space:]]*\(|spawn|popen|child_process|qx|\`) ]] && runs_text=1 ;;
+  esac
 done
 texts=0
 rest=$cmd

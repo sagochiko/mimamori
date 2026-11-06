@@ -182,17 +182,20 @@ field() { # <-f|-F> <name=value>: -F reads @file, -f takes the text as it is
   local v
   v=$(upper "$2")
   [[ "$v" == VISIBILITY=* || "$v" == PRIVATE=* ]] && publishes=1
+  [[ "$v" == BRANCH=* ]] && branch=${v#BRANCH=}
   if [[ "$v" == QUERY=* && "$v" == *MUTATION* ]]; then
     [[ "$v" == *DELETE* ]] && deletes=1
     [[ "$v" == *MERGE* ]] && merges=1
     [[ "$v" == *VISIBILITY* ]] && publishes=1
+    # A commit or a ref move by graphql can land on main; the hook does not read which branch.
+    [[ "$v" == *CREATECOMMITONBRANCH* || "$v" == *UPDATEREF* ]] && moves=1
   fi
 }
 while read -r k _; do
   [[ "${WORDS[k]}" == api ]] || continue
   behind_xargs "$k" && ask "gh api behind xargs, which adds words from stdin this hook cannot read: confirm with the author"
   ((k++))
-  method="" fields=0 input=0 endpoint="" fromfile=0 deletes=0 merges=0 publishes=0
+  method="" fields=0 input=0 endpoint="" fromfile=0 deletes=0 merges=0 publishes=0 moves=0 branch=""
   while ((k < m)) && ! is_op "${WORDS[k]}"; do
     w=${WORDS[k]}
     ((k++))
@@ -222,9 +225,11 @@ while read -r k _; do
       *) [[ -n "$endpoint" ]] || endpoint=$w ;;
     esac
   done
-  if [[ "$endpoint" == graphql ]]; then
+  # graphql also as /graphql or the full URL, which gh sends to the same place.
+  if [[ "${endpoint%%\?*}" =~ (^|/)graphql/?$ ]]; then
     # graphql is always a POST. A mutation that deletes or merges asks; so does a query the hook cannot see.
     ((deletes)) && ask "gh api graphql mutation that deletes: confirm with the author"
+    ((moves)) && ask "gh api graphql mutation that commits or moves a ref, which may land on main: confirm with the author"
     ((merges)) && ask "gh api graphql mutation that merges, which skips the merge gate (guard-merge.sh): confirm with the author. Merge with gh pr merge <number> --merge."
     ((publishes)) && ask "gh api graphql mutation that changes the repository's visibility: confirm with the author"
     ((fromfile || input)) && ask "gh api graphql query read from a file or stdin, which this hook cannot check for a delete or a merge: confirm with the author"
@@ -244,10 +249,14 @@ while read -r k _; do
       ask "gh api -X $method to an endpoint the hook cannot read, which may merge a PR: confirm with the author"
     elif [[ "$endpoint" =~ (^|/)pulls/[0-9]+/merge/?(\?|$) || "$endpoint" =~ (^|/)merges/?(\?|$) ]]; then
       ask "gh api $endpoint merges, which skips the merge gate (guard-merge.sh): confirm with the author. Merge with gh pr merge <number> --merge."
+    elif ((input || HIDDEN || EXPANDS)); then
+      ask "gh api -X $method with a body the hook cannot read (--input, a variable, or \$(...)), which may publish the repository or move main: confirm with the author"
     elif ((publishes)); then
       ask "gh api changes the repository's visibility, which publishes it: confirm with the author"
-    elif [[ "$endpoint" =~ (^|/)git/refs/heads/main/?(\?|$) ]]; then
-      ask "gh api moves main: confirm with the author. Changes reach main through a reviewed PR."
+    elif [[ "$endpoint" =~ (^|/)git/refs/heads/main/?(\?|$) || "$endpoint" =~ (^|/)branches/main(/|\?|$) ]]; then
+      ask "gh api moves or changes main: confirm with the author. Changes reach main through a reviewed PR."
+    elif [[ "$endpoint" =~ (^|/)contents/ && ( -z "$branch" || "$branch" == MAIN ) ]]; then
+      ask "gh api writes a file without naming a branch other than main, so it commits to main: confirm with the author"
     fi
   fi
 done < <(gh_calls)
