@@ -64,18 +64,26 @@ The stub check reads every file in the `.app`, not only `Mimamori`, because a De
 
 Say in one line what is about to go up: build number, version (`MARKETING_VERSION` in `ios/project.yml`), API host, and the route of step 5: a build for the author to check goes to 「家族」 only ("処理のあと「家族」に配る"), a build for the mother and the judges also goes to 「審査員と家族」 and its review ("処理のあと「家族」に配り、「審査員と家族」の審査へ出す"). Then run the export without waiting: since 2026-11-04 the author lets uploads to App Store Connect run unasked during development, and since 2026-11-05 Claude also presses Submit Review in step 5. If a permission prompt or a hook still stops the export, do not reshape the command to get around it; report it.
 
-The upload signs in with mimamori's App Store Connect API key, not the account saved in Xcode. The author made the key on 2026-11-07 (name `mimamori TestFlight upload`, role App Manager, key ID `FB49V3RX2C`, Issuer ID `c9406333-bd27-4369-8778-d87d66b976c5`; the IDs are not secret). `guard-secrets.sh` lets exactly two Bash lines name the key file, and only when the whole line has the shape; Claude never reads the file (no `cat`, `head`, `grep`, Read, or copy).
+The upload signs in with mimamori's App Store Connect API key, not the account saved in Xcode. The author made the key on 2026-11-07 (name `mimamori TestFlight upload`, role App Manager, key ID `FB49V3RX2C`, Issuer ID `c9406333-bd27-4369-8778-d87d66b976c5`; the IDs are not secret). The key lives in mimamori's own folder `~/.mimamori/asc/`, never in `~/.appstoreconnect/`, which may hold keys made before the event; the hackathon rules keep those out. `guard-secrets.sh` lets exactly three Bash lines name this key, only with this ID in this folder and only when the whole line has the shape, and it blocks every other look into either folder (`ls`, a glob, Grep, Read, a link). Claude never reads the file (no `cat`, `head`, `grep`, Read, or copy).
 
-First, `ls ~/.appstoreconnect/private_keys/`. Only when it shows no key, move the downloaded one into place with this line, once:
+First check that the key is in place; the line prints nothing and only its exit code matters:
 
 ```sh
-mkdir -p ~/.appstoreconnect/private_keys && mv ~/Downloads/AuthKey_FB49V3RX2C.p8 ~/.appstoreconnect/private_keys/
+test -e ~/.mimamori/asc/AuthKey_FB49V3RX2C.p8
 ```
+
+Only when it exits 1, move the downloaded key into place with this line, once:
+
+```sh
+mkdir -p ~/.mimamori/asc && mv ~/Downloads/AuthKey_FB49V3RX2C.p8 ~/.mimamori/asc/
+```
+
+If the move fails because `~/Downloads` has no such file, the author has to download the key again, which App Store Connect allows only once per key; then ask the author to make a new key and update the ID in this step and in `guard-secrets.sh` in a reviewed harness PR.
 
 Then upload. Write the archive and export paths out in full (the expanded `$A` and `$OUT/export`): the hook passes only plain words and paths, so a line with `$`, quotes, a pipe, a redirect, `;`, `&&`, a leading `cd`, or a line break is blocked, and a blocked line is reported, not reshaped. Run it as one Bash call:
 
 ```sh
-xcodebuild -exportArchive -archivePath <scratchpad>/release-<N>/Mimamori-<N>.xcarchive -exportOptionsPlist ios/ExportOptions.plist -exportPath <scratchpad>/release-<N>/export -allowProvisioningUpdates -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_FB49V3RX2C.p8 -authenticationKeyID FB49V3RX2C -authenticationKeyIssuerID c9406333-bd27-4369-8778-d87d66b976c5
+xcodebuild -exportArchive -archivePath <scratchpad>/release-<N>/Mimamori-<N>.xcarchive -exportOptionsPlist ios/ExportOptions.plist -exportPath <scratchpad>/release-<N>/export -allowProvisioningUpdates -authenticationKeyPath ~/.mimamori/asc/AuthKey_FB49V3RX2C.p8 -authenticationKeyID FB49V3RX2C -authenticationKeyIssuerID c9406333-bd27-4369-8778-d87d66b976c5
 ```
 
 The key flags are options of `xcodebuild` itself, not keys of the export options plist: `man xcodebuild` (Xcode 27.1) lists `-authenticationKeyPath`, `-authenticationKeyID`, and `-authenticationKeyIssuerID`, and `xcodebuild -help` says `-allowProvisioningUpdates` "Requires a developer account to have been added in Xcode's Accounts settings or an App Store Connect authentication key to be specified via the -authenticationKeyPath, -authenticationKeyID, and -authenticationKeyIssuerID parameters." So `ios/ExportOptions.plist` stays as it is.
@@ -113,7 +121,7 @@ BUILDS="https://appstoreconnect.apple.com/apps/$ASC_APP_ID/testflight/ios"
 
 Two Chrome tabs are used. The work tab is where the groups are filled in and where the Submit Review sheet stays open until 5c presses it; once the sheet is open, never reload it or navigate it, or the sheet closes with the build choice and What to Test in it and has to be filled in again. The status tab shows `$BUILDS` (the iOS builds list) and is the only tab that is reloaded. A status look reloads the status tab and reads only build `$N`'s row with `find` (its build number and status); do not use `get_page_text` or take screenshots, which would pull in the rest of the page. Between looks, run `sleep 300` with `run_in_background` and do nothing until it ends; look at most six times (30 minutes), then ask once whether to wait again.
 
-Since 2026-11-07 the upload in step 4 uses an App Store Connect API key that the author made for mimamori during the event; Claude passes only its path to `xcodebuild` and never reads the file, which `guard-secrets.sh` enforces. Keys or code the author made before the event are not used. The waits here still stay in Chrome: calling the App Store Connect API from a shell loop would need a signed token built from the key's content, which Claude would have to read or code that would have to be written for it, and the two allowed lines cover only `xcodebuild`.
+Since 2026-11-07 the upload in step 4 uses an App Store Connect API key that the author made for mimamori during the event; Claude passes only its path to `xcodebuild` and never reads the file, which `guard-secrets.sh` enforces. Keys or code the author made before the event are not used. The waits here still stay in Chrome: calling the App Store Connect API from a shell loop would need a signed token built from the key's content, which Claude would have to read or code that would have to be written for it, and the allowed lines cover only `test -e`, the one move, and `xcodebuild -exportArchive`.
 
 ### 5a. Open the tabs and wait for processing
 
