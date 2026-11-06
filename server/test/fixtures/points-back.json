@@ -99,5 +99,16 @@
   { "text": "まあ、それってなに", "pointsBack": false },
   { "text": "あのさ、それってどういうこと", "pointsBack": false },
   { "text": "おお、それ本当?", "pointsBack": false },
-  { "text": "ほら、それってなに", "pointsBack": false }
+  { "text": "ほら、それってなに", "pointsBack": false },
+  { "text": "あのね、それってなに", "pointsBack": true },
+  { "text": "あの、おそれがある", "pointsBack": false },
+  { "text": "でも、おそれがある", "pointsBack": false },
+  { "text": "えーと、おそれがあるって", "pointsBack": false },
+  { "text": "ちょっと、おそれがある", "pointsBack": false },
+  { "text": "ねこの飼い方を教えて", "pointsBack": false },
+  { "text": "ねこのこと", "pointsBack": false },
+  { "text": "ねこれ", "pointsBack": false },
+  { "text": "うんそれってどういうこと", "pointsBack": false },
+  { "text": "あのおそれがある", "pointsBack": false },
+  { "text": "ねえそれってなに", "pointsBack": false }
 ]
