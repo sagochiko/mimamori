@@ -1250,6 +1250,13 @@ staged 1 eval/README.md '作者が 15:04 に測った' "only the root READMEs ar
 # the date alone, so the commit is not stopped for the time of day it ran.
 scripts/usage-report.sh 2>/dev/null | grep -qE '^フックが記録した回数を数えたもの。最後に数えたのは [0-9]+年[0-9]+月[0-9]+日。' ||
   { echo "usage test failed: docs/claude-usage.md says when it counted by the date alone"; fail=1; }
+# The period gives the first and last day in JST, with no time of day (an event late in the UTC day falls
+# on the next JST day).
+printf '%s\n' '{"ts":"2026-11-03T10:21:51Z","kind":"subagent","name":"mm-reviewer","detail":""}' \
+  '{"ts":"2026-11-06T15:30:00Z","kind":"skill","name":"mm-task","detail":""}' >"$T/usage-period.jsonl"
+out=$(MM_USAGE_LOG="$T/usage-period.jsonl" scripts/usage-report.sh 2>/dev/null)
+[[ "$out" == *"最初の記録は2026年11月3日、最後の記録は2026年11月7日(日本時間)。"* && "$out" != *T10:21* ]] ||
+  { echo "usage test failed: the period gives the first and last day in JST without a time of day"; fail=1; }
 out=$(printf '%s\n' 'x' '15:04 に試した' >"$R/docs/b.md" && r add docs/b.md && cd "$R" && .githooks/pre-commit 2>&1)
 r reset -q docs/b.md && rm -f "$R/docs/b.md"
 [[ "$out" == *"docs/b.md:2: time of day"* && "$out" == *"date alone"* && "$out" != *"午後"* && "$out" != *"15:04"* ]] ||
@@ -1258,6 +1265,12 @@ r reset -q docs/b.md && rm -f "$R/docs/b.md"
 printf '%s\n' 'Kitsunezaka' >"$R/.claude/private-terms.local"
 printf '%s\n' '/tmp/mm-test/fox-dummy-app' >"$R/.claude/prior-work.local"
 r worktree add -q "$T/wt" -b wt 2>/dev/null
+# make usage from a worktree counts the main tree's log, where the hooks write it, not an empty one.
+mkdir -p "$R/.claude/logs" "$T/wt/scripts" && cp scripts/usage-report.sh "$T/wt/scripts/" &&
+  printf '%s\n' '{"ts":"2026-11-04T01:00:00Z","kind":"skill","name":"mm-main-tree-only","detail":""}' >"$R/.claude/logs/usage.jsonl"
+"$T/wt/scripts/usage-report.sh" 2>/dev/null | grep -q '`mm-main-tree-only` | 1 |' ||
+  { echo "usage test failed: usage-report.sh in a worktree reads the main tree's log"; fail=1; }
+rm -rf "$R/.claude/logs" "$T/wt/scripts"
 printf '%s\n' 'x' 'Kitsunezaka' >"$T/wt/note.md" && git -C "$T/wt" add note.md
 (cd "$T/wt" && env -u MM_PRIVATE_TERMS_FILE -u MM_PRIOR_WORK_FILE .githooks/pre-commit >/dev/null 2>&1) &&
   { echo "pre-commit test failed: in a worktree the main tree's term list is not found"; fail=1; }
