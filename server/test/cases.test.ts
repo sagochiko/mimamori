@@ -4,7 +4,7 @@
 import { createExecutionContext, createScheduledController, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { http, HttpResponse } from "msw";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExternalBudget } from "../src/budget";
 import {
   CLAIM_TTL_MS,
@@ -44,7 +44,15 @@ interface Sent {
 }
 let sent: Sent[];
 
+// The tick runs every 5-minute job, the missed-smile notice among them. A family whose protected member
+// joined before today's smile deadline (5 to 12 JST) gets that notice once a tick passes the deadline,
+// so ticks a few minutes ahead, run shortly before the deadline, sent it to every family in this file
+// (#160). The clock stays at 15:00 JST, after every deadline, so no family here is ever due for it.
+const AFTER_EVERY_SMILE_DEADLINE = Date.parse("2026-11-06T15:00:00+09:00");
+
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(AFTER_EVERY_SMILE_DEADLINE);
   resetApnsJwtCache();
   sent = [];
   network.use(
@@ -58,6 +66,10 @@ beforeEach(() => {
       return new HttpResponse(null, { status: 200 });
     }),
   );
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 interface Person {
