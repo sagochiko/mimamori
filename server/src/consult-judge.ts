@@ -243,11 +243,11 @@ const CONSULT_SCHEMA = {
     },
     basis: {
       type: "string",
-      description: `見えた根拠を一文で、${BASIS_MAX_CHARS}字以内。help のときは空。本人に読み上げるので、印のような判定の言葉は使わない`,
+      description: `見えた根拠を一文で、${BASIS_MAX_CHARS}字以内。help のときは空。本人に読み上げないが、印のような判定の言葉は使わない`,
     },
     action: {
       type: "string",
-      description: `勧める行動か、操作の案内。${ACTION_MAX_CHARS}字以内。本人に読み上げるので、印のような判定の言葉は使わない`,
+      description: `勧める行動か、操作の案内。${ACTION_MAX_CHARS}字以内。本人に読み上げるのは help の操作の案内だけで、scam のときは読み上げない。印のような判定の言葉は使わない`,
     },
     handoff: {
       type: "boolean",
@@ -285,7 +285,7 @@ const CONSULT_IMAGE_SCHEMA = {
 // Level 2 asks for a sign of a scam that Claude can name, and a contact that cannot be checked is not
 // a handoff. Until #109 level 2 was "詐欺の疑いがある、または決めきれない", and on dev Claude put 11
 // genuine consultations at level 2 with reasons that only said the contact could not be checked.
-const SYSTEM_PROMPT = `あなたは、離れて住む家族が見守っている高齢の方の iPhone の相談相手です。本人が声で話した内容を文字にしたものが届きます。短く、やさしい話し言葉で答えます。答えはそのまま読み上げられます。
+const SYSTEM_PROMPT = `あなたは、離れて住む家族が見守っている高齢の方の iPhone の相談相手です。本人が声で話した内容を文字にしたものが届きます。短く、やさしい話し言葉で答えます。スマホの困りごとの操作の案内は、そのまま読み上げられます。
 
 詐欺かもしれない相談(kind は scam)では、危なさを3段階で答えます。
 1 開かないで(詐欺の手口の印がはっきりある)
@@ -320,7 +320,7 @@ const SYSTEM_PROMPT = `あなたは、離れて住む家族が見守っている
 basis には見えた根拠を一文で、action には勧める行動を書き、二つを分けます。例 basis「詐欺で使われる説明と一致しています。」action「送金せず、いったん電話を切って家族に確かめて」。「これは詐欺です」「本物です」「偽物です」のような言い切りはしません。
 2か1にするときは、reasons に見えた印を書きます。「確かめられない」は印ではないので、2や1の理由にしません。
 
-basis と action は本人にそのまま読み上げます。「手口の印」「印」「規則の判定」のような、ここで段階を決めるために使っている言葉は使わず、本人に分かるふだんの言葉で書きます。こうした言葉が入った文も本人に読み上げず、決まった文に置き換えます。reasons は家族に見せるもので、今までどおり見えた印を書きます。
+本人に読み上げるのは、スマホの困りごとの相談(kind は help)の action だけです。詐欺かもしれない相談(kind は scam)の basis と action は、本人に読み上げず、家族のカードにも出しません。本人には、段階ごとの決まった文を読み上げます。help の action も、メッセージ、電話、リンクの相談や、詐欺の心配が見えたとき、案内しない話題、答えきれないときは、決まった文に置き換えます。basis と action は、どちらも「手口の印」「印」「規則の判定」のような、ここで段階を決めるために使っている言葉は使わず、本人に分かるふだんの言葉で書きます。こうした言葉が入った action も本人に読み上げず、決まった文に置き換えます。reasons は家族に見せるもので、今までどおり見えた印を書きます。
 
 スマホの困りごとの相談(kind は help、level は 3)では、action に操作の案内を短く書きます。例「ストレージがいっぱい」と出たら、設定の「一般」から「iPhone ストレージ」を案内し、広告の掃除アプリは入れなくていいと伝えます。広告から入れるアプリについての相談は、詐欺の手口と一致するところを根拠に答えます。
 
