@@ -822,3 +822,15 @@ From は符号化を解かずに読み、引用符の外にカンマがあれば
 途中で、鍵の置き場のファイル名をコードの注釈に書いた heredoc を Bash で流したところ、秘密のファイルを守るフックに止められた。読む操作ではなかったが、行の文字だけで判断するフックなので止まるのは仕様どおりで、Edit で書き直した。
 
 HKDF で導いた鍵の HMAC-SHA256 にし、鍵が使えない手元の実行では今までの SHA-256 に戻して判定を止めない形にした。新しい秘密の案は、登録の手順が増えるわりに守りが変わらないので採らなかった。使ったのは mm-implementer、advisor、Vitest、秘密を守るフック。
+
+## 2026年11月6日 D1 の1回の呼び出しあたりの上限は Cloudflare の文書の中で食い違ったまま (#49)
+
+PR #43 のレビューで回した軽い穴(#49)を塞いでいて、そのうちの1行が「届いていない相談が多いと、Cron の1回で D1 の問い合わせが50を超えうる。上限が50か1,000かをまず確かめる」だった。
+
+親のセッションから実装役へ「D1 の上限は Cloudflare の文書で確かめてから」と頼んだ。
+
+2026年11月6日に読み直すと、D1 の limits のページ(`developers.cloudflare.com/d1/platform/limits/`)は「Queries per Worker invocation」を「1000 (Workers Paid) / 50 (Free)」と書き、Workers の limits のページ(`developers.cloudflare.com/workers/platform/limits/#subrequests`)は Free の「Subrequests to internal services」を 1,000 と書いていた。2026年2月11日の changelog も「Workers on the free plan remain limited to 50 external subrequests and 1000 subrequests to Cloudflare services」と書く。コードで数えると、5分ごとの1回で `sendFirstNotices` は1件あたり4回(取る、家族を読む、端末の鍵を読む、放す)で20件なら81回、`watchUnanswered` も同じくらいになり、合わせると50も81も超えうる。
+
+文書を読めばどちらかに決まると思っていたが、2つのページが今も別の数を書いていて、文書だけでは決まらなかった。`server/src/budget.ts` は「D1 と R2 は50に数えない」という Workers 側の読みで書いてある。
+
+この PR では件数の上限も D1 の回数の数え方も変えず、食い違いと数えた回数だけを残した。決めるには、デプロイした Worker で D1 を51回以上呼ぶ Cron を1回流し、`Too many API requests by single Worker invocation` が出るかを見るのが早い。使ったのは mm-implementer、advisor、cloudflare-docs の MCP、Vitest。
