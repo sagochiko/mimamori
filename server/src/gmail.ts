@@ -181,7 +181,8 @@ export async function callbackRoute(request: Request, env: Env): Promise<Respons
     `INSERT INTO gmail_auth (family_id, refresh_token_enc, granted_at, last_history_id, expired_notified_at)
      VALUES (?, ?, ?, ?, NULL)
      ON CONFLICT (family_id) DO UPDATE SET refresh_token_enc = excluded.refresh_token_enc,
-       granted_at = excluded.granted_at, last_history_id = excluded.last_history_id, expired_notified_at = NULL`,
+       granted_at = excluded.granted_at, last_history_id = excluded.last_history_id, expired_notified_at = NULL,
+       partial_record_id = NULL, partial_message_ids = NULL`,
   )
     .bind(state.f, await sealText(env.TOKEN_ENC_KEY, tokens.refresh_token), now, historyId)
     .run();
@@ -221,6 +222,9 @@ interface GrantRow {
   granted_at: number;
   last_history_id: string | null;
   expired_notified_at: number | null;
+  /** #174: the history record the last tick stopped inside, and the mails it handled there (JSON). */
+  partial_record_id: string | null;
+  partial_message_ids: string | null;
 }
 
 /** A fetch to Google, or null when the network failed. */
@@ -333,7 +337,34 @@ interface MessagePart {
   parts?: MessagePart[];
 }
 
-/** Reads the inbox after last_history_id and queues what the rules are unsure of. */
+/** Where a tick stopped: the last whole history record read, and the mails handled in the next one. */
+interface Progress {
+  historyId: string;
+  partialRecordId: string | null;
+  partialIds: string[];
+}
+
+/** The partial record saved by the last tick, or null (none, or a value this code did not write). */
+function savedPartial(grant: GrantRow): { recordId: string; ids: string[] } | null {
+  if (grant.partial_record_id === null || grant.partial_message_ids === null) return null;
+  let ids: unknown;
+  try {
+    ids = JSON.parse(grant.partial_message_ids);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string")) return null;
+  return { recordId: grant.partial_record_id, ids };
+}
+
+/**
+ * Reads the inbox after last_history_id and queues what the rules are unsure of.
+ *
+ * last_history_id only moves past whole history records. A record can carry several mails, so when a
+ * tick stops inside one (a failed queue send, the per-tick cap, the budget), the mails it already
+ * handled there are saved with it (partial_record_id, partial_message_ids) and the next tick skips them
+ * instead of queueing them a second time (#174).
+ */
 async function readNewMail(
   env: Env,
   grant: GrantRow & { last_history_id: string },
@@ -341,10 +372,18 @@ async function readNewMail(
   budget: ExternalBudget,
 ): Promise<void> {
   const auth = { Authorization: `Bearer ${accessToken}` };
+  const saved = savedPartial(grant);
   const seen = new Set<string>();
   let done = grant.last_history_id;
   let read = 0;
   let pageToken: string | undefined;
+
+  const stop = (recordId: string, handled: string[]) =>
+    saveProgress(env, grant, {
+      historyId: done,
+      partialRecordId: handled.length > 0 ? recordId : null,
+      partialIds: handled,
+    });
 
   for (;;) {
     if (!budget.take()) break;
@@ -358,7 +397,7 @@ async function readNewMail(
       // Google no longer has history that far back. Start again from now; the gap is not read.
       console.warn("gmail history reset");
       const now = budget.take() ? await currentHistoryId(accessToken) : null;
-      if (now !== null) await saveHistoryId(env, grant, now);
+      if (now !== null) await saveProgress(env, grant, { historyId: now, partialRecordId: null, partialIds: [] });
       return;
     }
     if (!res?.ok) {
@@ -370,14 +409,17 @@ async function readNewMail(
     for (const record of page.history ?? []) {
       const recordId = record.id;
       if (typeof recordId !== "string" || !/^\d+$/.test(recordId)) continue;
+      const handled = saved?.recordId === recordId ? [...saved.ids] : [];
+      for (const id of handled) seen.add(id);
       for (const added of record.messagesAdded ?? []) {
         const id = added.message?.id;
         const labels = added.message?.labelIds ?? [];
         if (!id || seen.has(id) || labels.includes("SENT") || labels.includes("DRAFT")) continue;
-        if (read >= MESSAGES_PER_FAMILY || !budget.take()) return saveHistoryId(env, grant, done);
+        if (read >= MESSAGES_PER_FAMILY || !budget.take()) return stop(recordId, handled);
         read += 1;
-        if (!(await judgeMessage(env, grant.family_id, id, auth))) return saveHistoryId(env, grant, done);
+        if (!(await judgeMessage(env, grant.family_id, id, auth))) return stop(recordId, handled);
         seen.add(id);
+        handled.push(id);
       }
       done = recordId;
     }
@@ -387,16 +429,44 @@ async function readNewMail(
     }
     pageToken = page.nextPageToken;
   }
-  await saveHistoryId(env, grant, done);
+  // No whole record was read (the history call failed or the budget ran out before it): keep what the
+  // last tick saved, partial record included.
+  if (done === grant.last_history_id) return;
+  await saveProgress(env, grant, { historyId: done, partialRecordId: null, partialIds: [] });
 }
 
-/** Moves last_history_id forward only, and only from the value this run started with. */
-async function saveHistoryId(env: Env, grant: GrantRow & { last_history_id: string }, historyId: string): Promise<void> {
-  if (historyId === grant.last_history_id) return;
+/**
+ * Saves where this tick stopped, only from the values this tick started with (another tick that moved
+ * the row meanwhile wins). Also when last_history_id stays: the partial record may have grown.
+ */
+async function saveProgress(
+  env: Env,
+  grant: GrantRow & { last_history_id: string },
+  progress: Progress,
+): Promise<void> {
+  const ids = progress.partialRecordId === null ? null : JSON.stringify(progress.partialIds);
+  if (
+    progress.historyId === grant.last_history_id &&
+    progress.partialRecordId === grant.partial_record_id &&
+    ids === grant.partial_message_ids
+  ) {
+    return;
+  }
   await env.DB.prepare(
-    "UPDATE gmail_auth SET last_history_id = ? WHERE family_id = ? AND granted_at = ? AND last_history_id = ?",
+    `UPDATE gmail_auth SET last_history_id = ?, partial_record_id = ?, partial_message_ids = ?
+      WHERE family_id = ? AND granted_at = ? AND last_history_id = ?
+        AND partial_record_id IS ? AND partial_message_ids IS ?`,
   )
-    .bind(historyId, grant.family_id, grant.granted_at, grant.last_history_id)
+    .bind(
+      progress.historyId,
+      progress.partialRecordId,
+      ids,
+      grant.family_id,
+      grant.granted_at,
+      grant.last_history_id,
+      grant.partial_record_id,
+      grant.partial_message_ids,
+    )
     .run();
 }
 
@@ -558,7 +628,8 @@ export async function watchGmail(env: Env, now: number, budget: ExternalBudget):
   const client = googleClient(env);
   if (!client) return;
   const rows = await env.DB.prepare(
-    `SELECT family_id, refresh_token_enc, granted_at, last_history_id, expired_notified_at
+    `SELECT family_id, refresh_token_enc, granted_at, last_history_id, expired_notified_at,
+            partial_record_id, partial_message_ids
        FROM gmail_auth ORDER BY granted_at LIMIT ?`,
     // Known limit: with more than FAMILIES_PER_TICK grants, the sixth and later are never reached.
   )

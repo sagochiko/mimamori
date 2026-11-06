@@ -563,6 +563,82 @@ describe("the 5-minute watch", () => {
     expect((await authRow(f.owner.familyId))?.last_history_id).toBe("1002");
   });
 
+  it("does not queue again a mail queued before a failure in the same history record (#174)", async () => {
+    const f = await family();
+    const { box } = await grant(f.owner.familyId);
+    // One record carries two mails, as Gmail may when they arrive together.
+    for (const id of ["m1", "m2"]) box.messages.set(id, { id, from: SCAM_FROM, subject: SCAM_SUBJECT, body: SCAM_BODY });
+    box.records.push({ id: "1001", messageIds: ["m1", "m2"] });
+    box.historyId = "1001";
+    const sent: JudgeMessageBody[] = [];
+    let failNext = false;
+    const queue = {
+      send: async (body: JudgeMessageBody) => {
+        if (failNext) {
+          failNext = false;
+          throw new Error("queue down");
+        }
+        sent.push(body);
+        // The mail after the first one fails to go on the queue this tick.
+        if (sent.length === 1) failNext = true;
+      },
+    } as unknown as Queue;
+    const queueEnv = { ...pushEnv, JUDGE_QUEUE: queue } as Env;
+
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(sent).toHaveLength(1);
+    expect((await authRow(f.owner.familyId))?.last_history_id).toBe("1000");
+
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(sent).toHaveLength(2);
+    expect(calls.messages).toEqual(["m1", "m2", "m2"]);
+    expect((await authRow(f.owner.familyId))?.last_history_id).toBe("1001");
+
+    // The record is done; a later tick reads nothing again, and a new mail is read once.
+    deliver(box, { id: "m3", from: SCAM_FROM, subject: SCAM_SUBJECT, body: SCAM_BODY });
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(sent).toHaveLength(3);
+    expect(calls.messages).toEqual(["m1", "m2", "m2", "m3"]);
+  });
+
+  it("keeps what it handled in a record through a tick whose history call fails (#174)", async () => {
+    const f = await family();
+    const { box } = await grant(f.owner.familyId);
+    const ids = Array.from({ length: MESSAGES_PER_FAMILY + 1 }, (_, i) => `m${i}`);
+    for (const id of ids) box.messages.set(id, { id, from: SCAM_FROM, subject: SCAM_SUBJECT, body: SCAM_BODY });
+    box.records.push({ id: "1001", messageIds: ids });
+    box.historyId = "1001";
+    const { sent, queueEnv } = fakeQueue();
+
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(sent).toHaveLength(MESSAGES_PER_FAMILY);
+
+    network.use(http.get(`${GMAIL}/history`, () => HttpResponse.json({ error: { code: 503 } }, { status: 503 }), { once: true }));
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(sent).toHaveLength(MESSAGES_PER_FAMILY);
+
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(sent).toHaveLength(MESSAGES_PER_FAMILY + 1);
+    expect(calls.messages).toEqual(ids);
+  });
+
+  it("does not read again a mail read before the per-tick cap in the same history record (#174)", async () => {
+    const f = await family();
+    const { box } = await grant(f.owner.familyId);
+    const ids = Array.from({ length: MESSAGES_PER_FAMILY + 2 }, (_, i) => `m${i}`);
+    for (const id of ids) box.messages.set(id, { id, from: SCAM_FROM, subject: SCAM_SUBJECT, body: SCAM_BODY });
+    box.records.push({ id: "1001", messageIds: ids });
+    box.historyId = "1001";
+    const { sent, queueEnv } = fakeQueue();
+
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(sent).toHaveLength(MESSAGES_PER_FAMILY);
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(sent).toHaveLength(MESSAGES_PER_FAMILY + 2);
+    expect(calls.messages).toEqual(ids);
+    expect((await authRow(f.owner.familyId))?.last_history_id).toBe("1001");
+  });
+
   it("stops where the budget runs out and goes on from there on the next tick", async () => {
     const f = await family();
     const { box } = await grant(f.owner.familyId);
