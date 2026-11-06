@@ -166,6 +166,24 @@ PR #157 の1回目のレビューで、同じ種類の穴があと2つ見つか�
 
 監査役とレビュー役の報告の原文は `docs/audits/raw/` にフックが残す。`docs/audits/<日時>.md` は、親がそれを確かめたうえで書いた要約と決めたことで、原文のファイルへのリンクを付ける。
 
+### gh の書き込みを止めなくなった
+
+2026年11月6日に作者が2つ言った。1つは「Ghapiの書き込みは別に許可でいいのでは？」。もう1つは、[`guard-private.sh`](../.claude/hooks/guard-private.sh) が本文と関係のない `$(...)` に反応して止めることについて「なんか影響ないのに許可求められるのは非効率」。主が AskUserQuestion で止め方を聞き、作者は「Claude の判断に任せる」を選んだ。その選択肢の説明は「見えないときに止めるのをやめる。本文は Write で書いて --body-file で渡す決まりは CLAUDE.md に残す。中身の電話番号、メール、時刻、非公開の語の調べと、公開の前の履歴の調べは残る。うっかり外すと、公開の前の調べまで気づけない」だった。フックを書き換える実装役の起動は auto mode の判定に自己書き換えとして2回止められ、作者がこの会話で「本当に許可します。やってください。」と改めて許可したので、主のセッションで書き換えた。
+
+止めなくなったもの。
+
+- [`guard-prod.sh`](../.claude/hooks/guard-prod.sh) は `gh api` の書き込み(POST、PATCH、PUT、フィールド付きの呼び出し、graphql の mutation)を聞かずに通す
+- `guard-private.sh` は、本文が見えない書き込み(xargs の後ろ、`bash -c` の中、`$(...)`、バッククォート、変数、stdin、`/dev/*`)を止めない。`bash -c` の中でも、文字のままの `--body-file` の道筋は読んで調べる
+- [`guard-merge.sh`](../.claude/hooks/guard-merge.sh) は、`gh pr merge` の語が文字として出るだけのコマンド(python の heredoc の中の文書、grep の調べの語)を止めない。文字を照合するのは、`$(...)` かバッククォートがあるときと、コマンドに `bash`、`sh`、`eval`、`source`、`exec`、`env`、`sudo` のような走らせる言葉があるときだけにした
+
+残したもの。
+
+- `guard-prod.sh` は、`gh api` の DELETE(取り消せない)、PR のマージのエンドポイントと graphql のマージ(`guard-merge.sh` を飛ばす)、リポジトリの公開(visibility と private のフィールド、graphql の visibility)、main の ref の書き換えを作者に聞く。公開と main は `CLAUDE.md` が作者に聞くと決めているものだ。中身を読めない method、endpoint、graphql の query も聞く
+- `guard-private.sh` は、見える本文(`--title`、`--body`、文字のままの `--body-file`)の中の電話番号、メール、時刻、非公開の語を今までどおり止める
+- `guard-merge.sh` は、言葉として見えるマージを今までどおり関門に通し、`$(...)` の中のマージを止める
+
+本文をファイルに書いて絶対の道筋で渡すことと、Issue や PR を `gh api` で書かないことは、`CLAUDE.md` の決まりとして Claude が守る。hooks の文書([hooks](https://code.claude.com/docs/en/hooks))の PreToolUse は、終了コード0で何も出さなければ「continues through the normal permission flow」なので、止めなくなった形は permissions の allow と auto mode の判定に回る。
+
 ## 残っている穴
 
 フックはツールの呼び出しの文字列を見て止めるので、Bash から Python や Node のスクリプトがファイルを開く読み方までは止めきれない。OS のレベルで確実に止めるのは Claude Code のサンドボックスだが、`xcodebuild` やシミュレータとの相性を確かめていないので、ハッカソン中は入れていない。秘密は Workers の秘密の置き場を正にし、手元の `.dev.vars` には開発用の値だけを置く。

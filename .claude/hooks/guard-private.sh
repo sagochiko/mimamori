@@ -1,8 +1,9 @@
 #!/bin/bash
 # PreToolUse (Bash|Monitor): issues and PRs become public with the repository. Before gh writes an
 # issue, a PR, or a comment, apply the checks of the git hooks (scripts/scan-private.sh) to the
-# command, which holds --title and --body, and to every --body-file. A body the scan cannot see is
-# blocked: one read from stdin without a heredoc, from /dev/*, or through $( or a backtick. Hits print
+# command, which holds --title and --body, and to every --body-file. Since 2026-11-06 a body the scan
+# cannot see (stdin, /dev/*, $( or a backtick, a variable) passes unread; Claude keeps bodies in files
+# passed by absolute path (CLAUDE.md). Hits print
 # only where and which rule, never the matched text. Also keeps the git hooks from being switched off.
 # The command is split into shell words first (shell_words in lib.sh), so words inside quotes are text,
 # not flags.

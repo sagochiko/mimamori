@@ -75,7 +75,7 @@ Start the `mm-reviewer` subagent with the issue number, the working tree, and th
    { printf '## mm-reviewer の報告(原文)\n\n%s回目、%s を読んだもの。保存した原文は `%s`。\n\n' "<round>" "<commit>" "$raw" && cat "$raw"; } >"<scratchpad>/review-comment.md"
    ```
 
-   Post it as a command of its own, with the file's absolute path written out as text. `guard-private.sh` stops a gh write in a command that also runs `$(...)` or expands a variable (`$name`, `${...}`, `$'...'`), because it cannot see what that adds to the body; a path kept in a variable from an earlier command, such as `$raw` above, counts too:
+   Post it with the file's absolute path written out as text. Since 2026-11-06 `guard-private.sh` no longer stops a gh write whose body it cannot see (a variable, `$(...)`), so keeping the path literal is on you: it is what lets the hook scan the body before it goes public:
 
    ```sh
    gh pr comment <pr> --body-file "<scratchpad>/review-comment.md"
