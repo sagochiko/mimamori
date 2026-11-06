@@ -217,7 +217,10 @@ const FIRST_NOTICE_BATCH = 20;
  * it, in the same statement that lets go of the claim. "already" means told, or another caller is
  * sending it right now; either way this call sends nothing, and the case reads as told only once
  * family_notified_at is set. A family with no device to send to is not told either (#60): the case
- * waits, and the 5-minute tick sends it once someone registers a device.
+ * waits, and the 5-minute tick sends it once someone registers a device. A case the family resolved
+ * before the notice got through is not claimed (#49): a family member already talked with her, and a
+ * retry by the queue or the tick would tell the family again about something they settled. The old
+ * 'accepted' state counts as not resolved, as everywhere else in this file.
  *
  * When this call's claim was taken over (it ran past CLAIM_TTL_MS) and its notice still went out,
  * family_notified_at stays NULL and the case keeps reading as not told until the newer claim's sender
@@ -231,7 +234,7 @@ async function tellFamily(
   const claimedAt = Date.now();
   const claimed = await env.DB.prepare(
     `UPDATE cases SET family_notice_claimed_at = ?
-      WHERE id = ? AND family_notified_at IS NULL
+      WHERE id = ? AND family_notified_at IS NULL AND state != 'resolved'
         AND (family_notice_claimed_at IS NULL OR family_notice_claimed_at < ?)`,
   )
     .bind(claimedAt, c.id, claimedAt - CLAIM_TTL_MS)
