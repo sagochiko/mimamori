@@ -72,9 +72,11 @@ const JUDGMENT_SCHEMA = {
 // Words that would tell the mother or the family the message is fine. No path may say that
 // (CLAUDE.md). A reason that says it is replaced (decide); the level and injection_suspected are
 // kept, so writing 安全 in a message cannot get the judge's answer thrown away.
-// "問題ないか" is a question ("振込先に問題ないか家族に確かめて"), not a verdict.
+// "問題ないか" is a question ("振込先に問題ないか家族に確かめて"), not a verdict, and so are
+// "大丈夫ですか", "詐欺ではないか", "危険はないか". 大丈夫, 詐欺ではない, 心配いらない, 問題なし and
+// 危険はない say it is fine without the word 安全 (#53, 5).
 const SOUNDS_SAFE =
-  /安全(です|だ|でしょう|と思|な(メッセージ|サイト|ページ|メール|もの|内容))|問題(は)?(ありません|ない(?!か))|心配(は)?(ありません|いりません|ない(?!か))|\bsafe\b/i;
+  /安全(です|だ|でしょう|と思|な(メッセージ|サイト|ページ|メール|もの|内容))|問題(は)?(ありません|ない(?!か))|問題なし|心配(は)?(ありません|いりません|いらない(?!か)|ない(?!か))|大丈夫です(?!か)|詐欺(では|じゃ)(ありません|ない(?!か))|危険(は)?(ありません|ない(?!か))|\bsafe\b/i;
 // Quoting the message ("「この口座は安全です」と移し替えを求める") explains the scam; it is not a verdict.
 const QUOTED = /「[^」]*」|『[^』]*』|“[^”]*”|"[^"]*"/g;
 /** Used when every reason Claude gave sounded safe and the rules gave none. */

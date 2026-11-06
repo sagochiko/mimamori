@@ -286,6 +286,12 @@ describe("decide", () => {
       "心配いりません",
       "This is safe",
       "「安全です」",
+      // Issue #53 (5): verdicts that do not use the words above.
+      "大丈夫です",
+      "詐欺ではありません",
+      "心配いらない",
+      "問題なし",
+      "危険はありません",
     ])("replaces the reason %s but keeps Claude's level and injection step", (text) => {
       const judgment = parseClaudeJudgment({
         ...valid,
@@ -315,6 +321,9 @@ describe("decide", () => {
       "『心配ない』と急がせる",
       "振込先に問題ないか家族に確かめて",
       "警察を名乗り安全な口座への移し替えを求める",
+      "大丈夫ですかと家族に確かめて",
+      "詐欺ではないか家族に確かめて",
+      "危険はないか家族に確かめて",
     ])("keeps a reason that only quotes the message or advises checking (%s)", (text) => {
       const judgment = parseClaudeJudgment({ ...valid, level: 1, reasons: [text] });
       expect(decide(rule, judgment).reasons).toEqual([text]);
