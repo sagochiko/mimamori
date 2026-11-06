@@ -166,8 +166,8 @@ describe("POST /heartbeat", () => {
     const { mother } = await threeOfUs();
     await beat(mother.deviceKey, { notifications: false, backgroundRefresh: false });
     expect(sent.map((s) => s.body).sort()).toEqual([
-      "母のiPhoneで、みまもりのAppのバックグラウンド更新が切られています",
-      "母のiPhoneで、みまもりのAppのバックグラウンド更新が切られています",
+      "母のiPhoneで、みまもりの「アプリのバックグラウンド更新」が切られています",
+      "母のiPhoneで、みまもりの「アプリのバックグラウンド更新」が切られています",
       "母のiPhoneで、みまもりの通知が切られています",
       "母のiPhoneで、みまもりの通知が切られています",
     ]);

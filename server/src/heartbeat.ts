@@ -22,8 +22,9 @@ const LAPSES_PER_TICK = 20;
 
 export const LAPSE_TEXT = (name: string) => `${name}の見守りが止まっています`;
 const NOTIFICATIONS_OFF_TEXT = (name: string) => `${name}のiPhoneで、みまもりの通知が切られています`;
-// "Appのバックグラウンド更新" is the name of the switch in Settings > 一般 on iOS 26.
-const BACKGROUND_OFF_TEXT = (name: string) => `${name}のiPhoneで、みまもりのAppのバックグラウンド更新が切られています`;
+// 「アプリのバックグラウンド更新」 is the switch in Settings > 一般 (BACKGROUND_APP_REFRESH in the ja strings of
+// the iOS 26.5 and 27.1 simulator runtimes, read on 2026-11-07).
+const BACKGROUND_OFF_TEXT = (name: string) => `${name}のiPhoneで、みまもりの「アプリのバックグラウンド更新」が切られています`;
 
 const THREAD = "watch";
 
