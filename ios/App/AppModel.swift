@@ -25,6 +25,9 @@ final class AppModel {
   private(set) var chat: ChatKeeper
   /// "さっきの電話、大丈夫だった？" while a long call waits for an answer.
   private(set) var followUpPrompt: String?
+  /// "iPhoneの空きが残り0.8GB。一緒に空けよう" while free space is low (#19). The amount is read on
+  /// this iPhone for this line only and never sent.
+  private(set) var checkupPrompt: String?
   /// Everyone's smiles and replies (`GET /smiles`), newest first, with the hour her smile is expected by.
   private(set) var smileBoard = SmileBoard()
   /// Her Gmail grant (`GET /gmail/connect`): nil until read, and while the server has no Google client.
@@ -42,6 +45,9 @@ final class AppModel {
   @ObservationIgnored private var silenceWatch: Task<Void, Never>?
   @ObservationIgnored private let followUp = CallFollowUp(
     store: UserDefaultsCallFollowUpStore(), minimumDuration: AppModel.followUpMinimum)
+  @ObservationIgnored private let checkup = CheckupPolicy(store: UserDefaultsCheckupStore())
+  /// One heartbeat at a time, so two foregrounds in a row do not both pass the gate.
+  @ObservationIgnored private var heartbeatWork: Task<Void, Never>?
   @ObservationIgnored private lazy var callWatcher = CallEndWatcher { [weak self] call in
     Task { await self?.callEnded(call) }
   }
@@ -80,6 +86,10 @@ final class AppModel {
         self?.followUp.forget()
         self?.followUpPrompt = nil
         CallFollowUpNotifier.removeDelivered()
+        self?.checkup.forget()
+        self?.checkupPrompt = nil
+        CheckupNotifier.removeDelivered()
+        HeartbeatSender.forget()
       }
       // Joined as the protected member, or no longer: the call watch and the daily prompt follow.
       self?.cameToFront()
@@ -357,6 +367,62 @@ final class AppModel {
   func cameToFront() {
     if route == .protectedHome { callWatcher.start() } else { callWatcher.stop() }
     scheduleDailyCheckIns()
+    Task { await runCheckups() }
+  }
+
+  // MARK: Checkups (task 17, #19)
+
+  /// The checks and the heartbeat, on the protected member's iPhone only: each time the app comes to
+  /// the front, and from the background refresh (`CheckupBackground`).
+  func runCheckups() async {
+    guard route == .protectedHome else {
+      CheckupBackground.cancel()
+      return
+    }
+    CheckupBackground.schedule()
+    let available = CheckupNotifier.availableBytes()
+    if case .notify(let text) = checkup.storageChecked(availableBytes: available, at: .now) {
+      await CheckupNotifier.post(text)
+    }
+    refreshCheckup(availableBytes: available)
+    await sendHeartbeat()
+  }
+
+  /// When the screen appears or the app comes to the front.
+  func refreshCheckup(availableBytes: Int64? = CheckupNotifier.availableBytes()) {
+    checkupPrompt = checkup.storagePromptToShow(availableBytes: availableBytes, at: .now)
+  }
+
+  /// "あとで": nothing about free space for 24 hours.
+  func checkupLater() {
+    checkup.later(at: .now)
+    checkupPrompt = nil
+  }
+
+  /// "空ける", or a tap on the notification: the prompt closes and the guide to Settings >
+  /// iPhoneストレージ is the first answer in her chat. Kept on this iPhone only.
+  func startStorageGuide() {
+    guard route == .protectedHome else { return }
+    chat.guide(checkup.startStorageGuide(), at: .now)
+    checkupPrompt = nil
+    CheckupNotifier.removeDelivered()
+  }
+
+  private func sendHeartbeat() async {
+    let previous = heartbeatWork
+    let work = Task { [weak self] in
+      await previous?.value
+      guard let self, route == .protectedHome else { return }
+      let report = await HeartbeatSender.report()
+      var gate = HeartbeatSender.gate()
+      guard gate.shouldSend(report, at: .now) else { return }
+      // Quiet on failure: the next foreground or background refresh tries again.
+      guard (try? await session.heartbeat(report)) != nil else { return }
+      gate.sent(report, at: .now)
+      HeartbeatSender.save(gate)
+    }
+    heartbeatWork = work
+    await work.value
   }
 
   /// A call ended while the app was in front (`CallEndWatcher`, #99).

@@ -36,6 +36,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     _ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
     UNUserNotificationCenter.current().delegate = self
+    // Registered before launch ends, as BGTaskScheduler requires.
+    CheckupBackground.register { [model] in await model.runCheckups() }
     return true
   }
 
@@ -52,6 +54,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
   /// A tap on any of them opens the app on its home screen. For the daily prompt and the call
   /// follow-up that is her chat, where she can answer by talking or writing.
   nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+    // The free-space prompt opens straight into the guide (#19).
+    if response.notification.request.identifier == CheckupNotifier.storageIdentifier {
+      await model.startStorageGuide()
+    }
     await model.loadCases()
     await model.loadSmiles()
   }

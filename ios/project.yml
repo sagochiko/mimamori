@@ -67,7 +67,9 @@ targets:
         MimamoriSMSFamilyToken: $(MIMAMORI_SMS_FAMILY_TOKEN)
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
-        UIBackgroundModes: [remote-notification]
+        # fetch: the background refresh that runs the free-space check and the heartbeat (task 17, #19).
+        UIBackgroundModes: [remote-notification, fetch]
+        BGTaskSchedulerPermittedIdentifiers: [com.sagochiko.mimamori.checkup]
         ITSAppUsesNonExemptEncryption: false
         # The voice consultation (task 12). Speech is turned into text on the iPhone; only the text is sent.
         # The smile camera (task 13). Face tracking judges the smile on the iPhone; only the photo taken
