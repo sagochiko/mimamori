@@ -1447,4 +1447,19 @@ printf 'ステータス: 承認\n\n2回目\n' >"$rm_/docs/audits/raw/$r2"
   { echo "review-record test failed: an id whose round 1 is committed picks round 2 from the main tree"; fail=1; }
 ( cd "$rw" && "$rr" 55556666 2 HEAD "$T/rr-r.md" >/dev/null 2>&1 ) && grep -q '^2回目$' "$T/rr-r.md" ||
   { echo "review-record test failed: a retry of round 2 by id, both rounds committed, picks the newest"; fail=1; }
+# A report already on the branch is used for the id only when its commit says the same round, so an
+# earlier round is never posted as this one (PR #185's second review): round 2 before its report
+# is saved, and round 3 when rounds 1 and 2 are on the branch, both stop and name the files.
+r7=20261107-0030-mm-reviewer-77778888.md
+printf 'ステータス: 直すべき指摘あり\n\n1回目だけ\n' >"$rm_/docs/audits/raw/$r7"
+( cd "$rw" && "$rr" "$r7" 1 HEAD "$T/rr-r7.md" >/dev/null 2>&1 ) || { echo "review-record test failed: round 1 of 77778888 by name did not finish"; fail=1; }
+n3=$(git -C "$rw" rev-list --count HEAD)
+out=$(cd "$rw" && "$rr" 77778888 2 HEAD "$T/rr-r7b.md" 2>&1) &&
+  { echo "review-record test failed: round 2 by id with only round 1 on the branch stops"; fail=1; }
+[[ "$out" == *"$r7"* && ! -e "$T/rr-r7b.md" && "$(git -C "$rw" rev-list --count HEAD)" == "$n3" ]] ||
+  { echo "review-record test failed: round 2 by id with only round 1 on the branch names the file and writes nothing"; fail=1; }
+out=$(cd "$rw" && "$rr" 55556666 3 HEAD "$T/rr-r3.md" 2>&1) &&
+  { echo "review-record test failed: round 3 by id with rounds 1 and 2 on the branch stops"; fail=1; }
+[[ "$out" == *"$r1"* && "$out" == *"$r2"* && ! -e "$T/rr-r3.md" ]] ||
+  { echo "review-record test failed: round 3 by id with rounds 1 and 2 on the branch names both and writes nothing"; fail=1; }
 exit $fail

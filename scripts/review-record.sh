@@ -29,6 +29,7 @@ if [[ "$name" =~ ^[0-9a-f]{8}$ ]]; then
   # find fails on a tree with no docs/audits/raw yet; what it found in the other is still the answer.
   found=$({ find "$main_tree/docs/audits/raw" docs/audits/raw -maxdepth 1 -type f -name "*-mm-reviewer-$name.md" 2>/dev/null || true; } |
     sed 's|.*/||' | sort -u)
+  all=$found by_id=1
   count=$(grep -c . <<<"$found" || true)
   # A follow-up round goes to the same reviewer, so its report has the same id. Reports already
   # tracked on this branch are earlier rounds; when only tracked ones are left, this is a retry
@@ -54,6 +55,16 @@ fi
 [[ "$name" == */* || "$name" != *-mm-reviewer-*.md ]] && { echo "not a saved reviewer report name: $name" >&2; exit 2; }
 [[ "$out" == /* ]] || { echo "the comment file must be an absolute path: $out" >&2; exit 2; }
 [[ "$round" =~ ^[1-9]$ ]] || { echo "the round is a number from 1: $round" >&2; exit 2; }
+# A report found by id that is already on the branch is used only for the round its commit names
+# ("docs(harness): N回目のレビューの原文を残す"), so an earlier round is never posted as this one.
+if [[ -n "${by_id:-}" ]] && git ls-files --error-unmatch -- "docs/audits/raw/$name" >/dev/null 2>&1; then
+  subject=$(git log -1 --format=%s -- "docs/audits/raw/$name")
+  if [[ ! "$subject" =~ ^docs\(harness\):\ ([1-9])回目のレビューの原文を残す$ || "${BASH_REMATCH[1]}" != "$round" ]]; then
+    echo "the report for $name on this branch is not round $round (its commit: $subject); pass this round's file name once it is saved:" >&2
+    sed 's/^/  /' <<<"$all" >&2
+    exit 1
+  fi
+fi
 
 src="$main_tree/docs/audits/raw/$name"
 raw="docs/audits/raw/$name"
