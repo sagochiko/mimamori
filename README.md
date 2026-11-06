@@ -45,6 +45,7 @@ What it cannot protect is part of the design. The app never hears the call. In t
 - Her side. Local notifications ask about the call and the day. Her chat goes to `POST /consult`.
 - The server. Rules decide in milliseconds. Claude adds a judgment and a reason (SMS, mail, and pages go through Cloudflare Queues). The case is stored in D1, and the server sends APNs pushes to every family device.
 - Afterwards, for SMS, mail, and pages at level 1 or 2, a Claude Managed Agents session looks for an official warning about the same trick, on 20 official sites only. If it finds one, the family's card gains one fixed line, "<site name>の注意喚起" (a warning from that site), read out by VoiceOver.
+- Every 5 minutes a Cron run re-sends undelivered notices, reminds the family after 30 minutes, and does the other scheduled work. Each run makes at most 40 D1 calls, and re-sending first notices may use only half of them, so a backlog cannot stop the 30-minute reminder; what does not fit waits for the next run (#178, PR #198).
 - The family side. One card per case, the same for everyone, with no owner or assignee. Level 3 sends no push. The same sender or domain is grouped to one notice an hour.
 
 There are three levels: 1 "don't open it", 2 "wait until you check with the family", and 3 "probably fine, but stop if asked for money or a PIN". The app never says "safe" on any path. If no family device got the notice, her answer says "家族に届いていません。急ぐなら電話して" (the family did not get this; call them if it is urgent) instead of "I told your family", and the server retries every 5 minutes.
@@ -80,6 +81,8 @@ Before #21 the rules alone missed 17 of 60 scams, 15 of them in spoken consultat
 
 The rules + Claude line was measured before #137 changed which SMS, mail, and pages reach Claude. That run sent more unflagged examples to Claude than production does now, so its miss rate is lower than production would be. A new run is waiting on the author (#181). The first rules + Claude run flagged 36 of 54 genuine messages. The prompt itself defined level 2 as "suspicious or undecided", and Claude followed it. After the fix, 4 of 54 were flagged (#109).
 
+The 10.0% for rules only was reached by fixing the rules while reading each dev miss one by one, so the rules may be fitted to the dev set. The holdout set, measured once before submission (the third step of #21), will check this.
+
 <!-- Holdout result (measured once before submission) goes here, rules only vs rules + Claude. -->
 
 ## Her data
@@ -90,6 +93,7 @@ The rules + Claude line was measured before #137 changed which SMS, mail, and pa
 - SMS, mail, and pages judged level 3 leave no record, so the server does not become a copy of her inbox.
 - Screenshots and documents she shares are sent to Claude for that answer and are not stored. A test checks that the stored case and alert rows hold no part of the image.
 - "すべて消す" (delete everything) is in the menu on her screen (at the end of the smile row) and on the family's screen (top right). After a confirmation with only "消す" (delete) and "やめる" (cancel), the app calls `DELETE /families/me`. The server removes the family's data, revokes Gmail access, and deletes Managed Agents sessions. Only after the server answers does the phone forget its key and clear the chat, cards, smiles, and scheduled questions. If the call fails, nothing is deleted (#190). Checked on the simulator, not yet on a real iPhone.
+- Joining a family with the six-digit invite code is limited to 5 tries a minute per source, counted in D1, and the sixth gets 429 (#67, PR #201). The `join_attempts` table keeps only a keyed hash of the source address, never the address itself, and its rows are deleted after a day.
 - Secrets live in Workers secrets. This repository holds only test examples, with no real messages or family details.
 
 ## Built, not yet tried on a real iPhone
@@ -100,11 +104,12 @@ These are merged and covered by tests, but nobody has used them on a real iPhone
 - The main scene with two real iPhones, one for her and one for the family (#48, #31).
 - Sharing a screenshot or a document to the app (#13). The share extension and the server side are built and the extension builds for the simulator, but it has not run end to end on the simulator or a device. The checks on the author's iPhone, including how often the circle lands on the right spot on 10 Settings screenshots, are in #187.
 - The demo mode (#100) was checked on the simulator. Whether it shows on the TestFlight build is in #187.
+- The low-storage prompt and the watch's self-check (#19, PR #199). When free space runs low, her screen says so with "あとで" (later) and "空ける" (free it up), which starts the guide to Settings > General > iPhone Storage; on the simulator the prompt appeared on her screen. The free-space value never leaves the phone. Her phone reports to the server when it refreshes in the background or opens, and if that stops for 48 hours, or notifications or background refresh are turned off, the family gets one quiet "見守りが止まっています" (the watch has stopped). The checks on a real iPhone are in #200.
 - Managed Agents research. On 2026-11-07 the production D1 had no alert with a research session yet, so no evidence line has been written by the real API.
 
 ## Not built yet
 
-DNS (#11), the weekly review (#18), the morning alarm that stops when she smiles (#17), the list of scam phone numbers (the Call Directory extension is an empty stub), and the app's own checkups such as low storage (#19, #20). From Managed Agents (#12), the summary of a consultation for the family and the hand-off session are not built.
+DNS (#11), the weekly review (#18), the morning alarm that stops when she smiles (#17), the list of scam phone numbers (the Call Directory extension is an empty stub), and the app's other checkups (iOS updates, spam calendars, subscriptions, iCloud; #20). From Managed Agents (#12), the summary of a consultation for the family and the hand-off session are not built.
 
 ## How judges can try it
 
@@ -127,11 +132,11 @@ The consultation in the demo is played on the phone from the server's fixed fake
 
 ## Built during the hackathon
 
-Every line of code here was written in this repository after the kickoff on 2026-11-02. The first commit is dated 2026-11-03. On 2026-11-07, at commit `97fec9d` of `origin/main`, there were 781 commits (607 without merges, 570 of them co-authored by Claude), 95 merged pull requests, and 98 issues (65 closed). The tests were 1,637 server tests (Vitest, 17 files), 296 `ios/Core` tests (`swift test`, 47 suites), and 19 tests for the eval scripts. The server has 7 D1 migrations. The pre-hackathon design was copied in on 2026-11-03; [`docs/design.md`](docs/design.md) says what changed and why.
+Every line of code here was written in this repository after the kickoff on 2026-11-02. The first commit is dated 2026-11-03. On 2026-11-07, at commit `19a56ae` of `origin/main`, there were 844 commits (652 without merges, 615 of them co-authored by Claude), 104 merged pull requests, and 99 issues (67 closed). The tests were 1,733 server tests (Vitest, 20 files), 314 `ios/Core` tests (`swift test`, 50 suites), and 19 tests for the eval scripts. The server has 9 D1 migrations. The pre-hackathon design was copied in on 2026-11-03; [`docs/design.md`](docs/design.md) says what changed and why.
 
 ## From the development log
 
-[`docs/dev-log.md`](docs/dev-log.md) has 79 dated entries. Three of them shaped the product:
+[`docs/dev-log.md`](docs/dev-log.md) has 85 dated entries. Three of them shaped the product:
 
 - 2026-11-04. We dropped "take ownership" and "reply to her" from the family screen. While someone owned a case, the AI only told her that person was looking, and her spoken replies reached no one. Relaying messages between users and forwarding her first 30 characters were also close to examples in the Ministry of Internal Affairs and Communications' telecom business manual. Now everyone sees the same card and calls her.
 - 2026-11-04. The first on-device test crashed when she pressed the microphone (a Swift 6 isolation check in the speech permission callback). The main line came out at level 2, not 1, because "警察から電話" (a call from the police) was not part of the script rules. The eval had not caught it because it ran consultations through the SMS rules. Both were fixed, and the eval now measures consultations on the real path (#57, #72, #74).
@@ -139,7 +144,7 @@ Every line of code here was written in this repository after the kickoff on 2026
 
 ## How Claude Code built it
 
-The harness is the setup that lets Claude Code build this under hackathon rules. It is described in [`docs/harness.md`](docs/harness.md), with the project rules in [`CLAUDE.md`](CLAUDE.md) and everything else in [`.claude/`](.claude/). Hooks block rule-breaking actions, such as opening the author's earlier projects, reading the holdout set, reading secrets, or merging an unreviewed PR. Each issue goes through separate implementer, verifier, and reviewer subagents, and the reviewer's report is kept on the PR. Counts from the hook log, 2026-11-03 to 2026-11-06, are in [`docs/claude-usage.md`](docs/claude-usage.md): 132 reviewer launches and 21 resumes, 64 implementer launches, 50 verifier launches, and 195 actions that hooks blocked or sent to the author. On 2026-11-07 (`97fec9d`), [`docs/audits/raw/`](docs/audits/raw/) held 177 reviewer reports, kept unedited.
+The harness is the setup that lets Claude Code build this under hackathon rules. It is described in [`docs/harness.md`](docs/harness.md), with the project rules in [`CLAUDE.md`](CLAUDE.md) and everything else in [`.claude/`](.claude/). Hooks block rule-breaking actions, such as opening the author's earlier projects, reading the holdout set, reading secrets, or merging an unreviewed PR. Each issue goes through separate implementer, verifier, and reviewer subagents, and the reviewer's report is kept on the PR. Counts from the hook log, 2026-11-03 to 2026-11-06, are in [`docs/claude-usage.md`](docs/claude-usage.md): 132 reviewer launches and 21 resumes, 64 implementer launches, 50 verifier launches, and 195 actions that hooks blocked or sent to the author. On 2026-11-07 (`19a56ae`), [`docs/audits/raw/`](docs/audits/raw/) held 191 reviewer reports, kept unedited.
 
 ## Repository
 
