@@ -235,7 +235,7 @@ schemes:
     build:
       targets:
         Mimamori: all
-        # Built (so it keeps compiling) but not inside the app; see the note in Mimamori's dependencies.
+        # Embedded in the app since PR #186; listed here so the scheme builds it with the app.
         ShareExtension: all
     run:
       config: Debug
