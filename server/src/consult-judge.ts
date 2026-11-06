@@ -657,15 +657,19 @@ function policeReasons(said: Said, withoutPassedOn = false): string[] {
 }
 
 /**
- * The police in her own words, this turn or an earlier one: a part of the script, a caller who says he
- * is the police, or the police named ("警察だって"). A warning she passes on ("警察を名乗る詐欺に注意",
- * #81) is not a call she got. A warning for her then ends with "hang up" in the fixed police lines:
- * she may still be on the phone, and since #188 Claude's "電話を切って" is not read out (review 1 of
- * PR #191). The script told before and a question that points back at it (pointsBackAtScript) count
- * through her earlier words.
+ * The police in her own words: a part of the script, a caller who says he is the police, or the police
+ * named ("警察だって"). A warning she passes on ("警察を名乗る詐欺に注意", #81) is not a call she got. A
+ * warning for her then ends with "hang up" in the fixed police lines: she may still be on the phone,
+ * and since #188 Claude's "電話を切って" is not read out (review 1 of PR #191). Her earlier words count
+ * only when this turn points back ("それってどういうこと?" after the script, told in one turn or two),
+ * and not when it is about a message rather than a call: a new topic after a call from the police an
+ * hour ago ("Amazonからこのリンク開いてってSMSが来た") is no call to hang up (review 2 of PR #191).
  */
 function policeInHerWords(said: Said): boolean {
-  return allOf(said).some((text) => {
+  const now = normalize(said.text);
+  const aboutAMessage = CONTACT.test(now) && !/電話/.test(now);
+  const turns = pointsBack(said.text) && !aboutAMessage ? allOf(said) : [said.text];
+  return turns.some((text) => {
     const parts = scriptParts(text);
     return parts.telling !== "passed_on" && (parts.police.length > 0 || parts.caller || POLICE_WORD.test(normalize(text)));
   });
