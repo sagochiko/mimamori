@@ -20,9 +20,11 @@ import { CLAUDE_TIMEOUT_MS, decide, PLACEHOLDER_REASON, soundsSafe, type Level }
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
 import {
   CONSULT_INJECTION,
+  CONSULT_MONEY_MOVE,
+  CONSULT_MORE_PARTS,
   INJECTION,
   matchSpans,
-  MONEY_MOVE,
+  moreParts,
   POLICE_CALLER,
   POLICE_SCRIPT,
   POLICE_WORD,
@@ -116,6 +118,12 @@ export const UNANSWERED_REPLY = "うまく答えられませんでした。家�
 export const ASK_AGAIN_REPLY = "何のことか、もう一度くわしく教えて";
 /** The family's one line for the fake-police script. */
 export const POLICE_TOPIC = "警察を名乗る電話の相談";
+/**
+ * The family's one line for the script when her words name no police and tell a part that is not the
+ * police's own (notPoliceScript, review 1 of PR #206). "警察を名乗る" would tell the family what was
+ * not said.
+ */
+export const SCRIPT_TOPIC = "詐欺の手口に似た電話の相談";
 /** The family's one line when no topic or reason of its own is left. */
 export const FALLBACK_TOPIC = "スマホの相談";
 
@@ -583,7 +591,7 @@ function namesSomething(text: string): boolean {
     CONTACT.test(t) ||
     SENSITIVE.some(({ pattern }) => pattern.test(t)) ||
     POLICE_WORD.test(t) ||
-    [...POLICE_SCRIPT, MONEY_MOVE].some((rule) => matchSpans(rule, t).length > 0)
+    [...POLICE_SCRIPT, ...CONSULT_MORE_PARTS, CONSULT_MONEY_MOVE].some((rule) => matchSpans(rule, t).length > 0)
   );
 }
 
@@ -601,14 +609,22 @@ function pointsAtNothing(said: Said): boolean {
  * The parts of the script in one stretch of her words. A warning she passes on (tellingOf, #81) has
  * none: the parts in it are what the warning describes, not what was said to her.
  */
-function scriptParts(text: string): { police: PhraseRule[]; caller: boolean; money: boolean; telling: Telling } {
+function scriptParts(text: string): {
+  police: string[];
+  more: string[];
+  caller: boolean;
+  money: boolean;
+  telling: Telling;
+} {
   const t = normalize(text);
   const telling = tellingOf(t);
-  if (telling === "passed_on") return { police: [], caller: false, money: false, telling };
+  if (telling === "passed_on") return { police: [], more: [], caller: false, money: false, telling };
+  const caller = matchSpans(POLICE_CALLER, t).length > 0;
   return {
-    police: POLICE_SCRIPT.filter((rule) => matchSpans(rule, t).length > 0),
-    caller: matchSpans(POLICE_CALLER, t).length > 0,
-    money: matchSpans(MONEY_MOVE, t).length > 0,
+    police: POLICE_SCRIPT.filter((rule) => matchSpans(rule, t).length > 0).map((rule) => rule.kind),
+    more: moreParts(t, caller).map((p) => p.part),
+    caller,
+    money: matchSpans(CONSULT_MONEY_MOVE, t).length > 0,
     telling,
   };
 }
@@ -630,17 +646,24 @@ function scriptParts(text: string): { police: PhraseRule[]; caller: boolean; mon
 function tellsPoliceScript(said: Said): boolean {
   const now = scriptParts(said.text);
   if (now.telling === "mixed") return false;
-  if (now.police.length === 0 && !now.caller && !now.money) return false;
+  if (now.police.length === 0 && now.more.length === 0 && !now.caller && !now.money) return false;
   return scriptTold(allOf(said));
 }
 
-/** Two or more parts of the script over these stretches of her words, one of them a police part. */
+/**
+ * Two or more parts of the script over these stretches of her words, one of them a part of
+ * POLICE_SCRIPT. The consultation-only parts (#21) count only next to such a part: alone, with a
+ * caller who says he is the police or not, they are what the police say to victims, witnesses, and
+ * families too, and the script is level 1 to every family device without asking Claude (review 1 of
+ * PR #206).
+ */
 function scriptTold(texts: readonly string[]): boolean {
   const parts = texts.map(scriptParts);
-  const police = new Set(parts.flatMap((p) => p.police)).size;
+  const original = new Set(parts.flatMap((p) => p.police));
+  const more = new Set(parts.flatMap((p) => p.more).filter((part) => !original.has(part))).size;
   const caller = parts.some((p) => p.caller) ? 1 : 0;
   const money = parts.some((p) => p.money) ? 1 : 0;
-  return police >= 1 && police + caller + money >= 2;
+  return original.size >= 1 && original.size + more + caller + money >= 2;
 }
 
 /**
@@ -651,9 +674,11 @@ function scriptTold(texts: readonly string[]): boolean {
 function policeReasons(said: Said, withoutPassedOn = false): string[] {
   const all = allOf(said).map(normalize);
   const turns = withoutPassedOn ? all.filter((t) => tellingOf(t) !== "passed_on") : all;
-  return [POLICE_CALLER, ...POLICE_SCRIPT, MONEY_MOVE]
-    .filter((rule) => turns.some((t) => matchSpans(rule, t).length > 0))
-    .map((rule) => rule.reason);
+  const caller = turns.some((t) => matchSpans(POLICE_CALLER, t).length > 0);
+  const rules = [POLICE_CALLER, ...POLICE_SCRIPT, ...CONSULT_MORE_PARTS.filter((p) => caller || !p.needsCaller)];
+  // A wider wording of a part (#21) has the part's reason: one line for it.
+  const told = [...rules, CONSULT_MONEY_MOVE].filter((rule) => turns.some((t) => matchSpans(rule, t).length > 0));
+  return [...new Set(told.map((rule) => rule.reason))];
 }
 
 /**
@@ -721,6 +746,19 @@ export interface Plan {
  * The fake-police script in her own words: level 1 and the fixed answer from the rules alone. Claude
  * is not asked, so nothing it might say (level 3, "safe") can change this answer.
  */
+/**
+ * The script without the police in her words, told with a part that is not the police's own (#21,
+ * review 1 of PR #206): a caller from a bank association who comes for her card. The parts of
+ * POLICE_SCRIPT without the police named ("知らない人から、口座が犯罪に使われてるって") stay the
+ * fake-police script, as before.
+ */
+function notPoliceScript(said: Said): boolean {
+  const turns = allOf(said).map(normalize);
+  if (turns.some((t) => POLICE_WORD.test(t))) return false;
+  const own = CONSULT_MORE_PARTS.filter((p) => !POLICE_SCRIPT.some((rule) => rule.kind === p.part));
+  return turns.some((t) => tellingOf(t) !== "passed_on" && own.some((p) => matchSpans(p, t).length > 0));
+}
+
 function policePlan(said: Said, rule: RuleResult): Plan {
   // As before for one turn: the rules' reasons, or the parts she told when the rules have none. The
   // rules saw this turn only, so the parts told in earlier turns are added after them.
@@ -729,7 +767,7 @@ function policePlan(said: Said, rule: RuleResult): Plan {
   return {
     level: 1,
     reasons,
-    summary: POLICE_TOPIC,
+    summary: notPoliceScript(said) ? SCRIPT_TOPIC : POLICE_TOPIC,
     reply: `${MATCH_BASIS}${POLICE_ACTION}`,
     toFamily: true,
     record: true,
