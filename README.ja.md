@@ -14,8 +14,8 @@ iOS 26.5 のシミュレータで撮った体験モードの画面。最初の�
 |---|---|---|
 | <img src="docs/screens/demo-01-role.png" width="200" alt="見守られる人、家族、体験が並ぶ最初の画面"> | <img src="docs/screens/demo-02-followup.png" width="200" alt="母の画面のさっきの電話、大丈夫だった？"> | <img src="docs/screens/demo-03-consult.png" width="200" alt="警察を名乗る電話の相談と1段階の答え、家族のカード"> |
 | 最初の画面 | 長い電話のあと | 母の言葉と家族のカード |
-| <img src="docs/screens/demo-04-family-card.png" width="200" alt="1段階の家族の通知とカード"> | <img src="docs/screens/demo-05-resolved.png" width="200" alt="解決を押したあとのカード"> | <img src="docs/screens/demo-06-sms.png" width="200" alt="迷惑と判定された SMS と家族のカード"> |
-| 家族のカード | 「解決」のあと | SMS の判定 |
+| <img src="docs/screens/demo-05-resolved.png" width="200" alt="解決を押したあとのカード"> | <img src="docs/screens/demo-06-sms.png" width="200" alt="迷惑と判定された SMS と家族のカード"> | |
+| 「解決」のあと | SMS の判定 | |
 <!-- デモ動画のリンクをここに置く。 -->
 
 ## ニセ警察詐欺を主役にした理由

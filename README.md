@@ -14,8 +14,8 @@ These are the demo mode screens on the iOS 26.5 simulator, from the first screen
 |---|---|---|
 | <img src="docs/screens/demo-01-role.png" width="200" alt="First screen with 見守られる人, 家族 and 体験"> | <img src="docs/screens/demo-02-followup.png" width="200" alt="さっきの電話、大丈夫だった？ on her screen"> | <img src="docs/screens/demo-03-consult.png" width="200" alt="Her consultation about a police call, the level-1 answer, and the family's card"> |
 | First screen | After a long call | Her words and the family's card |
-| <img src="docs/screens/demo-04-family-card.png" width="200" alt="The family's notification and card at level 1"> | <img src="docs/screens/demo-05-resolved.png" width="200" alt="The card after 解決"> | <img src="docs/screens/demo-06-sms.png" width="200" alt="An SMS judged as junk with the family's card"> |
-| The family's card | After 解決 | An SMS judged |
+| <img src="docs/screens/demo-05-resolved.png" width="200" alt="The card after 解決"> | <img src="docs/screens/demo-06-sms.png" width="200" alt="An SMS judged as junk with the family's card"> | |
+| After 解決 | An SMS judged | |
 <!-- Demo video: link goes here. -->
 
 ## Why fake-police scams
