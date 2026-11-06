@@ -72,11 +72,26 @@ const JUDGMENT_SCHEMA = {
 // Words that would tell the mother or the family the message is fine. No path may say that
 // (CLAUDE.md). A reason that says it is replaced (decide); the level and injection_suspected are
 // kept, so writing 安全 in a message cannot get the judge's answer thrown away.
-// "問題ないか" is a question ("振込先に問題ないか家族に確かめて"), not a verdict, and so are
-// "大丈夫ですか", "詐欺ではないか", "危険はないか". 大丈夫, 詐欺ではない, 心配いらない, 問題なし and
-// 危険はない say it is fine without the word 安全 (#53, 5).
-const SOUNDS_SAFE =
-  /安全(です|だ|でしょう|と思|な(メッセージ|サイト|ページ|メール|もの|内容))|問題(は)?(ありません|ない(?!か))|問題なし|心配(は)?(ありません|いりません|いらない(?!か)|ない(?!か))|大丈夫です(?!か)|詐欺(では|じゃ)(ありません|ない(?!か))|危険(は)?(ありません|ない(?!か))|\bsafe\b/i;
+// A question is not a verdict: "振込先に問題ないか家族に確かめて", "大丈夫かどうか", "大丈夫ですか",
+// "詐欺ではないか". NOT_ASKED skips a か after the verdict word (and after の, です or でしょう), but
+// not the か of から: "大丈夫ですから" and "詐欺ではないから" tell her it is fine (review 1 of PR #175).
+// 大丈夫, 詐欺ではな-, 心配いらない, 問題なし and 危険(性)はな- say it is fine without the word 安全
+// (#53, 5), so they are matched by their stem ("大丈夫だと思います", "詐欺ではなさそう"), as REASSURING
+// in src/consult-judge.ts does for what she hears. 危険 counts only with は or も: "危険なリンク" is a
+// warning.
+const NOT_ASKED = "(?!(の|です|でしょう|だろう)?か(?!ら))";
+const SOUNDS_SAFE = new RegExp(
+  [
+    "安全(です|だ|でしょう|と思|な(メッセージ|サイト|ページ|メール|もの|内容))",
+    `問題(は|も)?(ありません|ない|なさ|なし)${NOT_ASKED}`,
+    `心配(は|も)?(ありません|いりません|いらない|ない|なさ|無用)${NOT_ASKED}`,
+    `大丈夫${NOT_ASKED}`,
+    `詐欺(では|じゃ)(ありません|ない|なさ|なく)${NOT_ASKED}`,
+    `危険(性)?(は|も)(ありません|ない|なさ|なし)${NOT_ASKED}`,
+    "\\bsafe\\b",
+  ].join("|"),
+  "i",
+);
 // Quoting the message ("「この口座は安全です」と移し替えを求める") explains the scam; it is not a verdict.
 const QUOTED = /「[^」]*」|『[^』]*』|“[^”]*”|"[^"]*"/g;
 /** Used when every reason Claude gave sounded safe and the rules gave none. */

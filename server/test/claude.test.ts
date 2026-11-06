@@ -292,6 +292,17 @@ describe("decide", () => {
       "心配いらない",
       "問題なし",
       "危険はありません",
+      // PR #175 review 1: a verdict followed by から, and other forms of the same words.
+      "大丈夫ですから",
+      "詐欺ではないから",
+      "危険はないから",
+      "心配いらないから",
+      "心配ないから",
+      "問題ないから",
+      "大丈夫だと思います",
+      "大丈夫でしょう",
+      "詐欺ではなさそう",
+      "危険性はありません",
     ])("replaces the reason %s but keeps Claude's level and injection step", (text) => {
       const judgment = parseClaudeJudgment({
         ...valid,
@@ -324,6 +335,14 @@ describe("decide", () => {
       "大丈夫ですかと家族に確かめて",
       "詐欺ではないか家族に確かめて",
       "危険はないか家族に確かめて",
+      "大丈夫か家族に確かめて",
+      "大丈夫かどうか家族に確かめて",
+      "大丈夫でしょうかと家族に聞いて",
+      "心配ないか家族に聞いて",
+      "危険性はないか確かめて",
+      "詐欺ではありませんかと家族に聞いて",
+      "「大丈夫です」と言って急がせる",
+      "危険なリンクが書かれている",
     ])("keeps a reason that only quotes the message or advises checking (%s)", (text) => {
       const judgment = parseClaudeJudgment({ ...valid, level: 1, reasons: [text] });
       expect(decide(rule, judgment).reasons).toEqual([text]);

@@ -237,7 +237,7 @@ async function expectNothingSaysSafe(familyId: string) {
   // Written out here as well, so a word dropped from soundsSafe still fails this check.
   for (const text of [JSON.stringify(alerts), JSON.stringify(pushes)])
     expect(text).not.toMatch(
-      /安全|問題(は)?ありません|心配(は)?(ありません|いりません)|safe|大丈夫です(?!か)|詐欺(では|じゃ)ありません|心配いらない|問題なし|危険はありません/i,
+      /安全|safe|大丈夫(?!(の|です|でしょう|だろう)?か(?!ら))|(問題|心配)(は|も)?(ありません|いりません|いらない|ない|なさ|なし)(?!(の|です|でしょう)?か(?!ら))|詐欺(では|じゃ)(ありません|ない|なさ|なく)(?!(の|です|でしょう)?か(?!ら))|危険(性)?(は|も)(ありません|ない|なさ|なし)(?!(の|です|でしょう)?か(?!ら))/i,
     );
 }
 
@@ -501,7 +501,18 @@ describe("judge consumer", () => {
   });
 
   // #53 (5): verdicts without the word 安全 reach neither the row nor any push.
-  it.each(["大丈夫です", "詐欺ではありません", "心配いらない", "問題なし", "危険はありません"])(
+  it.each([
+    "大丈夫です",
+    "詐欺ではありません",
+    "心配いらない",
+    "問題なし",
+    "危険はありません",
+    // PR #175 review 1.
+    "大丈夫ですから",
+    "詐欺ではないから",
+    "大丈夫だと思います",
+    "危険性はありません",
+  ])(
     "keeps the verdict %s out of everything stored and sent",
     async (verdict) => {
       const fam = await setupFamily();
