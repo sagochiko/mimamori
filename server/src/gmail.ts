@@ -456,7 +456,8 @@ export function mailPayload(part: MessagePart): JudgePayload {
  * The addr-spec of From: the last <...> when it ends the header, or the whole header when it is a
  * bare address. The display name is left out, since it can say anything, an official address in
  * angle brackets included (#170). A From of any other shape, a list of mailboxes included, gives no
- * sender, so nothing in it counts as official.
+ * sender, so nothing in it counts as official. The local part is printable ASCII (RFC 5322 atext and
+ * dots) and the domain is ASCII labels, so the rules see the same domain Gmail does.
  */
 function senderAddress(from: string): string {
   const value = from.trim();
@@ -464,7 +465,14 @@ function senderAddress(from: string): string {
   if (value.replace(/"(?:[^"\\]|\\.)*"/g, "").includes(",")) return "";
   const bracketed = /<([^<>\s]*)>$/.exec(value);
   const address = bracketed ? (bracketed[1] ?? "") : value;
-  return /^[^<>\s@"]+@[^<>\s@"]+$/.test(address) ? address : "";
+  // Checked on the raw characters, before the rules apply NFKC and read the domain as a URL host: a
+  // "?", "/", "#" or a full-width "＠" in the domain would make a host there that is not the domain.
+  const at = address.lastIndexOf("@");
+  const local = address.slice(0, at);
+  const domain = address.slice(at + 1);
+  return at > 0 && /^[A-Za-z0-9!#$%&'*+\-/=?^_`{|}~.]+$/.test(local) && /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+\.?$/.test(domain)
+    ? address
+    : "";
 }
 
 function cut(text: string, max: number): string {

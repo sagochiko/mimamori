@@ -850,6 +850,8 @@ describe("reading one mail", () => {
       ["a bare address", "scam@free-mail.example", "scam@free-mail.example"],
       ["a bare address with spaces around", "  scam@free-mail.example  ", "scam@free-mail.example"],
       ["a quoted display name with a comma", '"Bank, Support" <scam@free-mail.example>', "scam@free-mail.example"],
+      ["a domain that ends with a dot", "<scam@free-mail.example.>", "scam@free-mail.example."],
+      ["a local part with ASCII symbols", "<scam+info.x_y@free-mail.example>", "scam+info.x_y@free-mail.example"],
       ["an encoded-word display name", "=?UTF-8?B?PGluZm9AYmFuay5leGFtcGxlPg==?= <scam@free-mail.example>", "scam@free-mail.example"],
     ])("%s", (_, from, sender) => {
       expect(senderOf(from)).toBe(sender);
@@ -867,6 +869,12 @@ describe("reading one mail", () => {
       // An encoded word may only stand for a display name, so it is never decoded into an address.
       ["an encoded word that decodes to an address", "<scam@free-mail.example> =?UTF-8?B?PGluZm9AYmFuay5leGFtcGxlPg==?="],
       // Cut to the limit, this would read as an address at the made-up bank (#170).
+      // The rules read the domain as a URL host after NFKC, so these would read as the made-up bank.
+      ["a domain with a query mark", "Bank <scam@bank.example?x.free-mail.example>"],
+      ["a domain with a slash", "Bank <scam@bank.example/free-mail.example>"],
+      ["a domain with a hash", "Bank <scam@bank.example#free-mail.example>"],
+      ["a domain with a full-width at sign", "Bank <scam@free-mail.example＠bank.example>"],
+      ["a local part outside printable ASCII", "Bank <ｉｎｆｏ@free-mail.example>"],
       ["an address longer than the queue keeps", `<${"a".repeat(487)}@bank.example.${"b".repeat(40)}.example>`],
     ])("leaves out the sender for %s", (_, from) => {
       expect(senderOf(from)).toBeUndefined();
