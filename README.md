@@ -73,8 +73,10 @@ Measured on the dev set, 114 examples across SMS, mail, pages, and spoken consul
 
 | Method | Missed scams | Genuine messages flagged | Unneeded family notices | Median time | Measured |
 |---|---:|---:|---:|---:|---|
-| Rules only | 28.3% (17/60) | 0.0% (0/54) | 0 | 0.04 ms | 2026-11-07 |
+| Rules only | 10.0% (6/60) | 0.0% (0/54) | 0 | 0.05 ms | 2026-11-07 |
 | Rules + Claude | 0.0% (0/60) | 7.4% (4/54) | 4 | 1845 ms | 2026-11-05 |
+
+Before #21 the rules alone missed 17 of 60 scams, 15 of them in spoken consultations. PR #206 added the fake-police phrasings those consultations used, for consultations only, and brought the misses to 6. A new phrasing alone does not make the fixed level-1 script, because a real police officer calling a victim or a witness uses the same words, so those go to Claude at level 2.
 
 The rules + Claude line was measured before #137 changed which SMS, mail, and pages reach Claude. That run sent more unflagged examples to Claude than production does now, so its miss rate is lower than production would be. A new run is waiting on the author (#181). The first rules + Claude run flagged 36 of 54 genuine messages. The prompt itself defined level 2 as "suspicious or undecided", and Claude followed it. After the fix, 4 of 54 were flagged (#109).
 
