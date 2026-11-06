@@ -63,25 +63,21 @@ Write the body with the Write tool, in Japanese: what changed and why, the verif
 
 Start the `mm-reviewer` subagent with the issue number, the working tree, and the PR number. After each round:
 
-1. Post the reviewer's report verbatim as a PR comment, so anyone can see the independent review and not only your summary of it. Do not retype it: `save-report.sh` has saved the handback as `docs/audits/raw/<YYYYMMDD-HHMM>-mm-reviewer-<first 8 characters of its agent id>.md` in the main tree, also when the PR lives in a worktree (the agent id is in the Agent call's result). Run this from the PR's working tree. It reads the file from the main tree by absolute path and moves it into this tree, so it is committed with the branch. Run again (after a failed post), it uses the file already moved. It stops when neither place has a file that is not empty:
+1. Post the reviewer's report verbatim as a PR comment, so anyone can see the independent review and not only your summary of it. Do not retype it: `save-report.sh` has saved the handback as `docs/audits/raw/<YYYYMMDD-HHMM>-mm-reviewer-<first 8 characters of its agent id>.md` in the main tree, also when the PR lives in a worktree (the agent id is in the Agent call's result). Find the name with `ls <main tree>/docs/audits/raw/` and write it out in full. Then run, from the PR's working tree and as a command of its own, with every argument written out as text:
 
    ```sh
-   name=<YYYYMMDD-HHMM>-mm-reviewer-<id>.md
-   src="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/docs/audits/raw/$name"
-   raw=docs/audits/raw/$name
-   mkdir -p docs/audits/raw
-   if [[ -s "$src" && ! "$src" -ef "$raw" ]]; then mv "$src" "$raw"; fi
-   [[ -s "$raw" ]] || { echo "no saved report at $src or $raw"; exit 1; }
-   { printf '## mm-reviewer の報告(原文)\n\n%s回目、%s を読んだもの。保存した原文は `%s`。\n\n' "<round>" "<commit>" "$raw" && cat "$raw"; } >"<scratchpad>/review-comment.md"
+   scripts/review-record.sh <YYYYMMDD-HHMM>-mm-reviewer-<id>.md <round> <scratchpad>/review-comment.md <issue>
    ```
 
-   Post it with the file's absolute path written out as text. Since 2026-11-06 `guard-private.sh` no longer stops a gh write whose body it cannot see (a variable, `$(...)`), so keeping the path literal is on you: it is what lets the hook scan the body before it goes public:
+   It reads the file from the main tree by absolute path and moves it into this tree, writes the comment body (the heading with the round and the commit it read, then the file byte for byte), and commits the file on the branch. Run again (after a failed post), it uses the file already moved and does not commit twice. It stops when neither place has a file that is not empty. A hand-written chain of `$(...)`, `mv`, commit, and push in one command drew permission prompts on 2026-11-06, so do not rebuild it by hand. Push with `git push` as its own command.
+
+   Post the comment as its own command, the file's absolute path written out as text. The script does not post it, because `guard-private.sh` reads only the gh command in front of it: since 2026-11-06 it no longer stops a gh write whose body it cannot see (a variable, `$(...)`, a script), so keeping the path literal is on you, and it is what lets the hook scan the body before it goes public. Do not create the body file in the same command, either: the hook reads the file before the command runs.
 
    ```sh
-   gh pr comment <pr> --body-file "<scratchpad>/review-comment.md"
+   gh pr comment <pr> --body-file <scratchpad>/review-comment.md
    ```
 
-   Then `git add docs/audits/raw/<name>` and commit it on the branch. The reviewer's report starts with `ステータス: 承認` or `ステータス: 直すべき指摘あり`, which `report-form.sh` checked when the reviewer returned it. The merge gate counts only a comment that starts with this heading and holds the reviewer's status in one of two forms: a line `Status: ...` or `ステータス: ...` (a list marker, bold, or a heading in front is fine), or a heading `## ステータス` (or `Status`, any level) with the verdict on the next line that is not blank and not a heading. The English line and the heading form stay accepted for reports saved before 2026-11-05. Post the report as it came; never add a status line to make the gate pass. `guard-private.sh` lets the part of the comment that is the saved file byte for byte keep its phone and email shapes and its times (as the commit hooks do for `docs/audits/raw/`), and still checks the heading above it and the author's private terms. If it blocks a spot inside the report, replace only that spot with「(伏せた)」in the saved file itself, say so in the file's first line, and build the comment again with the block above, so the comment still ends with the file; a change made only in the comment makes the whole comment count as a body, times included. If it blocks the heading, fix the heading.
+   The reviewer's report starts with `ステータス: 承認` or `ステータス: 直すべき指摘あり`, which `report-form.sh` checked when the reviewer returned it. The merge gate counts only a comment that starts with this heading and holds the reviewer's status in one of two forms: a line `Status: ...` or `ステータス: ...` (a list marker, bold, or a heading in front is fine), or a heading `## ステータス` (or `Status`, any level) with the verdict on the next line that is not blank and not a heading. The English line and the heading form stay accepted for reports saved before 2026-11-05. Post the report as it came; never add a status line to make the gate pass. `guard-private.sh` lets the part of the comment that is the saved file byte for byte keep its phone and email shapes and its times (as the commit hooks do for `docs/audits/raw/`), and still checks the heading above it and the author's private terms. If it blocks a spot inside the report, replace only that spot with「(伏せた)」in the saved file itself, say so in the file's first line, and build the comment again with the block above, so the comment still ends with the file; a change made only in the comment makes the whole comment count as a body, times included. If it blocks the heading, fix the heading.
 
    When no file was saved: `SubagentHandback`, the tool whose call the hook saves, is given to subagents only in auto mode (https://code.claude.com/docs/en/tools-reference). Outside auto mode, ask the reviewer with SendMessage to write the exact text it returned, unchanged, to `<scratchpad>/<name>` (it has Bash, not Write). The hook did not run, so put in what it would have added, the first line and the home path as `~`, before you paste:
 
