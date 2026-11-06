@@ -29,6 +29,8 @@
 	<false/>
 	<key>MimamoriAPIBaseURL</key>
 	<string>https://$(MIMAMORI_API_HOST)</string>
+	<key>MimamoriSMSFamilyToken</key>
+	<string>$(MIMAMORI_SMS_FAMILY_TOKEN)</string>
 	<key>NSCameraUsageDescription</key>
 	<string>前のカメラに向かって笑ったときの写真を撮り、家族に届けるために使います。笑顔の判定は iPhone の中で行います。</string>
 	<key>NSMicrophoneUsageDescription</key>

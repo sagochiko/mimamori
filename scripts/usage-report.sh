@@ -1,7 +1,9 @@
 #!/bin/bash
 # Summarize .claude/logs/usage.jsonl (written by the hooks) as Markdown for docs/claude-usage.md.
 cd "$(dirname "$0")/.." || exit 1
-log=.claude/logs/usage.jsonl
+# The hooks write the log in the main tree, also when they run in a git worktree, so a worktree reads it there.
+main=$(cd "$(git rev-parse --git-common-dir 2>/dev/null || echo .git)/.." && pwd)
+log=${MM_USAGE_LOG:-$main/.claude/logs/usage.jsonl} # scripts/test-hooks.sh points this elsewhere
 echo "# Claude Code の使われ方"
 echo
 # The date alone: the file is public, and public records give the date alone (the pre-commit hook would
@@ -34,4 +36,6 @@ section "フックが止めた、または確認に回した" '.kind=="guard"'
 section "テストの関門(Stop フック)" '.kind=="gate"'
 echo "## 期間"
 echo
-echo "最初の記録は $(head -1 "$log" | jq -r .ts)、最後の記録は $(tail -1 "$log" | jq -r .ts)(UTC)。"
+# The day in JST alone, like the line above: the file is public.
+jst_day() { jq -r '.ts | fromdateiso8601 + 9 * 3600 | gmtime | "\(.[0])年\(.[1] + 1)月\(.[2])日"'; }
+echo "最初の記録は$(head -1 "$log" | jst_day)、最後の記録は$(tail -1 "$log" | jst_day)(日本時間)。"
