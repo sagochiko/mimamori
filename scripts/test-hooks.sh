@@ -169,24 +169,24 @@ prod ask 'npx wrangler d1 migrations apply mimamori --remote' "a -- inside a str
 prod ask 'npx wrangler d1 migrations apply mimamori --remote' "remote migrations the hook cannot find ask" "$T/mig-none"
 prod quiet 'npx wrangler d1 migrations apply mimamori --local' "local migrations with DROP pass" "$T/mig-bad"
 prod quiet 'npx wrangler d1 migrations list mimamori --remote' "listing remote migrations passes" "$T/mig-bad"
-# gh api: a method other than GET or HEAD asks, and so do fields without -X GET (gh then sends POST).
+# gh api: since 2026-11-06 writes run without asking. DELETE, merging, publishing, moving main, and what the hook cannot read still ask.
 prod ask 'gh api -X PATCH repos/sagochiko/mimamori -f visibility=public' "making the repository public through gh api asks"
 prod ask 'gh api -X PATCH repos/o/r/git/refs/heads/main -f sha=abc -F force=true' "moving a ref through gh api asks"
 prod ask 'gh api -X PUT repos/o/r/pulls/3/merge' "merging through gh api asks"
-prod ask 'gh api -X POST repos/o/r/issues -f title=t -f body=b' "an issue written through gh api asks"
+prod quiet 'gh api -X POST repos/o/r/issues -f title=t -f body=b' "an issue written through gh api with -X POST runs without asking"
 prod ask "gh api graphql -f query='mutation{deleteRef(input:{refId:\"x\"}){clientMutationId}}'" "a graphql mutation asks"
 prod ask 'gh api -iX DELETE repos/o/r/x' "-X inside a cluster of short flags asks"
-prod ask 'gh api -iXPOST repos/o/r/issues' "a method written right after X in a cluster asks"
-prod ask 'gh api -XPATCH repos/o/r/issues/1' "-XPATCH asks"
+prod quiet 'gh api -iXPOST repos/o/r/issues' "a POST written right after X in a cluster runs without asking"
+prod quiet 'gh api -XPATCH repos/o/r/issues/1' "-XPATCH on an issue runs without asking"
 prod ask 'gh api --method=put repos/o/r/pulls/3/merge' "--method=put asks"
-prod ask 'gh api --method POST repos/o/r/issues' "--method POST asks"
-prod ask 'gh api repos/o/r/issues/1/comments -f body=x' "a field without -X GET is a POST and asks"
-prod ask 'gh api repos/o/r/issues -F title=t' "-F without -X GET asks"
-prod ask 'gh api repos/o/r/issues --field title=t' "--field asks"
-prod ask 'gh api repos/o/r/issues --raw-field=title=t' "--raw-field= asks"
-prod ask 'gh api repos/o/r/issues --input body.json' "--input asks"
-prod ask 'gh api repos/o/r/issues -ftitle=t' "a field glued to -f asks"
-prod ask "gh api graphql -f query='MUTATION { x }'" "a mutation asks whatever its case"
+prod quiet 'gh api --method POST repos/o/r/issues' "--method POST runs without asking"
+prod quiet 'gh api repos/o/r/issues/1/comments -f body=x' "a field without -X GET is a POST and runs without asking"
+prod quiet 'gh api repos/o/r/issues -F title=t' "-F without -X GET runs without asking"
+prod quiet 'gh api repos/o/r/issues --field title=t' "--field runs without asking"
+prod quiet 'gh api repos/o/r/issues --raw-field=title=t' "--raw-field= runs without asking"
+prod quiet 'gh api repos/o/r/issues --input body.json' "--input runs without asking"
+prod quiet 'gh api repos/o/r/issues -ftitle=t' "a field glued to -f runs without asking"
+prod quiet "gh api graphql -f query='MUTATION { x }'" "a mutation that neither deletes nor merges runs without asking, whatever its case"
 prod ask 'gh api graphql -F query=@q.graphql' "a graphql query read from a file asks"
 prod ask 'gh api graphql -F query=@- <<<"q"' "a graphql query read from stdin asks"
 prod ask 'gh api graphql --input q.json' "a graphql body from --input asks"
@@ -203,8 +203,14 @@ prod quiet "gh api -H 'Accept: application/vnd.github+json' --paginate repos/o/r
 prod quiet 'gh api -q .login user' "-q takes a value, not a field"
 prod quiet 'gh issue create --title t --body-file b.md' "gh issue is not gh api"
 # Since 2026-11-06 gh api writes run without asking (the author, docs/harness.md "gh の書き込みを止めなくなった").
-# Two kinds still ask: DELETE, which cannot be undone, and merging, which skips guard-merge.sh. So does a
-# call whose method, endpoint, or graphql query the hook cannot read, since it might be either.
+# Some still ask: DELETE, which cannot be undone, merging, which skips guard-merge.sh, and making the
+# repository public or moving main, which CLAUDE.md asks the author about. So does a call whose method,
+# endpoint, or graphql query the hook cannot read, since it might be any of these.
+prod ask 'gh api -X PATCH repos/sagochiko/mimamori -f visibility=public' "making the repository public through gh api asks"
+prod ask 'gh api -X PATCH repos/sagochiko/mimamori -F private=false' "the private field through gh api asks"
+prod ask 'gh api -X PATCH repos/o/r/git/refs/heads/main -f sha=abc -F force=true' "moving main through gh api asks"
+prod ask "gh api graphql -f query='mutation{updateRepository(input:{repositoryId:\"x\",visibility:PUBLIC}){clientMutationId}}'" "a graphql mutation that changes visibility asks"
+prod quiet 'gh api -X PATCH repos/o/r/git/refs/heads/issue-1 -f sha=abc' "moving a work branch through gh api runs without asking"
 prod quiet 'gh api -X POST repos/o/r/issues -f title=x' "an issue written through gh api runs without asking"
 prod quiet "gh api graphql -f query='mutation{addComment(input:{subjectId:\"x\",body:\"y\"}){clientMutationId}}'" "a graphql mutation that only writes runs without asking"
 prod quiet 'gh api repos/o/r/issues/1/comments -f body=x' "a comment through gh api fields runs without asking"

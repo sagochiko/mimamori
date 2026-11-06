@@ -169,19 +169,30 @@ for k in "${starts[@]}"; do
 done
 
 # --- gh api ---------------------------------------------------------------------------------------
-# Writing through gh api skips guard-private.sh and guard-merge.sh, which read gh issue, gh pr, and
-# gh pr merge, and it can make the repository public or move main.
+# Since 2026-11-06 gh api writes run without asking: the author found the prompts slow for writes that
+# do no harm (docs/harness.md, "gh の書き込みを止めなくなった"). Some still ask. DELETE (and a graphql
+# mutation that deletes) cannot be undone. Merging (PUT pulls/<n>/merge, POST merges, a graphql
+# mergePullRequest or auto-merge) skips guard-merge.sh. Making the repository public (a visibility or
+# private field) and moving main (git/refs/heads/main) are what CLAUDE.md asks the author about. A
+# method, endpoint, or graphql query the hook cannot read asks too, since it might be any of these.
 upper() { tr '[:lower:]' '[:upper:]' <<<"$1"; }
 field() { # <-f|-F> <name=value>: -F reads @file, -f takes the text as it is
   fields=1
   [[ "$1" == -F && "$2" == query=@* ]] && fromfile=1
-  [[ "$(upper "$2")" == *MUTATION* ]] && mutation=1
+  local v
+  v=$(upper "$2")
+  [[ "$v" == VISIBILITY=* || "$v" == PRIVATE=* ]] && publishes=1
+  if [[ "$v" == QUERY=* && "$v" == *MUTATION* ]]; then
+    [[ "$v" == *DELETE* ]] && deletes=1
+    [[ "$v" == *MERGE* ]] && merges=1
+    [[ "$v" == *VISIBILITY* ]] && publishes=1
+  fi
 }
 while read -r k _; do
   [[ "${WORDS[k]}" == api ]] || continue
   behind_xargs "$k" && ask "gh api behind xargs, which adds words from stdin this hook cannot read: confirm with the author"
   ((k++))
-  method="" fields=0 input=0 endpoint="" fromfile=0 mutation=0
+  method="" fields=0 input=0 endpoint="" fromfile=0 deletes=0 merges=0 publishes=0
   while ((k < m)) && ! is_op "${WORDS[k]}"; do
     w=${WORDS[k]}
     ((k++))
@@ -212,14 +223,32 @@ while read -r k _; do
     esac
   done
   if [[ "$endpoint" == graphql ]]; then
-    # graphql is always a POST; most calls only read, so only a mutation, or a query the hook cannot see, asks.
-    ((mutation)) && ask "gh api graphql mutation writes to GitHub: confirm with the author"
-    ((fromfile || input)) && ask "gh api graphql query read from a file or stdin, which this hook cannot check: confirm with the author"
-    ((HIDDEN || EXPANDS)) && ask "gh api graphql query built at run time, which this hook cannot check: confirm with the author"
-  elif [[ -n "$method" ]]; then
-    [[ "$(upper "$method")" =~ ^(GET|HEAD)$ ]] || ask "gh api -X $method writes to GitHub: confirm with the author. Write issues, PRs, and comments with gh issue and gh pr."
-  elif ((fields || input)); then
-    ask "gh api with fields sends a POST, which writes to GitHub: confirm with the author. Write issues, PRs, and comments with gh issue and gh pr."
+    # graphql is always a POST. A mutation that deletes or merges asks; so does a query the hook cannot see.
+    ((deletes)) && ask "gh api graphql mutation that deletes: confirm with the author"
+    ((merges)) && ask "gh api graphql mutation that merges, which skips the merge gate (guard-merge.sh): confirm with the author. Merge with gh pr merge <number> --merge."
+    ((publishes)) && ask "gh api graphql mutation that changes the repository's visibility: confirm with the author"
+    ((fromfile || input)) && ask "gh api graphql query read from a file or stdin, which this hook cannot check for a delete or a merge: confirm with the author"
+    ((HIDDEN || EXPANDS)) && ask "gh api graphql query built at run time, which this hook cannot check for a delete or a merge: confirm with the author"
+  else
+    # REST. gh sends POST when fields or --input come without -X.
+    [[ -z "$method" ]] && ((fields || input)) && method=POST
+    [[ -z "$method" ]] && method=GET
+    M=$(upper "$method")
+    if [[ "$M" =~ ^(GET|HEAD)$ ]]; then
+      :
+    elif [[ "$M" == *'$'* || "$M" == *'`'* ]]; then
+      ask "gh api with a method the hook cannot read, which may be DELETE: confirm with the author"
+    elif [[ "$M" == DELETE ]]; then
+      ask "gh api DELETE cannot be undone: confirm with the author"
+    elif [[ -z "$endpoint" || "$endpoint" == *'$'* || "$endpoint" == *'`'* ]]; then
+      ask "gh api -X $method to an endpoint the hook cannot read, which may merge a PR: confirm with the author"
+    elif [[ "$endpoint" =~ (^|/)pulls/[0-9]+/merge/?(\?|$) || "$endpoint" =~ (^|/)merges/?(\?|$) ]]; then
+      ask "gh api $endpoint merges, which skips the merge gate (guard-merge.sh): confirm with the author. Merge with gh pr merge <number> --merge."
+    elif ((publishes)); then
+      ask "gh api changes the repository's visibility, which publishes it: confirm with the author"
+    elif [[ "$endpoint" =~ (^|/)git/refs/heads/main/?(\?|$) ]]; then
+      ask "gh api moves main: confirm with the author. Changes reach main through a reviewed PR."
+    fi
   fi
 done < <(gh_calls)
 
