@@ -116,6 +116,52 @@ struct PageCheckTests {
     }
   }
 
+  @Test("同じ表示の2回目の問い合わせに、1回目がキューに回ったかを true か false だけで付ける(#174)")
+  func alreadyQueued() throws {
+    var second = message()
+    second["alreadyQueued"] = true
+    let sent = try #require(
+      PageCheck.request(baseURL: testBaseURL, deviceKey: "dk_x", message: second)
+    )
+    let raw = String(decoding: try #require(sent.httpBody), as: UTF8.self)
+    #expect(raw.contains(#""alreadyQueued":true"#))
+
+    for value: Any? in [nil, "yes"] {
+      var other = message()
+      other["alreadyQueued"] = value
+      let request = try #require(
+        PageCheck.request(baseURL: testBaseURL, deviceKey: "dk_x", message: other)
+      )
+      let body = String(decoding: try #require(request.httpBody), as: UTF8.self)
+      #expect(body.contains(#""alreadyQueued":false"#))
+    }
+  }
+
+  @Test("裏側がキューに回したと答えたら、拡張の JavaScript に queued を返す(#174)")
+  func queuedReply() {
+    let queued = PageCheck.outcome(
+      statusCode: 200, data: Data(#"{"level":null,"reasons":[],"queued":true}"#.utf8))
+    #expect(queued == .answeredAndQueued(nil))
+    #expect(PageCheck.reply(for: queued) as NSDictionary == ["checked": true, "queued": true] as NSDictionary)
+    let warned = PageCheck.outcome(
+      statusCode: 200, data: Data(#"{"level":1,"reasons":[],"queued":true}"#.utf8))
+    #expect(warned == .answeredAndQueued(.doNotOpen))
+    #expect(PageCheck.warning(statusCode: 200, data: Data(#"{"level":1,"reasons":[],"queued":true}"#.utf8)) == .doNotOpen)
+    #expect(
+      PageCheck.reply(for: warned) as NSDictionary
+        == ["checked": true, "level": 1, "queued": true] as NSDictionary)
+    // Anything but true is not queued.
+    for value in [#"false"#, #""true""#, #"1"#] {
+      let other = PageCheck.outcome(
+        statusCode: 200, data: Data(#"{"level":null,"reasons":[],"queued":\#(value)}"#.utf8))
+      #expect(other == .answered(nil))
+    }
+    // A strange queued never costs the warning.
+    let strange = PageCheck.outcome(
+      statusCode: 200, data: Data(#"{"level":1,"reasons":[],"queued":"true"}"#.utf8))
+    #expect(strange == .answered(.doNotOpen))
+  }
+
   @Test("ページの文は先頭の5,000字だけを送る(絵文字も1字に数え、途中で割らない)")
   func cutsText() throws {
     let long = "警告" + String(repeating: "😀", count: 6000)

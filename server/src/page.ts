@@ -18,6 +18,12 @@
 // ないで") only raises the rules' level; it never changes the reply or who is told. Neither the text nor
 // the URL (its query may carry anything) goes to the logs, and nothing is written to D1 here.
 //
+// The reply carries queued: true when this request picked the page for the judge queue. The content
+// script looks at a page a second time when its text grows after loading (ads and pop-ups), and that
+// second look sends alreadyQueued: true when the first was queued, so one display of a page is queued
+// at most once (#174). A second look whose first was not queued still goes to Claude. queued says only
+// where the page went, nothing about how it was judged, and the extension draws nothing from it.
+//
 // null is "the rules did not decide", never "fine". The reply has no field that could read as safe.
 
 import { requireMember } from "./auth";
@@ -34,6 +40,8 @@ const URL_MAX_CHARS = 2000;
 export interface PageReply {
   level: 1 | 2 | null;
   reasons: string[];
+  /** Present (true) only when this request handed the page to the judge queue (#174). */
+  queued?: true;
 }
 
 function cut(text: string, max: number): string {
@@ -59,7 +67,9 @@ function pageUrl(value: unknown): URL | null {
   return short;
 }
 
-async function readPage(request: Request): Promise<{ url: URL; text: string; hasSecretField: boolean }> {
+async function readPage(
+  request: Request,
+): Promise<{ url: URL; text: string; hasSecretField: boolean; alreadyQueued: boolean }> {
   let body: Record<string, unknown>;
   try {
     body = await readJson(request);
@@ -73,7 +83,15 @@ async function readPage(request: Request): Promise<{ url: URL; text: string; has
   if (body.hasSecretField !== undefined && typeof body.hasSecretField !== "boolean") {
     throw new HttpError(400, "page_invalid");
   }
-  return { url, text: cut(body.text ?? "", PAGE_TEXT_MAX_CHARS), hasSecretField: body.hasSecretField === true };
+  if (body.alreadyQueued !== undefined && typeof body.alreadyQueued !== "boolean") {
+    throw new HttpError(400, "page_invalid");
+  }
+  return {
+    url,
+    text: cut(body.text ?? "", PAGE_TEXT_MAX_CHARS),
+    hasSecretField: body.hasSecretField === true,
+    alreadyQueued: body.alreadyQueued === true,
+  };
 }
 
 /**
@@ -93,7 +111,7 @@ export function onOwnNetwork(url: URL): boolean {
 
 export async function pageRoute(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const me = await requireMember(request, env);
-  const { url, text, hasSecretField } = await readPage(request);
+  const { url, text, hasSecretField, alreadyQueued } = await readPage(request);
   if (onOwnNetwork(url)) return json({ level: null, reasons: [] } satisfies PageReply);
 
   const payload: JudgePayload = { url: url.toString(), ...(text !== "" ? { text } : {}) };
@@ -106,13 +124,16 @@ export async function pageRoute(request: Request, env: Env, ctx: ExecutionContex
 
   // Only the mother's pages are told about. A family member's own phone gets the warning, not a notice
   // about themselves to everyone.
-  if (me.role === "protected" && pageWorthAsking(rule, { url: url.toString(), text, hasSecretField })) {
+  // A second look of a display whose first look was queued is not queued again (#174).
+  const queued =
+    me.role === "protected" && !alreadyQueued && pageWorthAsking(rule, { url: url.toString(), text, hasSecretField });
+  if (queued) {
     ctx.waitUntil(
       enqueueJudge(env, { familyId: me.familyId, source: "page", payload }).catch((error: unknown) => {
         console.error("page enqueue failed", error instanceof Error ? error.name : typeof error);
       }),
     );
   }
-  const reply: PageReply = { level, reasons: level === null ? [] : rule.reasons };
+  const reply: PageReply = { level, reasons: level === null ? [] : rule.reasons, ...(queued ? { queued: true } : {}) };
   return json(reply);
 }

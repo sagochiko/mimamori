@@ -151,19 +151,35 @@
     back.focus();
   }
 
+  // Whether this display already went to the judge queue. Set only from the extension's own reply,
+  // never from the page, and sent with the second look so the server does not queue it again (#174).
+  let queued = false;
+
   function ask(recheck) {
     const text = pageText();
-    browser.runtime
-      .sendMessage({ type: "page", url: location.href, text, recheck, hasSecretField: hasSecretField() })
+    const sent = browser.runtime
+      .sendMessage({
+        type: "page",
+        url: location.href,
+        text,
+        recheck,
+        alreadyQueued: queued,
+        hasSecretField: hasSecretField(),
+      })
       .then((reply) => {
+        if (reply && reply.queued === true) queued = true;
         if (reply && (reply.level === 1 || reply.level === 2)) show(reply.level);
       })
       .catch(() => {});
-    return text.length;
+    return { length: text.length, sent };
   }
 
+  // The second look waits for the first answer, so it knows whether the first was queued (the native
+  // side may take up to 8 seconds, longer than the wait).
   const first = ask(false);
-  setTimeout(() => {
-    if (!shown && pageText().length >= first + RECHECK_GROWTH) ask(true);
-  }, RECHECK_AFTER_MS);
+  first.sent.then(() => {
+    setTimeout(() => {
+      if (!shown && pageText().length >= first.length + RECHECK_GROWTH) ask(true);
+    }, RECHECK_AFTER_MS);
+  });
 })();

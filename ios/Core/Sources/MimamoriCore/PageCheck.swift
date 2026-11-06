@@ -30,7 +30,7 @@ public enum PageCheck {
   public static let timeout: TimeInterval = 8
   private static let urlMaxCharacters = 8000
 
-  /// `POST /page` for a message `{ type: "page", url, text, hasSecretField? }` from the background script, or nil for
+  /// `POST /page` for a message `{ type: "page", url, text, hasSecretField?, alreadyQueued? }` from the background script, or nil for
   /// anything else (another scheme, another shape).
   public static func request(baseURL: URL, deviceKey: String, message: [String: Any]) -> URLRequest?
   {
@@ -48,7 +48,13 @@ public enum PageCheck {
     // Whether the page has a password or card number field (#137). The script counts the fields and
     // never reads them; anything but a boolean is false.
     let hasSecretField = message["hasSecretField"] as? Bool ?? false
-    let body: [String: Any] = ["url": urlText, "text": String(cut), "hasSecretField": hasSecretField]
+    // The second look of one display, after its text grew: true when the first look went to the judge
+    // queue, so the server does not queue the same display again (#174). Anything but a boolean is false.
+    let alreadyQueued = message["alreadyQueued"] as? Bool ?? false
+    let body: [String: Any] = [
+      "url": urlText, "text": String(cut), "hasSecretField": hasSecretField,
+      "alreadyQueued": alreadyQueued,
+    ]
     guard let data = try? JSONSerialization.data(withJSONObject: body) else { return nil }
 
     var request = URLRequest(url: baseURL.appendingPathComponent("page"), timeoutInterval: timeout)
@@ -61,39 +67,66 @@ public enum PageCheck {
 
   /// Reads `{ level: 1 | 2 | null, reasons }`. Anything other than a 2xx with level 1 or 2 is no warning.
   public static func warning(statusCode: Int?, data: Data?) -> PageWarning? {
-    if case .answered(let warning) = outcome(statusCode: statusCode, data: data) { return warning }
-    return nil
+    switch outcome(statusCode: statusCode, data: data) {
+    case .answered(let warning), .answeredAndQueued(let warning): return warning
+    case .failed: return nil
+    }
   }
 
   /// Whether the server answered (with a warning or without), or the check did not get through.
   public static func outcome(statusCode: Int?, data: Data?) -> PageCheckOutcome {
-    struct Reply: Decodable { let level: Int? }
+    struct Reply: Decodable {
+      let level: Int?
+      /// Only a JSON true counts. Another value must not cost the warning, so it is read on its own.
+      let queued: Bool
+
+      enum CodingKeys: String, CodingKey { case level, queued }
+
+      init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        level = try c.decodeIfPresent(Int.self, forKey: .level)
+        queued = (try? c.decodeIfPresent(Bool.self, forKey: .queued)) == true
+      }
+    }
     // JSONDecoder refuses `true` and `1.5` for an Int, which JSONSerialization would turn into 1.
     guard let statusCode, (200..<300).contains(statusCode), let data,
       let reply = try? JSONDecoder().decode(Reply.self, from: data)
     else { return .failed }
-    switch reply.level {
-    case 1: return .answered(.doNotOpen)
-    case 2: return .answered(.waitForFamily)
-    default: return .answered(nil)
-    }
+    let warning: PageWarning? =
+      switch reply.level {
+      case 1: .doNotOpen
+      case 2: .waitForFamily
+      default: nil
+      }
+    return reply.queued ? .answeredAndQueued(warning) : .answered(warning)
   }
 
   /// What the native handler hands back to the JavaScript: `checked` when the server answered, and the
   /// level only, so no text from the server or the page is drawn on it. A failure is `{}`, which the
-  /// background script does not remember for the URL.
+  /// background script does not remember for the URL. `queued` is added when the server put the page
+  /// on the judge queue, so the second look of the same display does not queue it again (#174).
   public static func reply(for outcome: PageCheckOutcome) -> [String: Any] {
+    var reply: [String: Any]
+    let warning: PageWarning?
     switch outcome {
     case .failed: return [:]
-    case .answered(nil): return ["checked": true]
-    case .answered(let warning?): return ["checked": true, "level": warning.level]
+    case .answered(let w):
+      reply = ["checked": true]
+      warning = w
+    case .answeredAndQueued(let w):
+      reply = ["checked": true, "queued": true]
+      warning = w
     }
+    if let warning { reply["level"] = warning.level }
+    return reply
   }
 }
 
 /// The result of one page check. `answered(nil)` is "the rules did not decide", never "fine".
 public enum PageCheckOutcome: Equatable, Sendable {
   case answered(PageWarning?)
+  /// Answered, and the server put the page on the judge queue (#174). Says nothing about the verdict.
+  case answeredAndQueued(PageWarning?)
   case failed
 }
 
