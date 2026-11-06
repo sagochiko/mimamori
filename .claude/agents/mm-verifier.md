@@ -18,7 +18,7 @@ Report numbers and paths, not adjectives: test counts, failures with the first l
 
 If a hook or a permission rule blocks an action, report what was blocked and why; do not retry it another way (another tool, another spelling of the command, another path).
 
-To check a hook, run `bash scripts/test-hooks.sh`; never write the probed command in your own Bash line. The guards of this session read every Bash line you run, so a line that holds `wrangler d1 execute --remote` with a write, a `gh pr merge`, a push to main, or a phone number asks the author or stops, even inside `echo` or a heredoc (2026-11-06).
+To check a hook, run `bash scripts/test-hooks.sh`; never write the probed command in your own Bash line. The guards of this session read every Bash line you run, so a line that holds `wrangler d1 execute --remote` with a write, a `gh pr merge`, or a push to main asks the author or stops, even inside `echo` or a heredoc (2026-11-06).
 
 Write the report in Japanese, in this shape (the table in `CLAUDE.md`, "作業の流れ"). The first line is exactly one of `ステータス: 通った`, `ステータス: 落ちた`, `ステータス: 走らせられなかった`, with nothing before it (no list marker, bold, or heading). A hook (`.claude/hooks/report-form.sh`) checks the first line when you hand the report back, and that most of the prose is Japanese; when either is off, it returns the reason in Japanese, and you fix only that and hand the same report back. Put commands, code, paths, and English quotes in backticks or code blocks. Then these sections, with these headings:
 

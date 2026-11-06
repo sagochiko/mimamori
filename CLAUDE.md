@@ -71,6 +71,7 @@ gh で Issue、PR、コメントに書くときは、本文を Write でファ�
 
 - 新しいクローンや git worktree では、最初に `make bootstrap` を流す。`server/` の `npm ci` と XcodeGen の確認をする。worktree には `node_modules` が無く、そのままでは裏側のテストが走らない
 - `make verify` は変わった側のテスト(`ios/Core` の `swift test`、`server` の型検査と Vitest)をまとめて流す。出力は数行で、詳細は `.verify.log` に出る
+- フックを試すときは、試す形を Bash の行に書かない。フックは行の文字を読むので、`echo` や heredoc の中の本番の操作の形でも作者に確認を出す(2026年11月6日に3回出た)。試す形は Edit で `scripts/test-hooks.sh` に書き、`bash scripts/test-hooks.sh` で流す(理由と役ごとの手段は [`docs/harness.md`](docs/harness.md) の「サブエージェント」)
 - `make eval` は試験用の例文の dev セットで精度を測り、[`eval/RESULTS.md`](eval/RESULTS.md) に1行足す。1日の回数は `CONDITIONS.md` の予算まで
 - 画面は `/mm-ios-verify` の手順でシミュレータに出して撮る。拡張機能(Message Filter、DNS、Safari、Call Directory)はシミュレータで確かめられないので、実機の確認を「作者: 」の Issue にする
 - 作者に実機で確かめてもらう版は、`/mm-release` で TestFlight に上げ、内部テストのグループ「家族」で配る。内部テストは Apple の審査を待たない。Debug の起動の引数(`-mimamori-stub` など)が要る確かめだけ、`/mm-device` で作者の iPhone に入れる。母は外部テストのグループ「審査員と家族」で受け取っているので、確かめ用の版は母に届かない。母が内部テスターに入ったら、確かめ用(作者だけ)と母用のグループを先に分ける(2026年11月5日に作者が決めた)
