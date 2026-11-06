@@ -49,7 +49,9 @@ import {
   allOf,
   chars,
   type ClaudeConsult,
+  type ConsultImage,
   type ConsultTurn,
+  fitsUnresized,
   judgeConsult,
   type Plan,
   requestClaudeConsult,
@@ -76,6 +78,8 @@ export {
   requestClaudeConsult,
   UNANSWERED_REPLY,
   type ClaudeConsult,
+  type ConsultImage,
+  type ConsultImageRequest,
   type ConsultJudgment,
   type ConsultRequest,
   type ConsultRules,
@@ -89,7 +93,7 @@ export const HISTORY_TURN_MAX_CHARS = 500;
 /** A consultation that needs the family joins her open case from this recent, instead of a new one. */
 export const CONVERSATION_WINDOW_MS = 60 * 60_000;
 
-/** What the app gets ("アプリと裏側の API" in docs/plan.md). `tap` comes with screenshots, not yet. */
+/** What the app gets ("アプリと裏側の API" in docs/plan.md). `tap` comes only with a shared image. */
 export interface ConsultAnswer {
   reply: string;
   speak: string;
@@ -103,14 +107,21 @@ export const AI_REPLY_ON_CARD = "答えました";
 export interface ConsultDeps {
   judgeByRules(input: RuleInput): RuleResult;
   /** Returns null for any failure; a throw is treated the same way. */
-  askClaude(env: Env, text: string, rule: RuleResult, history?: readonly ConsultTurn[]): Promise<ClaudeConsult | null>;
+  askClaude(
+    env: Env,
+    text: string,
+    rule: RuleResult,
+    history?: readonly ConsultTurn[],
+    image?: ConsultImage,
+  ): Promise<ClaudeConsult | null>;
   openCase(env: Env, alertId: string, budget: ExternalBudget): Promise<unknown>;
   now(): number;
 }
 
 export const defaultConsultDeps: ConsultDeps = {
   judgeByRules,
-  askClaude: (env, text, rule, history = []) => requestClaudeConsult(env, text, rule, history),
+  askClaude: (env, text, rule, history = [], image) =>
+    requestClaudeConsult(env, text, rule, history, undefined, image),
   openCase,
   now: () => Date.now(),
 };
@@ -120,8 +131,14 @@ function spoken(reply: string): string {
   return reply.replace(/[「」『』]/g, "");
 }
 
-function answer(reply: string, handoff: boolean): ConsultAnswer {
-  return { reply, speak: spoken(reply), handoff };
+function answer(reply: string, handoff: boolean, tap?: { x: number; y: number }): ConsultAnswer {
+  return { reply, speak: spoken(reply), ...(tap ? { tap } : {}), handoff };
+}
+
+/** Claude's press point when it is on the image; a point off it would put the circle nowhere. */
+function tapOn(image: ConsultImage | undefined, tap: { x: number; y: number } | undefined) {
+  if (!image || !tap) return undefined;
+  return tap.x < image.width && tap.y < image.height ? tap : undefined;
 }
 
 interface OpenConsultCase {
@@ -206,6 +223,7 @@ export async function consult(
   budget: ExternalBudget,
   deps: ConsultDeps = defaultConsultDeps,
   history: readonly ConsultTurn[] = [],
+  image?: ConsultImage,
 ): Promise<ConsultAnswer> {
   const now = deps.now();
   const open = await openConsultCase(env, member.familyId, now);
@@ -218,15 +236,16 @@ export async function consult(
     async (rule) => {
       if (!budget.take()) return null;
       try {
-        return await deps.askClaude(env, text, rule, history);
+        return await deps.askClaude(env, text, rule, history, image);
       } catch {
         return null;
       }
     },
     deps.judgeByRules,
+    image !== undefined,
   );
   const said = saidIn(text, history);
-  if (!p.record) return answer(p.reply, false);
+  if (!p.record) return answer(p.reply, false, tapOn(image, p.tap));
 
   let caseId: string | null = null;
   if (p.toFamily && open) {
@@ -262,7 +281,7 @@ export async function consult(
   const reply = p.toFamily && !(await familyWasTold(env, caseId)) ? notReachedReply(p.reply) : p.reply;
   // She hears the whole answer; the card gets a fixed line instead when the answer repeats her words.
   if (caseId !== null) await recordAiReply(env, caseId, repeats(reply, allOf(said)) ? AI_REPLY_ON_CARD : reply);
-  return answer(reply, p.toFamily);
+  return answer(reply, p.toFamily, tapOn(image, p.tap));
 }
 
 /**
@@ -282,13 +301,57 @@ export function parseHistory(value: unknown): ConsultTurn[] {
   });
 }
 
-/** POST /consult with { text, history? }: only the protected person consults. */
+/**
+ * The most base64 an image may carry: about 2.2 MB of file. A 1179x2556 screenshot as the app sends
+ * it (JPEG) is well under it; the cap keeps parsing the body inside the free plan's CPU time.
+ */
+export const IMAGE_MAX_BASE64_CHARS = 3_000_000;
+const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+/**
+ * Only this much of each end of `data` is checked: the whole of it took about 9.5 ms on Node for 3
+ * million characters (review 1 of PR #186), the free plan's whole CPU time. Broken base64 in between
+ * is refused by Claude with a 400, which is an answer the AI could not give.
+ */
+const BASE64_CHECKED_CHARS = 256;
+
+/**
+ * `image` as POST /consult takes it: absent, or { mediaType, data, width, height } with a JPEG or PNG
+ * in base64 whose size Claude reads unresized (fitsUnresized), so its press points need no mapping on
+ * the server. Anything else is a 400, more data than IMAGE_MAX_BASE64_CHARS a 413.
+ */
+export function parseImage(value: unknown): ConsultImage | undefined {
+  if (value === undefined) return undefined;
+  const invalid = new HttpError(400, "consult_image_invalid");
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw invalid;
+  const { mediaType, data, width, height } = value as Record<string, unknown>;
+  if (mediaType !== "image/jpeg" && mediaType !== "image/png") throw invalid;
+  if (typeof data !== "string" || data === "") throw invalid;
+  if (data.length > IMAGE_MAX_BASE64_CHARS) throw new HttpError(413, "consult_image_too_large");
+  const ends = [data.slice(0, BASE64_CHECKED_CHARS), data.slice(-BASE64_CHECKED_CHARS)];
+  if (data.length % 4 !== 0 || !ends.every((e) => BASE64.test(e))) throw invalid;
+  if (!Number.isInteger(width) || !Number.isInteger(height)) throw invalid;
+  const w = width as number;
+  const h = height as number;
+  if (w < 1 || h < 1 || !fitsUnresized(w, h)) throw invalid;
+  return { mediaType, data, width: w, height: h };
+}
+
+/**
+ * POST /consult with { text, history?, image? }: only the protected person consults. With an image,
+ * her words may be left out; without one they are required. The image is passed to Claude and kept
+ * nowhere (docs/design.md: スクショはその場で処理して残さない).
+ */
 export async function consultRoute(request: Request, env: Env): Promise<Response> {
   const me = await requireMember(request, env);
   if (me.role !== "protected") throw new HttpError(403, "protected_only");
-  const { text, history } = await readJson(request);
-  if (typeof text !== "string") throw new HttpError(400, "consult_text_invalid");
-  const trimmed = text.trim();
-  if (trimmed === "" || chars(trimmed) > CONSULT_TEXT_MAX_CHARS) throw new HttpError(400, "consult_text_invalid");
-  return json(await consult(env, me, trimmed, new ExternalBudget(), defaultConsultDeps, parseHistory(history)));
+  const { text, history, image: rawImage } = await readJson(request);
+  const image = parseImage(rawImage);
+  if (text !== undefined && typeof text !== "string") throw new HttpError(400, "consult_text_invalid");
+  const trimmed = (text ?? "").trim();
+  if ((trimmed === "" && image === undefined) || chars(trimmed) > CONSULT_TEXT_MAX_CHARS) {
+    throw new HttpError(400, "consult_text_invalid");
+  }
+  return json(
+    await consult(env, me, trimmed, new ExternalBudget(), defaultConsultDeps, parseHistory(history), image),
+  );
 }
