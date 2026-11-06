@@ -849,3 +849,74 @@ describe("nothing to go on", () => {
     expect(judge({ source: "sms" }).level).toBeNull();
   });
 });
+
+describe("a genuine-looking secrecy line does not lower a scam (#51)", () => {
+  it.each([
+    // PR #167 review, items 1 and 2: the genuine sentence next to what a scam asks for, from a sender
+    // that is not the brand, or next to a link or a number written so the rules do not see it.
+    // Each is at the level the rules give it today (level, confident). PR #167 tried to stop counting
+    // the genuine line and was stopped after two reviews; these keep any later try from lowering them.
+    ["sms", undefined, "確認コード 5678。ご家族に伝えないで、担当者に伝えてください。", 1, true],
+    ["sms", undefined, "確認コード 5678 をこの番号に返信してください。家族に言わないで", 1, true],
+    [
+      "sms",
+      undefined,
+      "【ゆうちょ銀行】不正利用を確認しました。暗証番号はご家族にも言わないでください。このメッセージに暗証番号を返信してください。",
+      1,
+      true,
+    ],
+    [
+      "gmail",
+      "x@gmail.com",
+      "【三井住友銀行】暗証番号はご家族にも伝えないようにしてください。口座が凍結されました",
+      1,
+      true,
+    ],
+    ["sms", undefined, "パスワードは家族にも話さないで。お母さん、今日中にお金がいるの。", 1, false],
+    ["sms", undefined, "検察庁です。暗証番号はご家族にも言わないでください。", 1, false],
+    ["sms", undefined, "暗証番号を、ご家族には言わないでください。手続きのため担当者が伺います。", 1, false],
+    [
+      "sms",
+      undefined,
+      "暗証番号はご家族にも言わないでください。キャッシュカードを封筒に入れて職員にお渡しください",
+      1,
+      false,
+    ],
+    ["sms", undefined, "暗証番号はご家族にも言わないでください。現金をご準備ください", 1, false],
+    ["sms", undefined, "暗証番号はご家族にも言わないでください。kakunin@gmail.com まで返信してください。", 1, false],
+    [
+      "sms",
+      undefined,
+      "【三井住友銀行】お客様の口座が一時停止されました。暗証番号はご家族にも言わないでください。",
+      1,
+      false,
+    ],
+    ["gmail", "x@gmail.com", "暗証番号はご家族にも伝えないようにしてください。", 1, false],
+    ["sms", undefined, "暗証番号はご家族にも言わないでください。smbc-kakunin[.]com で手続きを", 1, false],
+    ["sms", undefined, "暗証番号はご家族にも言わないでください。smbc-kakunin。com で手続きを", 1, false],
+    ["sms", undefined, "暗証番号はご家族にも言わないでください。〇三-一二三四-五六七八 へ", 1, false],
+    ["sms", undefined, "暗証番号はご家族にも言わないでください。電話 3-1234-5678 へ", 1, false],
+    ["sms", undefined, "暗証番号はご家族にも言わないでください。LINE ID: abc123 を検索", 1, false],
+    ["sms", undefined, "あなたの名義が事件に関わっています。この番号はご家族にも言わないでください。", 1, false],
+    ["sms", undefined, "番号は家族に言わないで。この件は警察の捜査中です", 1, false],
+    // Item 4: a reason between the family and the verb, and a family word with no particle.
+    ["sms", undefined, "家族は心配するので言わないでください", 1, false],
+    ["sms", undefined, "家族も心配するから内緒にしておいて", 1, false],
+    ["sms", undefined, "家族が心配するから話さないで", 1, false],
+    ["sms", undefined, "息子さんが事故を起こしました。家族は動揺されるので言わないでください", 1, false],
+    ["sms", undefined, "家族全員言わないで", 1, false],
+    ["sms", undefined, "暗証番号もご家族も言わないでください", 1, false],
+    // PR #167 review 2, item 1: a code-only SMS with a link, a number, or a visit written so the rules
+    // do not see it.
+    ["sms", undefined, "認証コード 1234。ご家族には言わないでください。smbc-kakunin[.]com で入力", 1, false],
+    ["sms", undefined, "認証コード 1234。このコードはご家族にも言わないでください。〇三-一二三四-五六七八 へお知らせください", 1, false],
+    ["sms", undefined, "認証コード 1234。このコードはご家族にも言わないでください。LINE ID: abc123 に送って", 1, false],
+    ["sms", undefined, "認証コード 1234。このコードはご家族にも言わないでください。kakunin@gmail.com に転送してください", 1, false],
+    ["sms", undefined, "確認番号 1234。この番号はご家族にも言わないでください。のちほど係の者が確認に伺います", 1, false],
+    ["gmail", "info@smbc.co.jp", "暗証番号はご家族にも伝えないようにしてください。smbc-kakunin[.]com でご確認を", 1, false],
+  ] as const)("keeps main's level for %s (sender %s): %s", (source, sender, text, level, confident) => {
+    const result = judge({ source, sender, text });
+    expect(result.level).toBe(level);
+    expect(result.confident).toBe(confident);
+  });
+});
