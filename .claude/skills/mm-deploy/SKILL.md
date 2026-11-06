@@ -55,6 +55,8 @@ npx wrangler d1 migrations apply mimamori --remote
 
 `apply` captures a backup, and a migration that fails is rolled back while the earlier ones stay (`npx wrangler d1 migrations apply --help`).
 
+Deploy only after `apply` printed the table with `✅` for every new migration, and then run `migrations list` once more: it must say `No migrations to apply!`. Never chain `apply` into `deploy` through a pipe such as `| grep` or `| tail`, which hides its exit status. On 2026-11-07 `apply` failed with `Authentication error [code: 10000]` inside such a pipe, the deploy went ahead, and `POST /invites/{code}/join` answered 500 until `apply` ran again about a minute later. If `apply` fails, run it again before anything else; if it keeps failing, do not deploy code that reads the new tables.
+
 ## 5. Smoke check
 
 Only the join loop writes to D1: up to five rows a minute in `join_attempts` for this network address and the day's count in `join_daily` (#67), which the daily cleanup deletes. It blocks joins from this network address for about a minute, including the author's iPhone on the same Wi-Fi.
