@@ -330,7 +330,8 @@ export async function tellFamilyHeavier(env: Env, caseId: string, budget: Extern
  * 30-minute watch see it whatever happens to the notice. When the shared budget cannot cover every
  * family device, or no family device took the notice (none registered counts too), the case stays
  * untold and CaseNoticeDeferred is thrown; calling again with the same alert tells the family, and a
- * call after they were told returns the case without notifying or taking tickets. A call while another
+ * call after they were told, or after the family resolved the case (#49), returns the case without
+ * notifying or taking tickets. A call while another
  * caller is sending the notice does the same and does not throw; the case reads as untold until that
  * send gets through, and the tick retries it if it does not. When at least one family member was told,
  * the case counts as told and the watch covers the others.
