@@ -8,10 +8,12 @@ import { env } from "cloudflare:workers";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  AGENTS_TIMEOUT_MS,
   collectInvestigation,
   OFFICIAL_SITES,
   parseEvidence,
   RESEARCH_GIVE_UP_MS,
+  SESSION_CREATE_TIMEOUT_MS,
   startInvestigation,
   verifyWebhook,
   watchInvestigations,
@@ -257,6 +259,26 @@ describe("startInvestigation", () => {
     expect(seen.deletes).toEqual(["sesn_orphan"]);
   });
 
+  it("tries that delete once even when the budget is used up by the start", async () => {
+    mockApi();
+    const family = await createFamily();
+    const alertId = await seedAlert(family);
+    network.use(
+      http.post(`${API}/sessions`, async () => {
+        await env.DB.prepare("DELETE FROM alerts WHERE id = ?").bind(alertId).run();
+        return HttpResponse.json({ id: "sesn_orphan_2", status: "running" });
+      }),
+    );
+    // Three tickets: the agent, the environment, and the session; none left for the delete.
+    expect(await startInvestigation(env, alertId, INPUT, new ExternalBudget(3), T0)).toBe(false);
+    expect(seen.deletes).toEqual(["sesn_orphan_2"]);
+  });
+
+  it("gives the session create longer than the other calls", () => {
+    expect(SESSION_CREATE_TIMEOUT_MS).toBe(30_000);
+    expect(AGENTS_TIMEOUT_MS).toBeLessThan(SESSION_CREATE_TIMEOUT_MS);
+  });
+
   it("logs only the status when the API refuses", async () => {
     mockApi({ sessionStatus: 400 });
     const family = await createFamily();
@@ -310,6 +332,10 @@ describe("parseEvidence", () => {
     const warn = [
       { text: "宅配会社がなりすましの SMS に注意を呼びかけている", url: GOOD.url },
       { text: "警察庁が同じ手口のフィッシングを注意喚起している", url: "https://www.npa.go.jp/" },
+      // "実在", "本物", "正規" followed by a word of disguise describe the scam (review 2 of PR #183).
+      { text: "実在する宅配業者を装った偽 SMS に注意を呼びかけている", url: GOOD.url },
+      { text: "本物そっくりの偽サイトへ誘導する手口を警告している", url: "https://www.npa.go.jp/" },
+      { text: "正規のサイトを装うフィッシングに注意を呼びかけている", url: "https://www.antiphishing.jp/" },
     ];
     const reassure = [
       { text: "日本郵便も同じ不在の連絡を SMS で送っている", url: GOOD.url },
@@ -319,8 +345,12 @@ describe("parseEvidence", () => {
       { text: "該当なし", url: GOOD.url },
       { text: "宅配会社の公式の案内と一致している", url: GOOD.url },
       { text: "偽物ではなく本物の案内と分かった", url: GOOD.url },
+      { text: "フィッシングの注意喚起はあるが今回の連絡は公式からのもの", url: GOOD.url },
+      { text: "注意喚起はあるが今回のSMSは公式から届いた", url: GOOD.url },
     ];
-    expect(parseEvidence({ items: [...reassure, ...warn] }, received)).toEqual(warn);
+    // One at a time: at most three are kept per report.
+    for (const w of warn) expect(parseEvidence({ items: [w] }, received), w.text).toEqual([w]);
+    for (const r of reassure) expect(parseEvidence({ items: [r] }, received), r.text).toEqual([]);
   });
 
   it("keeps at most three, and reads anything else as none", () => {

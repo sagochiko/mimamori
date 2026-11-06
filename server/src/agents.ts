@@ -222,13 +222,20 @@ export function researchMessage(input: ResearchInput): string {
 
 /** Each call to Managed Agents gives up after this, so a slow API cannot hold the queue or a tick. */
 export const AGENTS_TIMEOUT_MS = 10_000;
+/** Creating a session also provisions its sandbox and takes in the first message, so it gets longer. */
+export const SESSION_CREATE_TIMEOUT_MS = 30_000;
 
-async function postJson(env: Env, path: string, body: unknown): Promise<Record<string, unknown> | null> {
+async function postJson(
+  env: Env,
+  path: string,
+  body: unknown,
+  timeoutMs: number = AGENTS_TIMEOUT_MS,
+): Promise<Record<string, unknown> | null> {
   const res = await fetch(`${API}${path}`, {
     method: "POST",
     headers: { ...agentHeaders(env), "content-type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(AGENTS_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) {
     // The path and the status only: the body could carry the received text.
@@ -297,7 +304,7 @@ export async function startInvestigation(
       environment_id: environmentId,
       budget: { type: "limit", max_list_cost: { amount: RESEARCH_BUDGET_CENTS, currency: "USD" } },
       initial_events: [{ type: "user.message", content: [{ type: "text", text: researchMessage(input) }] }],
-    });
+    }, SESSION_CREATE_TIMEOUT_MS);
     if (typeof session?.id !== "string") return false;
     const saved = await env.DB.prepare(
       "UPDATE alerts SET investigation_session_id = ? WHERE id = ? AND investigation_session_id IS NULL AND investigated_at IS NULL",
@@ -307,7 +314,10 @@ export async function startInvestigation(
     if (saved.meta.changes === 1) return true;
     // The alert went away meanwhile ("delete everything" or the cleanup): nothing would delete the
     // session, and it holds the received text.
-    if (budget.take()) await deleteAgentSession(env, session.id);
+    // Tried once whatever the budget says: one call over the share is less harm than a session
+    // holding the received text that nothing will ever delete.
+    budget.take();
+    await deleteAgentSession(env, session.id);
     return false;
   } catch (error) {
     console.error("investigation not started", error instanceof Error ? error.name : typeof error);
@@ -333,8 +343,21 @@ export interface Evidence {
 // "正規の案内として載っている"), and text inside the message can ask the research for one, so a line
 // has to carry a warning word and none of these.
 const WARNS = /注意|偽|なりすまし|詐欺|フィッシング|呼びかけ|呼び掛け|警告|被害|手口/;
-const REASSURES =
-  /正規|本物|実在|見つから|見当たら|該当(なし|しない|しません)|(同じ|同様)の?(連絡|案内|通知|SMS|メール|お知らせ)を(送|出|配信)|(公式|本物|正規)の?(案内|連絡|通知|お知らせ)と(一致|同じ)/i;
+// 正規, 本物, 実在 and 公式から describe the scam when a word of disguise follows soon after ("実在する宅配
+// 業者を装った", "本物そっくりの偽サイト", "正規のサイトを装う"; review 2 of PR #183), so they count only
+// without one. A line that rates what arrived itself as official ("今回の連絡は公式からのもの") reassures.
+const DISGUISE = "(?![^。]{0,12}?(装|そっくり|に似せ|をかた|を騙|騙っ|になりすま|かたっ))";
+const REASSURES = new RegExp(
+  [
+    `(正規|本物|実在)${DISGUISE}`,
+    `(公式|正規)から(の|届|送)${DISGUISE}`,
+    "今回の?(連絡|メール|SMS|メッセージ|通知|案内)は[^。]{0,8}(公式|本物|正規|正しい)",
+    "見つから|見当たら|該当(なし|しない|しません)",
+    "(同じ|同様)の?(連絡|案内|通知|SMS|メール|お知らせ)を(送|出|配信)",
+    "(公式|本物|正規)の?(案内|連絡|通知|お知らせ)と(一致|同じ)",
+  ].join("|"),
+  "i",
+);
 
 export function parseEvidence(value: unknown, received: readonly string[]): Evidence[] {
   if (typeof value !== "object" || value === null) return [];
