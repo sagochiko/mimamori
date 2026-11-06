@@ -37,3 +37,38 @@ export async function openText(keyBase64: string, sealedText: string): Promise<s
   );
   return new TextDecoder().decode(plain);
 }
+
+const DEDUPE_KEY_INFO = new TextEncoder().encode("mimamori alerts sender_key and domain_key");
+
+/**
+ * Hex HMAC-SHA256 of the text under a key derived from TOKEN_ENC_KEY with HKDF, so one secret serves
+ * both uses and neither can stand in for the other. Used for the alerts' sender_key and domain_key: a
+ * plain SHA-256 of the family id and a phone number can be reversed by trying every number (#53).
+ * Without a usable TOKEN_ENC_KEY it is the plain SHA-256, so the judge keeps working; deploy lists
+ * TOKEN_ENC_KEY as required, so that is only for a local run without the key.
+ */
+export async function dedupeDigest(keyBase64: string | undefined, text: string): Promise<string> {
+  const data = new TextEncoder().encode(text);
+  let raw: Uint8Array | null = null;
+  try {
+    raw = keyBase64 ? fromBase64(keyBase64) : null;
+  } catch {
+    raw = null;
+  }
+  let digest: ArrayBuffer;
+  if (raw && raw.length === 32) {
+    const base = await crypto.subtle.importKey("raw", raw, "HKDF", false, ["deriveKey"]);
+    const hmac = await crypto.subtle.deriveKey(
+      { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: DEDUPE_KEY_INFO },
+      base,
+      { name: "HMAC", hash: "SHA-256", length: 256 },
+      false,
+      ["sign"],
+    );
+    digest = await crypto.subtle.sign("HMAC", hmac, data);
+  } else {
+    console.warn("dedupe key unkeyed", "no_token_enc_key");
+    digest = await crypto.subtle.digest("SHA-256", data);
+  }
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}

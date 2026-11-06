@@ -773,6 +773,54 @@ describe("judge consumer", () => {
     expect(summary).toContain("bank-check.example");
   });
 
+  // #53 (7): an unkeyed SHA-256 of the family id and a Japanese mobile number can be brute-forced back
+  // to the number, and the family id is in the same row. The keys are an HMAC under a key derived
+  // from TOKEN_ENC_KEY; without a usable TOKEN_ENC_KEY they stay the unkeyed digest, so judging goes on.
+  describe("the sender and domain keys", () => {
+    async function plainDigest(text: string): Promise<string> {
+      const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+      return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    async function keysWith(tokenKey: string | undefined, fam: Family, now = T0) {
+      const keyEnv = { ...judgeEnv, TOKEN_ENC_KEY: tokenKey } as Env;
+      const message = messageOf(queued(smsJob(fam.familyId)));
+      const batch = createMessageBatch<unknown>("mimamori-judge", [message]);
+      await handleJudgeBatch(batch, keyEnv, fakes({ now }));
+      return env.DB.prepare("SELECT sender_key, domain_key FROM alerts WHERE id = ?")
+        .bind(message.body.alertId)
+        .first<{ sender_key: string; domain_key: string }>();
+    }
+
+    it("are not the unkeyed digest that can be reversed by trying every number", async () => {
+      const fam = await setupFamily();
+      const row = await keysWith(env.TOKEN_ENC_KEY, fam);
+      expect(row?.sender_key).toMatch(/^[0-9a-f]{64}$/);
+      expect(row?.sender_key).not.toBe(await plainDigest(`${fam.familyId}\nsender\n+819011112222`));
+      expect(row?.domain_key).not.toBe(await plainDigest(`${fam.familyId}\ndomain\nbank-check.example`));
+    });
+
+    it("change with the key, and stay the same under one key", async () => {
+      const fam = await setupFamily();
+      const other = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
+      const a = await keysWith(env.TOKEN_ENC_KEY, fam);
+      const b = await keysWith(env.TOKEN_ENC_KEY, fam, T0 + 2 * DEDUPE_WINDOW_MS);
+      const c = await keysWith(other, fam, T0 + 4 * DEDUPE_WINDOW_MS);
+      expect(b?.sender_key).toBe(a?.sender_key);
+      expect(c?.sender_key).not.toBe(a?.sender_key);
+    });
+
+    it.each([undefined, "", "too-short"])(
+      "fall back to the unkeyed digest when TOKEN_ENC_KEY is %s, and the judge goes on",
+      async (tokenKey) => {
+        const fam = await setupFamily();
+        const row = await keysWith(tokenKey, fam);
+        expect(row?.sender_key).toBe(await plainDigest(`${fam.familyId}\nsender\n+819011112222`));
+        expect(pushesTo([fam.tokens.mother])).toHaveLength(1);
+      },
+    );
+  });
+
   describe("when a notice does not get through", () => {
     it("retries without acking when openCase defers, and on the retry only opens the case", async () => {
       const fam = await setupFamily();
