@@ -99,7 +99,7 @@ Every line of code here was written in this repository after the kickoff on 2026
 
 ## From the development log
 
-[`docs/dev-log.md`](docs/dev-log.md) has 73 dated entries. Three of them shaped the product:
+[`docs/dev-log.md`](docs/dev-log.md) has 74 dated entries. Three of them shaped the product:
 
 - 2026-11-04. We dropped "take ownership" and "reply to her" from the family screen. While someone owned a case, the AI only told her that person was looking, and her spoken replies reached no one. Relaying messages between users and forwarding her first 30 characters were also close to examples in the Ministry of Internal Affairs and Communications' telecom business manual. Now everyone sees the same card and calls her.
 - 2026-11-04. The first on-device test crashed when she pressed the microphone (a Swift 6 isolation check in the speech permission callback). The main line came out at level 2, not 1, because "警察から電話" (a call from the police) was not part of the script rules. The eval had not caught it because it ran consultations through the SMS rules. Both were fixed, and the eval now measures consultations on the real path (#57, #72, #74).
