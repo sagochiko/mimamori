@@ -65,17 +65,29 @@ struct UserDefaultsCheckupStore: CheckupStore {
 enum HeartbeatSender {
   private static let key = "mimamori.heartbeatGate"
 
+  /// What the iPhone says, mapped for `HeartbeatReport`, which decides what counts as turned off.
   @MainActor
   static func report() async -> HeartbeatReport {
     let settings = await UNUserNotificationCenter.current().notificationSettings()
-    let notifications: Bool =
+    let notifications: NotificationPermission =
       switch settings.authorizationStatus {
-      case .authorized, .provisional, .ephemeral: true
-      default: false
+      case .notDetermined: .notDetermined
+      case .denied: .denied
+      case .authorized: .authorized
+      case .provisional: .provisional
+      case .ephemeral: .ephemeral
+      @unknown default: .notDetermined
+      }
+    let background: BackgroundRefresh =
+      switch UIApplication.shared.backgroundRefreshStatus {
+      case .restricted: .restricted
+      case .denied: .denied
+      case .available: .available
+      @unknown default: .available
       }
     return HeartbeatReport(
-      notificationsOn: notifications,
-      backgroundRefreshOn: UIApplication.shared.backgroundRefreshStatus == .available)
+      notifications: notifications, backgroundRefresh: background,
+      lowPowerMode: ProcessInfo.processInfo.isLowPowerModeEnabled)
   }
 
   static func gate() -> HeartbeatGate {

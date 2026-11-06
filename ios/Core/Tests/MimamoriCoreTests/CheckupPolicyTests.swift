@@ -155,6 +155,29 @@ struct HeartbeatTests {
     #expect(object["backgroundRefresh"] as? Bool == true)
   }
 
+  @Test("通知は母が断ったか切ったときだけ偽。まだ聞いていないうちは切ったと数えない")
+  func notificationsOffOnlyWhenDenied() {
+    for (status, on) in [
+      (NotificationPermission.notDetermined, true), (.denied, false), (.authorized, true),
+      (.provisional, true), (.ephemeral, true),
+    ] {
+      let report = HeartbeatReport(notifications: status, backgroundRefresh: .available, lowPowerMode: false)
+      #expect(report.notificationsOn == on, "\(status)")
+    }
+  }
+
+  @Test("バックグラウンド更新は母が切ったときだけ偽。低電力モードと、母が入れられない制限は数えない")
+  func backgroundOffOnlyWhenSheTurnedItOff() {
+    let off = HeartbeatReport(notifications: .authorized, backgroundRefresh: .denied, lowPowerMode: false)
+    #expect(!off.backgroundRefreshOn)
+    let lowPower = HeartbeatReport(notifications: .authorized, backgroundRefresh: .denied, lowPowerMode: true)
+    #expect(lowPower.backgroundRefreshOn)
+    let restricted = HeartbeatReport(notifications: .authorized, backgroundRefresh: .restricted, lowPowerMode: false)
+    #expect(restricted.backgroundRefreshOn)
+    let on = HeartbeatReport(notifications: .authorized, backgroundRefresh: .available, lowPowerMode: false)
+    #expect(on.backgroundRefreshOn)
+  }
+
   @Test("前に送ってから6時間たつまでは送り直さない。設定が変わったらすぐ送る")
   func throttle() {
     let start = Date(timeIntervalSince1970: 1_800_000_000)

@@ -22,6 +22,16 @@
       return value
     }
 
+    /// `-mimamori-now-hour <0-23>`: the hour the checkups take as now (#19), so the free-space prompt
+    /// can be filmed on the simulator at night, when it never shows (22:00 up to 7:00).
+    static var nowHour: Int? {
+      let args = ProcessInfo.processInfo.arguments
+      guard let i = args.firstIndex(of: "-mimamori-now-hour"), i + 1 < args.count,
+        let value = Int(args[i + 1]), (0...23).contains(value)
+      else { return nil }
+      return value
+    }
+
     private static func seconds(after flag: String) -> TimeInterval? {
       let args = ProcessInfo.processInfo.arguments
       guard let i = args.firstIndex(of: flag), i + 1 < args.count,

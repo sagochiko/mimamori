@@ -381,21 +381,32 @@ final class AppModel {
     }
     CheckupBackground.schedule()
     let available = CheckupNotifier.availableBytes()
-    if case .notify(let text) = checkup.storageChecked(availableBytes: available, at: .now) {
+    if case .notify(let text) = checkup.storageChecked(availableBytes: available, at: checkupNow) {
       await CheckupNotifier.post(text)
     }
     refreshCheckup(availableBytes: available)
     await sendHeartbeat()
   }
 
+  /// Now, or in a Debug build launched with `-mimamori-now-hour <h>`, today at that hour.
+  private var checkupNow: Date {
+    #if DEBUG
+      if let hour = DebugLaunch.nowHour {
+        let now = Date.now
+        return Calendar.current.date(bySettingHour: hour, minute: Calendar.current.component(.minute, from: now), second: 0, of: now) ?? now
+      }
+    #endif
+    return .now
+  }
+
   /// When the screen appears or the app comes to the front.
   func refreshCheckup(availableBytes: Int64? = CheckupNotifier.availableBytes()) {
-    checkupPrompt = checkup.storagePromptToShow(availableBytes: availableBytes, at: .now)
+    checkupPrompt = checkup.storagePromptToShow(availableBytes: availableBytes, at: checkupNow)
   }
 
   /// "あとで": nothing about free space for 24 hours.
   func checkupLater() {
-    checkup.later(at: .now)
+    checkup.later(at: checkupNow)
     checkupPrompt = nil
   }
 

@@ -157,10 +157,32 @@ public struct HeartbeatReport: Codable, Equatable, Sendable {
     self.backgroundRefreshOn = backgroundRefreshOn
   }
 
+  /// From what the iPhone says. False only for what she turned off herself, so the family is never
+  /// told of a switch she did not touch:
+  /// - notifications not asked about yet (right after joining, before the permission sheet) count as on;
+  /// - background refresh in Low Power Mode counts as on. Apple's `backgroundRefreshStatus` page says
+  ///   "Background App Refresh is disabled automatically when a device is operating in low-power mode";
+  /// - `.restricted` counts as on. The same page says "Don't warn the user if the value of this property
+  ///   is set to restricted", since she cannot turn it on.
+  public init(notifications: NotificationPermission, backgroundRefresh: BackgroundRefresh, lowPowerMode: Bool) {
+    self.notificationsOn = notifications != .denied
+    self.backgroundRefreshOn = backgroundRefresh != .denied || lowPowerMode
+  }
+
   enum CodingKeys: String, CodingKey {
     case notificationsOn = "notifications"
     case backgroundRefreshOn = "backgroundRefresh"
   }
+}
+
+/// UNAuthorizationStatus, without UserNotifications.
+public enum NotificationPermission: Sendable {
+  case notDetermined, denied, authorized, provisional, ephemeral
+}
+
+/// UIBackgroundRefreshStatus, without UIKit.
+public enum BackgroundRefresh: Sendable {
+  case restricted, denied, available
 }
 
 /// Keeps the heartbeat to a few a day: the server only needs one within 48 hours, and it runs each
