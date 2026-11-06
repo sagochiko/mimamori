@@ -13,7 +13,7 @@ This README describes what runs on 2026-11-06. Where something is not built yet,
 
 ## Why fake-police scams
 
-In 2025, special fraud (特殊詐欺) in Japan took 142.31 billion yen, the worst on record. Fake-police scams (ニセ警察詐欺) took 100.50 billion yen of it, or about 70.6%. The National Police Agency publishes both amounts. The 70.6% is our own division of the two; the agency itself gives the scam's share of reported cases, 39.6%. Sources: the agency's [final figures for 2025](https://www.npa.go.jp/bureau/safetylife/sos47/new-topics/260605/01.html) and the [press release (PDF)](https://www.npa.go.jp/bureau/criminal/souni/tokusyusagi/hurikomesagi_toukei2025.pdf), page 1. A [correction dated 2026-07-02 (PDF)](https://www.npa.go.jp/bureau/criminal/souni/tokusyusagi/teisei_sagi2025.pdf) fixes one graph on page 14 of the awareness material, about investment-scam ads. It does not change these figures.
+In 2025, special fraud (特殊詐欺) in Japan took 142.31 billion yen, the worst on record. Fake-police scams (ニセ警察詐欺) took 100.50 billion yen of it, or about 70.6%. The National Police Agency publishes both amounts. The 70.6% is our own division of the two; the agency itself gives the scam's share of reported cases, 39.6%. Sources: the agency's [final figures for 2025](https://www.npa.go.jp/bureau/safetylife/sos47/new-topics/260605/01.html) and the [press release (PDF)](https://www.npa.go.jp/bureau/criminal/souni/tokusyusagi/hurikomesagi_toukei2025.pdf), dated 2026-05-22. A [correction dated 2026-07-02 (PDF)](https://www.npa.go.jp/bureau/criminal/souni/tokusyusagi/teisei_sagi2025.pdf) fixes one graph on page 14 of the awareness material (「バナー等広告の主な当初接触ツールの推移」, how banner ads first reached victims). It does not change these figures.
 
 The scammer calls and says her bank account was used in a crime. Then they tell her to keep it secret and to move her money to prove she is innocent. An iPhone app cannot listen to calls or read LINE, and the caller has told her to tell no one. So the app comes to her after the call and asks.
 
@@ -38,7 +38,7 @@ On 2026-11-04 the author ran this on his own iPhone, playing the mother, with a 
 | DNS (bank sites after a warning, remote-control apps) | Planned as a DoH resolver | Not built (#11) |
 | LINE, iMessage, call audio | Not visible to any app | Cannot be done |
 
-What it cannot protect is part of the design. The app never hears the call. In the main scene she still has to answer the question after the call, or start the chat herself. When the app is suspended, it cannot know a call ended (Apple DTS confirms this; see [`docs/design.md`](docs/design.md)), which is why the daily question exists. Other browsers and in-app browsers do not run the Safari extension. These figures come from one family. The app makes no claim about older people in general.
+What it cannot protect is part of the design. The app never hears the call. In the main scene she still has to answer the question after the call, or start the chat herself. When the app is suspended, it cannot know a call ended (Apple DTS confirms this; see [`docs/design.md`](docs/design.md)), which is why the daily question exists. Other browsers and in-app browsers do not run the Safari extension.
 
 ## How a notice travels
 
@@ -92,6 +92,7 @@ DNS (#11), the weekly review (#18), the morning alarm that stops when she smiles
 ## What her use changed
 
 <!-- From docs/mother-feedback.md, once she has used it. -->
+<!-- What the mother, the sister, and the author saw when trying the same consultation goes here. These observations come from one family, and the app makes no claim about older people in general. -->
 
 ## Built during the hackathon
 
