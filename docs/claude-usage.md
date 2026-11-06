@@ -1,6 +1,6 @@
 # Claude Code の使われ方
 
-フックが記録した回数を数えたもの。最後に数えたのは 2026年11月6日。記録の仕組みは [`docs/harness.md`](harness.md) にある。
+フックが記録した回数を数えたもの。最後に数えたのは 2026年11月7日。記録の仕組みは [`docs/harness.md`](harness.md) にある。
 
 ## サブエージェント
 
@@ -8,14 +8,14 @@
 
 | 名前 | 起動 | 再開 |
 |---|---:|---:|
-| `mm-reviewer` | 132 | 21 |
-| `mm-implementer` | 64 | 50 |
-| `mm-verifier` | 50 | 2 |
-| `resume` | 0 | 45 |
-| `web-fetch` | 19 | 1 |
+| `mm-reviewer` | 170 | 21 |
+| `mm-implementer` | 76 | 50 |
+| `resume` | 0 | 77 |
+| `mm-verifier` | 61 | 2 |
+| `web-fetch` | 24 | 1 |
 | `general-purpose` | 14 | 1 |
+| `mm-judge` | 6 | 0 |
 | `claude-code-guide` | 4 | 0 |
-| `mm-judge` | 4 | 0 |
 | `mm-auditor` | 3 | 0 |
 | `mm-eval-curator` | 2 | 0 |
 
@@ -23,7 +23,7 @@
 
 | 名前 | 回数 |
 |---|---:|
-| `mm-handoff` | 10 |
+| `mm-handoff` | 11 |
 | `mm-task` | 9 |
 | `mm-deploy` | 7 |
 | `mm-release` | 6 |
@@ -47,14 +47,14 @@
 
 | 名前 | 回数 |
 |---|---:|
-| `guard-prod` | 53 |
-| `guard-private` | 38 |
+| `guard-prod` | 57 |
+| `guard-private` | 42 |
 | `guard-prior-work` | 37 |
-| `guard-secrets` | 22 |
+| `guard-secrets` | 25 |
 | `guard-holdout` | 22 |
-| `guard-merge` | 17 |
+| `guard-merge` | 18 |
+| `guard-mcp` | 4 |
 | `report-form` | 3 |
-| `guard-mcp` | 3 |
 
 ## テストの関門(Stop フック)
 
@@ -65,4 +65,4 @@
 
 ## 期間
 
-最初の記録は2026年11月3日、最後の記録は2026年11月6日(日本時間)。
+最初の記録は2026年11月3日、最後の記録は2026年11月7日(日本時間)。
