@@ -1381,6 +1381,43 @@ printf '連絡先 %s\n' "$ph" >"$T/mg/resolved.md" && mg add resolved.md
   { echo "pre-commit test failed: a merge lets through a line that only the merge adds"; fail=1; }
 mg merge --abort 2>/dev/null
 
+# scan-private.sh history also reads what a merge itself adds, such as a conflict resolved by hand
+# (--remerge-diff), with the same folder scope, and does not count again the lines a clean merge brings.
+histout() { (cd "$R" && PATH="${1:-$T/histbin}:$PATH" scripts/scan-private.sh history 2>/dev/null); }
+mkdir -p "$R/docs/audits/raw" "$T/mg/docs/audits/raw"
+printf 'main side\n' >"$R/docs/cf.md" && cp "$R/docs/cf.md" "$R/docs/audits/raw/cf.md"
+r add docs/cf.md docs/audits/raw/cf.md && r commit -q --no-verify -m "cf on main"
+printf 'mg side\n' >"$T/mg/docs/cf.md" && cp "$T/mg/docs/cf.md" "$T/mg/docs/audits/raw/cf.md"
+mg add docs/cf.md docs/audits/raw/cf.md && mg commit -q --no-verify -m "cf on mg"
+mg merge -q --no-ff main >/dev/null 2>&1
+printf 'ok\n連絡先 %s\n' "$ph" >"$T/mg/docs/cf.md" && cp "$T/mg/docs/cf.md" "$T/mg/docs/audits/raw/cf.md"
+mg add docs/cf.md docs/audits/raw/cf.md && mg commit -q --no-verify --no-edit
+msha=$(mg rev-parse --short HEAD)
+hout=$(histout)
+[[ "$hout" == *"commit $msha docs/cf.md:2: phone number"* ]] ||
+  { echo "scan test failed: history misses a phone number that only a merge's conflict resolution adds"; fail=1; }
+[[ "$hout" == *"commit $msha docs/audits/raw/cf.md"* ]] &&
+  { echo "scan test failed: history checks phone shapes in docs/audits/raw when a merge adds them"; fail=1; }
+[[ "$hout" == *"commit $msha docs/on-main.md"* ]] &&
+  { echo "scan test failed: history counts again, under the merge, a line a clean merge brought from main"; fail=1; }
+
+# scan-private.sh history reads the PR review comments on lines too (--json reviews gives only the
+# review's top body), from the repository's comment list, every page, by the same rules as PR comments.
+jq -nc --arg b "前置き
+連絡先 $ph" '[{id: 11, body: $b, path: "docs/audits/raw/x.md", pull_request_url: "https://api.github.com/repos/o/r/pulls/7"}]' >"$T/review-comments.json"
+jq -nc '[{id: 12, body: "Tanukiyama に聞いた", path: "docs/a.md", pull_request_url: "https://api.github.com/repos/o/r/pulls/8"}]' >>"$T/review-comments.json"
+mkdir -p "$T/histbin2" "$T/histbin3"
+printf '#!/bin/sh\ncase "$*" in *pulls/comments*) cat "%s/review-comments.json" ;; *) echo "[]" ;; esac\n' "$T" >"$T/histbin2/gh"
+printf '#!/bin/sh\ncase "$1" in api) exit 1 ;; *) echo "[]" ;; esac\n' >"$T/histbin3/gh"
+chmod +x "$T/histbin2/gh" "$T/histbin3/gh"
+hout=$(histout "$T/histbin2")
+[[ "$hout" == *"pr #7 review comment 11 line 2: phone number"* ]] ||
+  { echo "scan test failed: history misses a phone number in a PR review comment on a line"; fail=1; }
+[[ "$hout" == *"pr #8 review comment 12 line 1: private term"* ]] ||
+  { echo "scan test failed: history misses a private term in a review comment on the second page"; fail=1; }
+histout "$T/histbin3" >/dev/null; [[ $? -eq 2 ]] ||
+  { echo "scan test failed: history does not exit 2 when gh cannot list the review comments"; fail=1; }
+
 # The holdout unlock lives in the main tree. `make eval-holdout` and guard-holdout.sh look there,
 # also from a worktree. A fake npx stands in for the measurement.
 M=$T/mk
