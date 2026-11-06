@@ -74,7 +74,7 @@ struct CaseCardView: View {
     let reasons = alert.reasons.isEmpty ? "" : "。理由、\(alert.reasons.joined(separator: "、"))"
     let evidence =
       alert.evidence.isEmpty
-      ? "" : "。公式の注意喚起から分かったこと、\(alert.evidence.map(\.text).joined(separator: "、"))"
+      ? "" : "。出典、\(alert.evidence.map(\.text).joined(separator: "、"))"
     return "困りごと、\(alert.summary)\(reasons)\(evidence)"
   }
 

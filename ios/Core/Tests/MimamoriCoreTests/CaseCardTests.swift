@@ -505,14 +505,14 @@ struct CaseEvidenceTests {
       {"id":"c-1","alertId":"a-1","state":"notified","notifiedAt":"2026-11-03T10:00:00.000Z",
        "resolvedAt":null,
        "alert":{"level":1,"source":"sms","summary":"SMS 宅配便を名乗る example.top","reasons":[],
-                "evidence":[{"text":"同じ手口の偽 SMS に宅配会社が注意を呼びかけている",
+                "evidence":[{"text":"日本郵政グループの注意喚起",
                              "url":"https://www.post.japanpost.jp/notification/"}]}}
       """#
     let item = try decodeCase(json)
     #expect(
       item.alert?.evidence == [
         CaseEvidence(
-          text: "同じ手口の偽 SMS に宅配会社が注意を呼びかけている",
+          text: "日本郵政グループの注意喚起",
           url: URL(string: "https://www.post.japanpost.jp/notification/")!)
       ])
   }

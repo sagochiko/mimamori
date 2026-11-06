@@ -280,7 +280,7 @@
           "id": "c-sms", "alertId": "a-5", "state": "notified", "notifiedAt": at(6), "familyNotifiedAt": at(6),
           "alert": alert(1, "sms", "SMS 宅配便を名乗る example.top", "送り主のドメインが公式と違う")
             .merging(["evidence": [[
-              "text": "同じ手口の偽 SMS に宅配会社が注意を呼びかけている",
+              "text": "日本郵政グループの注意喚起",
               "url": "https://www.post.japanpost.jp/notification/",
             ]]]) { $1 },
         ],
