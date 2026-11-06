@@ -1103,7 +1103,7 @@ describe("the tick's D1 calls", () => {
     const caseId = await dueForWatch(f.familyId, now);
     sent = [];
 
-    // Three short of the lookup and one reminder: nothing is claimed.
+    // One short of the lookup and one reminder, so the check before the lookup returns: nothing is claimed.
     const short = new ExternalBudget(40, 4);
     await watchUnanswered({ ...pushEnv, DB: countD1(pushEnv.DB, short) }, now, short);
     expect(sent).toHaveLength(0);
