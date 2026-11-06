@@ -4,13 +4,13 @@
 
 import { deleteAgentSession } from "./agents";
 import type { ExternalBudget } from "./budget";
-import { JOIN_ATTEMPT_ROW_MS } from "./join-limit";
+import { JOIN_ATTEMPT_ROW_MS, utcDay } from "./join-limit";
 
 export const RETENTION_MS = 30 * 24 * 3600_000;
 
 /**
  * Once a day. Only D1 and R2, so nothing outside can stop it, and it does not look at the tick's D1
- * calls either: its two are part of the room left below the limit (src/budget.ts). Cases that still have an agent
+ * calls either: its three are part of the room left below the limit (src/budget.ts). Cases that still have an agent
  * session are left to purgeExpiredSessions, which deletes the session first.
  */
 export async function purgeExpired(env: Env, now: number): Promise<void> {
@@ -28,11 +28,16 @@ export async function purgeExpired(env: Env, now: number): Promise<void> {
     env.DB.prepare("DELETE FROM alerts WHERE created_at < ? AND investigation_session_id IS NULL").bind(cutoff),
     env.DB.prepare("DELETE FROM smiles WHERE created_at < ?").bind(cutoff),
     env.DB.prepare("DELETE FROM invites WHERE expires_at < ?").bind(cutoff),
-    env.DB.prepare("DELETE FROM join_attempts WHERE window_start < ?").bind(now - JOIN_ATTEMPT_ROW_MS),
     env.DB.prepare(
       "DELETE FROM relays WHERE case_id IN (SELECT id FROM cases WHERE notified_at < ? AND agent_session_id IS NULL)",
     ).bind(cutoff),
     env.DB.prepare("DELETE FROM cases WHERE notified_at < ? AND agent_session_id IS NULL").bind(cutoff),
+  ]);
+
+  // Its own call after the 30-day batch, so a failure here cannot stop the 30-day deletes.
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM join_attempts WHERE window_start < ?").bind(now - JOIN_ATTEMPT_ROW_MS),
+    env.DB.prepare("DELETE FROM join_daily WHERE day < ?").bind(utcDay(now - JOIN_ATTEMPT_ROW_MS)),
   ]);
 }
 

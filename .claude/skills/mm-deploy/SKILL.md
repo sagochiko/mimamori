@@ -57,7 +57,7 @@ npx wrangler d1 migrations apply mimamori --remote
 
 ## 5. Smoke check
 
-None of these requests writes to D1. The join loop blocks joins from this network address for about a minute, including the author's iPhone on the same Wi-Fi.
+Only the join loop writes to D1: up to five rows a minute in `join_attempts` for this network address and the day's count in `join_daily` (#67), which the daily cleanup deletes. It blocks joins from this network address for about a minute, including the author's iPhone on the same Wi-Fi.
 
 ```sh
 HOST=mimamori.<subdomain>.workers.dev
