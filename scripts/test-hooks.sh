@@ -1250,25 +1250,27 @@ printf '%s\n' 'docs: 記録を足す' '' 'fox-dummy-app の書き方を見た' >
 hand mm-reviewer "$report" | env -u MM_RAW_REPORT_DIR CLAUDE_PROJECT_DIR="$T/wt" "$H/save-report.sh"
 ls "$R/docs/audits/raw"/*-mm-reviewer-a4d2c8f1.md >/dev/null 2>&1 && [[ ! -d "$T/wt/docs/audits/raw" ]] ||
   { echo "hook test failed: save-report writes raw reports into the main tree, also from a worktree"; fail=1; }
-# /mm-task step 6.1 as written: run it twice from the worktree (a failed post is retried).
-tpl=$(awk '/^   name=<YYYYMMDD-HHMM>-mm-reviewer-<id>.md$/,/review-comment.md"$/' .claude/skills/mm-task/SKILL.md | sed 's/^   //')
+# /mm-task step 6.1 as written: the one script line, run twice from the worktree (a failed post is retried).
+tpl=$(grep -m1 '^   scripts/review-record.sh <YYYYMMDD-HHMM>-mm-reviewer-<id>.md ' .claude/skills/mm-task/SKILL.md | sed 's/^   //')
 rname=$(basename "$(ls "$R/docs/audits/raw"/*-mm-reviewer-a4d2c8f1.md | head -1)")
 mkdir -p "$T/sp"
 tpl=${tpl//<YYYYMMDD-HHMM>-mm-reviewer-<id>.md/$rname}
 tpl=${tpl//<round>/1}
-tpl=${tpl//<commit>/abc1234}
+tpl=${tpl//<reviewed commit>/HEAD}
 tpl=${tpl//<scratchpad>/$T/sp}
-# Run it only when it is the block we expect: seven lines, and no gh (the real gh is on PATH here).
-if [[ $(wc -l <<<"$tpl") -eq 7 && "$tpl" != *gh\ * ]]; then
+tpl=${tpl//<issue>/12}
+tpl=${tpl/scripts\/review-record.sh/$PWD/scripts/review-record.sh}
+# Run it only when it is the line we expect: one line, the script, and no gh (the real gh is on PATH here).
+if [[ -n "$tpl" && $(wc -l <<<"$tpl") -eq 1 && "$tpl" != *gh\ * && "$tpl" != *"<"* ]]; then
   for round in 1 2; do
-    (cd "$T/wt" && bash -c "$tpl") >/dev/null 2>&1 || { echo "skill test failed: the step 6.1 template fails on run $round"; fail=1; }
+    (cd "$T/wt" && git config user.name t && git config user.email t@t && bash -c "$tpl") >/dev/null 2>&1 || { echo "skill test failed: the step 6.1 line fails on run $round"; fail=1; }
   done
 else
-  echo "skill test failed: the step 6.1 template is not the seven-line block this test expects"; fail=1
+  echo "skill test failed: the step 6.1 line is not the one script call this test expects"; fail=1
 fi
 [[ -s "$T/wt/docs/audits/raw/$rname" && ! -e "$R/docs/audits/raw/$rname" ]] && grep -q 'Status: changes needed' "$T/sp/review-comment.md" &&
   [[ "$(head -1 "$T/sp/review-comment.md")" == "## mm-reviewer の報告(原文)" ]] ||
-  { echo "skill test failed: the step 6.1 template moves the report into the worktree and builds the comment"; fail=1; }
+  { echo "skill test failed: the step 6.1 line moves the report into the worktree and builds the comment"; fail=1; }
 
 # scan-private.sh history applies the same scope: shapes in the rules and in raw reports pass, private
 # terms do not. Times of day are not checked there, in documents or messages: commits are not rewritten.
@@ -1359,4 +1361,31 @@ out=$(printf '%s\n' 'docs: Tanukiyama と11時に話した' '' 'x' >"$T/msg4" &&
 out=$(printf '%s\n' 'docs: 記録を足す' '' '15:04 に試した' >"$T/msg3" && .githooks/commit-msg "$T/msg3" 2>&1)
 [[ "$out" == *"commit message line 3: time of day"* && "$out" == *"date alone"* && "$out" != *"午後"* && "$out" != *"15:04"* ]] ||
   { echo "commit-msg test failed: a time of day names the line and the rule, says to write the date alone, and never shows the time"; fail=1; }
+# review-record.sh, /mm-task step 6.1, on a throwaway repository with a worktree. The report saved in
+# the main tree moves into the worktree, the comment ends with it byte for byte, and a second run
+# neither fails nor commits twice.
+rr=$PWD/scripts/review-record.sh rm_=$T/rr-main rw=$T/rr-wt rn=20261106-0000-mm-reviewer-abcd1234.md
+git init -q "$rm_" && git -C "$rm_" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init &&
+  git -C "$rm_" worktree add -q "$rw" -b rr-branch && mkdir -p "$rm_/docs/audits/raw" &&
+  printf 'ステータス: 承認\n\n指摘なし\n' >"$rm_/docs/audits/raw/$rn"
+( cd "$rw" && git config user.name t && git config user.email t@t &&
+  "$rr" "$rn" 1 "$(git rev-parse HEAD)" "$T/rr-comment.md" 51 >/dev/null ) ||
+  { echo "review-record test failed: the first run did not finish"; fail=1; }
+[[ ! -e "$rm_/docs/audits/raw/$rn" && -s "$rw/docs/audits/raw/$rn" ]] ||
+  { echo "review-record test failed: the report did not move into the worktree"; fail=1; }
+head -1 "$T/rr-comment.md" | grep -qx '## mm-reviewer の報告(原文)' && grep -q '^1回目、' "$T/rr-comment.md" &&
+  [[ "$(tail -n 3 "$T/rr-comment.md")" == "$(cat "$rw/docs/audits/raw/$rn")" ]] ||
+  { echo "review-record test failed: the comment is the heading, then the report byte for byte"; fail=1; }
+git -C "$rw" log -1 --format=%B | grep -q '^Refs #51$' && [[ -z "$(git -C "$rw" status --short)" ]] ||
+  { echo "review-record test failed: the report is committed on the branch with Refs"; fail=1; }
+n1=$(git -C "$rw" rev-list --count HEAD)
+rr0=$(git -C "$rw" rev-parse --short HEAD~1)
+( cd "$rw" && "$rr" "$rn" 1 "$rr0" "$T/rr-comment.md" >/dev/null ) && [[ "$(git -C "$rw" rev-list --count HEAD)" == "$n1" ]] &&
+  grep -q "^1回目、$rr0 を読んだもの" "$T/rr-comment.md" ||
+  { echo "review-record test failed: a second run uses the moved file, does not commit again, and names the reviewed commit"; fail=1; }
+( cd "$rw" && "$rr" "$rn" 1 HEAD rr-comment.md >/dev/null 2>&1 ) &&
+  { echo "review-record test failed: a relative comment path is refused"; fail=1; }
+( cd "$rw" && "$rr" 20261106-0000-mm-reviewer-none.md 1 HEAD "$T/rr-x.md" >/dev/null 2>&1 ) ||
+  ( cd "$rw" && "$rr" "$rn" 1 no-such-commit "$T/rr-x.md" >/dev/null 2>&1 ) &&
+  { echo "review-record test failed: a missing report or an unknown commit stops the run"; fail=1; }
 exit $fail
