@@ -751,6 +751,8 @@ describe("not telling the family a code or a PIN", () => {
     ["sms", undefined, "認証コード 123456。このコードはご家族にも言わないでください。"],
     ["sms", undefined, "認証コード 123456。ご家族や他人に絶対に伝えないでください。"],
     ["sms", undefined, "認証コード 123456。ご家族や他人に絶対に言わないでください。"],
+    // 言う and 伝える can carry the code itself; 知らせる is about a matter, so "家族に知らせないで" still counts below.
+    ["sms", undefined, "認証コード 1234。家族に言わないでください。"],
     ["gmail", "info@smbc.co.jp", "暗証番号はご家族にも伝えないようにしてください。"],
     ["gmail", "info@smbc.co.jp", "暗証番号は、ご家族にも言わないようにしてください。"],
     ["gmail", "info@smbc.co.jp", "パスワードを絶対にご家族にも話さないでください。"],

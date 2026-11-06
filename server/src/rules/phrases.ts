@@ -26,6 +26,7 @@ const GAP = "[^。、!?「」\\n]";
 //   "ご家族や他人に絶対に伝えないで". "この件は家族に" and "家族に知らせないで" (a matter, not words) are
 //   the scam's secrecy.
 // judgeByRules blanks these out before the secrecy rules, and only in a message with nothing a scam adds.
+// Both carry the g flag for blankOut; use them with replace, not test, which keeps state between calls.
 export const CREDENTIAL_GUARD = new RegExp(
   `(コード|番号|パスワード|暗証)(は|を|も)、?${GAP}{0,4}?(ご|お)?${FAMILY}${GAP}{0,8}?${NOT_TELL}`,
   "g",
