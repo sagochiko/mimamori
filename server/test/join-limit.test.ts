@@ -6,6 +6,7 @@ import { createExecutionContext, createScheduledController, waitOnExecutionConte
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import worker from "../src/index";
+import { dedupeDigest } from "../src/secretbox";
 import { addressGroup, JOIN_ATTEMPTS_PER_WINDOW, JOIN_WINDOW_MS, takeJoinAttempt } from "../src/join-limit";
 import { call, createFamily, invite, randomIp } from "./helpers";
 
@@ -63,12 +64,15 @@ describe("takeJoinAttempt", () => {
       new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ip))),
       (b) => b.toString(16).padStart(2, "0"),
     ).join("");
+    // Its own HKDF info, so a join key never equals an alert's sender_key for the same text.
+    const alertKey = await dedupeDigest(env.TOKEN_ENC_KEY, addressGroup(ip));
     const rows = await env.DB.prepare("SELECT key FROM join_attempts").all<{ key: string }>();
     expect(rows.results.length).toBeGreaterThan(0);
     for (const { key } of rows.results) {
       expect(key).not.toContain(ip);
       expect(key).not.toContain("198.51.100");
       expect(key).not.toBe(plain);
+      expect(key).not.toBe(alertKey);
       expect(key).toMatch(/^[0-9a-f]{64}$/);
     }
   });
