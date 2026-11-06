@@ -74,7 +74,7 @@ for i in 1 2 3 4 5 6 7 8; do curl -sS -o /dev/null -w '%{http_code} ' -X POST \
 | `GET /` | `{"error":"not_found"}` 404 | The Worker answers |
 | `POST /invites` with an unknown key | `{"error":"device_key_invalid"}` 401 | D1 has the `members` table. 500 means the migrations are missing |
 | `/.well-known/apple-app-site-association` | 404 until task 5 serves it | See step 7 |
-| 8 joins with a malformed code | `404` five times, then `429` | The rate limiter enforces. It is approximate and per location, so the first 429 can come a little later. All 404 means it does not enforce; 500 means the binding failed |
+| 8 joins with a malformed code | `404` five times, then `429` | The D1 count (`join_attempts`, #67) enforces it, so the sixth is `429` from any location. All 404 means migration `0009` or the code is missing; 500 often means the `join_attempts` table is missing |
 
 These are the answers `wrangler dev` gives locally. Paste the output in the report.
 
