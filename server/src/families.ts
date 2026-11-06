@@ -5,6 +5,7 @@ import { deleteAgentSession } from "./agents";
 import { ExternalBudget } from "./budget";
 import { revokeGmailGrant } from "./gmail";
 import { errorResponse, HttpError, json, noContent, readJson } from "./http";
+import { takeJoinAttempt } from "./join-limit";
 import { sendPush } from "./push";
 
 export const INVITE_LIFETIME_MS = 24 * 3600_000;
@@ -82,13 +83,16 @@ export async function createInvite(request: Request, env: Env): Promise<Response
  * POST /invites/{code}/join with { role, display_name }. Returns the new device key and the family
  * token (the protected person's phone puts it in the SMS and DNS addresses).
  * Unknown, used, and expired codes all answer 404 so the reply does not tell which codes exist,
- * and each client address gets only a few tries a minute, so six digits cannot be walked through.
+ * and each client address gets five tries a minute, counted in D1 (src/join-limit.ts) since the
+ * Rate Limiting binding alone let tries through in production (#67). Every try is counted before the
+ * body or the code is looked at, so malformed codes count too.
  * Everyone already in the family is told who joined.
  */
 export async function joinInvite(request: Request, env: Env, ctx: ExecutionContext, code: string): Promise<Response> {
   const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  // The binding is the cheap first filter; the D1 count is the one that holds.
   const { success } = await env.JOIN_LIMITER.limit({ key: `join:${ip}` });
-  if (!success) throw new HttpError(429, "too_many_attempts");
+  if (!success || !(await takeJoinAttempt(env, ip, Date.now()))) throw new HttpError(429, "too_many_attempts");
 
   const body = await readJson(request);
   const memberRole = role(body.role);

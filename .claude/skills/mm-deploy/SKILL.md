@@ -41,7 +41,7 @@ npx wrangler deploy
 First deploy:
 
 - Wrangler creates the D1 database `mimamori`, the R2 bucket, and the queue `mimamori-judge`, and writes their IDs back into `wrangler.jsonc`. Commit that diff on a branch (`chore(server): 最初のデプロイで作った資源の ID を書き戻す`).
-- Whether the Rate Limiting binding (`ratelimits`, `JOIN_LIMITER`) works on the Free plan is not confirmed; this deploy shows it. If the deploy fails on it, stop, record it with `/mm-devlog`, and ask the author how to proceed (a paid plan, or another way to limit joins as its own issue). If it deploys, step 5 shows whether it enforces.
+- The Rate Limiting binding (`ratelimits`, `JOIN_LIMITER`) deploys on the Free plan (2026-11-04), but it counts per location and only roughly, and it let 23 tries in a row through. The join limit is held by the D1 count `join_attempts` (#67); the binding is only a first filter. Since `join_attempts` is read on every join, apply a migration that adds it (`0009`) before deploying code that reads it.
 - If Wrangler asks for a workers.dev subdomain, the account has none yet. Choose it in Chrome so that the author only confirms: load the Claude in Chrome tools in one ToolSearch call (the `chrome-browser` skill), open `https://dash.cloudflare.com/?to=/:account/workers-and-pages` in a new tab, select Change next to Your subdomain, and type a name. Read only the subdomain field with `find`; the page also lists the account's Workers, which can belong to the author's earlier projects, so do not read the whole page or take screenshots. The name must hold no person's name (it becomes part of the public URL; `mimamori-` and a few random letters is enough). If the sign-in page appears first, click into its password field and ask the author only to sign in. Then ask the author in one line to press the dialog's confirm button, and wait with `run_in_background` until the name resolves: `for i in $(seq 360); do [ -n "$(dig +short <name>.workers.dev)" ] && exit 0; sleep 5; done; exit 1`. Since 2026-11-04 the deploy no longer stops for approval, so it can no longer serve as the wait. A name nobody has claimed does not resolve (checked on 2026-11-04 with `dig` on a random name); that a claimed name resolves before any Worker is on it is not confirmed, so if the loop times out, ask once whether the button was pressed. Then run `npx wrangler deploy` again. If it still asks for a subdomain, the button was not pressed yet; ask once more.
 - Until step 4 has run, every 5-minute Cron tick logs `cron job failed retention-sessions` in the tail: that job queries the `cases` table (`src/retention.ts`), which does not exist before the migration, and `runScheduled` in `src/cron.ts` catches the error and logs it instead of failing. If the daily `retention` run (`dailyAtJst` in `src/cron.ts`) falls in between, `cron job failed retention` appears once for the same reason. Both stop after the migration; if they do not, look at the job.
 - Take the `https://mimamori.<subdomain>.workers.dev` URL from the output. `HOST` below is that URL without `https://`. A new workers.dev subdomain can answer 523 for about a minute; wait and retry.
@@ -57,7 +57,7 @@ npx wrangler d1 migrations apply mimamori --remote
 
 ## 5. Smoke check
 
-None of these requests writes to D1. The join loop blocks joins from this network address for about a minute, including the author's iPhone on the same Wi-Fi.
+Only the join loop writes to D1: up to five rows a minute in `join_attempts` for this network address and the day's count in `join_daily` (#67), which the daily cleanup deletes. It blocks joins from this network address for about a minute, including the author's iPhone on the same Wi-Fi.
 
 ```sh
 HOST=mimamori.<subdomain>.workers.dev
@@ -74,7 +74,7 @@ for i in 1 2 3 4 5 6 7 8; do curl -sS -o /dev/null -w '%{http_code} ' -X POST \
 | `GET /` | `{"error":"not_found"}` 404 | The Worker answers |
 | `POST /invites` with an unknown key | `{"error":"device_key_invalid"}` 401 | D1 has the `members` table. 500 means the migrations are missing |
 | `/.well-known/apple-app-site-association` | 404 until task 5 serves it | See step 7 |
-| 8 joins with a malformed code | `404` five times, then `429` | The rate limiter enforces. It is approximate and per location, so the first 429 can come a little later. All 404 means it does not enforce; 500 means the binding failed |
+| 8 joins with a malformed code | `404` five times, then `429` | The D1 count (`join_attempts`, #67) enforces it, so the sixth is `429` from any location. All 404 means migration `0009` or the code is missing; 500 often means the `join_attempts` table is missing |
 
 These are the answers `wrangler dev` gives locally. Paste the output in the report.
 

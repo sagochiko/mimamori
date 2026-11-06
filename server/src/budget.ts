@@ -14,7 +14,7 @@ export const EXTERNAL_CALLS_PER_INVOCATION = 40;
 /**
  * What the tick's jobs may plan for. Ten below the 50: a job's estimate leaves out the UPDATE that
  * forgets a device APNs refused (src/push.ts, at most one per device of the item being sent), and the
- * daily cleanup (src/retention.ts, two calls) runs without looking.
+ * daily cleanup (src/retention.ts, three calls) runs without looking.
  */
 export const D1_CALLS_PER_TICK = 40;
 
