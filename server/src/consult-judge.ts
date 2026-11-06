@@ -172,6 +172,22 @@ const UNANSWERED_REASON = "AI が答えきれなかった相談";
 const CONTACT =
   /メッセージ|メール|sms|ショートメール|電話|リンク|url|サイト|ページ|アプリ.{0,3}(入れ|インストール|ダウンロード)/;
 
+// The whole question asks for the phone's own sound or letters and nothing more ("電話の音を大きくしたい",
+// "えっと、メールの字を大きくしたい", "電話の音を大きくするにはどうすればいい?"): a setting, not a call
+// or a message (#84). Anything before the words of the setting ("その電話の", "警察からの電話の") or
+// after its fixed endings ("…して、折り返していい?", review 2 of PR #159) is about that call or mail.
+const OWN_SETTING_ONLY = new RegExp(
+  [
+    "^((ねえ|ねぇ|えっと|えーと|ちょっと|うーん)[\\s\\p{P}]*)*",
+    "(電話|メール|メッセージ|sms|ショートメール)の?(着信音|呼び出し音|通知音|音量|音|文字|字)[\\s\\p{P}]*(を|が|は)?",
+    "(大きく|小さく|上げ|下げ|変え|聞こえ)",
+    "(たい|したい|して(ほしい)?|できる|できない|られる|られない|ない|する|る)?",
+    "(には|方法|の|ん)?(どうやるの|どうやる|どうすれば(いい)?|どうしたら(いい)?|は)?",
+    "(か|の|ね|よ|けど|んだけど)?[\\s\\p{P}\\p{S}]*$",
+  ].join(""),
+  "u",
+);
+
 const KEYS = ["kind", "level", "reasons", "basis", "action", "handoff", "injection_suspected", "topic"] as const;
 
 const CONSULT_SCHEMA = {
@@ -525,6 +541,57 @@ function policeReasons(said: Said, withoutPassedOn = false): string[] {
     .map((rule) => rule.reason);
 }
 
+// Guidance on these is stopped after she asked about any topic the AI does not guide (#84).
+const ALWAYS_GUARDED = ["送金に関わる相談", "認証コードに関わる相談"];
+
+// A clause that keeps her away from a topic rather than walking her through it, told by how it ends:
+// "暗証番号は誰にも教えないでね", "送金はせず", "お金や暗証番号を聞かれたら止めて", "振込先に問題ないか
+// 家族に確かめて". Only the end counts, since a step may follow a caution word in the same clause
+// ("家族に確かめてから暗証番号を入れて", "迷わずに振込を押して", review 1 of PR #159). "忘れないで",
+// "止めないで", "やめないで" ask her to do it, so they are steps. A word list, so it cannot be complete;
+// a clause it misses counts as guidance, which stops the line (the safe side).
+const CAUTION_END =
+  /((?<!忘れ|止め|やめ)ないで|ないように(して|しよう|しましょう)?|ないこと|ないほうがいい|ない方がいい|(教え|見せ|言わ|渡さ|送ら|払わ|入れ|押さ|開か|出さ|し|応じ|振り込ま|買わ|行か)ない|(?<!ま)ず|ずに|せず|せずに|ては?(いけない|いけません|だめ|ダメ)|ちゃ(いけない|いけません|だめ|ダメ)|禁止|厳禁|やめて|やめましょう|止めて|止めましょう|(教え|言い|入れ|押し|渡し|送り|払い|聞き|し)ません|ことは(ありません|ない)|か家族に(確かめ|確認|相談|聞)(て|いて|しましょう|きましょう)?)$/;
+
+function cautions(part: string): boolean {
+  return CAUTION_END.test(part.replace(/(ね|よ|ください)+$/, ""));
+}
+
+/**
+ * The topics the AI does not guide (SENSITIVE) that this line from Claude walks her through: a
+ * sentence, or a part of one that ends in "て、" or "ないで、" and the like, with such a word and not
+ * ending as a caution (CAUTION_END). A part that ends in a particle ("暗証番号は、") goes on into the next (#84).
+ */
+function guidedIn(line: string): string[] {
+  const whole = normalize(line);
+  const parts = whole
+    .split(/[。!?！？\n]+/)
+    .flatMap((sentence) => {
+      const out: string[] = [];
+      let carry = "";
+      for (const piece of sentence.split(/[、,]/)) {
+        carry += piece;
+        if (/(は|を|が|も|と|へ|の|や)$|(?<!ない|ん|ず)(に|で)$/.test(carry.trim())) continue;
+        out.push(carry);
+        carry = "";
+      }
+      return carry === "" ? out : [...out, carry];
+    })
+    .map((part) => part.trim())
+    .filter((part) => part !== "");
+  // Money and codes count wherever their words are, a caution or not, as before #84: a list of
+  // caution forms kept letting steps through ("暗証番号を入れるのを忘れずに", "振り込まなくちゃだめ",
+  // review 2 of PR #159). Only the other topics are spared a caution.
+  // The whole line is matched as before #84, so words split by a comma still count ("メールで届いた、
+  // 番号を入れて", "写真はまとめて、消して", review 3 of PR #159). A topic is let go only when every part
+  // it matches ends as a caution: the one way this counts less than before #84.
+  return SENSITIVE.filter(({ reason, pattern }) => {
+    const hits = parts.filter((part) => pattern.test(part));
+    if (!pattern.test(whole) && hits.length === 0) return false;
+    return ALWAYS_GUARDED.includes(reason) || hits.length === 0 || !hits.every(cautions);
+  }).map((s) => s.reason);
+}
+
 /** A line from Claude that tells no one it is fine, nor that the family was told. */
 function usable(line: string): boolean {
   return (
@@ -545,6 +612,26 @@ function usable(line: string): boolean {
  */
 function readable(line: string): boolean {
   return usable(line) && !talksJudgment(line);
+}
+
+/**
+ * An action from a scam answer that may be read out: readable, and walking her through none of the
+ * topics the AI does not guide (guidedIn). Phone guidance is checked against them after she asked
+ * about one (decidePlan); a scam answer always, since it is read out too (#84).
+ */
+function readsOut(action: string): boolean {
+  return readable(action) && (guidedIn(action).length === 0 || asksFamilyOnly(action));
+}
+
+/**
+ * The whole action only asks her to check with the family, with no step before it ("振込先に問題ないか
+ * 家族に確かめて", a line main reads out and its tests keep). For a scam answer only: phone guidance
+ * on money or codes goes to the family even in this form.
+ */
+function asksFamilyOnly(action: string): boolean {
+  return /^[^、。,て!?！？\n]*か家族に(確かめ|確認し|相談し|聞い)て(ね|よ|ください)*[。!?！？]*$/.test(
+    normalize(action).trim(),
+  );
 }
 
 /**
@@ -723,10 +810,15 @@ function decidePlan(
   // Earlier in the conversation she asked about one of those topics, and her next words need not
   // point back by any word ("次は何を押すの?"): Claude's phone guidance is then checked too, and
   // guidance on one of them is not read out (review of PR #79, second round).
-  const askedEarlier = said.earlier.some((t) => SENSITIVE.some(({ pattern }) => pattern.test(normalize(t))));
+  // Only guidance counts, not a caution ("暗証番号は誰にも教えないでね", guidedIn), and only on what she
+  // asked about, or on sending money or a code, which the scam is after whatever she asked first:
+  // "ネットワーク設定をリセットして" for "Wi-Fi がつながらない" after "振込のやり方を教えて" is read out (#84).
+  const askedEarlier = SENSITIVE.filter(({ pattern }) => said.earlier.some((t) => pattern.test(normalize(t)))).map(
+    (s) => s.reason,
+  );
   const guided =
-    askedEarlier && claude !== null && claude.kind === "help"
-      ? SENSITIVE.filter(({ pattern }) => pattern.test(normalize(claude.action))).map((s) => s.reason)
+    askedEarlier.length > 0 && claude !== null && claude.kind === "help"
+      ? guidedIn(claude.action).filter((r) => askedEarlier.includes(r) || ALWAYS_GUARDED.includes(r))
       : [];
   const sensitive = [...new Set([...ownSensitive, ...guided])];
   const reasons = [...decision.reasons];
@@ -786,13 +878,13 @@ function decidePlan(
   if (!unanswered && level <= 2) {
     // A warning, not guidance: what was seen, then what to do.
     const basis = claude && claude.kind === "scam" && readable(claude.basis) ? claude.basis : LIKE_SCAM_BASIS;
-    const action = claude && claude.kind === "scam" && readable(claude.action) ? claude.action : SCAM_ACTION;
+    const action = claude && claude.kind === "scam" && readsOut(claude.action) ? claude.action : SCAM_ACTION;
     return { level, reasons, reply: `${basis}${action}`, toFamily: true, record: true, sign: true, ...base };
   }
   if (claude !== null && claude.kind === "scam") {
     // Level 3: little concern, and still never "safe".
     const basis = readable(claude.basis) ? claude.basis : "";
-    const reply = lowConcernReply(basis, readable(claude.action) ? claude.action : null);
+    const reply = lowConcernReply(basis, readsOut(claude.action) ? claude.action : null);
     return { level, reasons, reply, toFamily: false, record: true, sign: false, ...base };
   }
   if (claude !== null && claude.kind === "help" && (told.some((t) => CONTACT.test(t)) || rule.reasons.length > 0)) {
@@ -863,7 +955,11 @@ export async function judgeConsult(
   // or one the rules see something in. "Wi-Fi がつながらない" after it is answered as on its own
   // (review of PR #79, second round). Her earlier words only: an "ai" turn is what the device kept
   // of the server's answers, not hers.
-  const goesOn = pointsBack(text) || CONTACT.test(normalize(text)) || rule.reasons.length > 0;
+  // "電話の音を大きくしたい" asks for the phone's own sound and nothing more, not about a call or a
+  // message (#84, OWN_SETTING_ONLY). CONTACT itself is left as it is.
+  const t = normalize(text).trim();
+  const aboutContact = CONTACT.test(t) && !OWN_SETTING_ONLY.test(t);
+  const goesOn = pointsBack(text) || aboutContact || rule.reasons.length > 0;
   const earlierKeepsOut = goesOn && said.earlier.some((t) => matchSpans(INJECTION, normalize(t)).length > 0);
   const floor = earlierKeepsOut ? rules({ source: "consult", text: allOf(said).join("\n") }) : rule;
   return { ...plan(said, rule, claude, history, floor), script, rule };
