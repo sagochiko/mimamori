@@ -16,7 +16,7 @@
 // - /docs/en/test-and-evaluate/strengthen-guardrails/mitigate-jailbreaks: "JSON-encode untrusted
 //   content" so it cannot close a quote or a tag; the earlier turns go in as one JSON array.
 
-import { CLAUDE_TIMEOUT_MS, decide, PLACEHOLDER_REASON, soundsSafe, talksJudgment, type Level } from "./claude";
+import { CLAUDE_TIMEOUT_MS, decide, PLACEHOLDER_REASON, soundsSafe, type Level } from "./claude";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
 import {
   CONSULT_INJECTION,
@@ -667,27 +667,6 @@ function usable(line: string): boolean {
   );
 }
 
-/**
- * A line from Claude that may be read out to her in a scam answer: usable, and in her words rather
- * than the judgment's ("手口の印", #121). Phone guidance is checked by usable() only: there 印 is a
- * mark on the screen ("画面に印が無ければ"), and a stopped guidance line goes to the family as one the
- * AI could not answer (review 2 of PR #129). The family's line and reasons keep the signs, so only
- * usable().
- */
-function readable(line: string): boolean {
-  return usable(line) && !talksJudgment(line);
-}
-
-/**
- * A level 3 answer always ends with the fixed "stop at money or a PIN and ask the family". Claude's
- * own action stays in front of it, unless it already says the same (it mentions the PIN).
- */
-function lowConcernReply(basis: string, action: string | null): string {
-  const own = action === null ? "" : action.trim().replace(/[。、]+$/, "");
-  const lead = own === "" || own.includes("暗証番号") ? "" : `${own}。`;
-  return `${basis}${lead}${LOW_CONCERN_ACTION}`;
-}
-
 export interface Plan {
   level: Level;
   reasons: string[];
@@ -901,23 +880,23 @@ function decidePlan(
     return { level, reasons, reply: ASK_AGAIN_REPLY, toFamily: false, record: false, sign: false, ...base };
   }
 
-  // On an image, Claude's words about a scam (its basis and action) are never read to her, at any level:
-  // text on the image can steer them to "open the link" or "enter the code", and no net can tell such
-  // lines from good ones (reviews 2 and 3 of PR #186). She hears the fixed lines instead; the level and
-  // who is told are Claude's and the rules' as before.
-  const claudeSpeaks = !image;
+  // Claude's words about a scam (its basis and action) are never read to her, at any level, on an image
+  // or on her words alone: text on an image, a message she reads out, or earlier turns can steer them to
+  // "open the link" or "enter the code", and no net can tell such lines from good ones ("リンクは開かないで")
+  // (reviews 2 and 3 of PR #186, #188). At level 3 the family is not told, so a steered line there would
+  // reach her with no one to catch it. She hears the fixed lines instead; the level and who is told are
+  // Claude's and the rules' as before.
 
   // A topic the AI does not guide, or one Claude cannot answer: the family takes it, at any level, and
   // Claude's action is not read out (it may be the very guidance that is not given). At level 2 or
   // heavier she still hears the warning and what to do, then that the family was told.
   if (sensitive.length > 0 || (claude?.handoff ?? false)) {
     if (!unanswered && level <= 2) {
-      const basis = claudeSpeaks && claude && claude.kind === "scam" && readable(claude.basis) ? claude.basis : LIKE_SCAM_BASIS;
       const both = [...new Set([...sensitive, ...reasons])];
       return {
         level,
         reasons: both,
-        reply: `${basis}${SCAM_ACTION}。${TOLD_FAMILY}`,
+        reply: `${LIKE_SCAM_BASIS}${SCAM_ACTION}。${TOLD_FAMILY}`,
         toFamily: true,
         record: true,
         sign: true,
@@ -938,18 +917,12 @@ function decidePlan(
     };
   }
   if (!unanswered && level <= 2) {
-    // A warning, not guidance: what was seen, then what to do. On an image neither is Claude's own words
-    // (claudeSpeaks below).
-    const basis = claudeSpeaks && claude && claude.kind === "scam" && readable(claude.basis) ? claude.basis : LIKE_SCAM_BASIS;
-    const action = claudeSpeaks && claude && claude.kind === "scam" && readable(claude.action) ? claude.action : SCAM_ACTION;
-    return { level, reasons, reply: `${basis}${action}`, toFamily: true, record: true, sign: true, ...base };
+    // A warning, not guidance: what was seen, then what to do, in the fixed lines (see above).
+    return { level, reasons, reply: `${LIKE_SCAM_BASIS}${SCAM_ACTION}`, toFamily: true, record: true, sign: true, ...base };
   }
   if (claude !== null && claude.kind === "scam") {
-    // Level 3: little concern, and still never "safe".
-    const basis = claudeSpeaks && readable(claude.basis) ? claude.basis : "";
-    const action = claudeSpeaks && readable(claude.action) ? claude.action : null;
-    const reply = lowConcernReply(basis, action);
-    return { level, reasons, reply, toFamily: false, record: true, sign: false, ...base };
+    // Level 3: little concern, and still never "safe". The fixed line only (see above).
+    return { level, reasons, reply: LOW_CONCERN_ACTION, toFamily: false, record: true, sign: false, ...base };
   }
   if (
     claude !== null &&
