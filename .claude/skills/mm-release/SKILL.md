@@ -102,6 +102,7 @@ Load the Claude in Chrome tools in one ToolSearch call (the `chrome-browser` ski
 If the sign-in page appears instead, click into its password field so that only the password is left to type, and ask the author only to sign in (password and two-factor code). Before asking, run the check below once; if it already succeeds, another tab is signed in, so reload this tab instead of asking. Then wait with `run_in_background`. The pattern is anchored to the start of the URL and includes the app's ID, so a sign-in URL that carries the same address in its query does not match, and neither does the app list. Since 2026-11-07 a signed-in page can carry the team in its path (`https://appstoreconnect.apple.com/teams/<team id>/apps/<app id>/testflight/ios`), so the pattern accepts that form too; the older one missed a finished sign-in for 30 minutes.
 
 ```sh
+ASC_APP_ID=6830395335   # again here: run_in_background starts a new shell without the block above
 on_app() { osascript -e 'tell application "Google Chrome" to get URL of every tab of every window' 2>/dev/null \
   | tr ',' '\n' | grep -q -E "^ *https://appstoreconnect\.apple\.com/(teams/[^/]+/)?apps/$ASC_APP_ID/testflight"; }
 for i in $(seq 360); do on_app && exit 0; sleep 5; done; exit 1
