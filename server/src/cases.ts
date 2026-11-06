@@ -19,7 +19,7 @@
 
 import { storedEvidence, type Evidence } from "./agents";
 import { requireMember, type Role } from "./auth";
-import { ExternalBudget } from "./budget";
+import { D1_CALLS_PER_TICK, ExternalBudget } from "./budget";
 import { HttpError, json } from "./http";
 import { sendPush } from "./push";
 
@@ -223,6 +223,12 @@ const FIRST_NOTICE_BATCH = 20;
  * their device tokens, and letting go of the claim.
  */
 const FIRST_NOTICE_D1 = 4;
+/**
+ * The most of the tick's D1 calls the first-notice retry may use. A notice APNs keeps failing (not 410)
+ * is not given up for a day, and without this nine of them would take every tick's calls and keep the
+ * 30-minute watch from telling her NOT_REACHED (急ぐなら電話して). Half leaves the watch room for five.
+ */
+const FIRST_NOTICE_D1_SHARE = D1_CALLS_PER_TICK / 2;
 /** The same for one reminder: the members, the claim, and the device tokens of each of the two notices. */
 const WATCH_D1 = 4;
 
@@ -392,6 +398,8 @@ export async function openCase(env: Env, alertId: string, budget: ExternalBudget
  */
 export async function sendFirstNotices(env: Env, now: number, budget: ExternalBudget): Promise<void> {
   if (budget.d1Remaining < 1 + FIRST_NOTICE_D1) return;
+  // Outside the tick d1Remaining is unlimited, and so is this.
+  const leave = budget.d1Remaining - FIRST_NOTICE_D1_SHARE;
   const due = await env.DB.prepare(
     `SELECT c.id, c.family_id, a.level, a.summary FROM cases c LEFT JOIN alerts a ON a.id = c.alert_id
       WHERE c.state != 'resolved' AND c.family_notified_at IS NULL AND c.notified_at > ?
@@ -403,7 +411,7 @@ export async function sendFirstNotices(env: Env, now: number, budget: ExternalBu
     .all<{ id: string; family_id: string; level: number | null; summary: string | null }>();
   for (const c of due.results) {
     // Left for the next tick before it is claimed, so it is not held for CLAIM_TTL_MS.
-    if (budget.d1Remaining < FIRST_NOTICE_D1) break;
+    if (budget.d1Remaining < FIRST_NOTICE_D1 || budget.d1Remaining - FIRST_NOTICE_D1 < leave) break;
     const result = await tellFamily(
       env,
       { id: c.id, familyId: c.family_id, level: c.level, summary: c.summary },

@@ -5,7 +5,7 @@ import { createExecutionContext, createScheduledController, waitOnExecutionConte
 import { env } from "cloudflare:workers";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { ExternalBudget } from "../src/budget";
+import { countD1, ExternalBudget } from "../src/budget";
 import {
   CLAIM_TTL_MS,
   NO_REPLY_YET,
@@ -17,6 +17,7 @@ import {
   sendFirstNotices,
   tellFamilyHeavier,
   UNANSWERED_AFTER_MS,
+  watchUnanswered,
 } from "../src/cases";
 import { JOBS } from "../src/cron";
 import worker from "../src/index";
@@ -1050,7 +1051,8 @@ describe("the tick's D1 calls", () => {
       expect(r?.family_notice_claimed_at).toBeNull();
     }
 
-    for (let t = 1; t <= 3; t++) {
+    // At most half of the tick's calls go to first notices (four cases), so twenty take five ticks.
+    for (let t = 1; t <= 4; t++) {
       expect(await countedTick(now + t * 5 * 60_000)).toBeLessThanOrEqual(D1_LIMIT_PER_INVOCATION);
     }
     for (const alertId of alertIds) {
@@ -1059,6 +1061,61 @@ describe("the tick's D1 calls", () => {
     // Every case once to each family device, never twice.
     expect(to(f.author)).toHaveLength(20);
     expect(to(f.sister)).toHaveLength(20);
+  });
+
+  /** A case the family was told of 40 minutes ago and has not resolved, due for the 30-minute watch. */
+  async function dueForWatch(familyId: string, now: number): Promise<string> {
+    const caseId = crypto.randomUUID();
+    await env.DB.prepare(
+      "INSERT INTO cases (id, family_id, alert_id, state, notified_at, family_notified_at) VALUES (?, ?, ?, 'notified', ?, ?)",
+    )
+      .bind(caseId, familyId, await newAlert(familyId), now - 40 * 60_000, now - 40 * 60_000)
+      .run();
+    return caseId;
+  }
+
+  it("still runs the watch when first notices keep failing, so she hears 急ぐなら電話して", async () => {
+    const now = Date.now();
+    // A family whose devices APNs keeps refusing (not 410), with twenty untold cases from today.
+    const failing = await family();
+    apnsFailsFor([failing.author.token, failing.sister.token, failing.mother.token]);
+    for (let i = 0; i < 20; i++) {
+      await env.DB.prepare(
+        "INSERT INTO cases (id, family_id, alert_id, state, notified_at) VALUES (?, ?, ?, 'notified', ?)",
+      )
+        .bind(crypto.randomUUID(), failing.familyId, await newAlert(failing.familyId), now - i * 1000)
+        .run();
+    }
+    const f = await family();
+    const caseId = await dueForWatch(f.familyId, now);
+    sent = [];
+
+    expect(await countedTick(now)).toBeLessThanOrEqual(D1_LIMIT_PER_INVOCATION);
+
+    expect(to(f.mother).map((s) => s.body)).toEqual([NO_REPLY_YET]);
+    expect(to(f.author)).toEqual([expect.objectContaining({ title: NOT_RESOLVED_YET })]);
+    expect((await caseRow(caseId))?.renotified_at).not.toBeNull();
+  });
+
+  it("plans one reminder for exactly the D1 calls it takes, her notice and the family's", async () => {
+    const now = Date.now();
+    const f = await family();
+    const caseId = await dueForWatch(f.familyId, now);
+    sent = [];
+
+    // Three short of the lookup and one reminder: nothing is claimed.
+    const short = new ExternalBudget(40, 4);
+    await watchUnanswered({ ...pushEnv, DB: countD1(pushEnv.DB, short) }, now, short);
+    expect(sent).toHaveLength(0);
+    expect((await caseRow(caseId))?.renotified_at).toBeNull();
+
+    // The lookup and one reminder: the members, the claim, her tokens, the family's tokens.
+    const exact = new ExternalBudget(40, 5);
+    await watchUnanswered({ ...pushEnv, DB: countD1(pushEnv.DB, exact) }, now, exact);
+    expect(to(f.mother).map((s) => s.body)).toEqual([NO_REPLY_YET]);
+    expect(to(f.author)).toHaveLength(1);
+    expect(to(f.sister)).toHaveLength(1);
+    expect(exact.d1Remaining).toBe(0);
   });
 
   it("reminds about twenty unresolved cases over several ticks, each tick within the limit", async () => {
