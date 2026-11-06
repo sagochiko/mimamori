@@ -604,3 +604,44 @@ struct ChatRowTests {
     #expect(log.history(at: now + 60).map(\.text) == ["教えて"])
   }
 }
+
+@Suite("端末の中だけの案内(空き容量の声かけ、#19)")
+struct LocalGuideTests {
+  @Test("案内は AI の答えとして画面に出て残るが、裏側に渡す前のやり取りには入らない")
+  func guideStaysOnDevice() {
+    let store = MemoryChatStore()
+    var keeper = ChatKeeper(store: store)
+    keeper.load(at: .t0)
+    keeper.guide(CheckupPolicy.storageGuide, at: .t0)
+    #expect(keeper.log.messages.last?.role == .ai)
+    #expect(keeper.log.messages.last?.text == CheckupPolicy.storageGuide)
+    #expect(store.saves == 1)
+
+    let history = keeper.send("どれを消せばいい?", at: .t0 + 30)
+    #expect(history.isEmpty)
+    keeper.answered("写真から見てみよう", at: .t0 + 32)
+    let next = keeper.send("それってどういうこと?", at: .t0 + 60)
+    #expect(next.map(\.text) == ["どれを消せばいい?", "写真から見てみよう"])
+    #expect(!next.contains { $0.text == CheckupPolicy.storageGuide })
+  }
+
+  @Test("開き直しても、端末の中だけの印は残る")
+  func markSurvivesReload() {
+    let store = MemoryChatStore()
+    var first = ChatKeeper(store: store)
+    first.load(at: .t0)
+    first.guide(CheckupPolicy.storageGuide, at: .t0)
+
+    var again = ChatKeeper(store: store)
+    again.load(at: .t0 + 1)
+    #expect(again.log.history(at: .t0 + 2).isEmpty)
+    #expect(again.log.history(for: "それってどういうこと?", at: .t0 + 2).isEmpty)
+  }
+
+  @Test("前の版で残した記録(印のキーが無い)も読める")
+  func oldRecordsDecode() throws {
+    let json = #"{"messages":[{"id":"00000000-0000-0000-0000-000000000001","role":"ai","text":"前の答え","at":0}]}"#
+    let log = try JSONDecoder().decode(ChatLog.self, from: Data(json.utf8))
+    #expect(log.messages.first?.isLocalOnly == false)
+  }
+}

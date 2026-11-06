@@ -125,6 +125,11 @@ public final class APIClient: Sendable {
     return answer.deadlineHour
   }
 
+  /// `POST /heartbeat`. Only the protected member's iPhone calls it; the body is `HeartbeatReport`.
+  public func heartbeat(_ report: HeartbeatReport) async throws {
+    try await perform("POST", "heartbeat", body: report, auth: true)
+  }
+
   /// `DELETE /families/me` ("すべて消す"). The server deletes the whole family, this device's member
   /// included, so the stored key is cleared only after a 2xx. Any failure (502 `cleanup_failed` when
   /// Google or Anthropic refused, offline) leaves the key as it was, and pressing again finishes the job.

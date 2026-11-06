@@ -108,6 +108,10 @@ public final class Session {
     try await call { try await $0.gmailConnect() }
   }
 
+  public func heartbeat(_ report: HeartbeatReport) async throws {
+    try await call { try await $0.heartbeat(report) }
+  }
+
   /// "すべて消す". After a 2xx the key is gone, so the route becomes role selection; on failure it stays.
   public func deleteEverything() async throws {
     try await call { try await $0.deleteEverything() }

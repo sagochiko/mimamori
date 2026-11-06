@@ -7,6 +7,7 @@ import { watchInvestigations } from "./agents";
 import { countD1, D1_CALLS_PER_TICK, ExternalBudget } from "./budget";
 import { sendFirstNotices, watchUnanswered } from "./cases";
 import { watchGmail } from "./gmail";
+import { watchHeartbeats } from "./heartbeat";
 import { purgeExpired, purgeExpiredSessions } from "./retention";
 import { notifyMissedSmiles } from "./smiles";
 import { JST_OFFSET_MS } from "./time";
@@ -37,6 +38,8 @@ export const JOBS: Job[] = [
   // Research sessions whose result no webhook brought (task 11). After the notices and the mail watch,
   // since it only adds to cards that were already sent, and before the cleanup.
   { name: "investigation-watch", everyMinutes: 5, run: watchInvestigations },
+  // Her iPhone has not said it is still watching for 48 hours (task 17). Before the cleanup.
+  { name: "heartbeat-watch", everyMinutes: 5, run: watchHeartbeats },
   // 04:00 JST, when the family is least likely to be using the app.
   { name: "retention", dailyAtJst: "04:00", run: purgeExpired },
   // Agent sessions of old cases, a few at a time, so a backlog finishes over the following ticks.

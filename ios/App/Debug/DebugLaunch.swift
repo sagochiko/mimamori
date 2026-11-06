@@ -12,6 +12,26 @@
     /// the front (`DailyCheckInNotifier.postSoon`).
     static var checkInAfter: TimeInterval? { seconds(after: "-mimamori-checkin-after-seconds") }
 
+    /// `-mimamori-free-bytes <n>`: the free space the checkup reads (#19). The simulator reads the
+    /// Mac's disk, so without it the free-space prompt and the guide never show there.
+    static var freeBytes: Int64? {
+      let args = ProcessInfo.processInfo.arguments
+      guard let i = args.firstIndex(of: "-mimamori-free-bytes"), i + 1 < args.count,
+        let value = Int64(args[i + 1]), value >= 0
+      else { return nil }
+      return value
+    }
+
+    /// `-mimamori-now-hour <0-23>`: the hour the checkups take as now (#19), so the free-space prompt
+    /// can be filmed on the simulator at night, when it never shows (22:00 up to 7:00).
+    static var nowHour: Int? {
+      let args = ProcessInfo.processInfo.arguments
+      guard let i = args.firstIndex(of: "-mimamori-now-hour"), i + 1 < args.count,
+        let value = Int(args[i + 1]), (0...23).contains(value)
+      else { return nil }
+      return value
+    }
+
     private static func seconds(after flag: String) -> TimeInterval? {
       let args = ProcessInfo.processInfo.arguments
       guard let i = args.firstIndex(of: flag), i + 1 < args.count,

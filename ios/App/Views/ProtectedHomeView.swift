@@ -53,6 +53,7 @@ struct ProtectedHomeView: View {
     .onAppear {
       model.loadChat()
       model.refreshFollowUp()
+      model.refreshCheckup()
       #if DEBUG
         if draft.isEmpty, let text = ScreenshotStubTransport.draftText { draft = text }
         if ScreenshotStubTransport.noticesOpen { noticesOpen = true }
@@ -64,6 +65,7 @@ struct ProtectedHomeView: View {
       guard phase == .active else { return }
       model.loadChat()
       model.refreshFollowUp()
+      model.refreshCheckup()
       Task { await model.loadGmail() }
     }
   }
@@ -78,6 +80,9 @@ struct ProtectedHomeView: View {
       VStack(spacing: 8) {
         if let prompt = model.followUpPrompt {
           FollowUpView(prompt: prompt) { model.followUpFine() }
+        }
+        if let prompt = model.checkupPrompt {
+          CheckupView(prompt: prompt, onLater: { model.checkupLater() }, onStart: { model.startStorageGuide() })
         }
         if !notices.isEmpty {
           NoticeStrip(notices: notices, open: $noticesOpen)
@@ -455,6 +460,38 @@ struct FollowUpView: View {
         .font(.subheadline.weight(.semibold))
         .buttonStyle(.bordered)
         .accessibilityHint("押すと、この声かけを閉じます。家族には何も知らせません")
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 10)
+    .background(RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground)))
+  }
+}
+
+/// "iPhoneの空きが残り0.8GB。一緒に空けよう" with "あとで" and "空ける" (#19). The same row as the
+/// call follow-up, so her screen gets no new kind of control.
+struct CheckupView: View {
+  let prompt: String
+  let onLater: () -> Void
+  let onStart: () -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text(prompt)
+        .font(.subheadline.weight(.semibold))
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityHint("iPhone の空きが少なくなっています。空けると、写真やアプリの更新が入らなくなるのを防げます。広告の掃除アプリは入れなくて大丈夫です")
+      HStack(spacing: 12) {
+        Spacer()
+        Button("あとで") { onLater() }
+          .font(.subheadline)
+          .buttonStyle(.bordered)
+          .accessibilityHint("押すと、この声かけを1日出しません")
+        Button("空ける") { onStart() }
+          .font(.subheadline.weight(.semibold))
+          .buttonStyle(.borderedProminent)
+          .accessibilityHint("押すと、設定の iPhoneストレージ を開く手順を会話に出します")
+      }
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 10)
