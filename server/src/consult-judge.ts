@@ -656,6 +656,21 @@ function policeReasons(said: Said, withoutPassedOn = false): string[] {
     .map((rule) => rule.reason);
 }
 
+/**
+ * The police in her own words, this turn or an earlier one: a part of the script, a caller who says he
+ * is the police, or the police named ("警察だって"). A warning she passes on ("警察を名乗る詐欺に注意",
+ * #81) is not a call she got. A warning for her then ends with "hang up" in the fixed police lines:
+ * she may still be on the phone, and since #188 Claude's "電話を切って" is not read out (review 1 of
+ * PR #191). The script told before and a question that points back at it (pointsBackAtScript) count
+ * through her earlier words.
+ */
+function policeInHerWords(said: Said): boolean {
+  return allOf(said).some((text) => {
+    const parts = scriptParts(text);
+    return parts.telling !== "passed_on" && (parts.police.length > 0 || parts.caller || POLICE_WORD.test(normalize(text)));
+  });
+}
+
 /** A line from Claude that tells no one it is fine, nor that the family was told. */
 function usable(line: string): boolean {
   return (
@@ -917,8 +932,10 @@ function decidePlan(
     };
   }
   if (!unanswered && level <= 2) {
-    // A warning, not guidance: what was seen, then what to do, in the fixed lines (see above).
-    return { level, reasons, reply: `${LIKE_SCAM_BASIS}${SCAM_ACTION}`, toFamily: true, record: true, sign: true, ...base };
+    // A warning, not guidance: what was seen, then what to do, in the fixed lines (see above). With the
+    // police in her words, the fixed police lines, which tell her to hang up.
+    const reply = policeInHerWords(said) ? `${MATCH_BASIS}${POLICE_ACTION}` : `${LIKE_SCAM_BASIS}${SCAM_ACTION}`;
+    return { level, reasons, reply, toFamily: true, record: true, sign: true, ...base };
   }
   if (claude !== null && claude.kind === "scam") {
     // Level 3: little concern, and still never "safe". The fixed line only (see above).
