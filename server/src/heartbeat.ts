@@ -19,6 +19,8 @@ import { sendPush, type PushPayload } from "./push";
 export const HEARTBEAT_LAPSE_MS = 48 * 3600_000;
 /** Members looked at per tick; the rest wait for the next tick, oldest gap first. */
 const LAPSES_PER_TICK = 20;
+/** D1 calls of one member's notice in the tick (#178): the claim, the family, their tokens, giving the claim back. */
+const LAPSE_D1 = 4;
 
 export const LAPSE_TEXT = (name: string) => `${name}の見守りが止まっています`;
 const NOTIFICATIONS_OFF_TEXT = (name: string) => `${name}のiPhoneで、みまもりの通知が切られています`;
@@ -90,9 +92,17 @@ async function reportSetting(
     .bind(me.id)
     .run();
   if (claim.meta.changes !== 1) return;
-  if (!(await tellFamily(env, me.familyId, text, budget))) {
-    await env.DB.prepare(`UPDATE members SET ${flag} = NULL WHERE id = ? AND ${flag} = 1`).bind(me.id).run();
+  const giveBack = () =>
+    env.DB.prepare(`UPDATE members SET ${flag} = NULL WHERE id = ? AND ${flag} = 1`).bind(me.id).run();
+  let told: boolean;
+  try {
+    told = await tellFamily(env, me.familyId, text, budget);
+  } catch (error) {
+    // D1 failed after the claim: without this the flag would stay 1 and the family never hear.
+    await giveBack();
+    throw error;
   }
+  if (!told) await giveBack();
 }
 
 /** Keeps the server's time, ends the current gap, and tells the family about a setting turned off. */
@@ -123,6 +133,7 @@ export async function recordHeartbeat(
  * from before the heartbeat do not set it off.
  */
 export async function watchHeartbeats(env: Env, now: number, budget: ExternalBudget): Promise<void> {
+  if (budget.d1Remaining < 1 + LAPSE_D1) return;
   const due = await env.DB.prepare(
     `SELECT id, family_id, display_name FROM members
       WHERE role = 'protected' AND heartbeat_at IS NOT NULL AND heartbeat_at <= ?
@@ -133,6 +144,7 @@ export async function watchHeartbeats(env: Env, now: number, budget: ExternalBud
     .all<{ id: string; family_id: string; display_name: string }>();
 
   for (const member of due.results) {
+    if (budget.d1Remaining < LAPSE_D1) break;
     const claim = await env.DB.prepare(
       `UPDATE members SET heartbeat_lapse_notified_at = ?
         WHERE id = ? AND heartbeat_lapse_notified_at IS NULL AND heartbeat_at <= ?`,
@@ -140,12 +152,23 @@ export async function watchHeartbeats(env: Env, now: number, budget: ExternalBud
       .bind(now, member.id, now - HEARTBEAT_LAPSE_MS)
       .run();
     if (claim.meta.changes !== 1) continue;
-    if (!(await tellFamily(env, member.family_id, LAPSE_TEXT(member.display_name), budget))) {
-      await env.DB.prepare(
+    const giveBack = () =>
+      env.DB.prepare(
         "UPDATE members SET heartbeat_lapse_notified_at = NULL WHERE id = ? AND heartbeat_lapse_notified_at = ?",
       )
         .bind(member.id, now)
         .run();
+    let told: boolean;
+    try {
+      told = await tellFamily(env, member.family_id, LAPSE_TEXT(member.display_name), budget);
+    } catch (error) {
+      await giveBack();
+      throw error;
+    }
+    if (!told) {
+      // The push budget is spent: the rest wait for the next tick.
+      await giveBack();
+      break;
     }
   }
 }

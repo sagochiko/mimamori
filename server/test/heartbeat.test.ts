@@ -4,7 +4,7 @@
 import { env } from "cloudflare:workers";
 import { http, HttpResponse } from "msw";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { ExternalBudget } from "../src/budget";
+import { countD1, ExternalBudget } from "../src/budget";
 import { JOBS } from "../src/cron";
 import { HEARTBEAT_LAPSE_MS, LAPSE_TEXT, watchHeartbeats } from "../src/heartbeat";
 import { resetApnsJwtCache } from "../src/push";
@@ -95,6 +95,25 @@ async function quietFor(memberId: string, ms: number): Promise<number> {
   const at = Date.now() - ms;
   await env.DB.prepare("UPDATE members SET heartbeat_at = ? WHERE id = ?").bind(at, memberId).run();
   return at;
+}
+
+/** The database, with every statement whose SQL starts with `prefix` throwing, as if D1 were down. */
+function failingOn(prefix: string, base: Env = pushEnv): Env {
+  return {
+    ...base,
+    DB: new Proxy(base.DB, {
+      get(target, key) {
+        if (key === "prepare") {
+          return (sql: string) => {
+            if (sql.trimStart().startsWith(prefix)) throw new Error("d1 down");
+            return target.prepare(sql);
+          };
+        }
+        const value = Reflect.get(target, key) as unknown;
+        return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+      },
+    }),
+  } as Env;
 }
 
 describe("POST /heartbeat", () => {
@@ -197,6 +216,16 @@ describe("POST /heartbeat", () => {
     expect(sent).toHaveLength(2);
   });
 
+  it("gives the flag back when D1 fails while telling the family, so the next heartbeat tells them", async () => {
+    const { mother } = await threeOfUs();
+    const res = await beat(mother.deviceKey, { notifications: false, backgroundRefresh: true }, failingOn("SELECT id FROM members WHERE family_id"));
+    expect(res.status).toBe(500);
+    expect(sent).toEqual([]);
+    expect((await row(mother.memberId))?.notifications_off).toBeNull();
+    await beat(mother.deviceKey, { notifications: false, backgroundRefresh: true });
+    expect(sent).toHaveLength(2);
+  });
+
   it("is a quiet notice that names no Claude text", async () => {
     const { mother } = await threeOfUs();
     await beat(mother.deviceKey, { notifications: false, backgroundRefresh: true });
@@ -264,5 +293,52 @@ describe("watchHeartbeats", () => {
     expect((await row(mother.memberId))?.heartbeat_lapse_notified_at).toBeNull();
     await watchHeartbeats(pushEnv, Date.now(), new ExternalBudget());
     expect(ours()).toHaveLength(2);
+  });
+  it("gives the claim back when D1 fails while telling the family", async () => {
+    const { mother, tok } = await threeOfUs();
+    const ours = () => sent.filter((s) => [tok.owner, tok.sister].includes(s.token));
+    await beat(mother.deviceKey);
+    await quietFor(mother.memberId, HEARTBEAT_LAPSE_MS + HOUR);
+    await expect(
+      watchHeartbeats(failingOn("SELECT id FROM members WHERE family_id"), Date.now(), new ExternalBudget()),
+    ).rejects.toThrow();
+    expect((await row(mother.memberId))?.heartbeat_lapse_notified_at).toBeNull();
+    await watchHeartbeats(pushEnv, Date.now(), new ExternalBudget());
+    expect(ours()).toHaveLength(2);
+  });
+
+  it("plans each notice for the D1 calls it takes, and leaves what does not fit for the next tick", async () => {
+    const { mother, tok } = await threeOfUs();
+    const ours = () => sent.filter((s) => [tok.owner, tok.sister].includes(s.token));
+    await beat(mother.deviceKey);
+    await quietFor(mother.memberId, 10 * 365 * 24 * HOUR); // the oldest gap, so it comes first
+
+    // One short of the lookup and one notice: nothing is claimed.
+    const short = new ExternalBudget(40, 4);
+    await watchHeartbeats({ ...pushEnv, DB: countD1(pushEnv.DB, short) }, Date.now(), short);
+    expect(ours()).toEqual([]);
+    expect((await row(mother.memberId))?.heartbeat_lapse_notified_at).toBeNull();
+
+    // The lookup and one notice (the claim, the family, their tokens, and room to give the claim back).
+    const exact = new ExternalBudget(40, 5);
+    await watchHeartbeats({ ...pushEnv, DB: countD1(pushEnv.DB, exact) }, Date.now(), exact);
+    expect(ours()).toHaveLength(2);
+    expect((await row(mother.memberId))?.heartbeat_lapse_notified_at).not.toBeNull();
+  });
+
+  it("stops at the first notice the push budget cannot cover", async () => {
+    const first = await threeOfUs();
+    const second = await threeOfUs();
+    await beat(first.mother.deviceKey);
+    await beat(second.mother.deviceKey);
+    await quietFor(first.mother.memberId, 20 * 365 * 24 * HOUR);
+    await quietFor(second.mother.memberId, 19 * 365 * 24 * HOUR);
+    const budget = new ExternalBudget(0, 100);
+    const d1 = { ...pushEnv, DB: countD1(pushEnv.DB, budget) };
+    await watchHeartbeats(d1, Date.now(), budget);
+    // The lookup, then one claim, the family, the tokens, the claim given back: then it stops.
+    expect(budget.d1Remaining).toBe(100 - 5);
+    expect((await row(first.mother.memberId))?.heartbeat_lapse_notified_at).toBeNull();
+    expect((await row(second.mother.memberId))?.heartbeat_lapse_notified_at).toBeNull();
   });
 });

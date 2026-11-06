@@ -155,7 +155,7 @@ Structured Outputs で次の形だけを受け取る。
 | `POST /smiles`、`GET /smiles` | 笑顔の写真の登録と一覧(写真は R2)。家族の誰でも送れる。`POST` の本文は `{ photo?, score?, note? }` で、`photo` は base64 の JPEG(500KB まで、超えると413)、`score` は0〜1、`note` はひと言で、決まった5つの語(`good-morning` おはよう、`nice-smile` いい笑顔、`thanks` ありがとう、`doing-fine` 元気だよ、`see-you` またね)の ID か語そのものだけを受け付け、外れたら400 `note_not_allowed`。自由な文は運ばない(2026年11月5日に作者が決めた。design.md の「毎朝の笑顔」)。写真かひと言のどちらかが要る(無ければ400 `smile_empty`)。送ると本人のほかの家族全員に、音を鳴らさない通知(`interruption-level` が `passive`)が届く。`GET` は家族全員の最近7日の笑顔を新しい順に `{ smiles: [{ id, memberId, displayName, role, score, note, hasPhoto, createdAt }], deadlineHour }` で返す。抜けた人の行は `displayName` が「家族」、`role` が `null` |
 | `GET /smiles/{id}/photo` | 写真の JPEG。同じ家族の端末だけに返し、別の家族の `deviceKey` には403、無い笑顔と写真の無いひと言には404。R2 のバインディングからは署名つきの URL を作れない([Cloudflare の Presigned URLs](https://developers.cloudflare.com/r2/api/s3/presigned-urls/) の「The R2 Workers API binding cannot generate presigned URLs」)。S3 の鍵を足すより秘密が増えないので、Worker が R2 から読んで流す(#14) |
 | `PUT /families/me/smile-deadline` | `{ hour }` で母の笑顔を待つ時刻(日本時間の5〜12時の整数)を変える。家族の役だけで、母の端末からは403。その時刻までに母の笑顔の写真がその日に無ければ(写真の無いひと言は数えない)、家族の役の全員に1日1回、音を鳴らさない通知で知らせる。家族の笑顔は数えず、母には送らない(#14) |
-| `POST /heartbeat` | 見守られる人の端末だけが呼ぶ(家族の役は403 `protected_only`)。本文は `{ notifications, backgroundRefresh }` の2つの真偽だけで、通知の許可と App のバックグラウンド更新が入っているか。外れたら400 `heartbeat_invalid`、ほかのキーは捨てる。空き容量とそこから判断したことは送らない。時刻は本文に入れず、裏側が受けた時刻を残す(端末の時計がずれていても途切れを隠さないため)。答えは204。どちらかが切られたと届いたら家族の役の全員に1回、音を鳴らさない通知で知らせ、入ったと届いたら次に切られるまで知らせない。最後の知らせから48時間たつと、5分ごとの見張りが家族に1回「(名前)の見守りが止まっています」と知らせ、次の知らせが届いたら次の途切れまで知らせない。一度も届いていない端末は数えない。Issue の「中身は時刻だけ」は空き容量を送らないという意味に読み、2026年11月7日に #19 でこの形にした |
+| `POST /heartbeat` | 見守られる人の端末だけが呼ぶ(家族の役は403 `protected_only`)。本文は `{ notifications, backgroundRefresh }` の2つの真偽だけで、通知の許可と「アプリのバックグラウンド更新」が入っているか。偽は母が切ったときだけにする。通知の許可をまだ聞いていないとき、低電力モードのあいだ(Apple の `backgroundRefreshStatus` の文書に「Background App Refresh is disabled automatically when a device is operating in low-power mode」とある)、保護者による制限で母が入れられないとき(同じ文書の「Don't warn the user if the value of this property is set to restricted」)は真で送る。外れたら400 `heartbeat_invalid`、ほかのキーは捨てる。空き容量とそこから判断したことは送らない。時刻は本文に入れず、裏側が受けた時刻を残す(端末の時計がずれていても途切れを隠さないため)。答えは204。どちらかが切られたと届いたら家族の役の全員に1回、音を鳴らさない通知で知らせ、入ったと届いたら次に切られるまで知らせない。最後の知らせから48時間たつと、5分ごとの見張りが家族に1回「(名前)の見守りが止まっています」と知らせ、次の知らせが届いたら次の途切れまで知らせない。一度も届いていない端末は数えない。Issue の「中身は時刻だけ」は空き容量を送らないという意味に読み、2026年11月7日に #19 でこの形にした |
 | `GET /gmail/connect`、`GET /gmail/callback` | Gmail の許可。`connect` は見守られる人の端末だけが呼べ(家族の役は403 `protected_only`、Google のクライアントが未設定なら503 `gmail_not_configured`)、`{ url, grantedAt }` を返す。`url` は Google の同意の画面で、範囲は `gmail.readonly` だけ、`access_type=offline` と `prompt=consent` をつけ、`state` は家族の ID と作った時刻を `TOKEN_ENC_KEY` で封じたもの(15分有効)。`grantedAt` は今の許可の時刻で、無ければ `null`。アプリは `url` を `ASWebAuthenticationSession` で開く。`callback` は Google から戻る先で、refresh token を封じて `gmail_auth` に置き、そのときの受信箱の `historyId` から読み始める。答えは `mimamori://gmail?result=connected`(断られたら `denied`、ほかの失敗は `failed`)への302。2026年11月6日に #15 の実装の中で主のセッションが決め、作者には PR #143 で伝える |
 
 ## 作る順番
@@ -538,7 +538,7 @@ Safari の拡張機能、背面タップ、DNS のサーバーが止まったと
 **つなぎ目**
 
 - 使うもの `sendPush`、`POST /consult`(声かけから相談に入る)
-- 渡すもの `POST /heartbeat`(端末の鍵で呼ぶ。中身は時刻だけで、空き容量は送らない)、`GET /os/latest`
+- 渡すもの `POST /heartbeat`(端末の鍵で呼ぶ。中身は通知の許可と「アプリのバックグラウンド更新」が入っているかの2つの真偽だけで、時刻は裏側が受けた時刻を使い、空き容量は送らない。形は「アプリと裏側の API」の表)、`GET /os/latest`
 
 **手順**
 
