@@ -13,6 +13,8 @@
 import { BRAND_WORDS, type HostTrust, imitatedBrandOf, normalizeHost, trustOf } from "./domains";
 import {
   CONSULT_INJECTION,
+  CONSULT_MONEY_MOVE,
+  CONSULT_POLICE_SCRIPT,
   CONTENT_RULES,
   CREDENTIAL_FROM_CODE,
   INJECTION,
@@ -226,7 +228,8 @@ function levelOf(signs: Sign[]): 1 | 2 | null {
   const count = (strength: Strength) => signs.filter((s) => s.strength === strength).length;
   const strong = count("strong");
   const medium = count("medium");
-  const policeParts = signs.filter((s) => POLICE_SCRIPT.some((rule) => s.kinds.has(rule.kind))).length;
+  // CONSULT_POLICE_SCRIPT holds every kind of POLICE_SCRIPT and the parts only a consultation has (#21).
+  const policeParts = signs.filter((s) => CONSULT_POLICE_SCRIPT.some((rule) => s.kinds.has(rule.kind))).length;
   if (signs.some((s) => s.kinds.has(INJECTION.kind))) return 1;
   if (policeParts >= 2) return 1;
   if (strong >= 1 && signs.length >= 2) return 1;
@@ -304,11 +307,13 @@ export function judgeByRules(input: RuleInput): RuleResult {
   // A consultation that passes on a warning she heard or read (#81): the script's parts in it are what
   // the warning describes, so they are not signs, and Claude answers it. Text aimed at the app still is.
   const passedOn = input.source === "consult" && tellingOf(text) === "passed_on";
-  if (!passedOn) for (const rule of POLICE_SCRIPT) if (!(codeOnly && rule.kind === "police_secrecy")) check(rule);
+  // Her consultation reads more of the script than a message does (#21).
+  const script = input.source === "consult" ? CONSULT_POLICE_SCRIPT : POLICE_SCRIPT;
+  if (!passedOn) for (const rule of script) if (!(codeOnly && rule.kind === "police_secrecy")) check(rule);
   for (const rule of CONTENT_RULES)
     check(codeOnly && rule.kind === CREDENTIAL_FROM_CODE.kind ? CREDENTIAL_FROM_CODE : rule);
   check(URGENCY);
-  check(MONEY_MOVE);
+  check(input.source === "consult" ? CONSULT_MONEY_MOVE : MONEY_MOVE);
   if (unofficial.length > 0) for (const rule of LINK_BAIT) check(rule);
 
   if (signals.size === 0) {

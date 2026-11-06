@@ -20,11 +20,11 @@ import { CLAUDE_TIMEOUT_MS, decide, PLACEHOLDER_REASON, soundsSafe, type Level }
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
 import {
   CONSULT_INJECTION,
+  CONSULT_MONEY_MOVE,
+  CONSULT_POLICE_SCRIPT,
   INJECTION,
   matchSpans,
-  MONEY_MOVE,
   POLICE_CALLER,
-  POLICE_SCRIPT,
   POLICE_WORD,
   type PhraseRule,
   type Telling,
@@ -583,7 +583,7 @@ function namesSomething(text: string): boolean {
     CONTACT.test(t) ||
     SENSITIVE.some(({ pattern }) => pattern.test(t)) ||
     POLICE_WORD.test(t) ||
-    [...POLICE_SCRIPT, MONEY_MOVE].some((rule) => matchSpans(rule, t).length > 0)
+    [...CONSULT_POLICE_SCRIPT, CONSULT_MONEY_MOVE].some((rule) => matchSpans(rule, t).length > 0)
   );
 }
 
@@ -606,9 +606,9 @@ function scriptParts(text: string): { police: PhraseRule[]; caller: boolean; mon
   const telling = tellingOf(t);
   if (telling === "passed_on") return { police: [], caller: false, money: false, telling };
   return {
-    police: POLICE_SCRIPT.filter((rule) => matchSpans(rule, t).length > 0),
+    police: CONSULT_POLICE_SCRIPT.filter((rule) => matchSpans(rule, t).length > 0),
     caller: matchSpans(POLICE_CALLER, t).length > 0,
-    money: matchSpans(MONEY_MOVE, t).length > 0,
+    money: matchSpans(CONSULT_MONEY_MOVE, t).length > 0,
     telling,
   };
 }
@@ -651,7 +651,7 @@ function scriptTold(texts: readonly string[]): boolean {
 function policeReasons(said: Said, withoutPassedOn = false): string[] {
   const all = allOf(said).map(normalize);
   const turns = withoutPassedOn ? all.filter((t) => tellingOf(t) !== "passed_on") : all;
-  return [POLICE_CALLER, ...POLICE_SCRIPT, MONEY_MOVE]
+  return [POLICE_CALLER, ...CONSULT_POLICE_SCRIPT, CONSULT_MONEY_MOVE]
     .filter((rule) => turns.some((t) => matchSpans(rule, t).length > 0))
     .map((rule) => rule.reason);
 }

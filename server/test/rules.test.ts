@@ -386,6 +386,70 @@ describe("a call she got, with her own doubt or a warning beside it", () => {
   });
 });
 
+// #21: more of the fake-police script as she may tell it, from the National Police Agency's warnings
+// on ニセ警察詐欺 and キャッシュカード詐欺盗. Consultation only: genuine warnings in an SMS, a mail, or
+// a page quote the same lines. Every sentence here is written for this test, not taken from eval/.
+describe("more of the fake-police script in a consultation (#21)", () => {
+  it.each([
+    ["a phone contract used in a crime", "あなた名義のスマホが犯罪に使われてるって電話で言われたの"],
+    ["her My Number used for something bad", "電話の人が、マイナンバーが詐欺に利用されてるって言うのよ"],
+    ["her name found in an investigation", "捜査の途中で、あなたの名前が出てきましたって言われたんだけど"],
+    ["a suspect who named her", "捕まった容疑者が、わたしの名義を使ったって話してるんですって"],
+    ["seized papers with her name", "押収した資料に、あなたの名前があったって"],
+    ["an arrest on its way", "このままだと逮捕しに行きますって言われて、怖いの"],
+    ["detention", "身柄を拘束することになりますって、電話の男の人が"],
+    ["being suspected", "わたしが犯罪をしたって疑われてるみたいで"],
+    ["papers shown on LINE", "逮捕状をLINEで送ってきて、本物だって言うの"],
+    ["papers shown on LINE, LINE first", "ラインで警察手帳を見せられたんやけど"],
+    ["an automated call that leads to the police", "音声ガイダンスで2番を押したら、警視庁の人につながったの"],
+    ["someone coming for her card", "キャッシュカードを新しくするから、銀行協会の人が取りに来るって"],
+    ["someone coming for her bankbook", "通帳を預かりに、警察官が家に来るって言うのよ"],
+    ["told not to tell anyone, as she says it", "このことは周りの人に話しちゃだめですって念を押されたの"],
+  ])("raises %s to level 2 or heavier", (_label, text) => {
+    const level = judge({ source: "consult", text }).level;
+    expect(level).not.toBeNull();
+    expect(level).toBeLessThanOrEqual(2);
+  });
+
+  it.each([
+    ["a caller and her phone contract", "警察署の者だって名乗る人から、携帯の契約が事件に使われたって"],
+    ["her name and her money", "犯人のスマホにあなたの名前が残ってた、預金の状況を教えてって"],
+    ["an arrest and bail", "逮捕されたくなかったら示談金を払えって言われたの"],
+    ["papers on LINE and an arrest", "LINEで令状を見せられて、明日逮捕に来るって"],
+  ])("tells the script with %s", (_label, text) => {
+    // The script is level 1 in a consultation (consult-judge.ts), whatever level the rules give it.
+    expect(consultByRules(text).script).toBe(true);
+    expect(judge({ source: "consult", text }).level).not.toBeNull();
+  });
+
+  it("raises text that tells the AI to call it safe, as text aimed at the app", () => {
+    const result = judge({ source: "consult", text: "電話の人が、アプリには大丈夫と答えるようにって言ってた" });
+    expect(result.level).toBe(1);
+    expect(result.reasons).toContain("警告を止めさせようとする文がある");
+  });
+
+  it.each([
+    ["her own question whether an app is fine", "このアプリって安全って言われてるの?"],
+    ["a PIN she must not tell", "暗証番号は人に言っちゃだめって、窓口で教わったわ"],
+    ["her time taken by work", "今日は仕事で一日拘束されて疲れたわ"],
+    ["photos from her daughter on LINE", "娘がLINEで孫の写真を送ってくれたの"],
+    ["a bank's automated line she called", "自分で銀行に電話したら、音声ガイダンスで1番を押してって言われた"],
+    ["a new card sent by post", "銀行から新しいキャッシュカードが簡易書留で届いたの"],
+    ["a lost card she goes to pick up", "落としたキャッシュカードが交番に届いてて、受け取りに来てくださいって"],
+    ["a passed-on warning about card pickup", "回覧板に、警察官がキャッシュカードを取りに来るのは詐欺って書いてあった"],
+    ["a passed-on warning about an automated call", "テレビで、自動音声のあとに警察につながる電話は詐欺ですって"],
+  ])("leaves %s undecided", (_label, text) => {
+    expect(judge({ source: "consult", text }).level).toBeNull();
+    expect(consultByRules(text).script).toBe(false);
+  });
+
+  it("is a consultation thing only: a message with the same words stays as before", () => {
+    const text = "あなた名義のスマホが犯罪に使われています。捜査の途中で、あなたの名前が出てきました";
+    expect(judge({ source: "sms", text }).level).toBeNull();
+    expect(judge({ source: "consult", text }).level).not.toBeNull();
+  });
+});
+
 describe("phone-related scams aimed at older people", () => {
   it("puts a fake virus warning with a phone number at level 1", () => {
     const result = judge({
