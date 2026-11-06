@@ -12,38 +12,45 @@ struct DemoView: View {
   @State private var noticesOpen = false
 
   var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 20) {
-        DemoSection(tag: "母", hint: "見守られる人のiPhoneに出る画面です") { motherScreen }
-        if let item = tour.familyCase {
-          DemoSection(tag: "家族", hint: "家族のiPhoneに届く通知とカードです。本当の家族には送っていません") {
-            if let push = tour.familyPush { DemoPushRow(push: push) }
-            CaseCardView(card: FamilyCard(item)) { _ in
-              withAnimation { tour.resolve(at: .now) }
+    ScrollViewReader { proxy in
+      ScrollView {
+        VStack(alignment: .leading, spacing: 20) {
+          // After "大丈夫" her screen has nothing left to show, so no empty frame.
+          if tour.step != .fine {
+            DemoSection(tag: "母", hint: "見守られる人のiPhoneに出る画面です") { motherScreen }
+          }
+          if let item = tour.familyCase {
+            DemoSection(tag: "家族", hint: "家族のiPhoneに届く通知とカードです。本当の家族には送っていません") {
+              if let push = tour.familyPush { DemoPushRow(push: push) }
+              CaseCardView(card: FamilyCard(item)) { _ in
+                withAnimation { tour.resolve(at: .now) }
+              }
             }
           }
-        }
-        if tour.canChoose {
-          Button("30分後") {
-            withAnimation { tour.waitHalfHour() }
-          }
-          .buttonStyle(BigButtonStyle(prominent: false))
-          .accessibilityLabel("30分後")
-          .accessibilityHint("家族の誰も解決を押さないまま30分たったときの、母と家族の画面にします。カードの解決を押すと、家族が解決したときの画面になります")
-        }
-        if tour.isFinished {
-          DemoSMSSection()
-          Button("最初から") {
-            withAnimation {
-              tour.restart()
-              noticesOpen = false
+          if tour.canChoose {
+            Button("30分後") {
+              withAnimation { tour.waitHalfHour() }
             }
+            .buttonStyle(BigButtonStyle(prominent: false))
+            .accessibilityLabel("30分後")
+            .accessibilityHint("家族の誰も解決を押さないまま30分たったときの、母と家族の画面にします。カードの解決を押すと、家族が解決したときの画面になります")
           }
-          .buttonStyle(BigButtonStyle(prominent: false))
-          .accessibilityHint("通話のあとの声かけからやり直します")
+          if tour.isFinished {
+            DemoSMSSection(proxy: proxy)
+            Button("最初から") {
+              withAnimation {
+                tour.restart()
+                noticesOpen = false
+              }
+            }
+            .buttonStyle(BigButtonStyle(prominent: false))
+            .accessibilityHint("通話のあとの声かけからやり直します")
+          }
         }
+        .padding(16)
       }
-      .padding(16)
+      // The SMS field's keyboard closes with a drag, and "送る" closes it too, so the result is not hidden.
+      .scrollDismissesKeyboard(.interactively)
     }
     .navigationBarTitleDisplayMode(.inline)
   }
@@ -129,7 +136,11 @@ private struct DemoSMSSection: View {
   static let sample =
     "【ヤマト運輸】お荷物のお届けにあがりましたが不在のため持ち帰りました。 https://kuroneko-redeliver.example/"
 
+  let proxy: ScrollViewProxy
+  private static let resultID = "sms-result"
+
   @State private var text = DemoSMSSection.sample
+  @FocusState private var editing: Bool
   @State private var sending = false
   @State private var result: DemoSMSResult?
   @State private var card: Case?
@@ -144,10 +155,14 @@ private struct DemoSMSSection: View {
         .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
         .accessibilityLabel("SMS の本文")
         .accessibilityHint("詐欺らしい SMS の例が入っています。書き換えて試せます")
-      Button("送る") { Task { await send() } }
-        .buttonStyle(BigButtonStyle())
-        .disabled(sending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        .accessibilityHint("この本文を、Apple が SMS を問い合わせるのと同じ形で裏側に送ります")
+        .focused($editing)
+      Button("送る") {
+        editing = false
+        Task { await send() }
+      }
+      .buttonStyle(BigButtonStyle())
+      .disabled(sending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      .accessibilityHint("この本文を、Apple が SMS を問い合わせるのと同じ形で裏側に送ります")
       if sending { ProgressView().frame(maxWidth: .infinity) }
       if failed {
         Text(Problem.unreachable.title)
@@ -175,6 +190,7 @@ private struct DemoSMSSection: View {
             .accessibilityHint("決まった規則では家族に知らせる段階になりませんでした。安全という意味ではありません")
         }
       }
+      Color.clear.frame(height: 1).id(Self.resultID)
     }
   }
 
@@ -189,6 +205,8 @@ private struct DemoSMSSection: View {
         result = answer
         card = answer.card
       }
+      try? await Task.sleep(for: .milliseconds(100))
+      withAnimation { proxy.scrollTo(Self.resultID, anchor: .bottom) }
     } catch {
       result = nil
       card = nil

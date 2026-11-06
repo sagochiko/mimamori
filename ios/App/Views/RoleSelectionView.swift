@@ -24,7 +24,8 @@ struct RoleSelectionView: View {
       .accessibilityLabel("家族")
       .accessibilityHint("見守る家族のスマホで選びます。家族を作るか、6桁のコードで入ります")
 
-      // The judges' build only (#100). The mother's build carries her family's token, so she never sees it.
+      // The judges' build only (#100). The mother's build carries her family's token, so she never sees
+      // it; until #133 is done she gets the `demo` build and sees it here too (it sends nothing).
       if AppConfig.isDemo {
         NavigationLink {
           DemoView()
