@@ -276,6 +276,15 @@
           "aiReply": "詐欺で使われる説明と一致しています。送金せず、いったん電話を切って家族に確かめて",
         ],
         [
+          // An SMS whose research in the background came back (task 11).
+          "id": "c-sms", "alertId": "a-5", "state": "notified", "notifiedAt": at(6), "familyNotifiedAt": at(6),
+          "alert": alert(1, "sms", "SMS 宅配便を名乗る example.top", "送り主のドメインが公式と違う")
+            .merging(["evidence": [[
+              "text": "同じ手口の偽 SMS に宅配会社が注意を呼びかけている",
+              "url": "https://www.post.japanpost.jp/notification/",
+            ]]]) { $1 },
+        ],
+        [
           "id": "c-unreached", "alertId": "a-4", "state": "notified", "notifiedAt": at(2), "familyNotifiedAt": NSNull(),
           "alert": alert(2, "consult", "スマホの相談", "AI が答えきれなかった相談"),
           "aiReply": "うまく答えられませんでした。家族に届いていません。急ぐなら電話して",

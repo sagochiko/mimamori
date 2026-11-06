@@ -22,6 +22,18 @@ struct CaseCardView: View {
           .font(.title3.bold())
           .fixedSize(horizontal: false, vertical: true)
           .accessibilityLabel(summaryLabel(alert))
+        // What the research in the background found (task 11). Arrives minutes after the notice; each
+        // line opens the official page it was read on. No heading: the link mark says what it is.
+        ForEach(alert.evidence, id: \.self) { evidence in
+          Link(destination: evidence.url) {
+            Label(evidence.text, systemImage: "link")
+              .font(.subheadline)
+              .multilineTextAlignment(.leading)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+          .accessibilityLabel("公式の注意喚起から分かったこと、\(evidence.text)")
+          .accessibilityHint("\(evidence.url.host() ?? "")のページを開きます")
+        }
       }
       if let reply = item.aiReply {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
