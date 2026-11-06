@@ -54,7 +54,8 @@ export function ownLines(
 // vowel mark, brackets, and dots between them are taken out, are a phone number: the Japanese ones
 // have ten or eleven. Dates ("2026年11月6日") and amounts ("100,000円") stay under it. Short codes
 // such as 110 or #9110 are left alone on purpose; they are public numbers, not the scam's.
-const PHONE_GAPS = /[\s\-‐‑‒–—―−ー－()（）.]/g;
+// Middle dots, waves, slashes, and underscores between the digits count as gaps too (review 1 of PR #166).
+const PHONE_GAPS = /[\s\-‐‑‒–—―−ー－()（）.・〜~/_]/g;
 const PHONE = /\+81|\d{8,}/;
 // A scheme, www., or a bare domain ("bank-check.example"), which also catches a mail address. The
 // last label must be letters, so "1.2.3" is not one.
@@ -63,5 +64,7 @@ const ADDRESS = /https?:\/\/|www\.|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/;
 /** True when the line has something that looks like a phone number or a web or mail address. */
 export function carriesContact(line: string): boolean {
   const text = line.normalize("NFKC").toLowerCase();
-  return PHONE.test(text.replace(PHONE_GAPS, "")) || ADDRESS.test(text);
+  // A dot written as 。 or [.], or with spaces round it, and hxxp for http still make an address.
+  const dotted = text.replace(/\s*(?:。|\[\.\]|\.)\s*/g, ".").replace(/hxxp/g, "http");
+  return PHONE.test(text.replace(PHONE_GAPS, "")) || ADDRESS.test(dotted);
 }

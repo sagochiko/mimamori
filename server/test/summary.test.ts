@@ -69,6 +69,13 @@ describe("carriesContact", () => {
     "bank-check.example にアクセスさせる",
     "ＢＡＮＫ－ＣＨＥＣＫ．ＥＸＡＭＰＬＥ を開かせる",
     "www.example.jp で手続きさせる",
+    "0120・000・000 に電話させる",
+    "03/1234/5678 にかけさせる",
+    "0120〜000〜000 へ折り返させる",
+    "bank-check。example を開かせる",
+    "bank-check . example を開かせる",
+    "bad[.]example を開かせる",
+    "hxxps://bad-check.example を開かせる",
     "support@bank-check.example に返信させる",
   ])("is true for %s", (line) => {
     expect(carriesContact(line)).toBe(true);
