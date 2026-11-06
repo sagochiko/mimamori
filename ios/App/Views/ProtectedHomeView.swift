@@ -175,9 +175,11 @@ struct ProtectedHomeView: View {
       // newest answer half under the field (#113). The bottom edge, padding included, is the target;
       // the empty live row was not enough.
       .onScrollGeometryChange(for: ConversationViewport.self, of: ConversationViewport.init) { old, new in
-        let shrank = new.height != old.height
+        // Shrinking follows only when the end was in view: after VoiceOver's three-finger scroll or a
+        // tap on the status bar, which do not end `opening`, it does not pull her back down.
+        let shrank = new.height != old.height && old.showsEnd
         let grew = opening && new.contentHeight != old.contentHeight
-        guard shrank || grew, old.showsEnd || opening, !new.showsEnd, !followsConsult else { return }
+        guard shrank || grew, !new.showsEnd, !followsConsult else { return }
         position.scrollTo(edge: .bottom)
       }
     }

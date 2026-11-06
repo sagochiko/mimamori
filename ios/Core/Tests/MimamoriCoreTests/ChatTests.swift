@@ -574,27 +574,30 @@ struct ChatRowTests {
     #expect(days == ["11月4日", "11月5日"])
   }
 
-  @Test("時刻の無い古い記録も読め、時刻と日付の行を出さず、裏側にも渡さない")
+  @Test("時刻の無い記録は古さが分からないので読むときに落とし、時刻のある記録は残す")
   func untimedRecord() throws {
-    let id = UUID()
-    let json = #"{"messages":[{"id":"\#(id.uuidString)","role":"protected","text":"前の話"}]}"#
-    let log = ChatLog.restored(from: Data(json.utf8), at: .t0)
-    #expect(log.messages.map(\.text) == ["前の話"])
-    #expect(log.messages.first?.at == nil)
-    #expect(log.rows(at: .t0, calendar: Self.tokyo) == [.message(log.messages[0], time: nil)])
-    #expect(log.history(at: .t0).isEmpty)
-    #expect(log.history(for: "それってどういうこと", at: .t0).isEmpty)
+    var timed = ChatLog()
+    timed.append(.protected, "ストレージがいっぱい", at: .t0)
+    var saved = try #require(
+      try JSONSerialization.jsonObject(with: timed.encoded()) as? [String: Any])
+    var messages = try #require(saved["messages"] as? [[String: Any]])
+    messages.insert(["id": UUID().uuidString, "role": "ai", "text": "前の答え"], at: 0)
+    saved["messages"] = messages
+    let log = ChatLog.restored(
+      from: try JSONSerialization.data(withJSONObject: saved), at: .t0 + 60)
+    #expect(log.messages.map(\.text) == ["ストレージがいっぱい"])
+    #expect(log.messages.first?.at == .t0)
   }
 
-  @Test("時刻の無い記録のあとに足した話は、ふつうに日付の行と時刻が付く")
+  @Test("時刻の無い記録を落としたあとに足した話は、ふつうに日付の行と時刻が付く")
   func untimedThenTimed() throws {
     let json = #"{"messages":[{"id":"\#(UUID().uuidString)","role":"ai","text":"前の答え"}]}"#
     var log = ChatLog.restored(from: Data(json.utf8), at: .t0)
+    #expect(log.messages.isEmpty)
     let now = Self.jst(11, 6, 10, 0)
     let asked = log.append(.protected, "教えて", at: now)
     #expect(
       log.rows(at: now, calendar: Self.tokyo) == [
-        .message(log.messages[0], time: nil),
         .day(label: "今日", id: "day-\(asked.id)"),
         .message(asked, time: ChatStamp(text: "10:00", spoken: "10時0分")),
       ])

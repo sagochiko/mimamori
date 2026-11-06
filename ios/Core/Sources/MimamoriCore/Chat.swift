@@ -16,8 +16,8 @@ public struct ChatMessage: Codable, Equatable, Identifiable, Sendable {
   public let id: UUID
   public let role: ChatRole
   public let text: String
-  /// When it was said or answered. Every message the app writes has it; nil only for a record kept
-  /// without one, which is still shown, with no time (#113).
+  /// When it was said or answered. Every message the app writes has it. A record read without one
+  /// still decodes, so the rest of the file is kept, and is then dropped like one 30 days old (#113).
   public let at: Date?
 
   public init(id: UUID, role: ChatRole, text: String, at: Date?) {
@@ -209,8 +209,9 @@ public struct ChatLog: Codable, Equatable, Sendable {
     guard let data, var log = try? JSONDecoder().decode(ChatLog.self, from: data) else {
       return ChatLog()
     }
-    // One with no time cannot be aged, so it stays, within the newest 50.
-    log.messages.removeAll { $0.at.map { now.timeIntervalSince($0) >= keptFor } ?? false }
+    // One with no time cannot be aged, so it goes too: her words do not stay on the iPhone for
+    // months (docs/design.md, 30 days). The timed ones around it stay.
+    log.messages.removeAll { $0.at.map { now.timeIntervalSince($0) >= keptFor } ?? true }
     if log.messages.count > keep { log.messages.removeFirst(log.messages.count - keep) }
     return log
   }
