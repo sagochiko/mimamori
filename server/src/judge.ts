@@ -29,6 +29,7 @@ import {
   type Level,
 } from "./claude";
 import { sendPush, type PushPayload } from "./push";
+import { dedupeDigest } from "./secretbox";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
 import { INJECTION } from "./rules/phrases";
 import { carriesContact, ownLines, quotes } from "./summary";
@@ -158,10 +159,14 @@ function normalizeSender(sender: string | undefined): string | null {
   return s === "" ? null : s;
 }
 
-async function keyFor(familyId: string, kind: "sender" | "domain", value: string | null): Promise<string | null> {
+async function keyFor(
+  env: Env,
+  familyId: string,
+  kind: "sender" | "domain",
+  value: string | null,
+): Promise<string | null> {
   if (value === null) return null;
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${familyId}\n${kind}\n${value}`));
-  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+  return dedupeDigest(env.TOKEN_ENC_KEY, `${familyId}\n${kind}\n${value}`);
 }
 
 /**
@@ -383,8 +388,8 @@ async function judgeOne(
 
   const now = deps.now();
   const domain = normalizeDomain(job);
-  const senderKey = await keyFor(job.familyId, "sender", normalizeSender(job.payload.sender));
-  const domainKey = await keyFor(job.familyId, "domain", domain);
+  const senderKey = await keyFor(env, job.familyId, "sender", normalizeSender(job.payload.sender));
+  const domainKey = await keyFor(env, job.familyId, "domain", domain);
 
   // An SMS, a mail, or a page at level 3, and one no one decided (decideFor), leaves no row: these routes
   // send Claude most of what she receives or opens, and a row for each would keep a log of her inbox
@@ -392,11 +397,14 @@ async function judgeOne(
   if (level === 3 && QUIET_WHEN_UNDECIDED.includes(job.source)) return "done";
 
   // Levels 1 and 2 notify; a level-3 consultation is only kept (docs/design.md, データの扱い).
+  // An earlier alert counts for the one-an-hour rule only once its push reached the mother (or she has
+  // no device): her push is retried by the queue alone, and one she never got must not hold back the
+  // next (#53). The family may then be told twice about one sender; that is the cost chosen.
   let notify = level <= 2;
   if (notify && (senderKey !== null || domainKey !== null)) {
     const recent = await env.DB.prepare(
-      `SELECT 1 FROM alerts WHERE family_id = ? AND notified = 1 AND created_at > ? AND level <= ?
-         AND (sender_key = ? OR domain_key = ?) LIMIT 1`,
+      `SELECT 1 FROM alerts WHERE family_id = ? AND notified = 1 AND protected_notified_at IS NOT NULL
+         AND created_at > ? AND level <= ? AND (sender_key = ? OR domain_key = ?) LIMIT 1`,
     )
       .bind(job.familyId, now - DEDUPE_WINDOW_MS, level, senderKey, domainKey)
       .first();

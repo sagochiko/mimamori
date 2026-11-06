@@ -72,9 +72,33 @@ const JUDGMENT_SCHEMA = {
 // Words that would tell the mother or the family the message is fine. No path may say that
 // (CLAUDE.md). A reason that says it is replaced (decide); the level and injection_suspected are
 // kept, so writing 安全 in a message cannot get the judge's answer thrown away.
-// "問題ないか" is a question ("振込先に問題ないか家族に確かめて"), not a verdict.
-const SOUNDS_SAFE =
-  /安全(です|だ|でしょう|と思|な(メッセージ|サイト|ページ|メール|もの|内容))|問題(は)?(ありません|ない(?!か))|心配(は)?(ありません|いりません|ない(?!か))|\bsafe\b/i;
+// A question is not a verdict: "振込先に問題ないか家族に確かめて", "大丈夫かどうか", "大丈夫ですか",
+// "本当に大丈夫なのか", "大丈夫かと家族に聞いて". NOT_ASKED skips a か after the verdict word (and after
+// の, なの, です or でしょう), but not the か of から: "大丈夫ですから" tells her it is fine (review 1
+// of PR #175), nor the か of かと思: "問題ないかと思います" is a hedged verdict (review 2). Only for
+// 詐欺ではな- is かと思 a doubt ("詐欺ではないかと思います"), so that branch uses DOUBTED.
+// 大丈夫, 詐欺ではな-, 心配いらない, 問題なし and 危険(性)はな- say it is fine without the word 安全
+// (#53, 5), so they are matched by their stem and its spellings ("大丈夫だと思います", "だいじょうぶ",
+// "詐欺ではなかった", "問題無いです", "問題がないので", "問題ございません"), as REASSURING in
+// src/consult-judge.ts does for what she hears. 危険 counts only with は, も or が: "危険なリンク" is
+// a warning. った lets a past question through as well ("問題なかったか家族に確かめて", review 3 of
+// PR #175), while "詐欺ではなかった" and "問題なかったかと思います" still count.
+const ASKED_BEFORE = "(った|の|なの|です|でしょう|だろう)?か";
+const NOT_ASKED = `(?!${ASKED_BEFORE}(?!ら|と思|と存じ))`;
+const DOUBTED = `(?!${ASKED_BEFORE}(?!ら))`;
+const NOT_THERE = "(ありません|ございません|な[いさしくか]|無[いし])";
+const SOUNDS_SAFE = new RegExp(
+  [
+    "安全(です|だ|でしょう|と思|な(メッセージ|サイト|ページ|メール|もの|内容))",
+    `問題(は|も|が)?${NOT_THERE}${NOT_ASKED}`,
+    `心配(は|も|が)?(${NOT_THERE}|いりません|いらない|無用|不要)${NOT_ASKED}`,
+    `(大丈夫|だいじょうぶ)${NOT_ASKED}`,
+    `詐欺(では|じゃ)${NOT_THERE}${DOUBTED}`,
+    `危険(性)?(は|も|が)${NOT_THERE}${NOT_ASKED}`,
+    "\\bsafe\\b",
+  ].join("|"),
+  "i",
+);
 // Quoting the message ("「この口座は安全です」と移し替えを求める") explains the scam; it is not a verdict.
 const QUOTED = /「[^」]*」|『[^』]*』|“[^”]*”|"[^"]*"/g;
 /** Used when every reason Claude gave sounded safe and the rules gave none. */

@@ -104,7 +104,7 @@ mimamori/
 | `families` | `id`、`token`、`created_at`、`smile_deadline_hour`(母の笑顔を待つ時刻。日本時間の5〜12時で、既定は9)、`smile_missed_notified_on`(笑顔が無いと家族に知らせた日本時間の日付。1日1回にするため) |
 | `members` | `id`、`family_id`、`role`(`protected` か `family`)、`display_name`、`device_key_hash`、`apns_token`、`apns_env` |
 | `invites` | `code`(6桁)、`family_id`、`expires_at`、`used_at` |
-| `alerts` | `id`、`family_id`、`source`(`sms`、`gmail`、`dns`、`page`、`call`、`consult`)、`level`(1、2、3)、`reasons`(JSON)、`summary`、`rule_level`、`claude_level`、`created_at`、`sender_key` と `domain_key`(送り主とドメインを家族の ID と合わせた SHA-256。1時間に1回にまとめるために使う)、`notified`(家族と母に知らせる行なら1。3段階と、まとめて知らせなかった行は0)、`protected_notified_at`(母への通知が届いた時刻。届くまでは空) |
+| `alerts` | `id`、`family_id`、`source`(`sms`、`gmail`、`dns`、`page`、`call`、`consult`)、`level`(1、2、3)、`reasons`(JSON)、`summary`、`rule_level`、`claude_level`、`created_at`、`sender_key` と `domain_key`(送り主とドメインを家族の ID と合わせ、`TOKEN_ENC_KEY` から HKDF で導いた鍵で取った HMAC-SHA256。鍵なしの SHA-256 では携帯の番号を総当たりで戻せるため(#53)。1時間に1回にまとめるために使う)、`notified`(家族と母に知らせる行なら1。3段階と、まとめて知らせなかった行は0)、`protected_notified_at`(母への通知が届いた時刻。届くまでは空) |
 | `cases` | `id`、`family_id`、`alert_id`、`state`(`notified`、`resolved`。前の版の `accepted` が残っていたら解決していないものとして扱う)、`assignee_member_id`(解決を押した家族)、`agent_session_id`、`notified_at`、`resolved_at`、`renotified_at`、`ai_reply`(AI が母に最後に答えたこと)、`family_notified_at`(家族に最初の知らせが届いた時刻。届くまでは空)、`family_notice_claimed_at`(最初の知らせを送る前に立て、届くか諦めたら空に戻す claim の時刻で、5分より古いものは次の送り手が引き継ぐ。#64)。`accepted_at` は残すが読み書きしない |
 | `relays` | `id`、`case_id`、`from_member_id`、`body`、`created_at`。家族から母への返事を外したので、読み書きせず、相談と一緒に消すだけにする(本番の D1 を変えないため、表は残す) |
 | `smiles` | `id`、`family_id`、`member_id`、`r2_key`、`score`、`note`(ひと言。決まった5つの語のどれかを語のまま入れる)、`created_at`。家族の誰の笑顔も入る。写真の無いひと言だけの行は `r2_key` を空の文字にし、「すべて消す」と30日の削除は R2 を消すときにその行を飛ばす(行は消す)。`note` と2つの `families` の列は2026年11月5日に #14 で足した(`0005`) |
@@ -298,6 +298,8 @@ Safari の拡張機能、背面タップ、DNS のサーバーが止まったと
 - 家族への知らせは、相談の ID を持つ `openCase` からだけ送る。受け手は母にだけ送る。枠を前もって確かめるときは、母の端末の数に家族の届く端末の数を足す
 - `enqueueJudge` が `crypto.randomUUID()` で知らせの ID(`alertId`)を作り、キューの本文に入れる。受け手はキューのメッセージの ID ではなく、本文のこの ID で `alerts` の行を作る。Cloudflare の文書はメッセージの ID がやり直しで変わらないとは書いていないためで、本文に ID が無いか UUID の形でないメッセージは、Claude を呼ばずに捨てる
 - `openCase` が `CaseNoticeDeferred` を投げたら、メッセージをやり直す。やり直しで届いた同じ本文は、家族に知らせる知らせの行(`notified = 1`。3段階と、1時間に1回にまとめて知らせなかった行は除く)があり、相談が無いか家族に届いていない(`family_notified_at` が空)ときは `openCase(env, alertId, budget)` だけを呼び、Claude の判定も母への通知も飛ばす。キューがやり直しをあきらめても相談の行は残り、5分ごとの Cron が1日のあいだ家族への最初の知らせを送り直す
+- 母への通知は、送る前に印(`protected_notified_at`)を条件つきの UPDATE で立て、送れなかったと分かったときだけ戻す。必ず送ることより二重に送らないことを取る。送る途中で Worker の処理が打ち切られると、印だけ残って母に届かないことがあり、それは受け入れる。家族への最初の知らせは期限つきの取り置き(`family_notice_claimed_at`)なので、打ち切られても期限が切れたあと Cron が送り直す(#53、2026年11月6日)
+- 1時間に1回のまとめは、母への通知が届いた知らせ(`protected_notified_at` が空でない行。母に端末が無ければ届いたとみなす)だけを数える。母のやり直しはキューの再配送しかないので、届いていない知らせで次の知らせを止めないため。そのとき家族には同じ送り主の知らせが2回届きうる(#53)
 
 **手順**
 

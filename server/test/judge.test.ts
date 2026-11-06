@@ -9,7 +9,7 @@ import { http, HttpResponse } from "msw";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExternalBudget } from "../src/budget";
 import { CaseNoticeDeferred, openCase } from "../src/cases";
-import { parseClaudeJudgment, type ClaudeJudgment } from "../src/claude";
+import { parseClaudeJudgment, soundsSafe, type ClaudeJudgment } from "../src/claude";
 import worker from "../src/index";
 import {
   DEDUPE_WINDOW_MS,
@@ -221,12 +221,24 @@ function pushesTo(tokens: string[]): Push[] {
   return pushes.filter((p) => tokens.includes(p.token));
 }
 
-/** Nothing stored or sent may tell anyone the message is safe. */
+/**
+ * Nothing stored or sent may tell anyone the message is safe. Each line people read (the reasons, the
+ * summary, a push's title and body) goes through the judge's own net, soundsSafe, so every word it
+ * holds (#53, 5: 大丈夫です, 詐欺ではありません and the rest) is checked here too. The JSON as a whole
+ * is also matched without sparing quotes, which soundsSafe would do.
+ */
 async function expectNothingSaysSafe(familyId: string) {
-  const stored = JSON.stringify(await alertsOf(familyId));
-  const sent = JSON.stringify(pushes);
-  for (const text of [stored, sent])
-    expect(text).not.toMatch(/安全|問題(は)?ありません|心配(は)?(ありません|いりません)|safe/i);
+  const alerts = await alertsOf(familyId);
+  const lines = [
+    ...alerts.flatMap((a) => [...(JSON.parse(a.reasons) as string[]), a.summary]),
+    ...pushes.flatMap((p) => [p.title ?? "", ...p.body.split("\n")]),
+  ];
+  for (const line of lines) expect(soundsSafe(line), line).toBe(false);
+  // Written out here as well, so a word dropped from soundsSafe still fails this check.
+  for (const text of [JSON.stringify(alerts), JSON.stringify(pushes)])
+    expect(text).not.toMatch(
+      /安全|safe|(大丈夫|だいじょうぶ)(?!(の|なの|です|でしょう|だろう)?か(?!ら|と思))|(問題|心配)(は|も|が)?(ありません|ございません|いりません|いらない|な[いさしくか]|無[いし]|無用|不要)(?!(の|です|でしょう)?か(?!ら|と思))|詐欺(では|じゃ)(ありません|ございません|な[いさしくか]|無[いし])(?!(の|です|でしょう)?か(?!ら))|危険(性)?(は|も|が)(ありません|ございません|な[いさしくか]|無[いし])(?!(の|です|でしょう)?か(?!ら|と思))/i,
+    );
 }
 
 async function caseOf(alertId: string | undefined) {
@@ -488,6 +500,38 @@ describe("judge consumer", () => {
     );
   });
 
+  // #53 (5): verdicts without the word 安全 reach neither the row nor any push.
+  it.each([
+    "大丈夫です",
+    "詐欺ではありません",
+    "心配いらない",
+    "問題なし",
+    "危険はありません",
+    // PR #175 review 1.
+    "大丈夫ですから",
+    "詐欺ではないから",
+    "大丈夫だと思います",
+    "危険性はありません",
+    // PR #175 review 2.
+    "問題ないかと思います",
+    "詐欺ではなかった",
+    "問題無いです",
+    "心配不要です",
+  ])(
+    "keeps the verdict %s out of everything stored and sent",
+    async (verdict) => {
+      const fam = await setupFamily();
+      const raw = { level: 2, reasons: [verdict], message_to_protected: verdict, injection_suspected: false };
+      const deps = fakes({ rule: { level: 2, reasons: ["急がせる言い回しがある"], confident: false }, claudeRaw: raw });
+      await run([smsJob(fam.familyId)], deps);
+      const [alert] = await alertsOf(fam.familyId);
+      // Claude's answer was taken (its level is on the row), so its reason was there to be dropped.
+      expect(alert?.claude_level).toBe(2);
+      expect(pushesTo([fam.tokens.mother])).toHaveLength(1);
+      await expectNothingSaysSafe(fam.familyId);
+    },
+  );
+
   // A reason that quotes the message in 「」 is not read as a verdict ("safe"), so the level stands.
   // It still does not go on the family's card: the quote is the received text cut out (#55).
   it("keeps the level for a reason that quotes the message in 「」, and puts the rules' reason on the card instead", async () => {
@@ -720,6 +764,27 @@ describe("judge consumer", () => {
       expect(pushesTo([fam.tokens.mother])).toHaveLength(2);
     });
 
+    // #53 (2): the mother's push is retried only by the queue, so an alert she never got must not keep
+    // the next one from the same sender from reaching her.
+    it("does not count an alert whose push never reached the mother", async () => {
+      const fam = await setupFamily();
+      failingTokens.add(fam.tokens.mother);
+      await run([smsJob(fam.familyId)], fakes({ now: T0 }));
+      expect(pushesTo([fam.tokens.mother])).toHaveLength(0);
+
+      failingTokens.clear();
+      await run([smsJob(fam.familyId)], fakes({ now: T0 + 10 * 60_000 }));
+      expect(pushesTo([fam.tokens.mother])).toHaveLength(1);
+    });
+
+    it("still counts an alert for a mother with no device, who counts as told", async () => {
+      const fam = await setupFamily();
+      await env.DB.prepare("UPDATE members SET apns_token = NULL WHERE id = ?").bind(fam.mother).run();
+      await run([smsJob(fam.familyId)], fakes({ now: T0 }));
+      await run([smsJob(fam.familyId)], fakes({ now: T0 + 10 * 60_000 }));
+      expect(pushesTo(fam.tokens.family)).toHaveLength(2);
+    });
+
     it("does not dedupe across families", async () => {
       const a = await setupFamily();
       const b = await setupFamily();
@@ -750,6 +815,54 @@ describe("judge consumer", () => {
     expect(JSON.stringify(row)).not.toMatch(/\+?819011112222|9011112222/);
     expect(JSON.stringify(others)).not.toContain("bank-check");
     expect(summary).toContain("bank-check.example");
+  });
+
+  // #53 (7): an unkeyed SHA-256 of the family id and a Japanese mobile number can be brute-forced back
+  // to the number, and the family id is in the same row. The keys are an HMAC under a key derived
+  // from TOKEN_ENC_KEY; without a usable TOKEN_ENC_KEY they stay the unkeyed digest, so judging goes on.
+  describe("the sender and domain keys", () => {
+    async function plainDigest(text: string): Promise<string> {
+      const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+      return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    async function keysWith(tokenKey: string | undefined, fam: Family, now = T0) {
+      const keyEnv = { ...judgeEnv, TOKEN_ENC_KEY: tokenKey } as Env;
+      const message = messageOf(queued(smsJob(fam.familyId)));
+      const batch = createMessageBatch<unknown>("mimamori-judge", [message]);
+      await handleJudgeBatch(batch, keyEnv, fakes({ now }));
+      return env.DB.prepare("SELECT sender_key, domain_key FROM alerts WHERE id = ?")
+        .bind(message.body.alertId)
+        .first<{ sender_key: string; domain_key: string }>();
+    }
+
+    it("are not the unkeyed digest that can be reversed by trying every number", async () => {
+      const fam = await setupFamily();
+      const row = await keysWith(env.TOKEN_ENC_KEY, fam);
+      expect(row?.sender_key).toMatch(/^[0-9a-f]{64}$/);
+      expect(row?.sender_key).not.toBe(await plainDigest(`${fam.familyId}\nsender\n+819011112222`));
+      expect(row?.domain_key).not.toBe(await plainDigest(`${fam.familyId}\ndomain\nbank-check.example`));
+    });
+
+    it("change with the key, and stay the same under one key", async () => {
+      const fam = await setupFamily();
+      const other = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
+      const a = await keysWith(env.TOKEN_ENC_KEY, fam);
+      const b = await keysWith(env.TOKEN_ENC_KEY, fam, T0 + 2 * DEDUPE_WINDOW_MS);
+      const c = await keysWith(other, fam, T0 + 4 * DEDUPE_WINDOW_MS);
+      expect(b?.sender_key).toBe(a?.sender_key);
+      expect(c?.sender_key).not.toBe(a?.sender_key);
+    });
+
+    it.each([undefined, "", "too-short"])(
+      "fall back to the unkeyed digest when TOKEN_ENC_KEY is %s, and the judge goes on",
+      async (tokenKey) => {
+        const fam = await setupFamily();
+        const row = await keysWith(tokenKey, fam);
+        expect(row?.sender_key).toBe(await plainDigest(`${fam.familyId}\nsender\n+819011112222`));
+        expect(pushesTo([fam.tokens.mother])).toHaveLength(1);
+      },
+    );
   });
 
   describe("when a notice does not get through", () => {
@@ -980,6 +1093,41 @@ describe("judge consumer", () => {
     expect(result.retryMessages).toHaveLength(2);
     expect(await alertsOf(fam.familyId)).toHaveLength(10);
     expect(pushes).toHaveLength(30);
+  });
+
+  // #53 (6): with three tickets a job, 40 leave one after 13 jobs. A check of the Claude call alone
+  // would start the 14th and call Claude for it.
+  it("does not start a job, or call Claude for it, when the tickets left cover Claude but not the pushes", async () => {
+    const fam = await setupFamily();
+    await env.DB.prepare("UPDATE members SET apns_token = NULL WHERE id = ?").bind(fam.family[1]).run();
+    const jobs = Array.from({ length: 14 }, (_, i) =>
+      smsJob(fam.familyId, { sender: `+8190000001${String(i).padStart(2, "0")}`, url: `https://t${i}.example/` }),
+    );
+    const deps = fakes();
+    const { result } = await run(jobs, deps);
+    expect(deps.claudeCalls).toBe(13);
+    expect(result.explicitAcks).toHaveLength(13);
+    expect(result.retryMessages).toHaveLength(1);
+    expect(await alertsOf(fam.familyId)).toHaveLength(13);
+  });
+
+  it("does not open the case of a redelivery when the tickets left do not cover the family's devices", async () => {
+    const fam = await setupFamily();
+    const message = messageOf(queued(smsJob(fam.familyId)));
+    await runMessages([message], fakes({ openCase: () => Promise.reject(new CaseNoticeDeferred("no_budget")) }));
+    expect(pushesTo([fam.tokens.mother])).toHaveLength(1);
+
+    // Ten new jobs use all 40 tickets; the redelivery after them needs two for the family.
+    const others = Array.from({ length: 10 }, (_, i) =>
+      messageOf(
+        queued(smsJob(fam.familyId, { sender: `+8190000002${String(i).padStart(2, "0")}`, url: `https://u${i}.example/` })),
+      ),
+    );
+    const deps = fakes();
+    const { result } = await runMessages([...others, redelivered(message, 2)], deps);
+    expect(deps.opened).toHaveLength(10);
+    expect(deps.opened).not.toContain(message.body.alertId);
+    expect(result.retryMessages).toHaveLength(1);
   });
 
   it("retries a job when the rules throw", async () => {
