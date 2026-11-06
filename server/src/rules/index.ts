@@ -12,7 +12,10 @@
 
 import { BRAND_WORDS, type HostTrust, imitatedBrandOf, normalizeHost, trustOf } from "./domains";
 import {
+  blankOut,
+  CODE_GUARD,
   CONTENT_RULES,
+  CREDENTIAL_GUARD,
   CREDENTIAL_FROM_CODE,
   INJECTION,
   LINK_BAIT,
@@ -250,8 +253,8 @@ export function judgeByRules(input: RuleInput): RuleResult {
   const add = (kind: string, strength: Strength, reason: string, spans: Array<[number, number]> = []) => {
     if (!signals.has(kind)) signals.set(kind, { kind, strength, reason, spans });
   };
-  const check = (rule: PhraseRule) => {
-    const spans = matchSpans(rule, text);
+  const check = (rule: PhraseRule, read: string = text) => {
+    const spans = matchSpans(rule, read);
     if (spans.length > 0) add(rule.kind, rule.strength, rule.reason, spans);
   };
 
@@ -286,23 +289,31 @@ export function judgeByRules(input: RuleInput): RuleResult {
   // is not official, a phone number, another part of the fake-police script, or moving money. The
   // digits are looked for after phone numbers are taken out, so "03-1234-5678" is no code.
   const hasPhone = PHONE_NUMBER.test(text);
-  const codeOnly =
+  const plain =
     (input.source === "sms" || input.source === "gmail") &&
     unofficialLinks.length === 0 &&
     !hasPhone &&
     !POLICE_SCRIPT.some((rule) => rule.kind !== "police_secrecy" && matchSpans(rule, text).length > 0) &&
-    matchSpans(MONEY_MOVE, text).length === 0 &&
-    OTP_ONLY.test(text) &&
-    OTP_DIGITS.test(text.replace(new RegExp(PHONE_NUMBER.source, "g"), " "));
+    matchSpans(MONEY_MOVE, text).length === 0;
+  const codeOnly =
+    plain && OTP_ONLY.test(text) && OTP_DIGITS.test(text.replace(new RegExp(PHONE_NUMBER.source, "g"), " "));
+  // In a message with nothing a scam adds, "このコードはご家族にも言わないで" protects the code (#51):
+  // those sentences are blanked out before the secrecy rules read the text. Anywhere else they count.
+  const hushText = plain ? blankOut(codeOnly ? blankOut(text, CODE_GUARD) : text, CREDENTIAL_GUARD) : text;
 
-  check(INJECTION);
+  check(INJECTION, hushText);
   // "このメッセージは無視して" counts only with a link that is not official. Genuine code messages
   // say it with a number to call, so a phone number alone does not make it count.
   if (unofficialLinks.length > 0) check(NOTICE_IGNORE);
   // A consultation that passes on a warning she heard or read (#81): the script's parts in it are what
   // the warning describes, so they are not signs, and Claude answers it. Text aimed at the app still is.
   const passedOn = input.source === "consult" && tellingOf(text) === "passed_on";
-  if (!passedOn) for (const rule of POLICE_SCRIPT) if (!(codeOnly && rule.kind === "police_secrecy")) check(rule);
+  if (!passedOn) {
+    for (const rule of POLICE_SCRIPT) {
+      if (rule.kind !== "police_secrecy") check(rule);
+      else if (!codeOnly) check(rule, hushText);
+    }
+  }
   for (const rule of CONTENT_RULES)
     check(codeOnly && rule.kind === CREDENTIAL_FROM_CODE.kind ? CREDENTIAL_FROM_CODE : rule);
   check(URGENCY);

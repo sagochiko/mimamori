@@ -742,6 +742,51 @@ describe("genuine code and bank notices", () => {
   });
 });
 
+// #51 (PR #40 review, item 4): a genuine notice says not to tell the family the code or the PIN, with
+// any verb. What tells it from a scam is what is not to be told: the code or the PIN itself, in a
+// message that has nothing a scam adds. A matter ("この件", "このこと") is still the scam's secrecy.
+describe("not telling the family a code or a PIN", () => {
+  it.each([
+    ["sms", undefined, "認証コード 123456。このコードはご家族にも伝えないでください。"],
+    ["sms", undefined, "認証コード 123456。このコードはご家族にも言わないでください。"],
+    ["sms", undefined, "認証コード 123456。ご家族や他人に絶対に伝えないでください。"],
+    ["sms", undefined, "認証コード 123456。ご家族や他人に絶対に言わないでください。"],
+    ["gmail", "info@smbc.co.jp", "暗証番号はご家族にも伝えないようにしてください。"],
+    ["gmail", "info@smbc.co.jp", "暗証番号は、ご家族にも言わないようにしてください。"],
+    ["gmail", "info@smbc.co.jp", "パスワードを絶対にご家族にも話さないでください。"],
+  ] as const)("leaves a %s notice at null: %s", (source, sender, text) => {
+    const result = judge({ source, sender, text });
+    expect(result.level).toBeNull();
+    expect(result.confident).toBe(false);
+  });
+
+  it("does not raise a family's own secret about the son", () => {
+    expect(judge({ source: "sms", text: "息子の誕生日のことは内緒にしておいてね" }).level).toBeNull();
+  });
+
+  it.each([
+    "認証コード 1234。家族に知らせないでください。",
+    "認証コード 1234。この件は家族に言わないでください。",
+    "認証コード 1234。このことはご家族にも伝えないでください。",
+    "暗証番号を確認しますので、家族には言わないでください。",
+    "暗証番号を確認しますので家族には言わないでください。",
+    "息子には内緒にしておいてね",
+    "息子さんにはこのことを言わないでください",
+    "ご家族と相談しないでください",
+  ])("still raises the scam's secrecy: %s", (text) => {
+    expect(judge({ source: "sms", text }).level).toBe(1);
+  });
+
+  it.each([
+    // A scam that adds the genuine sentence keeps every other sign it had.
+    "【警視庁】あなたの口座が犯罪に使われています。暗証番号はご家族にも言わないでください。",
+    "暗証番号はご家族にも伝えないでください。あなたの口座が犯罪に使われています。至急 03-0000-0000 へ",
+    "認証コード 1234。ご家族や他人に絶対に言わないで、安全な口座に送金してください。",
+  ])("does not lower a scam that adds it: %s", (text) => {
+    expect(judge({ source: "sms", text }).level).toBe(1);
+  });
+});
+
 describe("links to pages anyone can make", () => {
   it("counts a delivery notice that links to an Apps Script page", () => {
     expect(
