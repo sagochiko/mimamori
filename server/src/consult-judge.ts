@@ -752,8 +752,9 @@ function plan(
   claude: ClaudeConsult | null,
   history: readonly ConsultTurn[],
   floor: RuleResult = rule,
+  image = false,
 ): Plan {
-  const p = decidePlan(said, rule, claude, floor);
+  const p = decidePlan(said, rule, claude, floor, image);
   // Text aimed at the AI or at keeping the family out, in this turn or in any earlier one (an "ai"
   // turn too: it came from her device, and Claude read it).
   const earlierSteers = history.some((t) => matchSpans(CONSULT_INJECTION, normalize(t.text)).length > 0);
@@ -836,6 +837,7 @@ function decidePlan(
   rule: RuleResult,
   claude: ClaudeConsult | null,
   floor: RuleResult,
+  image: boolean,
 ): Omit<Plan, "summary"> {
   // Her words carry text that tries to switch the warning off or keep the family out: the rules'
   // level is the floor, whatever Claude answers and whether or not it flags it. `floor` is the rules
@@ -860,10 +862,18 @@ function decidePlan(
   // point back by any word ("次は何を押すの?"): Claude's phone guidance is then checked too, and
   // guidance on one of them is not read out (review of PR #79, second round).
   const askedEarlier = said.earlier.some((t) => SENSITIVE.some(({ pattern }) => pattern.test(normalize(t))));
-  const guided =
-    askedEarlier && claude !== null && claude.kind === "help"
-      ? SENSITIVE.filter(({ pattern }) => pattern.test(normalize(claude.action))).map((s) => s.reason)
+  // With an image she shared, what the consultation is about is on the image, which only Claude reads,
+  // and her words may be none: the same nets are cast over what Claude wrote for phone help (its
+  // action, reasons, and topic), whatever she asked before. A screenshot of a scam message that Claude
+  // takes for phone help gets no free guidance, no circle, and a topic the AI does not guide goes to
+  // the family (review 1 of PR #186).
+  const claudeLines =
+    image && claude !== null && claude.kind === "help"
+      ? [claude.action, ...claude.reasons, claude.topic ?? ""].map(normalize)
       : [];
+  const guidedLines =
+    askedEarlier && claude !== null && claude.kind === "help" ? [normalize(claude.action), ...claudeLines] : claudeLines;
+  const guided = SENSITIVE.filter(({ pattern }) => guidedLines.some((l) => pattern.test(l))).map((s) => s.reason);
   const sensitive = [...new Set([...ownSensitive, ...guided])];
   const reasons = [...decision.reasons];
   // Her own words only (Plan.unguided): guidance Claude wrote that hits such a topic is Claude's answer.
@@ -884,6 +894,8 @@ function decidePlan(
     sensitive.length === 0 &&
     level === 3 &&
     rule.level === null &&
+    // An image is what "これ何" points at (review 1 of PR #186).
+    !image &&
     pointsAtNothing(said)
   ) {
     return { level, reasons, reply: ASK_AGAIN_REPLY, toFamily: false, record: false, sign: false, ...base };
@@ -931,7 +943,11 @@ function decidePlan(
     const reply = lowConcernReply(basis, readable(claude.action) ? claude.action : null);
     return { level, reasons, reply, toFamily: false, record: true, sign: false, ...base };
   }
-  if (claude !== null && claude.kind === "help" && (told.some((t) => CONTACT.test(t)) || rule.reasons.length > 0)) {
+  if (
+    claude !== null &&
+    claude.kind === "help" &&
+    (told.some((t) => CONTACT.test(t)) || claudeLines.some((l) => CONTACT.test(l)) || rule.reasons.length > 0)
+  ) {
     // About a message, a call, or a link, or the rules saw something: not Claude's free guidance.
     return { level: 3, reasons, reply: LOW_CONCERN_ACTION, toFamily: false, record: true, sign: false, ...base };
   }
@@ -940,7 +956,9 @@ function decidePlan(
     return { level: 2, reasons: why, reply: UNANSWERED_REPLY, toFamily: true, record: true, sign: false, ...base };
   }
   const tap = claude.tap ? { tap: claude.tap } : {};
-  return { level, reasons, reply: claude.action, toFamily: false, record: false, sign: false, ...base, ...tap };
+  // Guidance on an image is written down (level 3, no notice), so the family can look at it later:
+  // the nets above see only Claude's words for what was on it (review 1 of PR #186).
+  return { level, reasons, reply: claude.action, toFamily: false, record: image, sign: false, ...base, ...tap };
 }
 
 /** Her words in this turn and her earlier turns, never the AI's. */
@@ -989,6 +1007,8 @@ export async function judgeConsult(
   history: readonly ConsultTurn[],
   ask: (rule: RuleResult) => Promise<ClaudeConsult | null>,
   rules: (input: RuleInput) => RuleResult = judgeByRules,
+  /** She shared an image with it (POST /consult `image`). */
+  image = false,
 ): Promise<ConsultJudgment> {
   const { rule, script } = consultByRules(text, history, rules);
   const said = saidIn(text, history);
@@ -1003,5 +1023,5 @@ export async function judgeConsult(
   const goesOn = pointsBack(text) || CONTACT.test(normalize(text)) || rule.reasons.length > 0;
   const earlierKeepsOut = goesOn && said.earlier.some((t) => matchSpans(CONSULT_INJECTION, normalize(t)).length > 0);
   const floor = earlierKeepsOut ? rules({ source: "consult", text: allOf(said).join("\n") }) : rule;
-  return { ...plan(said, rule, claude, history, floor), script, rule };
+  return { ...plan(said, rule, claude, history, floor, image), script, rule };
 }

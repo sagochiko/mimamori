@@ -242,6 +242,7 @@ export async function consult(
       }
     },
     deps.judgeByRules,
+    image !== undefined,
   );
   const said = saidIn(text, history);
   if (!p.record) return answer(p.reply, false, tapOn(image, p.tap));
@@ -280,7 +281,7 @@ export async function consult(
   const reply = p.toFamily && !(await familyWasTold(env, caseId)) ? notReachedReply(p.reply) : p.reply;
   // She hears the whole answer; the card gets a fixed line instead when the answer repeats her words.
   if (caseId !== null) await recordAiReply(env, caseId, repeats(reply, allOf(said)) ? AI_REPLY_ON_CARD : reply);
-  return answer(reply, p.toFamily);
+  return answer(reply, p.toFamily, tapOn(image, p.tap));
 }
 
 /**
@@ -306,6 +307,12 @@ export function parseHistory(value: unknown): ConsultTurn[] {
  */
 export const IMAGE_MAX_BASE64_CHARS = 3_000_000;
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+/**
+ * Only this much of each end of `data` is checked: the whole of it took about 9.5 ms on Node for 3
+ * million characters (review 1 of PR #186), the free plan's whole CPU time. Broken base64 in between
+ * is refused by Claude with a 400, which is an answer the AI could not give.
+ */
+const BASE64_CHECKED_CHARS = 256;
 
 /**
  * `image` as POST /consult takes it: absent, or { mediaType, data, width, height } with a JPEG or PNG
@@ -320,7 +327,8 @@ export function parseImage(value: unknown): ConsultImage | undefined {
   if (mediaType !== "image/jpeg" && mediaType !== "image/png") throw invalid;
   if (typeof data !== "string" || data === "") throw invalid;
   if (data.length > IMAGE_MAX_BASE64_CHARS) throw new HttpError(413, "consult_image_too_large");
-  if (data.length % 4 !== 0 || !BASE64.test(data)) throw invalid;
+  const ends = [data.slice(0, BASE64_CHECKED_CHARS), data.slice(-BASE64_CHECKED_CHARS)];
+  if (data.length % 4 !== 0 || !ends.every((e) => BASE64.test(e))) throw invalid;
   if (!Number.isInteger(width) || !Number.isInteger(height)) throw invalid;
   const w = width as number;
   const h = height as number;
