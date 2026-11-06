@@ -1282,16 +1282,16 @@ hand mm-reviewer "$report" | env -u MM_RAW_REPORT_DIR CLAUDE_PROJECT_DIR="$T/wt"
 ls "$R/docs/audits/raw"/*-mm-reviewer-a4d2c8f1.md >/dev/null 2>&1 && [[ ! -d "$T/wt/docs/audits/raw" ]] ||
   { echo "hook test failed: save-report writes raw reports into the main tree, also from a worktree"; fail=1; }
 # /mm-task step 6.1 as written: the one script line, run twice from the worktree (a failed post is retried).
-tpl=$(grep -m1 '^   scripts/review-record.sh <YYYYMMDD-HHMM>-mm-reviewer-<id>.md ' .claude/skills/mm-task/SKILL.md | sed 's/^   //')
+tpl=$(grep -m1 '^   scripts/review-record.sh <id> ' .claude/skills/mm-task/SKILL.md | sed 's/^   //')
 rname=$(basename "$(ls "$R/docs/audits/raw"/*-mm-reviewer-a4d2c8f1.md | head -1)")
 mkdir -p "$T/sp"
-tpl=${tpl//<YYYYMMDD-HHMM>-mm-reviewer-<id>.md/$rname}
+tpl=${tpl//<id>/a4d2c8f1}
 tpl=${tpl//<round>/1}
-tpl=${tpl//<reviewed commit>/HEAD}
 tpl=${tpl//<scratchpad>/$T/sp}
 tpl=${tpl//<issue>/12}
 tpl=${tpl/scripts\/review-record.sh/$PWD/scripts/review-record.sh}
 # Run it only when it is the line we expect: one line, the script, and no gh (the real gh is on PATH here).
+wt0=$(git -C "$T/wt" rev-parse --short HEAD)
 if [[ -n "$tpl" && $(wc -l <<<"$tpl") -eq 1 && "$tpl" != *gh\ * && "$tpl" != *"<"* ]]; then
   for round in 1 2; do
     (cd "$T/wt" && git config user.name t && git config user.email t@t && bash -c "$tpl") >/dev/null 2>&1 || { echo "skill test failed: the step 6.1 line fails on run $round"; fail=1; }
@@ -1302,6 +1302,8 @@ fi
 [[ -s "$T/wt/docs/audits/raw/$rname" && ! -e "$R/docs/audits/raw/$rname" ]] && grep -q 'Status: changes needed' "$T/sp/review-comment.md" &&
   [[ "$(head -1 "$T/sp/review-comment.md")" == "## mm-reviewer の報告(原文)" ]] ||
   { echo "skill test failed: the step 6.1 line moves the report into the worktree and builds the comment"; fail=1; }
+grep -q "^1回目、$wt0 を読んだもの" "$T/sp/review-comment.md" ||
+  { echo "skill test failed: the step 6.1 line with HEAD names the reviewed commit, also on the retry"; fail=1; }
 
 # scan-private.sh history applies the same scope: shapes in the rules and in raw reports pass, private
 # terms do not. Times of day are not checked there, in documents or messages: commits are not rewritten.
@@ -1419,4 +1421,58 @@ rr0=$(git -C "$rw" rev-parse --short HEAD~1)
 ( cd "$rw" && "$rr" 20261106-0000-mm-reviewer-none.md 1 HEAD "$T/rr-x.md" >/dev/null 2>&1 ) ||
   ( cd "$rw" && "$rr" "$rn" 1 no-such-commit "$T/rr-x.md" >/dev/null 2>&1 ) &&
   { echo "review-record test failed: a missing report or an unknown commit stops the run"; fail=1; }
+# The reviewer's agent id (8 hex characters) in place of the file name, so the main session never
+# builds the name with $(ls ... | grep <id>) (it drew permission prompts on 2026-11-06 and 2026-11-07).
+ri=20261107-0000-mm-reviewer-11112222.md
+printf 'ステータス: 承認\n\nid で探す\n' >"$rm_/docs/audits/raw/$ri"
+n2=$(git -C "$rw" rev-list --count HEAD) rr1=$(git -C "$rw" rev-parse --short HEAD)
+( cd "$rw" && "$rr" 11112222 2 HEAD "$T/rr-id.md" >/dev/null 2>&1 ) && [[ ! -e "$rm_/docs/audits/raw/$ri" && -s "$rw/docs/audits/raw/$ri" ]] &&
+  sed -n 3p "$T/rr-id.md" | grep -q "^2回目、$rr1 を読んだもの。保存した原文は \`docs/audits/raw/$ri\`" &&
+  [[ "$(git -C "$rw" rev-list --count HEAD)" == $((n2 + 1)) ]] ||
+  { echo "review-record test failed: an id with one saved report uses that report"; fail=1; }
+# A retry after a failed post, HEAD written as before: HEAD is now the script's own commit of the
+# report, so the comment still names the commit the reviewer read.
+( cd "$rw" && "$rr" 11112222 2 HEAD "$T/rr-id.md" >/dev/null 2>&1 ) && grep -q "^2回目、$rr1 を読んだもの" "$T/rr-id.md" &&
+  [[ "$(git -C "$rw" rev-list --count HEAD)" == $((n2 + 1)) ]] ||
+  { echo "review-record test failed: a retry with HEAD names the reviewed commit, not the report's own commit"; fail=1; }
+out=$(cd "$rw" && "$rr" 99999999 1 HEAD "$T/rr-x.md" 2>&1) &&
+  { echo "review-record test failed: an id with no saved report stops the run"; fail=1; }
+[[ "$out" == *"no saved reviewer report for 99999999"* ]] ||
+  { echo "review-record test failed: an id with no saved report says so"; fail=1; }
+printf 'a\n' >"$rm_/docs/audits/raw/20261107-0001-mm-reviewer-33334444.md"
+printf 'b\n' >"$rw/docs/audits/raw/20261107-0002-mm-reviewer-33334444.md"
+out=$(cd "$rw" && "$rr" 33334444 1 HEAD "$T/rr-x.md" 2>&1) &&
+  { echo "review-record test failed: an id with two saved reports stops the run"; fail=1; }
+[[ "$out" == *"20261107-0001-mm-reviewer-33334444.md"* && "$out" == *"20261107-0002-mm-reviewer-33334444.md"* &&
+  -s "$rm_/docs/audits/raw/20261107-0001-mm-reviewer-33334444.md" ]] ||
+  { echo "review-record test failed: an id with two saved reports names both and moves neither"; fail=1; }
+rm -f "$rm_/docs/audits/raw/20261107-0001-mm-reviewer-33334444.md" "$rw/docs/audits/raw/20261107-0002-mm-reviewer-33334444.md"
+# The second round goes to the same reviewer by SendMessage, so its report has the same id (PR #185's
+# review). Round 1 is already committed on the branch and round 2 waits in the main tree: the id
+# picks round 2, and a retry of round 2 after its commit picks it again.
+r1=20261107-0010-mm-reviewer-55556666.md r2=20261107-0020-mm-reviewer-55556666.md
+printf 'ステータス: 直すべき指摘あり\n\n1回目\n' >"$rm_/docs/audits/raw/$r1"
+( cd "$rw" && "$rr" "$r1" 1 HEAD "$T/rr-r.md" >/dev/null 2>&1 ) || { echo "review-record test failed: round 1 by name did not finish"; fail=1; }
+printf 'ステータス: 承認\n\n2回目\n' >"$rm_/docs/audits/raw/$r2"
+( cd "$rw" && "$rr" 55556666 2 HEAD "$T/rr-r.md" >/dev/null 2>&1 ) && grep -q '^2回目$' "$T/rr-r.md" && ! grep -q '^1回目$' "$T/rr-r.md" &&
+  grep -q "保存した原文は \`docs/audits/raw/$r2\`" "$T/rr-r.md" && [[ ! -e "$rm_/docs/audits/raw/$r2" ]] &&
+  git -C "$rw" ls-files --error-unmatch "docs/audits/raw/$r2" >/dev/null 2>&1 ||
+  { echo "review-record test failed: an id whose round 1 is committed picks round 2 from the main tree"; fail=1; }
+( cd "$rw" && "$rr" 55556666 2 HEAD "$T/rr-r.md" >/dev/null 2>&1 ) && grep -q '^2回目$' "$T/rr-r.md" ||
+  { echo "review-record test failed: a retry of round 2 by id, both rounds committed, picks the newest"; fail=1; }
+# A report already on the branch is used for the id only when its commit says the same round, so an
+# earlier round is never posted as this one (PR #185's second review): round 2 before its report
+# is saved, and round 3 when rounds 1 and 2 are on the branch, both stop and name the files.
+r7=20261107-0030-mm-reviewer-77778888.md
+printf 'ステータス: 直すべき指摘あり\n\n1回目だけ\n' >"$rm_/docs/audits/raw/$r7"
+( cd "$rw" && "$rr" "$r7" 1 HEAD "$T/rr-r7.md" >/dev/null 2>&1 ) || { echo "review-record test failed: round 1 of 77778888 by name did not finish"; fail=1; }
+n3=$(git -C "$rw" rev-list --count HEAD)
+out=$(cd "$rw" && "$rr" 77778888 2 HEAD "$T/rr-r7b.md" 2>&1) &&
+  { echo "review-record test failed: round 2 by id with only round 1 on the branch stops"; fail=1; }
+[[ "$out" == *"$r7"* && ! -e "$T/rr-r7b.md" && "$(git -C "$rw" rev-list --count HEAD)" == "$n3" ]] ||
+  { echo "review-record test failed: round 2 by id with only round 1 on the branch names the file and writes nothing"; fail=1; }
+out=$(cd "$rw" && "$rr" 55556666 3 HEAD "$T/rr-r3.md" 2>&1) &&
+  { echo "review-record test failed: round 3 by id with rounds 1 and 2 on the branch stops"; fail=1; }
+[[ "$out" == *"$r1"* && "$out" == *"$r2"* && ! -e "$T/rr-r3.md" ]] ||
+  { echo "review-record test failed: round 3 by id with rounds 1 and 2 on the branch names both and writes nothing"; fail=1; }
 exit $fail
