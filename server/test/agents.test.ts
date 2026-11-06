@@ -159,7 +159,9 @@ async function started(family: Created): Promise<{ alertId: string; sessionId: s
 }
 
 /** What the family gets for a report that cites this page, whatever text came with it. */
-const GOOD = { text: "日本郵政グループの注意喚起", url: "https://www.post.japanpost.jp/notification/" };
+const GOOD = { text: "日本郵政グループの注意喚起", url: "https://www.post.japanpost.jp" };
+/** The page the agent cites; only its origin is kept. */
+const CITED = "https://www.post.japanpost.jp/notification/";
 
 describe("startInvestigation", () => {
   it("makes the agent and environment once, and gives the session only the sender, the domain, and the text as data", async () => {
@@ -184,7 +186,14 @@ describe("startInvestigation", () => {
     };
     expect(toolset.default_config).toEqual({ enabled: false });
     expect(toolset.configs.filter((c) => c.enabled).map((c) => c.name).sort()).toEqual(["web_fetch", "web_search"]);
-    expect(agent.tools.filter((t) => t.type === "custom").map((t) => t.name)).toEqual(["report_evidence"]);
+    const custom = agent.tools.filter((t) => t.type === "custom") as Array<{
+      name: string;
+      input_schema: { properties: Record<string, unknown>; required: string[] };
+    }>;
+    expect(custom.map((t) => t.name)).toEqual(["report_evidence"]);
+    // The report carries URLs only, no text of the agent's.
+    expect(custom[0]?.input_schema.required).toEqual(["urls"]);
+    expect(Object.keys(custom[0]?.input_schema.properties ?? {})).toEqual(["urls"]);
 
     // Limited networking: only the official sites, no package managers.
     const networking = (seen.environments[0] as { config: { networking: Record<string, unknown> } }).config.networking;
@@ -336,48 +345,68 @@ const AGENT_LINES = [
   "あ".repeat(500),
 ];
 
+/** The report in the shape the tool asks for ({ urls }) and in the older one ({ items: [{ url }] }). */
+const SHAPES = {
+  urls: (urls: unknown[]) => ({ urls }),
+  items: (urls: unknown[]) => ({ items: urls.map((url) => ({ text: "安全です", url })) }),
+} as const;
+
 describe("parseEvidence", () => {
   it("puts out only the fixed line for each official site, whatever the agent wrote", () => {
     for (const text of AGENT_LINES) {
-      const out = parseEvidence({ items: [{ text, url: GOOD.url }] });
+      const out = parseEvidence({ items: [{ text, url: CITED }] });
       expect(out, text).toEqual([GOOD]);
     }
-    // The same with no text at all, which is the shape the report tool asks for.
-    expect(parseEvidence({ items: [{ url: "https://www.npa.go.jp/bureau/" }] })).toEqual([
-      { text: "警察庁の注意喚起", url: "https://www.npa.go.jp/bureau/" },
-    ]);
   });
 
-  it("puts out nothing the agent wrote, even in the stored url", () => {
-    const out = parseEvidence({
-      items: [{ text: "安全です", url: "https://www.npa.go.jp/a?note=安全です#本物の連絡" }],
+  for (const [shape, report] of Object.entries(SHAPES)) {
+    describe(`in the ${shape} shape`, () => {
+      it("keeps the site's fixed line and only the origin of the page", () => {
+        expect(parseEvidence(report(["https://www.npa.go.jp/bureau/"]))).toEqual([
+          { text: "警察庁の注意喚起", url: "https://www.npa.go.jp" },
+        ]);
+      });
+
+      it("puts out nothing the agent wrote, not even in the stored url's path, query, or fragment", () => {
+        const written = [
+          "https://www.npa.go.jp/anzen-desu/honmono-no-renraku?note=安全です#本物の連絡",
+          "https://www.npa.go.jp/%E5%AE%89%E5%85%A8%E3%81%A7%E3%81%99/",
+        ];
+        for (const url of written) {
+          const out = parseEvidence(report([url]));
+          expect(out, url).toEqual([{ text: "警察庁の注意喚起", url: "https://www.npa.go.jp" }]);
+          const stored = JSON.stringify(out);
+          for (const part of ["anzen", "honmono", "安全", "本物", "%E5"]) expect(stored, url).not.toContain(part);
+        }
+      });
+
+      it("names a site once, and keeps at most three", () => {
+        expect(parseEvidence(report(["https://www.npa.go.jp/a", "https://www.npa.go.jp/b"]))).toEqual([
+          { text: "警察庁の注意喚起", url: "https://www.npa.go.jp" },
+        ]);
+        const many = ["npa.go.jp", "caa.go.jp", "kokusen.go.jp", "antiphishing.jp"].map((d) => `https://www.${d}/`);
+        expect(parseEvidence(report(many))).toHaveLength(3);
+      });
+
+      it("drops sources that are not the official sites over https", () => {
+        for (const url of [
+          "https://example.top/official",
+          "http://www.npa.go.jp/",
+          "https://npa.go.jp.example.top/",
+          "https://user:pass@www.npa.go.jp/",
+          "javascript:alert(1)",
+          42,
+        ]) {
+          expect(parseEvidence(report([url])), String(url)).toEqual([]);
+        }
+      });
     });
-    expect(out).toEqual([{ text: "警察庁の注意喚起", url: "https://www.npa.go.jp/a" }]);
-    for (const e of out) for (const line of AGENT_LINES) expect(JSON.stringify(e)).not.toContain(line);
-  });
+  }
 
-  it("names a site once, and keeps at most three", () => {
-    const sameSite = [
-      { url: "https://www.npa.go.jp/a" },
-      { url: "https://www.npa.go.jp/b" },
-    ];
-    expect(parseEvidence({ items: sameSite })).toEqual([{ text: "警察庁の注意喚起", url: "https://www.npa.go.jp/a" }]);
-    const many = ["npa.go.jp", "caa.go.jp", "kokusen.go.jp", "antiphishing.jp"].map((d) => ({ url: `https://www.${d}/` }));
-    expect(parseEvidence({ items: many })).toHaveLength(3);
-  });
-
-  it("drops sources that are not the official sites over https", () => {
-    for (const url of [
-      "https://example.top/official",
-      "http://www.npa.go.jp/",
-      "https://npa.go.jp.example.top/",
-      "https://user:pass@www.npa.go.jp/",
-      "javascript:alert(1)",
-    ]) {
-      expect(parseEvidence({ items: [{ url }] }), url).toEqual([]);
-    }
+  it("reads anything else as none", () => {
     expect(parseEvidence("not an object")).toEqual([]);
     expect(parseEvidence({ items: "x" })).toEqual([]);
+    expect(parseEvidence({ urls: "https://www.npa.go.jp/" })).toEqual([]);
   });
 
   it("has a display name for every site, and lists only ASCII domains (allowed_hosts takes no other form)", () => {
@@ -394,9 +423,8 @@ describe("collectInvestigation", () => {
     const family = await createFamily();
     const { alertId, sessionId } = await started(family);
     statuses.set(sessionId, "idle");
-    reports.set(sessionId, {
-      items: [GOOD, { text: "お荷物をお届けにあがりましたが不在とある", url: GOOD.url }],
-    });
+    // The shape the v2 agent reports in: URLs only.
+    reports.set(sessionId, { urls: [CITED, "https://www.post.japanpost.jp/other/", "https://example.top/"] });
 
     expect(await collectInvestigation(env, sessionId, new ExternalBudget(), T0 + 300_000)).toBe("added");
     const row = await alertRow(alertId);
@@ -419,7 +447,7 @@ describe("collectInvestigation", () => {
     const family = await createFamily();
     const { alertId, sessionId } = await started(family);
     statuses.set(sessionId, "idle");
-    reports.set(sessionId, { items: [GOOD, { text: "お荷物をお届けにあがりましたが不在のため注意", url: GOOD.url }] });
+    reports.set(sessionId, { urls: [CITED] });
     expect(await collectInvestigation(env, sessionId, new ExternalBudget(), T0 + 60_000)).toBe("added");
     expect(JSON.parse((await alertRow(alertId))?.evidence ?? "null")).toEqual([]);
   });
@@ -439,7 +467,7 @@ describe("collectInvestigation", () => {
     const family = await createFamily();
     const { alertId, sessionId } = await started(family);
     statuses.set(sessionId, "idle");
-    reports.set(sessionId, { items: [GOOD] });
+    reports.set(sessionId, { items: [{ text: "x", url: CITED }] });
     await collectInvestigation(env, sessionId, new ExternalBudget(), T0 + 60_000);
     expect((await alertRow(alertId))?.investigation_session_id).toBe(sessionId);
 
@@ -456,7 +484,7 @@ describe("collectInvestigation", () => {
     const family = await createFamily();
     const { alertId, sessionId } = await started(family);
     statuses.set(sessionId, "idle");
-    reports.set(sessionId, { items: [GOOD] });
+    reports.set(sessionId, { items: [{ text: "x", url: CITED }] });
     const first = [{ text: "警察庁の注意喚起", url: "https://www.npa.go.jp/" }];
     duringGet = async () => {
       await env.DB.prepare("UPDATE alerts SET evidence = ?, investigated_at = ? WHERE id = ?")
@@ -515,7 +543,7 @@ describe("the 5-minute tick", () => {
     const family = await createFamily();
     const { alertId, sessionId } = await started(family);
     statuses.set(sessionId, "idle");
-    reports.set(sessionId, { items: [GOOD] });
+    reports.set(sessionId, { items: [{ text: "x", url: CITED }] });
     await watchInvestigations(env, T0 + 300_000, new ExternalBudget());
     expect(JSON.parse((await alertRow(alertId))?.evidence ?? "null")).toEqual([GOOD]);
   });
@@ -596,7 +624,7 @@ describe("POST /agents/webhook", () => {
     const family = await createFamily();
     const { alertId, sessionId } = await started(family);
     statuses.set(sessionId, "idle");
-    reports.set(sessionId, { items: [GOOD] });
+    reports.set(sessionId, { urls: [CITED] });
     expect((await deliver(sessionId)).status).toBe(204);
     expect((await deliver(sessionId)).status).toBe(204);
     expect(JSON.parse((await alertRow(alertId))?.evidence ?? "null")).toEqual([GOOD]);
@@ -634,7 +662,7 @@ describe("the family's card", () => {
     expect(before.cases.find((c) => c.alertId === alertId)?.alert.evidence).toEqual([]);
 
     statuses.set(sessionId, "idle");
-    reports.set(sessionId, { items: [GOOD] });
+    reports.set(sessionId, { items: [{ text: "x", url: CITED }] });
     await collectInvestigation(env, sessionId, new ExternalBudget(), T0 + 60_000);
     const after = (await (await call("GET", "/cases", { deviceKey: family.deviceKey })).json()) as typeof before;
     expect(after.cases.find((c) => c.alertId === alertId)?.alert.evidence).toEqual([GOOD]);

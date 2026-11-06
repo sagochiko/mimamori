@@ -117,8 +117,9 @@ function allowedHosts(): string[] {
 }
 
 /**
- * The official site a URL is on and the URL without its query and fragment, or null. https only, no
- * credentials. The query and fragment go because the agent chose the URL and could write into them.
+ * The official site a URL is on and the URL's origin, or null. https only, no credentials. The path,
+ * query, and fragment go because the agent chose the URL and could write into any of them; what is
+ * kept in D1 and sent with GET /cases is the site alone (review 5 of PR #183).
  */
 function officialSource(url: string): { site: string; url: string } | null {
   let parsed: URL;
@@ -130,7 +131,7 @@ function officialSource(url: string): { site: string; url: string } | null {
   if (parsed.protocol !== "https:" || parsed.username !== "" || parsed.password !== "") return null;
   const host = parsed.hostname.toLowerCase();
   const site = OFFICIAL_SITES.find((d) => host === d || host.endsWith(`.${d}`));
-  return site === undefined ? null : { site, url: `${parsed.origin}${parsed.pathname}` };
+  return site === undefined ? null : { site, url: parsed.origin };
 }
 
 const RESEARCH_SYSTEM = `あなたは、離れて住む家族の iPhone に届いた怪しいメッセージについて、公式の注意喚起を調べる係です。調べた結果は家族のカードに「根拠」として足されます。
@@ -327,7 +328,7 @@ export interface Evidence {
 
 /**
  * The evidence for the family's card from the report tool's input: one fixed line per official site
- * the agent cited, "<表示名>の注意喚起", with the page's URL. Whatever the agent wrote is ignored, so it
+ * the agent cited, "<表示名>の注意喚起", with the site's origin. Whatever the agent wrote is ignored, so it
  * cannot tell the family the message is fine, quote what arrived, or carry a number. A source that is
  * not an official site over https is dropped (a page the agent read could have told it to cite the
  * scam's link). Both the shape the tool asks for ({ urls }) and items with a url are read.
