@@ -23,6 +23,18 @@ struct RoleSelectionView: View {
       .buttonStyle(BigButtonStyle(prominent: false))
       .accessibilityLabel("家族")
       .accessibilityHint("見守る家族のスマホで選びます。家族を作るか、6桁のコードで入ります")
+
+      // The judges' build only (#100). The mother's build carries her family's token, so she never sees it.
+      if AppConfig.isDemo {
+        NavigationLink {
+          DemoView()
+        } label: {
+          Label("体験", systemImage: "play.circle")
+        }
+        .buttonStyle(BigButtonStyle(prominent: false))
+        .accessibilityLabel("体験")
+        .accessibilityHint("家族に入らずに、母の画面と家族に届くカードをこのiPhoneで見られます。誰にも知らせません")
+      }
       Spacer()
     }
     .padding(24)

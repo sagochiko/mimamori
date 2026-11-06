@@ -7,6 +7,8 @@ import SwiftUI
 /// one line, with "解決にする" and "やめる" and no sentence of its own (#60).
 struct CaseCardView: View {
   let card: FamilyCard
+  /// "解決にする". Nil sends `POST /cases/{id}/resolve`; the judges' tour resolves in its own state.
+  var onResolve: ((Case) -> Void)? = nil
   @Environment(AppModel.self) private var model
   @Environment(\.openURL) private var openURL
   @State private var askingNumber = false
@@ -54,7 +56,7 @@ struct CaseCardView: View {
       ForEach(ResolveChoice.allCases, id: \.self) { choice in
         Button(choice.title, role: choice == .cancel ? .cancel : nil) {
           if let chosen = confirmation.choose(choice) {
-            Task { await model.resolve(chosen) }
+            if let onResolve { onResolve(chosen) } else { Task { await model.resolve(chosen) } }
           }
         }
         .accessibilityHint(choice.hint)
