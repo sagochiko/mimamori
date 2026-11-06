@@ -908,10 +908,13 @@ function decidePlan(
   if (sensitive.length > 0 || (claude?.handoff ?? false)) {
     if (!unanswered && level <= 2) {
       const both = [...new Set([...sensitive, ...reasons])];
+      // With the police in her words, the fixed police lines tell her to hang up ("警察を名乗る人に暗証番号を
+      // 聞かれた", the parent's call on PR #191).
+      const warning = policeInHerWords(said) ? `${MATCH_BASIS}${POLICE_ACTION}` : `${LIKE_SCAM_BASIS}${SCAM_ACTION}`;
       return {
         level,
         reasons: both,
-        reply: `${LIKE_SCAM_BASIS}${SCAM_ACTION}。${TOLD_FAMILY}`,
+        reply: `${warning}。${TOLD_FAMILY}`,
         toFamily: true,
         record: true,
         sign: true,

@@ -535,6 +535,8 @@ describe("consult.ts", () => {
       "a PIN asked by someone saying police",
       "警察から電話があって、暗証番号を聞かれた",
       "警察を名乗る相手が暗証番号を聞いている",
+      // The police are in her words: the fixed police lines (the parent's call on PR #191).
+      POLICE_REPLY,
     ],
     // Claude's reason here is in its own words: one that repeats eight characters of hers in a row is
     // not kept for the family's card (#55, tested in "the one line the family gets").
@@ -542,8 +544,9 @@ describe("consult.ts", () => {
       "a code after a delivery SMS link",
       "宅配のSMSのリンクを開いたら、認証コードを入れてと言われた",
       "宅配を名乗るSMSから認証コードを聞き出す",
+      "詐欺の手口と似ているところがあります。お金や暗証番号の話には応じず、家族に確かめて",
     ],
-  ])("keeps the warning at level 1 when it touches %s, and tells the family", async (_label, text, why) => {
+  ])("keeps the warning at level 1 when it touches %s, and tells the family", async (_label, text, why, warning) => {
     const fam = await setupFamily();
     const deps = fakes(
       scam({
@@ -556,8 +559,8 @@ describe("consult.ts", () => {
     const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps);
     expect(answer).toEqual({
       // The fixed warning, not Claude's basis (#188).
-      reply: "詐欺の手口と似ているところがあります。お金や暗証番号の話には応じず、家族に確かめて。家族に伝えました",
-      speak: "詐欺の手口と似ているところがあります。お金や暗証番号の話には応じず、家族に確かめて。家族に伝えました",
+      reply: `${warning}。家族に伝えました`,
+      speak: `${warning}。家族に伝えました`,
       handoff: true,
     });
     const [alert] = await alertsOf(fam.familyId);
@@ -3195,7 +3198,7 @@ describe("words of the judgment in her answer (#121)", () => {
       [MESSAGE, scam({ level: 3, reasons: [], basis: "", action: line, topic: null }), LOW_CONCERN],
       // The police are in her words: the fixed police lines (review 1 of PR #191).
       [POLICE_CALL, scam({ level: 2, basis: line, action: line }), POLICE_REPLY],
-      [POLICE_CALL, scam({ level: 2, basis: line, handoff: true }), `${LIKE_SCAM}。家族に伝えました`],
+      [POLICE_CALL, scam({ level: 2, basis: line, handoff: true }), `${POLICE_REPLY}。家族に伝えました`],
     ];
     for (const [text, said, expected] of cases) {
       const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), fakes(said));
@@ -3374,6 +3377,21 @@ describe("Claude's words in a scam answer on words alone (#188)", () => {
     ]);
     expect(deps.claudeCalls).toBe(1);
     expect(answer.reply).toBe(POLICE_REPLY);
+  });
+
+  // The parent's call on PR #191: a topic the AI does not guide (a PIN) asked by the police, and a
+  // consultation Claude cannot answer, also tell her to hang up, then that the family was told.
+  it.each([
+    ["a PIN asked by the police", "警察を名乗る人に暗証番号を聞かれた", {}],
+    ["a handoff", "警察から電話。今話してる", { handoff: true }],
+  ] as const)("tells her to hang up, then that the family was told, for %s", async (_l, text, over) => {
+    const fam = await setupFamily();
+    const said = scam({ level: 1, basis: "リンクを開いて手続きを進めて。", action: "届いた認証コードを入力して", ...over });
+    const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), fakes(said));
+    expect(answer.reply).toBe(`${POLICE_REPLY}。家族に伝えました`);
+    expect(answer.handoff).toBe(true);
+    expect((await alertsOf(fam.familyId))[0]?.level).toBe(1);
+    expect(familyPushes(fam).length).toBeGreaterThan(0);
   });
 
   it("keeps the general fixed warning when no police are in her words", async () => {
