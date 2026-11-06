@@ -156,9 +156,9 @@ public struct ChatLog: Codable, Equatable, Sendable {
   }
 
   /// Words that only point back at what came just before ("それってどういうこと?", "どうすればいい?",
-  /// "そのやり方を教えて"): short, beginning with a pointing or "how" word (after "うん", "ねえ", "あの" and
-  /// the like from a closed list, or as "なにそれ"),
-  /// and no word that opens a new topic. "振込のやり方を教えて" and "そうじのアプリを入れたい" start a new
+  /// "そのやり方を教えて"): short, beginning with a pointing or "how" word (after fillers, or as "なにそれ"),
+  /// and no word that opens a new topic. A filler is one of a few roots stretched by ー, っ, a small vowel,
+  /// or the vowel of its last kana ("ねえ", "えーっと", "あのう", "うーーん", #158). "振込のやり方を教えて" and "そうじのアプリを入れたい" start a new
   /// one; "その消し方を教えて" points back (#124).
   /// The same test as `pointsBack` in server/src/consult-judge.ts, which reads only such words as about
   /// her last earlier ones, so the app sends the conversation before for exactly the words the server
@@ -172,7 +172,7 @@ public struct ChatLog: Codable, Equatable, Sendable {
     guard kept.unicodeScalars.count <= pointsBackMaxCharacters else { return false }
     // POINTS_BACK and NEW_TOPIC on the server, matched on code points as JavaScript's u flag does.
     let pointing =
-      /^(ねえ|ねぇ|ねー|えーっと|えーと|えっと|ええと|えっ|えー|ええ|え|じゃあ|じゃ|でも|で|うーん|うん|はい|あのう|あのー|あのね|あの|あ|ちょっと)*((なに|何)?(それ|これ|あれ)|そう(なの|なん|か|です|でしょ|いう|$)|どうやる|どうやって|どうすれば|どうしたら|どういう|やり方|(この|その|あの)(やり方|方法|こと|件|やつ|操作|\p{Script=Han}\p{Script=Hiragana}?方))/
+      /^(ね[ーっぁぃぅぇぉえ]*|え[ーっぁぃぅぇぉえ]*(と[ーっぁぃぅぇぉお]*)?|あの[ーっぁぃぅぇぉおう]*|あ[ーっぁぃぅぇぉあ]*|う[ーっぁぃぅぇぉう]*ん[ーっ]*|は[ーっ]*い[ーっぁぃぅぇぉい]*|じゃ[ーっぁぃぅぇぉあ]*|で[ーっぁぃぅぇぉえ]*(も[ーっぁぃぅぇぉお]*)?|ちょ[ーっぁぃぅぇぉお]*と[ーっぁぃぅぇぉお]*)*((なに|何)?(それ|これ|あれ)|そう(なの|なん|か|です|でしょ|いう|$)|どうやる|どうやって|どうすれば|どうしたら|どういう|やり方|(この|その|あの)(やり方|方法|こと|件|やつ|操作|\p{Script=Han}\p{Script=Hiragana}?方))/
     let newTopic = /それより|それと|それから|ところで|別の|ほかの|他の/
     return kept.contains(pointing.matchingSemantics(.unicodeScalar))
       && !kept.contains(newTopic.matchingSemantics(.unicodeScalar))
