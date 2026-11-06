@@ -37,7 +37,9 @@ for w in "${WORDS[@]}"; do
     # An interpreter counts only when its text can run a shell command; the words in a document it
     # writes do not (a PR body made with a python heredoc).
     python | python3 | perl | ruby | node)
-      [[ "$cmd" =~ (subprocess|os\.system|os\.popen|os\.exec|system[[:space:]]*[\(\"\']|exec[[:space:]]*\(|spawn|popen|child_process|qx|%x) ]] && runs_text=1 ;;
+      [[ "$cmd" =~ (subprocess|os\.system|os\.popen|os\.exec|system[[:space:]]*[\(\"\']|exec[[:space:]]*\(|spawn|popen|child_process|qx|%x) ]] && runs_text=1
+      # In perl and ruby a backtick runs a command; in python and node it does not.
+      [[ ${w##*/} =~ ^(perl|ruby)$ && "$cmd" == *'`'* ]] && runs_text=1 ;;
   esac
 done
 texts=0

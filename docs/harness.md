@@ -178,7 +178,7 @@ PR #157 の1回目のレビューで、同じ種類の穴があと2つ見つか�
 
 残したもの。
 
-- `guard-prod.sh` は、`gh api` の DELETE(取り消せない)、PR のマージのエンドポイントと graphql のマージ(`guard-merge.sh` を飛ばす)、リポジトリの公開(visibility と private のフィールド、graphql の visibility)、main の書き換え(`git/refs/heads/main`、`branches/main/` の下、ブランチを名指ししないか main を名指しする `contents/` への書き込み、graphql の `createCommitOnBranch` と `updateRef`)を作者に聞く。公開と main は `CLAUDE.md` が作者に聞くと決めているものだ。中身を読めない method、endpoint、graphql の query、`--input` や変数の本文も聞く。graphql は `/graphql` や完全な URL で書いても graphql として読む(PR #161 のレビュー)
+- `guard-prod.sh` は、`gh api` の DELETE(取り消せない)、PR のマージのエンドポイントと graphql のマージ(`guard-merge.sh` を飛ばす)、リポジトリの公開(visibility と private のフィールド、graphql の visibility)、main の書き換え(`git/refs/heads/main`、`branches/main/` の下、ブランチを名指ししないか main を名指しする `contents/` への書き込み、graphql の `createCommitOnBranch` と `updateRef`)を作者に聞く。公開と main は `CLAUDE.md` が作者に聞くと決めているものだ。中身を読めない method、endpoint、graphql の query も聞く。`--input` や変数の本文で聞くのは、宛先がリポジトリ本体、`contents/`、`git/refs`、`branches/` のときだけで、issue やコメントへの書き込みは通す。引用符の無い変数が1語のまま残る形(`... $X`)は、展開して `-X DELETE` になってもフックは読めない。見えない本文を止めないと作者が決めた代わりに開いた穴で、最後は auto mode の判定が見る。graphql は `/graphql` や完全な URL で書いても graphql として読む(PR #161 のレビュー)
 - `guard-private.sh` は、見える本文(`--title`、`--body`、文字のままの `--body-file`)の中の電話番号、メール、時刻、非公開の語を今までどおり止める
 - `guard-merge.sh` は、言葉として見えるマージを今までどおり関門に通し、`$(...)` の中のマージを止める
 
