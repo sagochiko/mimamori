@@ -115,6 +115,17 @@ prod ask 'npx wrangler d1 execute mimamori --command "Truncate cases" --remote' 
 prod ask 'npx wrangler d1 execute mimamori --preview --command "DROP TABLE cases"' "a DROP on the preview database asks"
 prod ask 'npx wrangler d1 execute mimamori --remote --command "$SQL"' "SQL the hook cannot read asks"
 prod ask 'npx wrangler d1 execute mimamori --remote --command "$(cat x.sql)"' "SQL built by a command substitution asks"
+# #151: a literal SELECT in single quotes runs even when the line takes its output with $(...) or
+# writes it through a variable; SQL the shell can change, a second execute, or a write still asks.
+prod quiet "t=\$(npx wrangler d1 execute mimamori --remote --json --command 'SELECT token FROM families WHERE id=1') && printf '%s' \"\$t\" >/dev/null" "a single-quoted SELECT read into a variable runs without asking"
+prod quiet "npx wrangler d1 execute mimamori --remote --json --command='select id from families' > \"\$HOME/x.json\"" "a single-quoted select with a redirect through \$HOME runs without asking"
+prod ask "t=\$(npx wrangler d1 execute mimamori --remote --command 'SELECT 1' \$EXTRA)" "a variable among the execute's own words asks"
+prod ask "X=\$Y npx wrangler d1 execute mimamori --remote --command 'SELECT 1'" "a variable before the execute asks"
+prod ask "t=\$(npx wrangler d1 execute mimamori --remote --command 'SELECT 1; UPDATE families SET token=1')" "a SELECT joined to a write by ; asks"
+prod ask "t=\$(npx wrangler d1 execute mimamori --remote --command 'INSERT INTO cases SELECT 1')" "a write that holds a SELECT asks"
+prod ask "t=\$(npx wrangler d1 execute mimamori --remote --command 'SELECT 1'); npx wrangler d1 execute mimamori --remote --command \"\$t\"" "a second execute in the line asks"
+prod ask "t=\$(npx wrangler d1 execute mimamori --remote --command \"SELECT \$c FROM families\")" "a SELECT in double quotes with a variable asks"
+prod ask "t=\$(npx wrangler d1 execute mimamori --remote --command 'SELECT 1' --file q.sql)" "a --file next to the SELECT asks"
 mkdir -p "$T/sql/server"
 printf '%s\n' 'SELECT 1;' >"$T/sql/ok.sql"
 printf '%s\n' '-- clean up' 'DELETE FROM cases WHERE 1;' >"$T/sql/bad.sql"

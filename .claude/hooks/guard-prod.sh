@@ -282,11 +282,41 @@ if [[ "$text" =~ gh[[:space:]]+api && "$text" =~ (-X|--method)[[:space:]=]*[\'\"
   ask "gh api DELETE: confirm with the author"
 fi
 
+# read_only_select: the line runs one `d1 execute`, its SQL is a --command in single quotes (so the
+# shell cannot change it), and that SQL is one SELECT with no word that writes. The rest of that
+# command, from the start of its simple command to the next ) | ; & < > or line end, holds no $,
+# backtick, or --file, so no variable can add another --command or a file. A $ elsewhere in the line,
+# such as t=$(... --json) around it or a redirect after the ), does not reach the SQL (#151).
+read_only_select() {
+  local n rest sql head tail lower
+  n=$(grep -oE 'd1[[:space:]]+execute' <<<"$cmd" | wc -l)
+  ((n == 1)) || return 1
+  [[ "$cmd" =~ d1[[:space:]]+execute(.*)$ ]] || return 1
+  rest=${BASH_REMATCH[1]}
+  [[ "$rest" =~ --command(=|[[:space:]]+)\'([^\']*)\' ]] || return 1
+  sql=${BASH_REMATCH[2]}
+  rest=${rest/"${BASH_REMATCH[0]}"/}
+  tail=${rest%%[)|;&<>$'\n']*}
+  head=${cmd%%d1*execute*}
+  head=${head##*[(|;&$'\n']}
+  [[ "$tail$head" == *'$'* || "$tail$head" == *'`'* || "$tail" == *--file* ]] && return 1
+  lower=$(tr '[:upper:]' '[:lower:]' <<<"$sql")
+  [[ "$lower" =~ ^[[:space:]]*select[[:space:]] ]] || return 1
+  [[ "${lower%%;*}" == "$lower" || "${lower#*;}" =~ ^[[:space:]]*$ ]] || return 1
+  [[ "$lower" =~ (^|[^[:alnum:]_])(drop|delete|truncate|update|insert|alter|replace|create|attach|detach|pragma|vacuum|reindex)([^[:alnum:]_]|$) ]] && return 1
+  return 0
+}
+
 # Remote D1 SQL. A word match, so a column such as deleted_at does not count.
 destructive='(^|[^[:alnum:]_])(drop|delete|truncate)([^[:alnum:]_]|$)'
 if [[ "$text" =~ wrangler[[:space:]]+d1[[:space:]]+execute && "$text" =~ --(remote|preview) ]]; then
   [[ "$text" =~ $destructive ]] && ask "SQL with DROP, DELETE, or TRUNCATE on the remote D1: confirm with the author"
-  [[ "$body" == *'$'* || "$body" == *'`'* ]] && ask "remote D1 SQL built at run time, which this hook cannot read: confirm with the author"
+  # A $ or a backtick anywhere in the line used to ask, also when it only took the output of a
+  # literal SELECT into a variable (#151: a token read without showing it, while the author slept).
+  # A read alone passes now: read_only_select below says when the SQL itself cannot be built at run time.
+  if ! read_only_select; then
+    [[ "$body" == *'$'* || "$body" == *'`'* ]] && ask "remote D1 SQL built at run time, which this hook cannot read: confirm with the author"
+  fi
   # Every --file, from the words and from the raw text; a relative one is looked up from every base.
   files=()
   for ((k = 0; k < m; k++)); do
