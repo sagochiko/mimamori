@@ -347,6 +347,12 @@ describe("parseEvidence", () => {
       { text: "偽物ではなく本物の案内と分かった", url: GOOD.url },
       { text: "フィッシングの注意喚起はあるが今回の連絡は公式からのもの", url: GOOD.url },
       { text: "注意喚起はあるが今回のSMSは公式から届いた", url: GOOD.url },
+      // A denied word of disguise must not let a line through (review 3 of PR #183).
+      { text: "本物の案内で、偽装ではない", url: GOOD.url },
+      { text: "正規の連絡で、偽装された形跡はない", url: GOOD.url },
+      { text: "宛先の宅配業者は実在し、偽装の手口ではない", url: GOOD.url },
+      { text: "本物の連絡で、偽サイトに似せたものではない", url: GOOD.url },
+      { text: "公式からの連絡で、なりすましを装ったものではない", url: GOOD.url },
     ];
     // One at a time: at most three are kept per report.
     for (const w of warn) expect(parseEvidence({ items: [w] }, received), w.text).toEqual([w]);

@@ -358,6 +358,11 @@ const REASSURES = new RegExp(
   ].join("|"),
   "i",
 );
+// A line that denies something ("本物の案内で、偽装ではない", "偽装された形跡はない") rates what arrived,
+// and its denied word of disguise would slip past DISGUISE (review 3 of PR #183). A warning from an
+// official page says what to watch for, not what something is not, so every line with a denial is
+// dropped. Dropping too much only leaves the card without evidence.
+const DENIES = /(では|じゃ)(な|ありません|ございません)|形跡は?(な|無)|もの(では|じゃ)な|ではありません/;
 
 export function parseEvidence(value: unknown, received: readonly string[]): Evidence[] {
   if (typeof value !== "object" || value === null) return [];
@@ -372,7 +377,7 @@ export function parseEvidence(value: unknown, received: readonly string[]): Evid
     const line = text.trim();
     if (line === "" || [...line].length > EVIDENCE_TEXT_MAX_CHARS) continue;
     if (soundsSafe(line) || quotes(line, received) || carriesContact(line)) continue;
-    if (!WARNS.test(line) || REASSURES.test(line)) continue;
+    if (!WARNS.test(line) || REASSURES.test(line) || DENIES.test(line)) continue;
     if (!onOfficialSite(url)) continue;
     if (out.some((e) => e.url === url && e.text === line)) continue;
     out.push({ text: line, url });
