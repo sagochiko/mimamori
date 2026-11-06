@@ -38,7 +38,7 @@ struct CaseCardView: View {
         .font(.headline)
         .foregroundStyle(item.state == .resolved ? Color.secondary : Color.accentColor)
         .accessibilityHint(statusHint)
-      if !card.actions.isEmpty { buttons }
+      if !actions.isEmpty { buttons }
     }
     .padding(20)
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -108,9 +108,15 @@ struct CaseCardView: View {
     }
   }
 
+  /// The judges' tour (`onResolve` set) has no mother to call, so "電話する" is left out there; asking
+  /// for 母の電話番号 would keep whatever a judge typed on this iPhone.
+  private var actions: [CardAction] {
+    onResolve == nil ? card.actions : card.actions.filter { $0 != .call }
+  }
+
   private var buttons: some View {
     HStack(spacing: 10) {
-      ForEach(card.actions, id: \.self) { action in
+      ForEach(actions, id: \.self) { action in
         Button {
           perform(action)
         } label: {

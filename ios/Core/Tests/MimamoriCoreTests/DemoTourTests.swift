@@ -176,7 +176,8 @@ private let start = Date(timeIntervalSince1970: 1_793_000_000)
   }
 
   @Test func resolvingTheSMSCardLooksLikeARealResolve() throws {
-    let data = Data(#"{"action":"junk","card":{"level":1,"source":"sms","summary":"SMS x","reasons":[]}}"#.utf8)
+    let data = Data(
+      #"{"action":"junk","card":{"level":1,"source":"sms","summary":"SMS x","reasons":[]}}"#.utf8)
     let card = try #require(DemoSMS.result(statusCode: 200, data: data, at: start)?.card)
     let resolved = card.resolvedInDemo(at: start.addingTimeInterval(60))
     #expect(resolved.state == .resolved)

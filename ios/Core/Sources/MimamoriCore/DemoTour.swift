@@ -210,7 +210,8 @@ extension Case {
     guard state == .notified else { return self }
     return Case(
       id: id, alertId: alertId, state: .resolved, notifiedAt: notifiedAt, resolvedAt: now,
-      resolvedBy: CaseMember(memberId: "demo-family", displayName: "家族"), renotifiedAt: renotifiedAt,
+      resolvedBy: CaseMember(memberId: "demo-family", displayName: "家族"),
+      renotifiedAt: renotifiedAt,
       alert: alert, aiReply: aiReply, familyNotifiedAt: familyNotifiedAt)
   }
 }
