@@ -56,7 +56,7 @@ find "$APP" -name '*.debug.dylib' | wc -l
 find "$APP" -type f -exec strings -a {} + 2>/dev/null | grep -c -E 'ScreenshotStubTransport|mimamori-stub'
 ```
 
-Expect: `$N` twice (no `ApplicationProperties` means it is not an iOS app archive and the export will fail), `ITSAppUsesNonExemptEncryption = false` (the app only uses HTTPS, so App Store Connect does not hold the build for the export compliance question), `MimamoriAPIBaseURL = https://<the deployed host>`, exactly `CallDirectory.appex MessageFilter.appex SafariExtension.appex` (ShareExtension is built but not embedded), `0` debug dylibs, and `0` for the DEBUG stub.
+Expect: `$N` twice (no `ApplicationProperties` means it is not an iOS app archive and the export will fail), `ITSAppUsesNonExemptEncryption = false` (the app only uses HTTPS, so App Store Connect does not hold the build for the export compliance question), `MimamoriAPIBaseURL = https://<the deployed host>`, exactly `CallDirectory.appex MessageFilter.appex SafariExtension.appex ShareExtension.appex` (ShareExtension has been embedded since PR #186, which made it read shared screenshots and documents), `0` debug dylibs, and `0` for the DEBUG stub.
 
 The stub check reads every file in the `.app`, not only `Mimamori`, because a Debug build of Xcode 27.1 moves the code into `*.debug.dylib` files. Measured on 2026-11-04 with simulator builds of the same scheme: Debug had 4 debug dylibs (`Mimamori.debug.dylib` and one in each embedded extension), 0 hits in `Mimamori` alone and 8 over the whole `.app`; Release had no debug dylib and 0 hits over the whole `.app`. So 8 in Debug shows the check finds the stub, and 0 here means it is gone. A debug dylib in this archive means the Release configuration was not used; stop.
 
