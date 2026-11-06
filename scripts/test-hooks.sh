@@ -1263,7 +1263,7 @@ tpl=${tpl/scripts\/review-record.sh/$PWD/scripts/review-record.sh}
 # Run it only when it is the line we expect: one line, the script, and no gh (the real gh is on PATH here).
 if [[ -n "$tpl" && $(wc -l <<<"$tpl") -eq 1 && "$tpl" != *gh\ * && "$tpl" != *"<"* ]]; then
   for round in 1 2; do
-    (cd "$T/wt" && git -c user.name=t -c user.email=t@t config user.name t && bash -c "$tpl") >/dev/null 2>&1 || { echo "skill test failed: the step 6.1 line fails on run $round"; fail=1; }
+    (cd "$T/wt" && git config user.name t && git config user.email t@t && bash -c "$tpl") >/dev/null 2>&1 || { echo "skill test failed: the step 6.1 line fails on run $round"; fail=1; }
   done
 else
   echo "skill test failed: the step 6.1 line is not the one script call this test expects"; fail=1
@@ -1369,7 +1369,7 @@ git init -q "$rm_" && git -C "$rm_" -c user.name=t -c user.email=t@t commit -q -
   git -C "$rm_" worktree add -q "$rw" -b rr-branch && mkdir -p "$rm_/docs/audits/raw" &&
   printf 'ステータス: 承認\n\n指摘なし\n' >"$rm_/docs/audits/raw/$rn"
 ( cd "$rw" && git config user.name t && git config user.email t@t &&
-  "$rr" "$rn" 1 HEAD "$T/rr-comment.md" 51 >/dev/null ) ||
+  "$rr" "$rn" 1 "$(git rev-parse HEAD)" "$T/rr-comment.md" 51 >/dev/null ) ||
   { echo "review-record test failed: the first run did not finish"; fail=1; }
 [[ ! -e "$rm_/docs/audits/raw/$rn" && -s "$rw/docs/audits/raw/$rn" ]] ||
   { echo "review-record test failed: the report did not move into the worktree"; fail=1; }
@@ -1379,8 +1379,10 @@ head -1 "$T/rr-comment.md" | grep -qx '## mm-reviewer の報告(原文)' && grep
 git -C "$rw" log -1 --format=%B | grep -q '^Refs #51$' && [[ -z "$(git -C "$rw" status --short)" ]] ||
   { echo "review-record test failed: the report is committed on the branch with Refs"; fail=1; }
 n1=$(git -C "$rw" rev-list --count HEAD)
-( cd "$rw" && "$rr" "$rn" 1 HEAD "$T/rr-comment.md" >/dev/null ) && [[ "$(git -C "$rw" rev-list --count HEAD)" == "$n1" ]] ||
-  { echo "review-record test failed: a second run uses the moved file and does not commit again"; fail=1; }
+rr0=$(git -C "$rw" rev-parse --short HEAD~1)
+( cd "$rw" && "$rr" "$rn" 1 "$rr0" "$T/rr-comment.md" >/dev/null ) && [[ "$(git -C "$rw" rev-list --count HEAD)" == "$n1" ]] &&
+  grep -q "^1回目、$rr0 を読んだもの" "$T/rr-comment.md" ||
+  { echo "review-record test failed: a second run uses the moved file, does not commit again, and names the reviewed commit"; fail=1; }
 ( cd "$rw" && "$rr" "$rn" 1 HEAD rr-comment.md >/dev/null 2>&1 ) &&
   { echo "review-record test failed: a relative comment path is refused"; fail=1; }
 ( cd "$rw" && "$rr" 20261106-0000-mm-reviewer-none.md 1 HEAD "$T/rr-x.md" >/dev/null 2>&1 ) ||
