@@ -83,6 +83,8 @@
 
 日本語の割合の閾値は、2026年11月5日に保存済みの報告で測って決めた。[`docs/audits/raw/`](audits/raw/) の70本の原文(レビュー、監査、採点、調べもの)は、コード、道筋、URL を除くと日本語の字が51%以上だった。英語の文書(hooks-guide、best-practices)は0%、以前の英語の形の検証役の報告は6〜15%だった。10%未満を返すので、英語の道筋やコマンドの引用が多い日本語の報告は止まらず、地の文が英語の報告だけを返す。数え方は UTF-8 の仮名と漢字の先頭のバイト(U+3000〜U+9FFF)と、A〜Z、a〜z の字数で、macOS と Linux の両方にある `tr` と `awk` で数える。
 
+フックを試すときは、試す形を自分の Bash の行に書かない。このセッションのフックは、サブエージェントの道具の呼び出しにも当たり([sub-agents](https://code.claude.com/docs/en/sub-agents) の「a `PreToolUse` hook in `settings.json` also runs before every tool a subagent uses」)、行の文字を読むので、`echo` や heredoc、`python3` の引数の中に `wrangler d1 execute --remote` と書き込みの語を並べただけでも本物の操作と読んで作者に確認を出す。2026年11月6日、PR #172 の試験を足した主の行と、すり抜けを探したレビュー役の行で、作者に確認が2回出た(`.claude/logs/usage.jsonl` の `guard-prod` の記録で見た)。作者は「本当に確認ばっかで進められない」と言った。試す形は Edit か Write で `scripts/test-hooks.sh` かスクラッチパッドのファイルに書き、`bash scripts/test-hooks.sh` か、そのファイルを読む道具でフックに渡す。`mm-implementer`、`mm-reviewer`、`mm-verifier` の定義にもそう書いた。
+
 effort の `max` は使わない。model-config に「`max` may show diminishing returns and is prone to overthinking, so test before adopting it broadly」とあり、設定のキーでも「`max` isn't accepted as a level in either key」だからだ。[`scripts/test-hooks.sh`](../scripts/test-hooks.sh) は、各サブエージェントの frontmatter が opus、effort が medium であることと、advisor が Fable のままであることと、この表と `CLAUDE.md` の表の行が frontmatter と同じことを確かめる。理由を読む人が、実際に動くものを読めるようにするためだ。
 
 ## skill

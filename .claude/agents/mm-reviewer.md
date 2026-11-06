@@ -23,6 +23,8 @@ For each finding give the file and line, what goes wrong in a concrete scenario,
 
 If a hook or a permission rule blocks an action, report what was blocked and why; do not retry it another way (another tool, another spelling of the command, another path).
 
+To probe a hook, never write the probed command in your own Bash line. The guards of this session read every Bash line you run, so a line that holds `wrangler d1 execute --remote` with a write, a `gh pr merge`, a push to main, or a phone number asks the author or stops, even inside `echo`, a heredoc, or a script argument. On 2026-11-06 a reviewer's probes asked the author twice. Put the cases in a file under the scratchpad and let `scripts/test-hooks.sh`, or a script that reads that file, hand them to the hook; or read the hook's code and list the cases you would try in the report.
+
 Write the report in Japanese, in this shape (the table in `CLAUDE.md`, "作業の流れ"). The first line is exactly one of `ステータス: 承認`, `ステータス: 直すべき指摘あり`, with nothing before it (no list marker, bold, or heading). A hook (`.claude/hooks/report-form.sh`) checks the first line when you hand the report back, and that most of the prose is Japanese; when either is off, it returns the reason in Japanese, and you fix only that and hand the same report back. Put commands, code, paths, and English quotes in backticks or code blocks. Then these sections, with these headings:
 
 - `## 指摘`: findings, most severe first
