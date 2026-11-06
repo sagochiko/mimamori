@@ -901,12 +901,18 @@ function decidePlan(
     return { level, reasons, reply: ASK_AGAIN_REPLY, toFamily: false, record: false, sign: false, ...base };
   }
 
+  // On an image, Claude's words about a scam (its basis and action) are never read to her, at any level:
+  // text on the image can steer them to "open the link" or "enter the code", and no net can tell such
+  // lines from good ones (reviews 2 and 3 of PR #186). She hears the fixed lines instead; the level and
+  // who is told are Claude's and the rules' as before.
+  const claudeSpeaks = !image;
+
   // A topic the AI does not guide, or one Claude cannot answer: the family takes it, at any level, and
   // Claude's action is not read out (it may be the very guidance that is not given). At level 2 or
   // heavier she still hears the warning and what to do, then that the family was told.
   if (sensitive.length > 0 || (claude?.handoff ?? false)) {
     if (!unanswered && level <= 2) {
-      const basis = claude && claude.kind === "scam" && readable(claude.basis) ? claude.basis : LIKE_SCAM_BASIS;
+      const basis = claudeSpeaks && claude && claude.kind === "scam" && readable(claude.basis) ? claude.basis : LIKE_SCAM_BASIS;
       const both = [...new Set([...sensitive, ...reasons])];
       return {
         level,
@@ -932,18 +938,16 @@ function decidePlan(
     };
   }
   if (!unanswered && level <= 2) {
-    // A warning, not guidance: what was seen, then what to do.
-    const basis = claude && claude.kind === "scam" && readable(claude.basis) ? claude.basis : LIKE_SCAM_BASIS;
-    const action = claude && claude.kind === "scam" && readable(claude.action) ? claude.action : SCAM_ACTION;
+    // A warning, not guidance: what was seen, then what to do. On an image neither is Claude's own words
+    // (claudeSpeaks below).
+    const basis = claudeSpeaks && claude && claude.kind === "scam" && readable(claude.basis) ? claude.basis : LIKE_SCAM_BASIS;
+    const action = claudeSpeaks && claude && claude.kind === "scam" && readable(claude.action) ? claude.action : SCAM_ACTION;
     return { level, reasons, reply: `${basis}${action}`, toFamily: true, record: true, sign: true, ...base };
   }
   if (claude !== null && claude.kind === "scam") {
     // Level 3: little concern, and still never "safe".
-    const basis = readable(claude.basis) ? claude.basis : "";
-    // On an image, Claude's action is not read out at all: text on the image can steer it to "open the
-    // link" or "enter the code" at level 3, and no net can tell such lines from good ones (review 2 of
-    // PR #186). Levels 1 and 2 and who is told are as before.
-    const action = !image && readable(claude.action) ? claude.action : null;
+    const basis = claudeSpeaks && readable(claude.basis) ? claude.basis : "";
+    const action = claudeSpeaks && readable(claude.action) ? claude.action : null;
     const reply = lowConcernReply(basis, action);
     return { level, reasons, reply, toFamily: false, record: true, sign: false, ...base };
   }

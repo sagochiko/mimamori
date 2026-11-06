@@ -181,8 +181,9 @@ describe("a shared screenshot or document", () => {
     const answer = await consult(consultEnv, motherOf(fam), "", new ExternalBudget(), f, [], IMAGE);
     expect(f.images[0]).toEqual(IMAGE);
     expect(answer.handoff).toBe(true);
-    expect(answer.reply).toContain("詐欺の書類と同じ形です");
-    expect(answer.reply).not.toMatch(/詐欺です|本物です|偽物です|安全/);
+    // On an image she hears the fixed warning, not Claude's basis (review 3 of PR #186); the family is told.
+    expect(answer.reply).toBe("詐欺の手口と似ているところがあります。お金や暗証番号の話には応じず、家族に確かめて");
+    expect(answer.reply).not.toContain("詐欺の書類と同じ形です");
     expect(answer.tap).toBeUndefined();
     const row = await env.DB.prepare("SELECT level, reasons, summary FROM alerts WHERE family_id = ?")
       .bind(fam.familyId)
@@ -373,6 +374,25 @@ describe("what a shared image cannot get past (review 1 of PR #186)", () => {
     expect(answer.reply).not.toContain(action);
     expect(answer.handoff).toBe(false);
     expect(pushes).toHaveLength(0);
+  });
+
+  it.each([
+    ["a link in the basis", "銀行からの通知です。リンクから手続きを進めてください。"],
+    ["a code in the basis", "本人確認のため、届いた認証コードを入力する必要があります。"],
+  ])("reads none of Claude's basis for a level 3 scam answer on an image (%s) (review 3)", async (_l, basis) => {
+    const fam = await setupFamily();
+    const low = warrant({ level: 3, reasons: [], basis, action: "", topic: "通知の相談" });
+    const answer = await consult(consultEnv, motherOf(fam), "", new ExternalBudget(), fakes(low), [], IMAGE);
+    expect(answer.reply).toBe("お金や暗証番号を聞かれたら止めて、家族に確かめて");
+    expect(answer.handoff).toBe(false);
+  });
+
+  it("reads none of Claude's words for a level 2 scam answer on an image: the fixed warning (review 3)", async () => {
+    const fam = await setupFamily();
+    const two = warrant({ level: 2, reasons: [], basis: "宅配の通知に見えます。", action: "リンクを開いて再配達の手続きを", topic: "宅配の通知の相談" });
+    const answer = await consult(consultEnv, motherOf(fam), "", new ExternalBudget(), fakes(two), [], IMAGE);
+    expect(answer.reply).not.toContain("リンクを開いて");
+    expect(answer.reply).not.toContain("宅配の通知に見えます");
   });
 
   it("answers as one the AI could not answer when Claude refuses broken base64", async () => {
