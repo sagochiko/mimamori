@@ -12,6 +12,36 @@ export interface PhraseRule {
   patterns: readonly RegExp[];
 }
 
+const FAMILY = "(家族|息子|娘|子ども|子供|家の人|身内)";
+// Not telling what a message can carry as an object: the code, the PIN, the words.
+const NOT_TELL = "(伝え|言わ|話さ|教え)ない(で|よう)";
+// Telling someone not to tell: "言わないで", "話すな", "内緒にして".
+const HUSH =
+  "((知らせ|言わ|話さ|伝え|相談し)ない(で|よう)|(知らせる|言う|話す|伝える|相談する)な(?![らどのかんしり])|(内緒|秘密)に(して|しと|しておい))";
+const GAP = "[^。、!?「」\\n]";
+
+// A genuine notice that the code or the PIN is not to be told, the family included (#51). Two shapes,
+// and only the sentence itself, never the matter around it:
+// - the code or the PIN is what is not told: "このコードはご家族にも言わないで", "暗証番号は、ご家族
+//   にも伝えないように". The code sits right before the family, so "暗証番号を確認しますので家族には
+//   言わないで" (a matter in between) is not it.
+// - in a message that is only a code, a sentence that starts with the family and has no object:
+//   "ご家族や他人に絶対に伝えないで". "この件は家族に" and "家族に知らせないで" (a matter, not words) are
+//   the scam's secrecy.
+// judgeByRules blanks these out only in an SMS that is only a code or mail from an official sender, and
+// only when no other sign is found; otherwise the message is read as it is (PR #167 review).
+// Both carry the g flag for blankOut; use them with replace, not test, which keeps state between calls.
+export const CREDENTIAL_GUARD = new RegExp(
+  `(コード|番号|パスワード|暗証)(は|を|も)、?${GAP}{0,4}?(ご|お)?${FAMILY}${GAP}{0,8}?${NOT_TELL}`,
+  "g",
+);
+export const CODE_GUARD = new RegExp(`(?<=^|[。!?\\n]\\s*)(ご|お)?${FAMILY}${GAP}{0,8}?${NOT_TELL}`, "g");
+
+/** The text with every match of the guard blanked out, so spans elsewhere keep their place. */
+export function blankOut(text: string, guard: RegExp): string {
+  return text.replace(guard, (m) => " ".repeat(m.length));
+}
+
 // Text that tries to switch the warning off or keep the family out. It raises the level, never lowers it.
 export const INJECTION: PhraseRule = {
   kind: "injection",
@@ -23,11 +53,21 @@ export const INJECTION: PhraseRule = {
     /(警告|判定|アラート).{0,6}(は誤り|は間違い|は誤検知|を無視|は無視|を止め|を消し|をオフに|は気にしな)/,
     /(この|本)通知.{0,6}(は誤り|は間違い|は誤検知)/,
     // "Don't tell your family" in particular: the family is who this app tells. Only the forms that
-    // tell someone not to tell, so "家族には内緒のごほうび" or "子どもの秘密基地" do not match. Up to
-    // 8 characters may sit between, for "ご家族や銀行の方には" or "家族を含め誰にも". "教えないで" is
-    // left out: banks and code messages say "ご家族にも教えないで" about a PIN or a code.
+    // tell someone not to tell, so "家族には内緒のごほうび" or "子どもの秘密基地" do not match. The
+    // family must be the one not told, marked with に or へ ("家族には", "ご家族や銀行の方には",
+    // "家族を含め誰にも"), so "息子の誕生日のことは内緒に" is about the son, not kept from him (#51).
+    // "教えないで" is left out: banks and code messages say "ご家族にも教えないで" about a PIN or a
+    // code. The same notice with another verb is taken out by CREDENTIAL_GUARD and CODE_GUARD.
     // "誰にも言わないで" is the scam's general secrecy and lives in POLICE_SCRIPT.
-    /(家族|息子|娘|子ども|子供|家の人|身内)[^。、!?「」\n]{0,8}?((知らせ|言わ|話さ|伝え|相談し)ない(で|よう)|(知らせる|言う|話す|伝える|相談する)な(?![らどのかんしり])|(内緒|秘密)に(して|しと|しておい))/,
+    new RegExp(`${FAMILY}と[^。、!?「」\\n]{0,4}?相談(しない(で|よう)|するな)`),
+    // The family as the one who would worry, with the reason in between: "家族は心配するので言わないで",
+    // "家族が心配するから話さないで" (PR #167 review). A family word with only kanji after it, as in
+    // "家族全員言わないで". The family followed by の stays out ("息子の誕生日のことは内緒に").
+    new RegExp(`${FAMILY}(は|も|が)[^。!?「」\\n]{0,10}?(ので|から|ため)、?[^。!?「」\\n]{0,4}?${HUSH}`),
+    // "家族も言わないで" with at most a short word between ("家族も絶対言わないで").
+    new RegExp(`${FAMILY}(は|も)[^。、!?「」\\n]{0,3}?${HUSH}`),
+    new RegExp(`${FAMILY}[一-龯々]{0,3}${HUSH}`),
+    new RegExp(`${FAMILY}[^。、!?「」\\n]{0,6}?[にへ][^。、!?「」\\n]{0,6}?${HUSH}`),
     /ignore (all |any )?(the )?(previous|prior|above) instructions/,
     /system prompt|システムプロンプト/,
   ],
