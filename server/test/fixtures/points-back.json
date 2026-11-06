@@ -95,5 +95,9 @@
   { "text": "あのひとから電話", "pointsBack": false },
   { "text": "えいがのアプリを入れたい", "pointsBack": false },
   { "text": "えーっと、振込のやり方を教えて", "pointsBack": false },
-  { "text": "あのー、Wi-Fi がつながらない", "pointsBack": false }
+  { "text": "あのー、Wi-Fi がつながらない", "pointsBack": false },
+  { "text": "まあ、それってなに", "pointsBack": false },
+  { "text": "あのさ、それってどういうこと", "pointsBack": false },
+  { "text": "おお、それ本当?", "pointsBack": false },
+  { "text": "ほら、それってなに", "pointsBack": false }
 ]
