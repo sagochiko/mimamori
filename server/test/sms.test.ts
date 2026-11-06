@@ -311,6 +311,8 @@ describe("POST /sms/demo", () => {
     const { body } = await ask("demo", SCAM_PARCEL, queueEnv);
     const card = body.card as { summary: string };
     expect(card.summary).toContain("kuroneko-redeliver.example");
+    // Named once: the look-alike reason already carries it (#100).
+    expect(card.summary.split("kuroneko-redeliver.example")).toHaveLength(2);
     expect(card.summary).not.toContain("不在のため");
     expect(JSON.stringify(body)).not.toContain("0000000001");
   });
