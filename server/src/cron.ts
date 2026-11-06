@@ -4,7 +4,7 @@
 // and share one budget of outside calls, so notices go before the cleanup that takes what is left.
 
 import { watchInvestigations } from "./agents";
-import { ExternalBudget } from "./budget";
+import { countD1, D1_CALLS_PER_TICK, ExternalBudget } from "./budget";
 import { sendFirstNotices, watchUnanswered } from "./cases";
 import { watchGmail } from "./gmail";
 import { purgeExpired, purgeExpiredSessions } from "./retention";
@@ -59,14 +59,17 @@ export function dueJobs<T extends Job>(scheduledTime: number, jobs: readonly T[]
 }
 
 /**
- * Runs each due job in JOBS order, one after another, so an earlier job gets the shared budget first.
+ * Runs each due job in JOBS order, one after another, so an earlier job gets the shared budget first,
+ * D1 calls included.
  * One job failing does not stop the others.
  */
 export async function runScheduled(env: Env, scheduledTime: number, jobs: readonly Job[] = JOBS): Promise<void> {
-  const budget = new ExternalBudget();
+  const budget = new ExternalBudget(undefined, D1_CALLS_PER_TICK);
+  // Every D1 call of the tick is counted on the budget (#178); the jobs look at d1Remaining.
+  const tickEnv: Env = { ...env, DB: countD1(env.DB, budget) };
   for (const job of dueJobs(scheduledTime, jobs)) {
     try {
-      await job.run(env, scheduledTime, budget);
+      await job.run(tickEnv, scheduledTime, budget);
     } catch (error) {
       const reason = error instanceof Error ? error.name : typeof error;
       console.error("cron job failed", job.name, reason);

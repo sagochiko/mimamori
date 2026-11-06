@@ -7,7 +7,8 @@ import type { ExternalBudget } from "./budget";
 export const RETENTION_MS = 30 * 24 * 3600_000;
 
 /**
- * Once a day. Only D1 and R2, so nothing outside can stop it. Cases that still have an agent
+ * Once a day. Only D1 and R2, so nothing outside can stop it, and it does not look at the tick's D1
+ * calls either: its two are part of the room left below the limit (src/budget.ts). Cases that still have an agent
  * session are left to purgeExpiredSessions, which deletes the session first.
  */
 export async function purgeExpired(env: Env, now: number): Promise<void> {
@@ -38,7 +39,8 @@ export async function purgeExpired(env: Env, now: number): Promise<void> {
  * keeps a few stuck sessions from blocking the rest.
  */
 export async function purgeExpiredSessions(env: Env, now: number, budget: ExternalBudget): Promise<void> {
-  if (budget.remaining <= 0) return;
+  // Each half is a lookup and one write (#178, src/budget.ts).
+  if (budget.remaining <= 0 || budget.d1Remaining < 2) return;
   await purgeCaseSessions(env, now, budget);
   await purgeExpiredResearch(env, now, budget);
 }
@@ -65,7 +67,7 @@ async function purgeCaseSessions(env: Env, now: number, budget: ExternalBudget):
 
 /** The research sessions of old alerts (task 11), then those alerts, with what the budget has left. */
 async function purgeExpiredResearch(env: Env, now: number, budget: ExternalBudget): Promise<void> {
-  if (budget.remaining <= 0) return;
+  if (budget.remaining <= 0 || budget.d1Remaining < 2) return;
   const due = await env.DB.prepare(
     "SELECT id, investigation_session_id AS session FROM alerts WHERE created_at < ? AND investigation_session_id IS NOT NULL ORDER BY random() LIMIT ?",
   )
