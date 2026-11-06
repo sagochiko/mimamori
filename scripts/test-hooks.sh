@@ -202,6 +202,19 @@ prod quiet "gh api repos/o/r/pulls --jq '.[] | select(.title | test(\"-f\")) | .
 prod quiet "gh api -H 'Accept: application/vnd.github+json' --paginate repos/o/r/issues" "headers and --paginate run without asking"
 prod quiet 'gh api -q .login user' "-q takes a value, not a field"
 prod quiet 'gh issue create --title t --body-file b.md' "gh issue is not gh api"
+# Since 2026-11-06 gh api writes run without asking (the author, docs/harness.md "gh の書き込みを止めなくなった").
+# Two kinds still ask: DELETE, which cannot be undone, and merging, which skips guard-merge.sh. So does a
+# call whose method, endpoint, or graphql query the hook cannot read, since it might be either.
+prod quiet 'gh api -X POST repos/o/r/issues -f title=x' "an issue written through gh api runs without asking"
+prod quiet "gh api graphql -f query='mutation{addComment(input:{subjectId:\"x\",body:\"y\"}){clientMutationId}}'" "a graphql mutation that only writes runs without asking"
+prod quiet 'gh api repos/o/r/issues/1/comments -f body=x' "a comment through gh api fields runs without asking"
+prod ask 'gh api -X PUT repos/o/r/pulls/1/merge' "merging a PR through gh api still asks"
+prod ask 'gh api repos/o/r/pulls/1/merge -f merge_method=merge' "a merge endpoint with fields, sent as POST, asks"
+prod ask 'gh api -X POST repos/o/r/merges -f base=main -f head=x' "merging a branch through gh api asks"
+prod ask "gh api graphql -f query='mutation{mergePullRequest(input:{pullRequestId:\"x\"}){clientMutationId}}'" "a graphql merge mutation asks"
+prod ask "gh api graphql -f query='mutation{enablePullRequestAutoMerge(input:{pullRequestId:\"x\"}){clientMutationId}}'" "a graphql auto-merge mutation asks"
+prod ask 'gh api -X PUT "$EP"' "a write to an endpoint the hook cannot read asks"
+prod ask 'gh api -X POST "repos/o/r/pulls/$(cat n)/merge"' "a write to an endpoint built at run time asks"
 # git push: forcing and mirroring are blocked; deleting, pruning, and pushing to main ask. Global
 # options before push are skipped, and the branch of a bare git push comes from its working tree.
 git init -q -b main "$T/push-main" && git init -q -b work "$T/push-work"
@@ -473,6 +486,14 @@ merge 2 'gh pr merge 41 --merge && gh pr merge 42 --merge' "two merges in one co
 merge 0 'grep -n "gh pr merge" .claude/skills/mm-task/SKILL.md' "searching for the words gh pr merge passes"
 merge 0 'gh pr merge 60 --merge' "a status written as a heading with the verdict on the next line counts"
 merge 2 'gh pr merge 61 --merge' "a status heading with nothing under it does not count"
+# Since 2026-11-06 the words gh pr merge in text that does not run (a python heredoc that builds a PR
+# body, the pattern of a grep) pass. A merge that runs inside $(...), backticks, or a shell is still read.
+merge 0 $'python3 - <<\'PY\'\nbody = """\ngh pr merge 42 --merge で入れる\n"""\nprint(body)\nPY' "gh pr merge in the text of a python heredoc passes"
+merge 0 "grep -e 'x|gh pr merge' .claude/skills/mm-task/SKILL.md" "gh pr merge after | inside a grep pattern passes"
+merge 2 'echo "$(gh pr merge 41 --merge)"' "a merge inside a quoted \$(...) is blocked, even for a reviewed PR"
+merge 2 'echo `gh pr merge 41 --merge`' "a merge inside backticks is blocked, even for a reviewed PR"
+merge 2 $'bash <<\'E\'\ngh pr merge 41 --merge\nE' "a merge fed to bash by a heredoc is blocked, even for a reviewed PR"
+merge 2 "bash -c 'true; gh pr merge 41 --merge'" "a merge inside bash -c is blocked, even for a reviewed PR"
 # A merge inside a compound command, or with quotes or a backslash around its words, is still read.
 merge 2 'for n in 42; do gh pr merge 42 --merge; done' "a merge inside for ... do is checked"
 merge 2 'if gh pr checks 42; then gh pr merge 42 --merge; fi' "a merge inside if ... then is checked"
@@ -1038,6 +1059,13 @@ priv 0 $'cat <<\'E\' | gh issue create --title x -F -\n機種を確かめる。\
 priv 2 $'cat <<\'E\' '"$T"$'/term.md | gh issue create --title x -F -\nx\nE' "cat with a file next to the heredoc is blocked"
 priv 2 "cd $T/Tanukiyama && gh issue create --title x -F clean.md" "a relative body file after cd is blocked"
 priv 0 "git commit -m 'x'; echo done" "a plain commit passes"
+# Since 2026-11-06 a write whose body the hook cannot see passes (the author, docs/harness.md "gh の書き込み
+# を止めなくなった"). What it can see is still checked: --title, --body, and every literal --body-file.
+priv 0 "gh pr comment 1 --body-file $T/clean.md; name=\$(ls); echo \$name" "a write next to \$(...) and a variable passes"
+priv 0 "gh pr comment 1 --body \"\$(cat x)\"" "a body from \$(...) passes"
+priv 2 "gh pr comment 1 --body \"電話は $ph\"; name=\$(ls)" "a phone number in a visible --body is still blocked next to \$(...)"
+priv 2 "gh pr comment 1 --body-file $T/term.md; echo \$HOME" "a private term in a literal body file is still blocked next to a variable"
+priv 0 "bash -c \"cd /tmp; gh issue create --title x --body-file $T/clean.md\"" "a clean write inside bash -c passes"
 out=$(jq -nc --arg c "gh issue create --title x --body-file $T/term.md" '{tool_name:"Bash",tool_input:{command:$c}}' | "$H/guard-private.sh" 2>&1)
 [[ "$out" == *"term.md line 2: private term"* && "$out" != *[Tt][Aa][Nn][Uu][Kk][Ii]* ]] ||
   { echo "hook test failed: guard-private names the place and the rule, never the term"; fail=1; }
