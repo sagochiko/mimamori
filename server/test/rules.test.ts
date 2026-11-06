@@ -853,6 +853,25 @@ describe("more ways to keep the family out", () => {
     expect(judge({ source: "consult", text }).reasons).not.toContain("警告を止めさせようとする文がある");
   });
 
+  // Review 1 of PR #176, item 1: the told form is for her consultation only. Genuine warnings in an SMS,
+  // a page, or a mail quote it ("と指示されることがあります", "と言われた場合は"), and must stay at main's
+  // level, never confident (the junk folder).
+  it.each([
+    [
+      "sms",
+      "【注意】警察を名乗る電話で「見守りアプリの通知を切って」と指示されることがあります。逮捕状が出たと言われても応じないで",
+      2,
+    ],
+    ["page", "ニセ警察詐欺の手口。犯人は「その通知は消してください」と言い、言われた通りにすると口座が犯罪に使われたと話を進めます。", 2],
+    ["sms", "【警察署からのお知らせ】犯人から「この通知を止めて」と言われた場合は詐欺です。", null],
+    ["gmail", "犯人に「その知らせは無視してください」と言われた場合でも、お金を振り込まないで。", null],
+  ] as const)("keeps a genuine %s warning that quotes the told form at main's level: %s", (source, text, level) => {
+    const result = judge({ source, text });
+    expect(result.level).toBe(level);
+    expect(result.confident).toBe(false);
+    expect(result.reasons).not.toContain("警告を止めさせようとする文がある");
+  });
+
   it("counts a request to turn this notice off when it comes with a link", () => {
     expect(
       judge({ source: "sms", text: "この通知をオフにしてください https://x-check.example/" }).level,
