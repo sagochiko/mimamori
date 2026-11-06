@@ -155,8 +155,12 @@ Apple Developer の登録(bundle ID、App Group、capability、端末)は、`/mm
 - force push(`--force`、`-f`、`+` の refspec、`git -c ... push` の形)と `git push --mirror` は `guard-prod.sh` が止める
 - wrangler の削除系(`delete`、`d1 delete`、`queues delete`、`r2 bucket delete`)と D1 の time-travel の restore は `guard-prod.sh` が止める
 - `wrangler secret delete`、`wrangler versions secret delete`、`gh api` の DELETE は `guard-prod.sh` が作者に聞く
-- `.dev.vars`(`.dev.vars.example` のほか)、`.p8`、`.p12`、`AuthKey_`、`client_secret*.json`、gh の設定の置き場、`gh auth token`、`security find-*`、環境変数を出すコマンドは `guard-secrets.sh` が止める
+- `.dev.vars`(`.dev.vars.example` のほか)、`.p8`、`.p12`、`AuthKey_`、`client_secret*.json`、gh の設定の置き場、`gh auth token`、`security find-*`、環境変数を出すコマンドは `guard-secrets.sh` が止める。例外は App Store Connect API の鍵の道筋を書く2つの Bash の行で、次の段落に書いた
 - holdout の読み取りは `guard-holdout.sh` が止める
+
+2026年11月7日の深夜、TestFlight への書き出しが Xcode に保存したアカウントの経路で `App Store Connect access for "CTK4XXPWH9" is required` を返して何度も止まった。作者は mimamori 専用の App Store Connect API の鍵(役割は App Manager)を作り、Claude がその道筋をコマンドに書くことを許した。作者の言葉は「君が全部やるんだって」「許可している」。そこで [`guard-secrets.sh`](../.claude/hooks/guard-secrets.sh) に、行全体が次のどちらかの形にぴったり合うときだけ通す例外を足した。1つは、ダウンロードした鍵を `~/.appstoreconnect/private_keys/` へ移す `mkdir -p` と `mv` の1回だけの行。もう1つは、`xcodebuild -exportArchive` で始まり、`-authenticationKeyPath` がその場所の鍵を1回だけ指し、`-authenticationKeyID` と `-authenticationKeyIssuerID` を含む行だ。
+
+安全だと言える理由は、鍵の中身が Claude の文脈に出ないことにある。`mkdir` と `mv` はファイルの中身を表示せず、`xcodebuild` は鍵で署名して入るだけで中身を出さない。形の中の語は英数字と `_./~:,+-` だけに限ったので、パイプ、リダイレクト、`$(...)`、バッククォート、引用符、glob、改行、`;` や `&&` でつなぐ別のコマンドは入らない。形に合ったあとは鍵の道筋を取り除き、残りを今までの規則にかけるので、`-exportOptionsPlist` に鍵を渡す行や `~/Downloads` の鍵を指す行は止まる。`cat`、`head`、`grep`、`cp`、Read のツールで鍵を開く操作も、`-exportArchive` 以外の xcodebuild も、今までどおり止まる。通る例と止まる例は [`scripts/test-hooks.sh`](../scripts/test-hooks.sh) に並べた。使い方は [`mm-release`](../.claude/skills/mm-release/SKILL.md) の4に書き、作者が期間より前に作った鍵やコードは使わない。
 
 フックが見ないものは、今から auto mode の判定だけに任せる。`git reset --hard`、`gh repo delete`、`gh secret`、`gh repo edit --visibility`、Gmail の送信(`send_message`、`reply`、`forward`)、Gmail のごみ箱と削除と迷惑メールの道具、カレンダーの `delete_event`、Claude Docs の `delete` がそれにあたる。wrangler の認証の置き場は、deny では `~/Library/Preferences/.wrangler/**` 全体だったが、`guard-secrets.sh` は `.wrangler/config` の下しか見ないので、残りは判定に任せる。
 
