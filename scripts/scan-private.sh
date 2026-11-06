@@ -14,10 +14,11 @@
 #   scripts/scan-private.sh text <label> [<file>]   any text, from a file or stdin (guard-private.sh)
 #   scripts/scan-private.sh history                 every commit on every branch, and every issue and
 #                                                   PR with its comments (/mm-endgame, before going public).
-#                                                   Each commit's own lines. Merges are skipped, so the
-#                                                   lines a merge brings from main are not counted twice;
-#                                                   lines written by hand to resolve a conflict are checked
-#                                                   only by pre-commit, at the merge
+#                                                   Each commit's own lines. A merge counts only what it
+#                                                   adds itself (a conflict resolved by hand, read with
+#                                                   --remerge-diff), so the lines it brings from main are
+#                                                   not counted twice. PR review comments on lines come
+#                                                   from the repository's list (gh api, read only)
 #
 # Exit status: 0 clean, 1 hits, 2 the scan could not run. scripts/test-hooks.sh points
 # MM_PRIVATE_TERMS_FILE at a dummy list; nothing else sets it.
@@ -139,6 +140,9 @@ case $1 in
     ;;
   history)
     git -C "$here" -c core.quotePath=false log --all -p -U0 --diff-merges=off --no-color --no-ext-diff --format='MMSCAN-COMMIT %h' | diff_lines >"$tmp/tsv" || exit 2
+    # A merge's own lines: --remerge-diff compares the recorded result with what git merges by itself,
+    # so only a hand-resolved conflict (or a change slipped into the merge) shows up.
+    git -C "$here" -c core.quotePath=false log --all --merges --remerge-diff -p -U0 --no-color --no-ext-diff --format='MMSCAN-COMMIT %h' | diff_lines >>"$tmp/tsv" || exit 2
     git -C "$here" log --all --format='MMSCAN-COMMIT %h%n%B' |
       awk '/^MMSCAN-COMMIT / { c = $2; n = 0; next } { n++; printf "commit %s message line %d\t%s\n", c, n, $0 }' >>"$tmp/tsv" || exit 2
     cd "$here" || exit 2
@@ -152,6 +156,13 @@ case $1 in
             | (.value.body // "") | split("\n") | to_entries[] | [$w + " comment \($c + 1) line \(.key + 1)", .value])
         | map(gsub("\t"; " ")) | join("\t")' "$tmp/${kind}s.json" >>"$tmp/tsv" || exit 2
     done
+    # Review comments on lines: --json reviews gives only each review's top body. The repository's list
+    # has every PR's, one JSON array per page. Same rules as PR comments, with no folder scope.
+    gh api 'repos/{owner}/{repo}/pulls/comments' --paginate >"$tmp/review-comments.json" || { echo "scan-private: gh could not list the review comments" >&2; exit 2; }
+    jq -r '.[] | . as $c | ($c.pull_request_url | sub(".*/"; "")) as $n
+      | ($c.body // "") | split("\n") | to_entries[]
+      | ["pr #\($n) review comment \($c.id) line \(.key + 1)", .value] | map(gsub("\t"; " ")) | join("\t")' \
+      "$tmp/review-comments.json" >>"$tmp/tsv" || exit 2
     ;;
   *)
     echo "usage: scripts/scan-private.sh staged | message <file> | text <label> [<file>] | history" >&2
