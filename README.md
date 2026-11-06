@@ -86,7 +86,7 @@ The rules + Claude line was measured before #137 changed which SMS, mail, and pa
 - Cases, notices, and smile photos are deleted automatically after 30 days, every day at a fixed time.
 - Smile photos are shared only inside the family and never sent to Claude.
 - SMS, mail, and pages judged level 3 leave no record, so the server does not become a copy of her inbox.
-- Screenshots and documents she shares are sent to Claude for that answer and are not stored. A test checks that no D1 column holds the image.
+- Screenshots and documents she shares are sent to Claude for that answer and are not stored. A test checks that the stored case and alert rows hold no part of the image.
 - "すべて消す" (delete everything) is in the menu on her screen (at the end of the smile row) and on the family's screen (top right). After a confirmation with only "消す" (delete) and "やめる" (cancel), the app calls `DELETE /families/me`. The server removes the family's data, revokes Gmail access, and deletes Managed Agents sessions. Only after the server answers does the phone forget its key and clear the chat, cards, smiles, and scheduled questions. If the call fails, nothing is deleted (#190). Checked on the simulator, not yet on a real iPhone.
 - Secrets live in Workers secrets. This repository holds only test examples, with no real messages or family details.
 
@@ -114,7 +114,7 @@ The demo mode shows her screen and the card the family would get, on one iPhone,
 2. On the first screen, tap "体験" (try it), the third button under "見守られる人" (the person watched over) and "家族" (family).
 3. Her screen shows "さっきの電話、大丈夫だった？" (Was that call just now all right?). Tap the microphone. It plays her consultation about a call from the police, her answer at level 1, and the card and notification the family would get.
 4. Tap "解決" (resolve) on the card, or "30分後" (30 minutes later) to see what both screens show when no one resolves it. The demo card has no Call button.
-5. An SMS field follows, with a fictional fake delivery notice. Edit it if you like and tap "送る" (send). It goes to the server's rules at `/sms/demo`, which tell no family. The result is "迷惑" (junk) with the card the family would get, or "カードなし" (no card). "最初から" (from the start) starts over.
+5. An SMS field follows, with a fictional fake delivery notice. Edit it if you like and tap "送る" (send). It goes to the server's rules at `/sms/demo`, which tell no family. There are three results. A clear scam (level 1, and the rules are sure) shows "迷惑" (junk, where the iPhone would file it) above the card the family would get. Level 1 without that certainty, or level 2, shows only the card. Anything else shows "カードなし" (no card). "最初から" (from the start) starts over.
 
 The consultation in the demo is played on the phone from the server's fixed fake-police lines, not sent to `POST /consult`, so judges do not create families in the production D1. Only the SMS reaches the server.
 
@@ -125,7 +125,7 @@ The consultation in the demo is played on the phone from the server's fixed fake
 
 ## Built during the hackathon
 
-Every line of code here was written in this repository after the kickoff on 2026-11-02. The first commit is dated 2026-11-03. On 2026-11-07, `origin/main` had 773 commits (602 without merges, 565 of them co-authored by Claude). There were 93 merged pull requests and 98 issues (64 closed). The tests were 1,637 server tests (Vitest, 17 files), 296 `ios/Core` tests (`swift test`, 47 suites), and 19 tests for the eval scripts. The server has 7 D1 migrations. The pre-hackathon design was copied in on 2026-11-03; [`docs/design.md`](docs/design.md) says what changed and why.
+Every line of code here was written in this repository after the kickoff on 2026-11-02. The first commit is dated 2026-11-03. On 2026-11-07, at commit `97fec9d` of `origin/main`, there were 781 commits (607 without merges, 570 of them co-authored by Claude), 95 merged pull requests, and 98 issues (65 closed). The tests were 1,637 server tests (Vitest, 17 files), 296 `ios/Core` tests (`swift test`, 47 suites), and 19 tests for the eval scripts. The server has 7 D1 migrations. The pre-hackathon design was copied in on 2026-11-03; [`docs/design.md`](docs/design.md) says what changed and why.
 
 ## From the development log
 
@@ -137,7 +137,7 @@ Every line of code here was written in this repository after the kickoff on 2026
 
 ## How Claude Code built it
 
-The harness is the setup that lets Claude Code build this under hackathon rules. It is described in [`docs/harness.md`](docs/harness.md), with the project rules in [`CLAUDE.md`](CLAUDE.md) and everything else in [`.claude/`](.claude/). Hooks block rule-breaking actions, such as opening the author's earlier projects, reading the holdout set, reading secrets, or merging an unreviewed PR. Each issue goes through separate implementer, verifier, and reviewer subagents, and the reviewer's report is kept on the PR. Counts from the hook log, 2026-11-03 to 2026-11-06, are in [`docs/claude-usage.md`](docs/claude-usage.md): 132 reviewer launches and 21 resumes, 64 implementer launches, 50 verifier launches, and 195 actions that hooks blocked or sent to the author. On 2026-11-07, [`docs/audits/raw/`](docs/audits/raw/) held 175 reviewer reports, kept unedited.
+The harness is the setup that lets Claude Code build this under hackathon rules. It is described in [`docs/harness.md`](docs/harness.md), with the project rules in [`CLAUDE.md`](CLAUDE.md) and everything else in [`.claude/`](.claude/). Hooks block rule-breaking actions, such as opening the author's earlier projects, reading the holdout set, reading secrets, or merging an unreviewed PR. Each issue goes through separate implementer, verifier, and reviewer subagents, and the reviewer's report is kept on the PR. Counts from the hook log, 2026-11-03 to 2026-11-06, are in [`docs/claude-usage.md`](docs/claude-usage.md): 132 reviewer launches and 21 resumes, 64 implementer launches, 50 verifier launches, and 195 actions that hooks blocked or sent to the author. On 2026-11-07 (`97fec9d`), [`docs/audits/raw/`](docs/audits/raw/) held 177 reviewer reports, kept unedited.
 
 ## Repository
 
