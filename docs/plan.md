@@ -108,7 +108,7 @@ mimamori/
 | `cases` | `id`、`family_id`、`alert_id`、`state`(`notified`、`resolved`。前の版の `accepted` が残っていたら解決していないものとして扱う)、`assignee_member_id`(解決を押した家族)、`agent_session_id`、`notified_at`、`resolved_at`、`renotified_at`、`ai_reply`(AI が母に最後に答えたこと)、`family_notified_at`(家族に最初の知らせが届いた時刻。届くまでは空)、`family_notice_claimed_at`(最初の知らせを送る前に立て、届くか諦めたら空に戻す claim の時刻で、5分より古いものは次の送り手が引き継ぐ。#64)。`accepted_at` は残すが読み書きしない |
 | `relays` | `id`、`case_id`、`from_member_id`、`body`、`created_at`。家族から母への返事を外したので、読み書きせず、相談と一緒に消すだけにする(本番の D1 を変えないため、表は残す) |
 | `smiles` | `id`、`family_id`、`member_id`、`r2_key`、`score`、`note`(ひと言。決まった5つの語のどれかを語のまま入れる)、`created_at`。家族の誰の笑顔も入る。写真の無いひと言だけの行は `r2_key` を空の文字にし、「すべて消す」と30日の削除は R2 を消すときにその行を飛ばす(行は消す)。`note` と2つの `families` の列は2026年11月5日に #14 で足した(`0005`) |
-| `gmail_auth` | `family_id`、`refresh_token_enc`、`granted_at`、`last_history_id`、`expired_notified_at` |
+| `gmail_auth` | `family_id`、`refresh_token_enc`、`granted_at`、`last_history_id`、`expired_notified_at`、`partial_record_id` と `partial_message_ids`(見張りが履歴の記録の途中で止まったときの、その記録の ID と、もう扱ったメールの ID の JSON の配列。次の実行はそのメールを積み直さない。記録を読み終えたら空に戻す。`last_history_id` は記録の単位でしか進まないため、2026年11月6日に #174 で足した(`0006`)) |
 | `usage_daily` | `date`、`doh_requests` |
 
 `gmail_auth` の `expired_notified_at` は、許可から6日たって「Gmail の許可がもうすぐ切れます」を家族に送った時刻にする。Google が `invalid_grant` を返したら「Gmail の許可の取り直しが要ります」を家族に1回送り、その行を消して見張りを止める。行が無ければ2回目は送らない。知らせ1つに表の列を足さずに済むため、2026年11月6日に #15 の実装の中で主のセッションがこの形にし、作者には PR #143 で伝える。許可を取り直すと行を上書きし、`expired_notified_at` を空に戻す
