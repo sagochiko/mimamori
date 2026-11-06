@@ -432,7 +432,8 @@ async function judgeMessage(env: Env, familyId: string, id: string, auth: Record
 export function mailPayload(part: MessagePart): JudgePayload {
   const header = (name: string) =>
     part.headers?.find((h) => h.name?.toLowerCase() === name)?.value?.trim() ?? "";
-  const from = decodeWords(header("from"));
+  // Not decoded: an encoded word may only stand for a display name, never for the address.
+  const from = header("from");
   const subject = decodeWords(header("subject"));
   const { plain, html } = bodies(part);
   const hrefs = html.flatMap((h) => [...h.matchAll(/href\s*=\s*["']?(https?:\/\/[^"'\s>]+)/gi)].map((m) => m[1] ?? ""));
@@ -441,13 +442,29 @@ export function mailPayload(part: MessagePart): JudgePayload {
   const text = cut([subject, body, ...links].filter((s) => s !== "").join("\n"), JUDGE_TEXT_MAX_CHARS);
 
   const out: JudgePayload = { text };
-  const address = /<([^<>\s]+@[^<>\s]+)>/.exec(from)?.[1] ?? (/^\S+@\S+$/.test(from) ? from : "");
-  if (address) out.sender = cut(address, SENDER_MAX_CHARS);
+  // Left out rather than cut, since a cut address could end on an official domain.
+  const address = senderAddress(from);
+  if (address && [...address].length <= SENDER_MAX_CHARS) out.sender = address;
   const url = firstLink(links[0] ?? "") ?? firstLink(text);
   if (url) out.url = url;
   const domain = normalizeDomain({ familyId: "", source: "gmail", payload: out });
   if (domain) out.domain = domain;
   return out;
+}
+
+/**
+ * The addr-spec of From: the last <...> when it ends the header, or the whole header when it is a
+ * bare address. The display name is left out, since it can say anything, an official address in
+ * angle brackets included (#170). A From of any other shape, a list of mailboxes included, gives no
+ * sender, so nothing in it counts as official.
+ */
+function senderAddress(from: string): string {
+  const value = from.trim();
+  // A comma outside quotes means a list of mailboxes, which a mail from one sender does not have.
+  if (value.replace(/"(?:[^"\\]|\\.)*"/g, "").includes(",")) return "";
+  const bracketed = /<([^<>\s]*)>$/.exec(value);
+  const address = bracketed ? (bracketed[1] ?? "") : value;
+  return /^[^<>\s@"]+@[^<>\s@"]+$/.test(address) ? address : "";
 }
 
 function cut(text: string, max: number): string {

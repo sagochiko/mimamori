@@ -834,6 +834,45 @@ describe("reading one mail", () => {
     expect(payload.text).toBe("【国税庁】未納のお知らせ\n未納の税金があります。本日中にお支払いがない場合は差押えとなります");
   });
 
+  // The sender is the addr-spec: the last <...> at the end of From, or the whole From when it is a
+  // bare address. A display name can say anything, an address in angle brackets included (#170).
+  describe("takes the sender from the address, not the display name", () => {
+    const senderOf = (from: string) =>
+      mailPayload({ mimeType: "text/plain", headers: [{ name: "From", value: from }], body: { data: b64url("本文") } })
+        .sender;
+
+    it.each([
+      ["a display name with an address in angle brackets", "Bank <info@bank.example> <scam@free-mail.example>", "scam@free-mail.example"],
+      ["a quoted display name with an address in angle brackets", '"Bank <info@bank.example>" <scam@free-mail.example>', "scam@free-mail.example"],
+      ["a quoted display name that is an address", '"info@bank.example" <scam@free-mail.example>', "scam@free-mail.example"],
+      ["a display name that is a bare address", "info@bank.example <scam@free-mail.example>", "scam@free-mail.example"],
+      ["a plain name-addr", "Bank <info@bank.example>", "info@bank.example"],
+      ["a bare address", "scam@free-mail.example", "scam@free-mail.example"],
+      ["a bare address with spaces around", "  scam@free-mail.example  ", "scam@free-mail.example"],
+      ["a quoted display name with a comma", '"Bank, Support" <scam@free-mail.example>', "scam@free-mail.example"],
+      ["an encoded-word display name", "=?UTF-8?B?PGluZm9AYmFuay5leGFtcGxlPg==?= <scam@free-mail.example>", "scam@free-mail.example"],
+    ])("%s", (_, from, sender) => {
+      expect(senderOf(from)).toBe(sender);
+    });
+
+    it.each([
+      ["an unclosed angle bracket after an address", "Bank <info@bank.example> <scam@free-mail.example"],
+      ["text after the last angle bracket", "<scam@free-mail.example> Bank <info@bank.example"],
+      ["a last angle bracket with no address", "Bank <info@bank.example> <broken>"],
+      ["an empty angle bracket", "Bank <info@bank.example> <>"],
+      ["a display name only", "Bank"],
+      ["two bare addresses", "info@bank.example scam@free-mail.example"],
+      ["two mailboxes", "<scam@free-mail.example>, <info@bank.example>"],
+      ["two quoted mailboxes", '"Shop" <scam@free-mail.example>, "Bank" <info@bank.example>'],
+      // An encoded word may only stand for a display name, so it is never decoded into an address.
+      ["an encoded word that decodes to an address", "<scam@free-mail.example> =?UTF-8?B?PGluZm9AYmFuay5leGFtcGxlPg==?="],
+      // Cut to the limit, this would read as an address at the made-up bank (#170).
+      ["an address longer than the queue keeps", `<${"a".repeat(487)}@bank.example.${"b".repeat(40)}.example>`],
+    ])("leaves out the sender for %s", (_, from) => {
+      expect(senderOf(from)).toBeUndefined();
+    });
+  });
+
   it("keeps the text within what the queue carries", () => {
     const long = "あ".repeat(6000);
     const payload = mailPayload({ mimeType: "text/plain", headers: [], body: { data: b64url(long) } });
