@@ -110,6 +110,7 @@ mimamori/
 | `smiles` | `id`、`family_id`、`member_id`、`r2_key`、`score`、`note`(ひと言。決まった5つの語のどれかを語のまま入れる)、`created_at`。家族の誰の笑顔も入る。写真の無いひと言だけの行は `r2_key` を空の文字にし、「すべて消す」と30日の削除は R2 を消すときにその行を飛ばす(行は消す)。`note` と2つの `families` の列は2026年11月5日に #14 で足した(`0005`) |
 | `gmail_auth` | `family_id`、`refresh_token_enc`、`granted_at`、`last_history_id`、`expired_notified_at`、`partial_record_id` と `partial_message_ids`(見張りが履歴の記録の途中で止まったときの、その記録の ID と、もう扱ったメールの ID の JSON の配列。次の実行はそのメールを積み直さない。記録を読み終えたら空に戻す。`last_history_id` は記録の単位でしか進まないため、2026年11月6日に #174 で足した(`0006`)) |
 | `usage_daily` | `date`、`doh_requests` |
+| `join_attempts` | `key`(接続元のアドレス。IPv6 は先頭の /64 にまとめ、`TOKEN_ENC_KEY` から HKDF で導いた別の鍵で取った HMAC-SHA256。アドレスそのものは残さない)、`window_start`、`count`。`POST /invites/{code}/join` の「接続元ごとに60秒に5回まで」を数える。Rate Limiting の結び付けは場所ごとのおおよその数えで、本番では23回続けても429が出なかったため(#67、`0009`)。1日より古い行は毎日の削除が消す |
 | `agent_resources` | `name`、`id`、`created_at`。Managed Agents の調べもののエージェントと環境の ID。Worker が最初に要ったときに作って置き、名前に設定の版(`research-agent-v2`)を入れる。プロンプトや開いてよいサイトを変えるときは版を上げて作り直す(#12、`0007`) |
 
 `gmail_auth` の `expired_notified_at` は、許可から6日たって「Gmail の許可がもうすぐ切れます」を家族に送った時刻にする。Google が `invalid_grant` を返したら「Gmail の許可の取り直しが要ります」を家族に1回送り、その行を消して見張りを止める。行が無ければ2回目は送らない。知らせ1つに表の列を足さずに済むため、2026年11月6日に #15 の実装の中で主のセッションがこの形にし、作者には PR #143 で伝える。許可を取り直すと行を上書きし、`expired_notified_at` を空に戻す

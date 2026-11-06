@@ -47,7 +47,21 @@ const DEDUPE_KEY_INFO = new TextEncoder().encode("mimamori alerts sender_key and
  * Without a usable TOKEN_ENC_KEY it is the plain SHA-256, so the judge keeps working; deploy lists
  * TOKEN_ENC_KEY as required, so that is only for a local run without the key.
  */
-export async function dedupeDigest(keyBase64: string | undefined, text: string): Promise<string> {
+export function dedupeDigest(keyBase64: string | undefined, text: string): Promise<string> {
+  return keyedDigest(keyBase64, DEDUPE_KEY_INFO, text, "dedupe key unkeyed");
+}
+
+/**
+ * Hex HMAC-SHA256 of the text under a key derived from TOKEN_ENC_KEY with HKDF and the given info, so
+ * each use gets its own key. Without a usable TOKEN_ENC_KEY it is the plain SHA-256 (local runs only;
+ * deploy lists TOKEN_ENC_KEY as required) and the warning is logged.
+ */
+export async function keyedDigest(
+  keyBase64: string | undefined,
+  info: Uint8Array,
+  text: string,
+  unkeyedWarning: string,
+): Promise<string> {
   const data = new TextEncoder().encode(text);
   let raw: Uint8Array | null = null;
   try {
@@ -59,7 +73,7 @@ export async function dedupeDigest(keyBase64: string | undefined, text: string):
   if (raw && raw.length === 32) {
     const base = await crypto.subtle.importKey("raw", raw, "HKDF", false, ["deriveKey"]);
     const hmac = await crypto.subtle.deriveKey(
-      { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: DEDUPE_KEY_INFO },
+      { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info },
       base,
       { name: "HMAC", hash: "SHA-256", length: 256 },
       false,
@@ -67,7 +81,7 @@ export async function dedupeDigest(keyBase64: string | undefined, text: string):
     );
     digest = await crypto.subtle.sign("HMAC", hmac, data);
   } else {
-    console.warn("dedupe key unkeyed", "no_token_enc_key");
+    console.warn(unkeyedWarning, "no_token_enc_key");
     digest = await crypto.subtle.digest("SHA-256", data);
   }
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
