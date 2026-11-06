@@ -19,12 +19,19 @@ public struct ChatMessage: Codable, Equatable, Identifiable, Sendable {
   /// When it was said or answered. Every message the app writes has it. A record read without one
   /// still decodes, so the rest of the file is kept, and is then dropped like one 30 days old (#113).
   public let at: Date?
+  /// True for an answer the app wrote on the iPhone itself (the storage guide, #19): shown and kept
+  /// like any other, never sent in `history`. Apple does not let free space, or anything judged from
+  /// it, leave the device (reason 85F4.1). Absent in records from before #19, which read as false.
+  let localOnly: Bool?
 
-  public init(id: UUID, role: ChatRole, text: String, at: Date?) {
+  public var isLocalOnly: Bool { localOnly ?? false }
+
+  public init(id: UUID, role: ChatRole, text: String, at: Date?, localOnly: Bool = false) {
     self.id = id
     self.role = role
     self.text = text
     self.at = at
+    self.localOnly = localOnly ? true : nil
   }
 }
 
@@ -79,8 +86,8 @@ public struct ChatLog: Codable, Equatable, Sendable {
   public init() {}
 
   @discardableResult
-  public mutating func append(_ role: ChatRole, _ text: String, at now: Date) -> ChatMessage {
-    let message = ChatMessage(id: UUID(), role: role, text: text, at: now)
+  public mutating func append(_ role: ChatRole, _ text: String, at now: Date, localOnly: Bool = false) -> ChatMessage {
+    let message = ChatMessage(id: UUID(), role: role, text: text, at: now, localOnly: localOnly)
     append(message)
     return message
   }
@@ -145,8 +152,10 @@ public struct ChatLog: Codable, Equatable, Sendable {
     return rows
   }
 
+  /// What the app wrote on the iPhone itself never goes (`ChatMessage.isLocalOnly`).
   private func turns(_ kept: [ChatMessage]) -> [ConsultTurn] {
     kept
+      .filter { !$0.isLocalOnly }
       .suffix(Self.historyTurns)
       .map { message in
         let cut = String(
@@ -290,6 +299,14 @@ public struct ChatKeeper: Sendable {
   public mutating func answered(_ reply: String, at now: Date) {
     load(at: now)
     log.append(.ai, reply, at: now)
+    save()
+  }
+
+  /// An answer the app wrote itself, on the iPhone only: the storage guide (#19). Never sent with her
+  /// next consultation.
+  public mutating func guide(_ text: String, at now: Date) {
+    load(at: now)
+    log.append(.ai, text, at: now, localOnly: true)
     save()
   }
 
