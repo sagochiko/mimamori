@@ -3167,11 +3167,33 @@ describe("words of the judgment in her answer (#121)", () => {
   const { system, output_config } = buildConsultRequest("x", { level: null, reasons: [], confident: false });
   const props = output_config.format.schema.properties;
 
-  it("tells Claude that basis and action are read out to her, without the words of the judgment", () => {
-    expect(system).toContain("basis と action は本人にそのまま読み上げます");
+  // Since #188 a scam answer's basis and action are never read to her nor put on the family's card
+  // (decidePlan); only the action of phone help is (#193). The prompt says so, not "read out as is".
+  it("tells Claude which of basis and action are read out to her, without the words of the judgment", () => {
+    expect(system).not.toContain("basis と action は本人にそのまま読み上げます");
+    expect(system).not.toContain("答えはそのまま読み上げられます");
+    expect(system).toContain("本人に読み上げるのは、スマホの困りごとの相談(kind は help)の action だけです");
+    expect(system).toContain(
+      "詐欺かもしれない相談(kind は scam)の basis と action は、本人に読み上げず、家族のカードにも出しません",
+    );
     expect(system).toContain("「手口の印」「印」「規則の判定」");
-    expect(props.basis.description).toContain("本人に読み上げる");
-    expect(props.action.description).toContain("本人に読み上げる");
+    // usable() has no net for these words since #188 ("右上の矢印を押して" is read out), so the prompt
+    // does not say a help action with them is replaced.
+    expect(system).not.toContain("こうした言葉が入った");
+    for (const p of [props.basis, props.action]) expect(p.description).not.toContain("本人に読み上げるので");
+    expect(props.basis.description).toContain("本人に読み上げない");
+    expect(props.action.description).toContain("本人に読み上げるのは help の操作の案内だけ");
+    expect(props.action.description).toContain("scam のときは読み上げない");
+    // An image consultation's schema and prompt carry the same lines.
+    const img = buildConsultRequest("x", { level: null, reasons: [], confident: false }, [], {
+      mediaType: "image/png",
+      data: "AAAA",
+      width: 10,
+      height: 10,
+    });
+    expect(img.system).toContain("本人に読み上げるのは、スマホの困りごとの相談(kind は help)の action だけです");
+    expect(img.system).not.toContain("basis と action は本人にそのまま読み上げます");
+    expect(img.output_config.format.schema.properties.action.description).toBe(props.action.description);
     // The family's reasons still name the signs.
     expect(system).toContain("2か1にするときは、reasons に見えた印を書きます");
   });
