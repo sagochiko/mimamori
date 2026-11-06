@@ -127,7 +127,7 @@ The demo mode shows her screen and the card the family would get, on one iPhone,
 1. Install the build from TestFlight and open it. Do not join a family.
 2. On the first screen, tap "体験" (try it), the third button under "見守られる人" (the person watched over) and "家族" (family).
 3. Her screen shows "さっきの電話、大丈夫だった？" (Was that call just now all right?). Tap the microphone. It plays her consultation about a call from the police, her answer at level 1, and the card and notification the family would get.
-4. Tap "解決" (resolve) on the card, then "解決にする" (mark resolved) in the sheet that asks, or "30分後" (30 minutes later) to see what both screens show when no one resolves it. The demo card has no Call button.
+4. Tap "解決" (resolve) on the card, then "解決にする" (mark resolved) in the alert that asks, or "30分後" (30 minutes later) to see what both screens show when no one resolves it. The demo card has no Call button.
 5. An SMS field follows, with a fictional fake delivery notice. Edit it if you like and tap "送る" (send). It goes to the server's rules at `/sms/demo`, which tell no family. There are three results. A clear scam (level 1, and the rules are sure) shows "迷惑" (junk, where the iPhone would file it) above the card the family would get. Level 1 without that certainty, or level 2, shows only the card. Anything else shows "カードなし" (no card). "最初から" (from the start) starts over.
 
 The consultation in the demo is played on the phone from the server's fixed fake-police lines, not sent to `POST /consult`, so judges do not create families in the production D1. Only the SMS reaches the server.
