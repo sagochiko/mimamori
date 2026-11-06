@@ -13,6 +13,9 @@
 import { BRAND_WORDS, type HostTrust, imitatedBrandOf, normalizeHost, trustOf } from "./domains";
 import {
   CONSULT_INJECTION,
+  CONSULT_MONEY_MOVE,
+  CONSULT_MORE_KINDS,
+  CONSULT_MORE_PARTS,
   CONTENT_RULES,
   CREDENTIAL_FROM_CODE,
   INJECTION,
@@ -23,6 +26,7 @@ import {
   OTP_DIGITS,
   OTP_ONLY,
   PHONE_NUMBER,
+  POLICE_CALLER,
   POLICE_SCRIPT,
   type PhraseRule,
   type Strength,
@@ -222,11 +226,29 @@ function signsOf(signals: Signal[]): Sign[] {
   return [...signs.values()];
 }
 
+/**
+ * The consultation-only parts of the script (#21) without a part of POLICE_SCRIPT beside them: one
+ * medium sign however many there are, so they give level 2 at most and Claude decides. The police do
+ * call victims, witnesses, and families about her name, her card, or someone held (review 1 of PR #206).
+ */
+function consultOnlyParts(signs: Sign[]): Sign[] {
+  const isMore = (s: Sign) => [...s.kinds].every((k) => CONSULT_MORE_KINDS.has(k));
+  const original = signs.some((s) => [...s.kinds].some((k) => POLICE_SCRIPT.some((rule) => rule.kind === k)));
+  const more = signs.filter(isMore);
+  if (original || more.length < 2) return signs;
+  const merged: Sign = { strength: "medium", kinds: new Set(more.flatMap((s) => [...s.kinds])) };
+  return [...signs.filter((s) => !isMore(s)), merged];
+}
+
 function levelOf(signs: Sign[]): 1 | 2 | null {
   const count = (strength: Strength) => signs.filter((s) => s.strength === strength).length;
   const strong = count("strong");
   const medium = count("medium");
-  const policeParts = signs.filter((s) => POLICE_SCRIPT.some((rule) => s.kinds.has(rule.kind))).length;
+  // The consultation-only parts (#21) count as parts of the script only next to one of POLICE_SCRIPT;
+  // without one, consultOnlyParts has merged them into one medium sign.
+  const policeParts = signs.filter((s) =>
+    [...s.kinds].some((k) => CONSULT_MORE_KINDS.has(k) || POLICE_SCRIPT.some((rule) => rule.kind === k)),
+  ).length;
   if (signs.some((s) => s.kinds.has(INJECTION.kind))) return 1;
   if (policeParts >= 2) return 1;
   if (strong >= 1 && signs.length >= 2) return 1;
@@ -305,10 +327,21 @@ export function judgeByRules(input: RuleInput): RuleResult {
   // the warning describes, so they are not signs, and Claude answers it. Text aimed at the app still is.
   const passedOn = input.source === "consult" && tellingOf(text) === "passed_on";
   if (!passedOn) for (const rule of POLICE_SCRIPT) if (!(codeOnly && rule.kind === "police_secrecy")) check(rule);
+  // Her consultation reads more of the script than a message does (#21).
+  if (input.source === "consult" && !passedOn) {
+    const caller = matchSpans(POLICE_CALLER, text).length > 0;
+    // One sign per part: a wider wording of a part already found adds nothing.
+    const told = new Set(POLICE_SCRIPT.filter((rule) => signals.has(rule.kind)).map((rule) => rule.kind));
+    for (const part of CONSULT_MORE_PARTS) {
+      if ((part.needsCaller && !caller) || told.has(part.part) || matchSpans(part, text).length === 0) continue;
+      told.add(part.part);
+      check(part);
+    }
+  }
   for (const rule of CONTENT_RULES)
     check(codeOnly && rule.kind === CREDENTIAL_FROM_CODE.kind ? CREDENTIAL_FROM_CODE : rule);
   check(URGENCY);
-  check(MONEY_MOVE);
+  check(input.source === "consult" ? CONSULT_MONEY_MOVE : MONEY_MOVE);
   if (unofficial.length > 0) for (const rule of LINK_BAIT) check(rule);
 
   if (signals.size === 0) {
@@ -319,7 +352,7 @@ export function judgeByRules(input: RuleInput): RuleResult {
     };
   }
 
-  const signs = signsOf([...signals.values()]);
+  const signs = consultOnlyParts(signsOf([...signals.values()]));
   const level = levelOf(signs);
   const independent = signs.filter((s) => s.strength !== "weak").length;
   // An official sender or link (not a free mail address or a user page) means it may be the brand or

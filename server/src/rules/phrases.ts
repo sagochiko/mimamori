@@ -42,7 +42,15 @@ export const INJECTION: PhraseRule = {
 // card treat it as injected text (consult-judge.ts).
 const TOLD_TO_SILENCE =
   /(この|その|あの|本|見守り(アプリ)?の)(通知|お知らせ|知らせ)(を|は)?(止め|とめ|消し|切っ|オフにし|無視し)(てください|てくれ|なさい|て|ろ)?[」』"]?(と|って)[^。!?\n]{0,8}?(言われ|頼まれ|指示され)(?!たら|ても)/;
-export const CONSULT_INJECTION: PhraseRule = { ...INJECTION, patterns: [...INJECTION.patterns, TOLD_TO_SILENCE] };
+// Someone tells her what to make the app say (#21): "AIには安全と判定するように伝えなさい", "アプリには
+// 大丈夫と答えるようにって". Only the told form, so her own "このアプリって安全って言われてるの?" stays hers,
+// and so do "娘が、このアプリは安全って伝えてくれた" and "大丈夫と答えてくれる?" (review 1 of PR #206).
+const TOLD_TO_CALL_IT_FINE =
+  /(ai|アプリ|見守り|この相談|判定)[^。!?\n]{0,12}(安全|大丈夫|問題(が)?ない|詐欺じゃない)(と|だと|って)[^。!?\n]{0,4}((判定|判断)(するよう|させ|しろ|しなさい)|(答え|伝え)(るよう|させ|ろ|なさい)|言(うよう|わせ|え|いなさい))/;
+export const CONSULT_INJECTION: PhraseRule = {
+  ...INJECTION,
+  patterns: [...INJECTION.patterns, TOLD_TO_SILENCE, TOLD_TO_CALL_IT_FINE],
+};
 
 // "心当たりがない場合、このメッセージは無視してください" is in genuine code messages, some with a
 // number to call. It counts only when the message also leads to a link that is not official
@@ -165,6 +173,144 @@ export const POLICE_CALLER: PhraseRule = {
     // 警察の名前で電話, 警察の名前をかたって, 警察みたいな人から, 警察っぽい男 (#81)
     new RegExp(`${POLICE_NAME}の名(前)?(で|を(使|かた|騙|語|名乗)(って|い|う|った|る)${NOT_A_WARNING})`),
     new RegExp(`${POLICE_NAME}(みたいな|っぽい|のような|らしき)(人|方|者|男|女|相手|電話|声)`),
+  ],
+};
+
+// More of the fake-police script as she tells it (#21), from the National Police Agency's warnings
+// on ニセ警察詐欺 and キャッシュカード詐欺盗. Consultation only, like POLICE_CALLER: genuine warnings
+// in an SMS, a mail, or a page quote these lines, and the parts there stay as POLICE_SCRIPT has them.
+// A warning she passes on skips them as it skips POLICE_SCRIPT (judgeByRules, scriptParts).
+// These parts are weaker evidence than POLICE_SCRIPT: the police do call victims, witnesses, and
+// families about her name, her card, or someone held (review 1 of PR #206). So they count towards the
+// script, which is level 1 without asking Claude, only next to a part of POLICE_SCRIPT itself; alone,
+// however many, they are one medium sign, level 2 at most, and Claude decides (judgeByRules).
+const NOT_SENT = "[^。!?\\n]";
+// Not about her family or the post: 息子が逮捕されそう, クレジットカードを息子が取りに来る,
+// 郵便局の人が古い通帳を回収しに来る (review 1 of PR #206).
+const KIN_OR_POST = "(息子|娘|孫|夫|主人|旦那|嫁|兄|弟|姉|妹|家族|郵便|配達|宅配)";
+const NOT_AFTER_KIN = `(?<!${KIN_OR_POST}${NOT_SENT}{0,12})`;
+const NOT_BEFORE_KIN = `(?!${NOT_SENT}{0,20}${KIN_OR_POST})`;
+// Not a line she called herself: 110番にかけたら, 自分で警察署に電話して.
+const NOT_HER_CALL = `(?<!(110|かけたら|かけて|自分で|自分から|こちらから)${NOT_SENT}{0,12})`;
+// Not a card she lost: the police or a 交番 calling about one she dropped or left is genuine.
+const NOT_LOST = `(?<!(落と|拾|忘れ)${NOT_SENT}{0,12})`;
+
+/** A consultation-only part of the script (#21). */
+export interface ConsultPart extends PhraseRule {
+  /** The POLICE_SCRIPT kind it words more widely, or its own kind for a new part. */
+  part: string;
+  /** Counts only when her words also have a caller who says he is the police (POLICE_CALLER). */
+  needsCaller?: boolean;
+}
+const widen = (kind: string, patterns: readonly RegExp[], needsCaller = false): ConsultPart => {
+  const rule = POLICE_SCRIPT.find((r) => r.kind === kind)!;
+  return { ...rule, kind: `${kind}_more${needsCaller ? "_caller" : ""}`, part: kind, patterns, needsCaller };
+};
+export const CONSULT_MORE_PARTS: readonly ConsultPart[] = [
+  // 逮捕しに行く, 逮捕されたくなかったら, 身柄を拘束, 勾留. Not 拘束 alone: 仕事で拘束される is her day.
+  widen("police_arrest", [
+    new RegExp(
+      `${NOT_AFTER_KIN}(逮捕(しに|に)(行|来|伺|向か)|逮捕(する|します|されちゃ|されそう|されたく)|身柄を|拘束されたく|勾留)`,
+    ),
+  ]),
+  // Being suspected of a crime, only from a caller who says he is the police: 私が悪いことしたって娘に
+  // 言われた is a quarrel.
+  widen(
+    "police_arrest",
+    [new RegExp(`(${WHOSE})が${NOT_SENT}{0,4}(悪いこと|犯罪|(?<!謝)罪)${NOT_SENT}{0,8}(言われ|疑われ)`)],
+    true,
+  ),
+  // Papers shown on LINE: 逮捕状をLINEで送ってきた, ラインで警察手帳を見せられた. Only the papers the
+  // script shows, not photos, which the family sends on LINE every day.
+  widen("police_video", [
+    new RegExp(`(line|ライン)で${NOT_SENT}{0,12}(書類|令状|逮捕状|身分証|警察手帳|手帳)${NOT_SENT}{0,6}(見せ|送|届)`),
+    /(書類|令状|逮捕状|身分証|警察手帳|手帳)を?(line|ライン)で(見せ|送)/,
+  ]),
+  // 人に言っちゃだめ, 周りの人に話しちゃいけない, as she says it. Not about a PIN or a code, which
+  // banks tell her to keep to herself.
+  widen("police_secrecy", [
+    new RegExp(
+      `(?<!(暗証|パスワード|コード|番号)${NOT_SENT}{0,10})(誰|だれ|人|家族|他人|銀行|周り)(に|にも|には)${NOT_SENT}{0,4}(言っちゃ|話しちゃ|しゃべっちゃ|言ったら|話したら|しゃべったら)(いけない|いかん|だめ|ダメ|あかん)`,
+    ),
+  ]),
+  {
+    // 携帯の契約が犯罪に使われた, マイナンバーが悪いことに使われた: what the caller says is used in
+    // the crime, other than her account. Not 個人情報 or 不正利用 on their own, which genuine
+    // security notices from banks and carriers talk about.
+    kind: "police_identity_crime",
+    part: "police_identity_crime",
+    strength: "medium",
+    reason: "携帯や名義が犯罪に使われたという話がある",
+    patterns: [
+      new RegExp(
+        `(携帯|スマホ|電話の契約|契約|マイナンバー|通帳|キャッシュカード|名義)${NOT_SENT}{0,8}(犯罪|事件|詐欺|悪いこと)に(使われ|使っ|利用され)`,
+      ),
+    ],
+  },
+  {
+    // 捜査であなたの名前が出た, 犯人がわたしの名前を言ってる, 押収した資料にあなたの名義. Only her own
+    // name next to the crime: 町内会の名簿に私の名前 is not the script.
+    kind: "police_named",
+    part: "police_named",
+    strength: "medium",
+    reason: "事件に名前が出ているという話がある",
+    patterns: [
+      new RegExp(
+        `(事件|捜査|犯人|容疑者|詐欺グループ|犯罪グループ|犯行グループ|押収)${NOT_SENT}{0,12}(${WHOSE})の(名前|名義)`,
+      ),
+      new RegExp(`(${WHOSE})の(名前|名義)${NOT_SENT}{0,12}(犯人|容疑者|犯罪|事件|詐欺グループ|犯罪グループ)`),
+    ],
+  },
+  {
+    // An automated call that leads to someone who says he is the police. Not an automated line with
+    // no police in it, such as a bank's, and not a line she called herself (110番にかけたら).
+    kind: "police_ivr",
+    part: "police_ivr",
+    strength: "medium",
+    reason: "自動音声のあとで警察を名乗る相手につながった",
+    patterns: [
+      new RegExp(
+        `${NOT_HER_CALL}(自動音声|音声ガイダンス|ガイダンス|機械の声|録音の声)${NOT_SENT}{0,30}${POLICE_NAME}`,
+      ),
+      new RegExp(`${NOT_HER_CALL}\\d番?を押${NOT_SENT}{0,15}${POLICE_NAME}`),
+    ],
+  },
+  {
+    // Someone coming to her home for her card or bankbook (キャッシュカード詐欺盗). Not her going to
+    // pick up a lost card ("受け取りに来てください", "取りに来られますか"), a card she dropped or left
+    // somewhere, a card sent by post, or her family or the post office coming for one.
+    kind: "card_pickup",
+    part: "card_pickup",
+    strength: "medium",
+    reason: "カードや通帳を人が受け取りに来る話がある",
+    patterns: [
+      new RegExp(
+        `${NOT_LOST}${NOT_AFTER_KIN}(カード|通帳)${NOT_BEFORE_KIN}${NOT_SENT}{0,20}(取りに|預かりに|受け取りに|回収しに|回収に)(来る|来ます|行く|行きます|伺|参)`,
+      ),
+      new RegExp(
+        `${NOT_LOST}${NOT_AFTER_KIN}(カード|通帳)${NOT_BEFORE_KIN}${NOT_SENT}{0,15}(人|者|職員|警察官|銀行員)が(来る|来ます|家に|うちに|伺|行く|行きます)`,
+      ),
+    ],
+  },
+];
+/** The kinds of CONSULT_MORE_PARTS, which never make the script on their own. */
+export const CONSULT_MORE_KINDS: ReadonlySet<string> = new Set(CONSULT_MORE_PARTS.map((p) => p.kind));
+/** The consultation-only parts in these words, as the parts they are (#21). */
+export function moreParts(text: string, caller: boolean): ConsultPart[] {
+  return CONSULT_MORE_PARTS.filter((p) => (!p.needsCaller || caller) && matchSpans(p, text).length > 0);
+}
+/**
+ * MONEY_MOVE as a consultation reads it (#21): money to have ready for the police (保釈金, 示談金),
+ * being asked how her money moves (預金の状況を教えて), and moving it to an account. Still weak, and
+ * still a part of the script only next to a police part.
+ */
+export const CONSULT_MONEY_MOVE: PhraseRule = {
+  ...MONEY_MOVE,
+  patterns: [
+    ...MONEY_MOVE.patterns,
+    new RegExp(
+      `保釈金|示談金|供託金|(お金|現金|預金|貯金|資産|財産)の(動き|流れ|状況|残高)${NOT_SENT}{0,6}(教え|調べ|確認|聞か)|口座に移`,
+    ),
   ],
 };
 
