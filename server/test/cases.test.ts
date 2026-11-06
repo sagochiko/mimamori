@@ -14,6 +14,7 @@ import {
   openCase,
   recordAiReply,
   resolveCase,
+  sendFirstNotices,
   tellFamilyHeavier,
   UNANSWERED_AFTER_MS,
 } from "../src/cases";
@@ -444,6 +445,95 @@ describe("the claim on the first notice", () => {
     await tick(Date.now());
     expect(to(f.author)).toEqual([expect.objectContaining({ title: "1段階" })]);
     expect(to(f.sister)).toEqual([expect.objectContaining({ title: "1段階" })]);
+  });
+
+  // #49 (the 4th line): a case the family already resolved is not sent its first notice by a retry.
+  it("a retried openCase on a case the family resolved before the first notice got through sends nothing", async () => {
+    const f = await family();
+    const alertId = await newAlert(f.familyId);
+    await expect(open(alertId, new ExternalBudget(1))).rejects.toMatchObject({ reason: "no_budget" });
+    const caseId = (await caseOf(alertId))?.id ?? "";
+    // The sister saw the case on her list and talked with the mother before any notice reached her.
+    await resolveCase(pushEnv, caseId, f.sister.memberId);
+    sent = [];
+    const budget = new ExternalBudget(40);
+
+    const opened = await open(alertId, budget);
+
+    expect(sent).toHaveLength(0);
+    expect(budget.remaining).toBe(40);
+    expect(opened).toMatchObject({ state: "resolved", familyNotifiedAt: null });
+    expect(await caseOf(alertId)).toMatchObject({ family_notified_at: null, family_notice_claimed_at: null });
+  });
+
+  // #49 (the 6th line): the queue and the tick reaching for the same first notice at once send it once.
+  it("openCase and the tick sending the same first notice at once tell each family device once", async () => {
+    const f = await family();
+    const alertId = await newAlert(f.familyId);
+    await expect(open(alertId, new ExternalBudget(1))).rejects.toMatchObject({ reason: "no_budget" });
+    sent = [];
+
+    const [opened] = await Promise.allSettled([open(alertId), tick(Date.now())]);
+
+    // Whichever lost the claim returns without throwing; the winner told the family.
+    expect(opened.status).toBe("fulfilled");
+    expect(to(f.author)).toHaveLength(1);
+    expect(to(f.sister)).toHaveLength(1);
+    expect(to(f.mother)).toHaveLength(0);
+    expect(await caseOf(alertId)).toMatchObject({
+      family_notified_at: expect.any(Number),
+      family_notice_claimed_at: null,
+    });
+  });
+});
+
+// #49 (the 6th line): the tick's retry of first notices stops at the first case the budget cannot cover.
+describe("the first-notice retry and the tick's budget", () => {
+  it("stops at the first family the budget cannot cover and leaves every older case unclaimed for the next tick", async () => {
+    // Untold cases left by earlier tests in this file would take part; they are marked told here.
+    await env.DB.prepare("UPDATE cases SET family_notified_at = ? WHERE family_notified_at IS NULL")
+      .bind(Date.now())
+      .run();
+    const now = Date.now();
+    const untold = async (familyId: string, minutesAgo: number) => {
+      const alertId = await newAlert(familyId);
+      await env.DB.prepare(
+        "INSERT INTO cases (id, family_id, alert_id, state, notified_at) VALUES (?, ?, ?, 'notified', ?)",
+      )
+        .bind(crypto.randomUUID(), familyId, alertId, now - minutesAgo * 60_000)
+        .run();
+      return alertId;
+    };
+    // Newest first: a (2 family devices), then b (2), then c (1, the sister has no device).
+    const a = await family();
+    const b = await family();
+    const c = await family();
+    await env.DB.prepare("UPDATE members SET apns_token = NULL WHERE id = ?").bind(c.sister.memberId).run();
+    const caseA = await untold(a.familyId, 1);
+    const caseB = await untold(b.familyId, 2);
+    const caseC = await untold(c.familyId, 3);
+    sent = [];
+    // Enough for a, and one left over: not enough for b, but enough for c if the retry went on past b.
+    const budget = new ExternalBudget(3);
+
+    await sendFirstNotices(pushEnv, now, budget);
+
+    expect(to(a.author)).toHaveLength(1);
+    expect(to(a.sister)).toHaveLength(1);
+    expect(to(b.author)).toHaveLength(0);
+    expect(to(c.author)).toHaveLength(0);
+    expect(budget.remaining).toBe(1);
+    expect(await caseOf(caseA)).toMatchObject({ family_notified_at: expect.any(Number) });
+    for (const alertId of [caseB, caseC]) {
+      expect(await caseOf(alertId)).toMatchObject({ family_notified_at: null, family_notice_claimed_at: null });
+    }
+
+    // The next tick, with its own budget, picks them up.
+    sent = [];
+    await sendFirstNotices(pushEnv, now + 5 * 60_000, new ExternalBudget(40));
+    expect(to(b.author)).toHaveLength(1);
+    expect(to(b.sister)).toHaveLength(1);
+    expect(to(c.author)).toHaveLength(1);
   });
 });
 
