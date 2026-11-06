@@ -883,7 +883,7 @@ describe("a genuine-looking secrecy line does not lower a scam (#51)", () => {
       false,
     ],
     ["sms", undefined, "暗証番号はご家族にも言わないでください。現金をご準備ください", 1, false],
-    ["sms", undefined, "暗証番号はご家族にも言わないでください。kakunin@gmail.com まで返信してください。", 1, false],
+    ["sms", undefined, "暗証番号はご家族にも言わないでください。x@gmail.com まで返信してください。", 1, false],
     [
       "sms",
       undefined,
@@ -911,7 +911,7 @@ describe("a genuine-looking secrecy line does not lower a scam (#51)", () => {
     ["sms", undefined, "認証コード 1234。ご家族には言わないでください。smbc-kakunin[.]com で入力", 1, false],
     ["sms", undefined, "認証コード 1234。このコードはご家族にも言わないでください。〇三-一二三四-五六七八 へお知らせください", 1, false],
     ["sms", undefined, "認証コード 1234。このコードはご家族にも言わないでください。LINE ID: abc123 に送って", 1, false],
-    ["sms", undefined, "認証コード 1234。このコードはご家族にも言わないでください。kakunin@gmail.com に転送してください", 1, false],
+    ["sms", undefined, "認証コード 1234。このコードはご家族にも言わないでください。x@gmail.com に転送してください", 1, false],
     ["sms", undefined, "確認番号 1234。この番号はご家族にも言わないでください。のちほど係の者が確認に伺います", 1, false],
     ["gmail", "info@smbc.co.jp", "暗証番号はご家族にも伝えないようにしてください。smbc-kakunin[.]com でご確認を", 1, false],
   ] as const)("keeps main's level for %s (sender %s): %s", (source, sender, text, level, confident) => {
