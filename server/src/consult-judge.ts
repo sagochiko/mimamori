@@ -940,7 +940,11 @@ function decidePlan(
   if (claude !== null && claude.kind === "scam") {
     // Level 3: little concern, and still never "safe".
     const basis = readable(claude.basis) ? claude.basis : "";
-    const reply = lowConcernReply(basis, readable(claude.action) ? claude.action : null);
+    // On an image, Claude's action is not read out at all: text on the image can steer it to "open the
+    // link" or "enter the code" at level 3, and no net can tell such lines from good ones (review 2 of
+    // PR #186). Levels 1 and 2 and who is told are as before.
+    const action = !image && readable(claude.action) ? claude.action : null;
+    const reply = lowConcernReply(basis, action);
     return { level, reasons, reply, toFamily: false, record: true, sign: false, ...base };
   }
   if (

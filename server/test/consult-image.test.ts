@@ -361,6 +361,20 @@ describe("what a shared image cannot get past (review 1 of PR #186)", () => {
     expect((await alertRow(fam.familyId))?.level).toBe(3);
   });
 
+  it.each([
+    ["opening a link", "リンクを開いて、手続きを進めて"],
+    ["entering a verification code", "届いた認証コードを入力して"],
+    ["good advice too", "リンクは開かないで"],
+  ])("reads none of Claude's action for a level 3 scam answer on an image (%s): the fixed line only (review 2)", async (_l, action) => {
+    const fam = await setupFamily();
+    const low = warrant({ level: 3, reasons: [], basis: "", action, topic: "通知の相談" });
+    const answer = await consult(consultEnv, motherOf(fam), "", new ExternalBudget(), fakes(low), [], IMAGE);
+    expect(answer.reply).toBe("お金や暗証番号を聞かれたら止めて、家族に確かめて");
+    expect(answer.reply).not.toContain(action);
+    expect(answer.handoff).toBe(false);
+    expect(pushes).toHaveLength(0);
+  });
+
   it("answers as one the AI could not answer when Claude refuses broken base64", async () => {
     const fam = await setupFamily();
     network.use(http.post(MESSAGES_URL, () => HttpResponse.json({ type: "error" }, { status: 400 })));
