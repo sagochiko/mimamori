@@ -3177,6 +3177,9 @@ describe("words of the judgment in her answer (#121)", () => {
       "詐欺かもしれない相談(kind は scam)の basis と action は、本人に読み上げず、家族のカードにも出しません",
     );
     expect(system).toContain("「手口の印」「印」「規則の判定」");
+    // usable() has no net for these words since #188 ("右上の矢印を押して" is read out), so the prompt
+    // does not say a help action with them is replaced.
+    expect(system).not.toContain("こうした言葉が入った");
     for (const p of [props.basis, props.action]) expect(p.description).not.toContain("本人に読み上げるので");
     expect(props.basis.description).toContain("本人に読み上げない");
     expect(props.action.description).toContain("本人に読み上げるのは help の操作の案内だけ");
