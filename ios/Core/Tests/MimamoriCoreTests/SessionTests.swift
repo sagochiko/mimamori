@@ -235,3 +235,88 @@ struct FileInstallMarkerTests {
     #expect(!marker.isMarked)
   }
 }
+
+@MainActor
+@Suite("すべて消す")
+struct DeleteEverythingTests {
+  private func session(_ transport: any HTTPTransport, store: InMemoryDeviceKeyStore) -> (Session, RouteLog) {
+    let log = RouteLog()
+    let session = Session(
+      baseURL: testBaseURL, transport: transport, store: store, marker: InMemoryInstallMarker(marked: true))
+    session.onRouteChange = { log.routes.append($0) }
+    return (session, log)
+  }
+
+  @Test("消せたら、端末の鍵を消して役の選択に戻る")
+  func successClearsKeyAndGoesToRoleSelection() async throws {
+    let store = InMemoryDeviceKeyStore(.sample)
+    let transport = StubTransport(status: 204, body: "")
+    let (session, log) = session(transport, store: store)
+    #expect(session.route == .familyHome)
+
+    try await session.deleteEverything()
+
+    let request = try #require(transport.requests.first)
+    #expect(transport.requests.count == 1)
+    #expect(request.httpMethod == "DELETE")
+    #expect(request.url?.path == "/families/me")
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer dk_test_0123456789")
+    #expect(store.load() == nil)
+    #expect(session.route == .chooseRole)
+    #expect(log.routes == [.chooseRole])
+  }
+
+  @Test("裏側が外の分を消せなかった(502)ときは、鍵を残して今の画面のまま")
+  func cleanupFailedKeepsEverything() async throws {
+    let store = InMemoryDeviceKeyStore(.sample)
+    let transport = StubTransport(status: 502, body: #"{"error":"cleanup_failed","pending":["gmail"]}"#)
+    let (session, log) = session(transport, store: store)
+
+    await #expect(throws: APIError.http(status: 502)) { try await session.deleteEverything() }
+
+    #expect(store.load() == .sample)
+    #expect(session.route == .familyHome)
+    #expect(log.routes.isEmpty)
+  }
+
+  @Test("つながらないときも、鍵を残して今の画面のまま")
+  func offlineKeepsEverything() async throws {
+    let store = InMemoryDeviceKeyStore(.sample)
+    let (session, log) = session(OfflineTransport(), store: store)
+
+    await #expect(throws: URLError.self) { try await session.deleteEverything() }
+
+    #expect(store.load() == .sample)
+    #expect(session.route == .familyHome)
+    #expect(log.routes.isEmpty)
+  }
+
+  @Test("鍵がもう効かない(401)ときは、鍵を消して役の選択に戻る")
+  func unauthorizedGoesToRoleSelection() async throws {
+    let store = InMemoryDeviceKeyStore(.sample)
+    let (session, log) = session(StubTransport(status: 401), store: store)
+
+    await #expect(throws: APIError.unauthorized) { try await session.deleteEverything() }
+
+    #expect(store.load() == nil)
+    #expect(session.route == .chooseRole)
+    #expect(log.routes == [.chooseRole])
+  }
+
+  @Test("家族に入っていなければ、何も送らない")
+  func notJoinedSendsNothing() async throws {
+    let transport = StubTransport(status: 204, body: "")
+    let (session, _) = session(transport, store: InMemoryDeviceKeyStore())
+
+    await #expect(throws: APIError.notJoined) { try await session.deleteEverything() }
+
+    #expect(transport.requests.isEmpty)
+  }
+}
+
+/// A transport with no network, as in airplane mode.
+struct OfflineTransport: HTTPTransport {
+  func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+    throw URLError(.notConnectedToInternet)
+  }
+}

@@ -31,6 +31,11 @@
     /// With `-mimamori-stub-note-open`, the home screen opens the set words ("ひと言") at once.
     static var gmailButton: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-gmail") }
     static var noteOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-note-open") }
+    /// With `-mimamori-stub-wipe-open`, the check before "すべて消す" ("消す" or "やめる") opens at once.
+    static var wipeOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-wipe-open") }
+    /// With `-mimamori-stub-wipe-fail`, "すべて消す" answers 502 `cleanup_failed`, as when Google or
+    /// Anthropic refused, so the failure can be shot.
+    static var wipeFails: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-wipe-fail") }
     /// With `-mimamori-stub-camera-hold`, the stand-in camera never "sees" the smile, so the camera
     /// screen itself can be shot.
     static var cameraHold: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-camera-hold") }
@@ -79,6 +84,8 @@
           Self.gmailButton
             ? (200, #"{"url":"https://accounts.google.com/o/oauth2/v2/auth","grantedAt":null}"#)
             : (503, #"{"error":"gmail_not_configured"}"#)
+        case ("DELETE", "/families/me"):
+          Self.wipeFails ? (502, #"{"error":"cleanup_failed","pending":["gmail"]}"#) : (204, "")
         case ("PUT", "/families/me/smile-deadline"):
           StubSmiles.shared.setHour(Self.body(of: request)["hour"] as? Int)
         default:

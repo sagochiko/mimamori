@@ -19,6 +19,11 @@ enum CallFollowUpNotifier {
       // The prompt still waits on her screen for the next time she opens the app.
     }
   }
+
+  /// One already delivered and still in Notification Center goes when the key does.
+  static func removeDelivered() {
+    UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["call-follow-up"])
+  }
 }
 
 /// What `CallFollowUp` remembers, kept on this device.
@@ -35,5 +40,9 @@ struct UserDefaultsCallFollowUpStore: CallFollowUpStore {
   func save(_ state: CallFollowUpState) {
     guard let data = try? JSONEncoder().encode(state) else { return }
     UserDefaults.standard.set(data, forKey: key)
+  }
+
+  func clear() {
+    UserDefaults.standard.removeObject(forKey: key)
   }
 }

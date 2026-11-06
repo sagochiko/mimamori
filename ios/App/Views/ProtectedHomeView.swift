@@ -85,8 +85,10 @@ struct ProtectedHomeView: View {
               stripBottom = $0
             }
         }
-        // The family's smiles and replies, and her own (#14).
-        SmileStrip(onCamera: { camera = true }, onNote: { choosingNote = true })
+        // The family's smiles and replies, and her own (#14). The menu with "すべて消す" (#190) is the
+        // row's last item, so her screen gets no navigation bar and no extra line, and the row still
+        // runs to the edge of the screen.
+        SmileStrip(onCamera: { camera = true }, onNote: { choosingNote = true }, showsMenu: true)
         // Only with no grant or one about to run out (Google ends it after 7 days); the family guides her.
         if model.offersGmail {
           Button("Gmail") { Task { await model.connectGmail() } }

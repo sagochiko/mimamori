@@ -22,6 +22,9 @@ struct FamilyHomeView: View {
       await model.loadSmiles()
     }
     .task { await model.keepCasesFresh() }
+    .toolbar {
+      ToolbarItem(placement: .topBarTrailing) { WipeMenu() }
+    }
   }
 }
 

@@ -108,6 +108,11 @@ public final class Session {
     try await call { try await $0.gmailConnect() }
   }
 
+  /// "すべて消す". After a 2xx the key is gone, so the route becomes role selection; on failure it stays.
+  public func deleteEverything() async throws {
+    try await call { try await $0.deleteEverything() }
+  }
+
   /// Runs one call and then follows the Keychain: joining stores a key, a 401 clears it.
   private func call<T>(_ body: (APIClient) async throws -> T) async throws -> T {
     defer { route = AppRoute(store.load()) }
