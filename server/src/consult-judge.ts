@@ -408,9 +408,16 @@ export function allOf(said: Said): string[] {
 }
 
 // A question that only points back at what she said just before ("それってどうやるの?", "どうすればいい?",
-// "そのやり方を教えて"): short, beginning with a pointing or "how" word (after "うん", "ねえ", "あの" and the
-// like, review 1 of PR #156; a closed list, so "おそれがある" stays a new topic), and
-// no word that opens a new topic. A word before it names the topic: "振込のやり方を教えて",
+// "そのやり方を教えて"): short, beginning with a pointing or "how" word, and no word that opens a new topic.
+// Before it may come fillers (FILLERS): a few roots (ね, え, えと, あの, あ, うん, はい, じゃ, で, でも, ちょと),
+// each stretched by any run of ー, っ, a small vowel, or the vowel of its own last kana, so "ねえ", "ねー",
+// "ねぇ", "えーっと", "ええと", "あのう", "あのー", "うーーん" and "ちょっとお" are one shape each (#158).
+// A run of fillers counts only when a break (white space, punctuation, or a symbol such as 〜) follows
+// it, so "あの、おそれがある" and "ねこの飼い方" stay new topics (review 1 of PR #165). With no break
+// (spoken words come without punctuation: VoiceListener does not set addsPunctuation), only the closed
+// list of the earlier form at the head of POINTS_BACK counts, so "うんそれってどういうこと" points back and
+// "うーーんそれってなに" does not. Do not add words to that list (#84, #156, #158). The roots stay a closed list (review 1 of
+// PR #156): "お" as a root reads "おそれがある" as pointing back. A word before it names the topic: "振込のやり方を教えて",
 // "Wi-Fi どうすればいい", and "おそれがある" or "だれそれ" are not about what came before (#124), but
 // "なにそれ" is.
 // "この", "その", "あの" point back only before a word for the thing itself ("そのやり方", "この件"), a
@@ -426,9 +433,15 @@ const POINTS_BACK =
 const NEW_TOPIC = /それより|それと|それから|ところで|別の|ほかの|他の/;
 const POINTS_BACK_MAX_CHARS = 15;
 
+const FILLERS =
+  /^((ね[ーっぁぃぅぇぉえ]*|え[ーっぁぃぅぇぉえ]*(と[ーっぁぃぅぇぉお]*)?|あの[ーっぁぃぅぇぉおう]*|あ[ーっぁぃぅぇぉあ]*|う[ーっぁぃぅぇぉう]*ん[ーっ]*|は[ーっ]*い[ーっぁぃぅぇぉい]*|じゃ[ーっぁぃぅぇぉあ]*|で[ーっぁぃぅぇぉえ]*(も[ーっぁぃぅぇぉお]*)?|ちょ[ーっぁぃぅぇぉお]*と[ーっぁぃぅぇぉお]*)+ )*/u;
+
 export function pointsBack(text: string): boolean {
-  const t = normalize(text).replace(/[\s\p{P}\p{S}]+/gu, "");
-  return [...t].length <= POINTS_BACK_MAX_CHARS && POINTS_BACK.test(t) && !NEW_TOPIC.test(t);
+  // Every run of breaks becomes one space, none at either end, so fillers can be told by the break after them.
+  const marked = normalize(text).replace(/[\s\p{P}\p{S}]+/gu, " ").trim();
+  const t = marked.replace(/ /g, "");
+  const rest = marked.replace(FILLERS, "").replace(/ /g, "");
+  return [...t].length <= POINTS_BACK_MAX_CHARS && POINTS_BACK.test(rest) && !NEW_TOPIC.test(t);
 }
 
 /**
