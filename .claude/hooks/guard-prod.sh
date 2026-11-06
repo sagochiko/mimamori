@@ -282,11 +282,44 @@ if [[ "$text" =~ gh[[:space:]]+api && "$text" =~ (-X|--method)[[:space:]=]*[\'\"
   ask "gh api DELETE: confirm with the author"
 fi
 
+# read_only_select: a read the author need not confirm (#151). Its SQL is a --command in single quotes
+# (so the shell cannot change it), and that SQL is one SELECT with no word that writes. The whole line must be one of two shapes, nothing else on it (review 1 of PR #172 found that cutting
+# the raw text at ) | ; & < > let a second --command after a redirect, a quoted |, a line continuation,
+# a quoted "execute", or xargs through):
+#   [npx] wrangler d1 execute <db> <flags> [> <file>]
+#   <name>=$([npx] wrangler d1 execute <db> <flags>)
+# where <flags> are only --remote, --json, and exactly one --command '<sql>' (or --command='<sql>'),
+# and <file> is a plain path or "$HOME/<plain path>". Any other line keeps the old check.
+read_only_select() {
+  local sql lower sp='[[:space:]]+' flag line
+  [[ "$cmd" == *$'\n'* || "$cmd" == *'\'* ]] && return 1
+  flag="(--remote|--json|--command(=|$sp)'[^']*')"
+  line="^[[:space:]]*(npx$sp)?wrangler${sp}d1${sp}execute$sp[A-Za-z0-9_-]+($sp$flag)+"
+  line+="([[:space:]]*>[[:space:]]*([A-Za-z0-9_./-]+|\"\\\$HOME/[A-Za-z0-9_./-]+\"))?[[:space:]]*$"
+  if [[ ! "$cmd" =~ $line ]]; then
+    line="^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=\\\$\\((npx$sp)?wrangler${sp}d1${sp}execute$sp[A-Za-z0-9_-]+($sp$flag)+[[:space:]]*\\)[[:space:]]*$"
+    [[ "$cmd" =~ $line ]] || return 1
+  fi
+  [[ $(grep -o -- '--command' <<<"$cmd" | wc -l) -eq 1 ]] || return 1
+  [[ "$cmd" =~ --command(=|$sp)\'([^\']*)\' ]] || return 1
+  sql=${BASH_REMATCH[2]}
+  lower=$(tr '[:upper:]' '[:lower:]' <<<"$sql")
+  [[ "$lower" =~ ^[[:space:]]*select[[:space:]] ]] || return 1
+  [[ "${lower%%;*}" == "$lower" || "${lower#*;}" =~ ^[[:space:]]*$ ]] || return 1
+  [[ "$lower" =~ (^|[^[:alnum:]_])(drop|delete|truncate|update|insert|alter|replace|create|attach|detach|pragma|vacuum|reindex)([^[:alnum:]_]|$) ]] && return 1
+  return 0
+}
+
 # Remote D1 SQL. A word match, so a column such as deleted_at does not count.
 destructive='(^|[^[:alnum:]_])(drop|delete|truncate)([^[:alnum:]_]|$)'
 if [[ "$text" =~ wrangler[[:space:]]+d1[[:space:]]+execute && "$text" =~ --(remote|preview) ]]; then
   [[ "$text" =~ $destructive ]] && ask "SQL with DROP, DELETE, or TRUNCATE on the remote D1: confirm with the author"
-  [[ "$body" == *'$'* || "$body" == *'`'* ]] && ask "remote D1 SQL built at run time, which this hook cannot read: confirm with the author"
+  # A $ or a backtick anywhere in the line used to ask, also when it only took the output of a
+  # literal SELECT into a variable (#151: a token read without showing it, while the author slept).
+  # A read alone passes now: read_only_select below says when the SQL itself cannot be built at run time.
+  if ! read_only_select; then
+    [[ "$body" == *'$'* || "$body" == *'`'* ]] && ask "remote D1 SQL built at run time, which this hook cannot read: confirm with the author"
+  fi
   # Every --file, from the words and from the raw text; a relative one is looked up from every base.
   files=()
   for ((k = 0; k < m; k++)); do
