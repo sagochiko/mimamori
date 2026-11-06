@@ -157,7 +157,7 @@
 
   function ask(recheck) {
     const text = pageText();
-    const sent = browser.runtime
+    browser.runtime
       .sendMessage({
         type: "page",
         url: location.href,
@@ -171,15 +171,14 @@
         if (reply && (reply.level === 1 || reply.level === 2)) show(reply.level);
       })
       .catch(() => {});
-    return { length: text.length, sent };
+    return text.length;
   }
 
-  // The second look waits for the first answer, so it knows whether the first was queued (the native
-  // side may take up to 8 seconds, longer than the wait).
+  // The second look leaves five seconds after the first was sent, as before #174. If the first answer
+  // has not come by then, alreadyQueued is false and the server may queue the display a second time;
+  // that is rare, and the queue's one-hour grouping keeps the family from a second notice.
   const first = ask(false);
-  first.sent.then(() => {
-    setTimeout(() => {
-      if (!shown && pageText().length >= first.length + RECHECK_GROWTH) ask(true);
-    }, RECHECK_AFTER_MS);
-  });
+  setTimeout(() => {
+    if (!shown && pageText().length >= first + RECHECK_GROWTH) ask(true);
+  }, RECHECK_AFTER_MS);
 })();

@@ -6,7 +6,7 @@
 // One display of a page goes to the judge queue at most once (#174). The native reply says `queued`
 // when the server put the page there; it is passed back to the content script and kept with the URL,
 // and the content script's second look of the same display sends `alreadyQueued` so the server answers
-// with its rules but does not queue it again. A cache hit reports the queued it remembered, so a revisit
+// with its rules but does not queue it again, unless the rules now put it at level 1 or 2. A cache hit reports the queued it remembered, so a revisit
 // within ten minutes is not queued again by its second look either.
 //
 // The page's URL and text are data to check. Nothing here reads them beyond passing them on, and

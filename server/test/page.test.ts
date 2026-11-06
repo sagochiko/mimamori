@@ -355,10 +355,51 @@ describe("one display of a page is queued at most once (#174)", () => {
     expect(sent).toHaveLength(1);
   });
 
-  it("answers a second look with the rules but does not queue it again when the first look was queued", async () => {
+  it("does not queue again a second look the rules still leave undecided, when the first look was queued", async () => {
     const m = await mother();
     const { sent, queueEnv } = fakeQueue();
-    const { res, body } = await ask(m.deviceKey, { url: SUPPORT_URL, text: SUPPORT, alreadyQueued: true }, queueEnv);
+    const url = "https://secure-account-check.com/login";
+    const text = "Amazon サインイン メールアドレスまたは携帯電話番号";
+    expect(judgeByRules({ source: "page", url, text }).level).toBeNull();
+    const first = await ask(m.deviceKey, { url, text, hasSecretField: true }, queueEnv);
+    expect(first.body).toMatchObject({ queued: true });
+    const { res, body } = await ask(
+      m.deviceKey,
+      { url, text: `${text} パスワードをお忘れの場合`, hasSecretField: true, alreadyQueued: true },
+      queueEnv,
+    );
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ level: null, reasons: [] });
+    expect(sent).toHaveLength(1);
+  });
+
+  it("still queues a second look whose text the rules now put at level 1 or 2, so the family hears of it", async () => {
+    // The first look had a password field and went to Claude, who saw no scam in it; the fake warning
+    // came a few seconds later. The second look's text must reach the queue, or no alert is written.
+    // A second notice is stopped by the queue's one-hour grouping on the page's domain (src/judge.ts).
+    const m = await mother();
+    const { sent, queueEnv } = fakeQueue();
+    const url = "https://secure-account-check.com/login";
+    expect(judgeByRules({ source: "page", url, text: "ログイン" }).level).toBeNull();
+    const first = await ask(m.deviceKey, { url, text: "ログイン", hasSecretField: true }, queueEnv);
+    expect(first.body).toMatchObject({ level: null, queued: true });
+    expect(sent).toHaveLength(1);
+    for (const [text, level] of [
+      [`ログイン ${SUPPORT}`, 1],
+      [`ログイン ${STORAGE_AD}`, 2],
+    ] as const) {
+      const { body } = await ask(m.deviceKey, { url, text, hasSecretField: true, alreadyQueued: true }, queueEnv);
+      expect(body).toMatchObject({ level, queued: true });
+    }
+    expect(sent).toHaveLength(3);
+    expect(sent[1]?.payload.text).toContain("サポートセンター");
+  });
+
+  it("does not say queued when the queue refused the page, so the second look tries again", async () => {
+    const m = await mother();
+    const { sent, queueEnv } = fakeQueue(true);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { res, body } = await ask(m.deviceKey, { url: SUPPORT_URL, text: SUPPORT }, queueEnv);
     expect(res.status).toBe(200);
     expect(body).toEqual({ level: 1, reasons: judgeByRules({ source: "page", url: SUPPORT_URL, text: SUPPORT }).reasons });
     expect(sent).toHaveLength(0);

@@ -18,7 +18,7 @@
 // ないで") only raises the rules' level; it never changes the reply or who is told. Neither the text nor
 // the URL (its query may carry anything) goes to the logs, and nothing is written to D1 here.
 //
-// The reply carries queued: true when this request picked the page for the judge queue. The content
+// The reply carries queued: true when this request put the page on the judge queue (the send is waited on). The content
 // script looks at a page a second time when its text grows after loading (ads and pop-ups), and that
 // second look sends alreadyQueued: true when the first was queued, so one display of a page is queued
 // at most once (#174). A second look whose first was not queued still goes to Claude. queued says only
@@ -109,7 +109,7 @@ export function onOwnNetwork(url: URL): boolean {
   return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
 }
 
-export async function pageRoute(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+export async function pageRoute(request: Request, env: Env): Promise<Response> {
   const me = await requireMember(request, env);
   const { url, text, hasSecretField, alreadyQueued } = await readPage(request);
   if (onOwnNetwork(url)) return json({ level: null, reasons: [] } satisfies PageReply);
@@ -124,16 +124,25 @@ export async function pageRoute(request: Request, env: Env, ctx: ExecutionContex
 
   // Only the mother's pages are told about. A family member's own phone gets the warning, not a notice
   // about themselves to everyone.
-  // A second look of a display whose first look was queued is not queued again (#174).
+  // A second look of a display whose first look was queued is not queued again when the rules still
+  // decide nothing (#174). When they now give 1 or 2 (a fake warning came after the first look), it is
+  // queued again: the queue judges the text it was given, so only this one can tell the family. A second
+  // notice is stopped by the queue's one-hour grouping on the page's domain (src/judge.ts).
+  const asking =
+    me.role === "protected" &&
+    (!alreadyQueued || level !== null) &&
+    pageWorthAsking(rule, { url: url.toString(), text, hasSecretField });
+  // Waited on, so queued is said only when the page is on the queue: a refused send leaves the second
+  // look free to try again. One queue send adds little to the reply.
   const queued =
-    me.role === "protected" && !alreadyQueued && pageWorthAsking(rule, { url: url.toString(), text, hasSecretField });
-  if (queued) {
-    ctx.waitUntil(
-      enqueueJudge(env, { familyId: me.familyId, source: "page", payload }).catch((error: unknown) => {
+    asking &&
+    (await enqueueJudge(env, { familyId: me.familyId, source: "page", payload }).then(
+      () => true,
+      (error: unknown) => {
         console.error("page enqueue failed", error instanceof Error ? error.name : typeof error);
-      }),
-    );
-  }
+        return false;
+      },
+    ));
   const reply: PageReply = { level, reasons: level === null ? [] : rule.reasons, ...(queued ? { queued: true } : {}) };
   return json(reply);
 }
