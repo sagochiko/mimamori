@@ -9,7 +9,7 @@ import { http, HttpResponse } from "msw";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExternalBudget } from "../src/budget";
 import { CaseNoticeDeferred, openCase } from "../src/cases";
-import { parseClaudeJudgment, type ClaudeJudgment } from "../src/claude";
+import { parseClaudeJudgment, soundsSafe, type ClaudeJudgment } from "../src/claude";
 import worker from "../src/index";
 import {
   DEDUPE_WINDOW_MS,
@@ -221,12 +221,24 @@ function pushesTo(tokens: string[]): Push[] {
   return pushes.filter((p) => tokens.includes(p.token));
 }
 
-/** Nothing stored or sent may tell anyone the message is safe. */
+/**
+ * Nothing stored or sent may tell anyone the message is safe. Each line people read (the reasons, the
+ * summary, a push's title and body) goes through the judge's own net, soundsSafe, so every word it
+ * holds (#53, 5: 大丈夫です, 詐欺ではありません and the rest) is checked here too. The JSON as a whole
+ * is also matched without sparing quotes, which soundsSafe would do.
+ */
 async function expectNothingSaysSafe(familyId: string) {
-  const stored = JSON.stringify(await alertsOf(familyId));
-  const sent = JSON.stringify(pushes);
-  for (const text of [stored, sent])
-    expect(text).not.toMatch(/安全|問題(は)?ありません|心配(は)?(ありません|いりません)|safe/i);
+  const alerts = await alertsOf(familyId);
+  const lines = [
+    ...alerts.flatMap((a) => [...(JSON.parse(a.reasons) as string[]), a.summary]),
+    ...pushes.flatMap((p) => [p.title ?? "", ...p.body.split("\n")]),
+  ];
+  for (const line of lines) expect(soundsSafe(line), line).toBe(false);
+  // Written out here as well, so a word dropped from soundsSafe still fails this check.
+  for (const text of [JSON.stringify(alerts), JSON.stringify(pushes)])
+    expect(text).not.toMatch(
+      /安全|問題(は)?ありません|心配(は)?(ありません|いりません)|safe|大丈夫です(?!か)|詐欺(では|じゃ)ありません|心配いらない|問題なし|危険はありません/i,
+    );
 }
 
 async function caseOf(alertId: string | undefined) {
@@ -487,6 +499,22 @@ describe("judge consumer", () => {
       /安全/,
     );
   });
+
+  // #53 (5): verdicts without the word 安全 reach neither the row nor any push.
+  it.each(["大丈夫です", "詐欺ではありません", "心配いらない", "問題なし", "危険はありません"])(
+    "keeps the verdict %s out of everything stored and sent",
+    async (verdict) => {
+      const fam = await setupFamily();
+      const raw = { level: 2, reasons: [verdict], message_to_protected: verdict, injection_suspected: false };
+      const deps = fakes({ rule: { level: 2, reasons: ["急がせる言い回しがある"], confident: false }, claudeRaw: raw });
+      await run([smsJob(fam.familyId)], deps);
+      const [alert] = await alertsOf(fam.familyId);
+      // Claude's answer was taken (its level is on the row), so its reason was there to be dropped.
+      expect(alert?.claude_level).toBe(2);
+      expect(pushesTo([fam.tokens.mother])).toHaveLength(1);
+      await expectNothingSaysSafe(fam.familyId);
+    },
+  );
 
   // A reason that quotes the message in 「」 is not read as a verdict ("safe"), so the level stands.
   // It still does not go on the family's card: the quote is the received text cut out (#55).
