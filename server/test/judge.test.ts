@@ -1262,3 +1262,63 @@ describe("worker.queue", () => {
     expect((await caseOf(alert?.id))?.family_notified_at).not.toBeNull();
   });
 });
+
+// Task 11: an alert that told the family is researched in the background with what the queue had in
+// hand (the text is not kept in D1). The research never changes what was told, or whether.
+describe("research in the background", () => {
+  function withResearch(base: Fakes, impl?: JudgeDeps["investigate"]) {
+    const calls: Array<{ alertId: string; input: unknown; remaining: number }> = [];
+    const deps: JudgeDeps = {
+      ...base,
+      investigate: async (e, alertId, input, budget) => {
+        calls.push({ alertId, input, remaining: budget.remaining });
+        return impl ? impl(e, alertId, input, budget) : true;
+      },
+    };
+    return { deps, calls };
+  }
+
+  it("starts it after the notices, with the sender, the domain, and the text only", async () => {
+    const fam = await setupFamily();
+    const { deps, calls } = withResearch(fakes());
+    await run([smsJob(fam.familyId)], deps);
+    expect(pushes).toHaveLength(3);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.input).toEqual({
+      source: "sms",
+      sender: "+819011112222",
+      domain: "bank-check.example",
+      text: "【重要】口座の確認が必要です https://bank-check.example/",
+    });
+    const [alert] = await alertsOf(fam.familyId);
+    expect(calls[0]?.alertId).toBe(alert?.id);
+  });
+
+  it("does not research what told no one, or a consultation", async () => {
+    const fam = await setupFamily();
+    const quiet = withResearch(fakes({ claude: claudeSays({ level: 3, reasons: ["手口の印が見当たらない"] }), rule: { level: null, reasons: [], confident: false } }));
+    await run([smsJob(fam.familyId)], quiet.deps);
+    expect(quiet.calls).toHaveLength(0);
+
+    const consult = withResearch(fakes());
+    await run([{ familyId: fam.familyId, source: "consult", payload: { text: "警察から電話があった" } }], consult.deps);
+    expect(consult.calls).toHaveLength(0);
+  });
+
+  it("tells everyone the same when the research throws, and is not tried again on a redelivery", async () => {
+    const fam = await setupFamily();
+    const { deps, calls } = withResearch(fakes(), async () => {
+      throw new Error("agents down");
+    });
+    const message = messageOf(queued(smsJob(fam.familyId)));
+    const { result } = await runMessages([message], deps);
+    expect(result.explicitAcks).toEqual([message.id]);
+    expect(pushes).toHaveLength(3);
+    const [alert] = await alertsOf(fam.familyId);
+    expect(alert?.level).toBe(1);
+
+    await runMessages([redelivered(message, 2)], deps);
+    expect(calls).toHaveLength(1);
+    expect(pushes).toHaveLength(3);
+  });
+});

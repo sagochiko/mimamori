@@ -16,6 +16,7 @@
 // message is retried. Queues "offers at-least once delivery" (Workers, Storage options), so the same
 // body can come more than once, and the id it carries is what makes that harmless.
 
+import { startInvestigation, type ResearchInput } from "./agents";
 import { ExternalBudget } from "./budget";
 import { CaseNoticeDeferred, openCase } from "./cases";
 import {
@@ -59,6 +60,11 @@ export interface JudgeDeps {
   /** Opens the case and tells the family; throws CaseNoticeDeferred when the family was not told yet. */
   openCase(env: Env, alertId: string, budget: ExternalBudget): Promise<unknown>;
   now(): number;
+  /**
+   * Starts the research in the background for an alert that told the family (task 11). Left out, no
+   * research is started; the tests' fakes leave it out so they never reach Managed Agents.
+   */
+  investigate?(env: Env, alertId: string, input: ResearchInput, budget: ExternalBudget): Promise<boolean>;
 }
 
 export const defaultJudgeDeps: JudgeDeps = {
@@ -66,7 +72,11 @@ export const defaultJudgeDeps: JudgeDeps = {
   askClaude: (env, input, rule) => requestClaudeJudgment(env, input, rule),
   openCase,
   now: () => Date.now(),
+  investigate: (env, alertId, input, budget) => startInvestigation(env, alertId, input, budget),
 };
+
+/** Routes whose message the research may read: never a consultation or a call, which carry her words. */
+const RESEARCHED: readonly AlertSource[] = ["sms", "gmail", "page", "dns"];
 
 /** Queues messages can be 128 KB; the page route sends the first 5,000 characters too (task 8). */
 export const JUDGE_TEXT_MAX_CHARS = 5000;
@@ -435,7 +445,21 @@ async function judgeOne(
   if (inserted.meta.changes === 0 || !notify) return "done";
 
   const notice = { level, reasons, checking: decision.checking };
-  return finishNotices(env, alertId, notice, { mother: true, family: true }, members, budget, deps);
+  const outcome = await finishNotices(env, alertId, notice, { mother: true, family: true }, members, budget, deps);
+  // After the notices, with the tickets they left. Only here, on the first delivery: the text is not
+  // in D1, so a redelivery cannot start it, and a research that is lost leaves the card as it is.
+  if (deps.investigate && RESEARCHED.includes(job.source)) {
+    const input: ResearchInput = { source: job.source };
+    if (job.payload.sender) input.sender = job.payload.sender;
+    if (domain) input.domain = domain;
+    if (job.payload.text) input.text = job.payload.text;
+    try {
+      await deps.investigate(env, alertId, input, budget);
+    } catch (error) {
+      console.error("investigation failed", error instanceof Error ? error.name : typeof error);
+    }
+  }
+  return outcome;
 }
 
 /**
