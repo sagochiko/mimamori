@@ -218,6 +218,13 @@ const FIRST_NOTICE_RETRY_MS = 24 * 3600_000;
 export const CLAIM_TTL_MS = 5 * 60_000;
 const WATCH_MAX_AGE_MS = FIRST_NOTICE_RETRY_MS;
 const FIRST_NOTICE_BATCH = 20;
+/**
+ * The D1 calls one case can take in the tick (#178, src/budget.ts): the claim, the family's members,
+ * their device tokens, and letting go of the claim.
+ */
+const FIRST_NOTICE_D1 = 4;
+/** The same for one reminder: the members, the claim, and the device tokens of each of the two notices. */
+const WATCH_D1 = 4;
 
 /**
  * The first notice of a case to every family member. family_notice_claimed_at is the claim: set
@@ -380,9 +387,11 @@ export async function openCase(env: Env, alertId: string, budget: ExternalBudget
  * device to notify: a family that registered none would fill the batch and keep another family's
  * failed notice from being retried. Its cases are picked up once someone registers a device. A case
  * whose notice another caller is sending right now is left to it, unless that claim is older than
- * CLAIM_TTL_MS (tellFamily).
+ * CLAIM_TTL_MS (tellFamily). The tick's D1 calls stop it the same way as its budget: the cases that do
+ * not fit are not claimed, and the next tick sends them.
  */
 export async function sendFirstNotices(env: Env, now: number, budget: ExternalBudget): Promise<void> {
+  if (budget.d1Remaining < 1 + FIRST_NOTICE_D1) return;
   const due = await env.DB.prepare(
     `SELECT c.id, c.family_id, a.level, a.summary FROM cases c LEFT JOIN alerts a ON a.id = c.alert_id
       WHERE c.state != 'resolved' AND c.family_notified_at IS NULL AND c.notified_at > ?
@@ -393,6 +402,8 @@ export async function sendFirstNotices(env: Env, now: number, budget: ExternalBu
     .bind(now - FIRST_NOTICE_RETRY_MS)
     .all<{ id: string; family_id: string; level: number | null; summary: string | null }>();
   for (const c of due.results) {
+    // Left for the next tick before it is claimed, so it is not held for CLAIM_TTL_MS.
+    if (budget.d1Remaining < FIRST_NOTICE_D1) break;
     const result = await tellFamily(
       env,
       { id: c.id, familyId: c.family_id, level: c.level, summary: c.summary },
@@ -448,10 +459,11 @@ export async function recordAiReply(env: Env, caseId: string, text: string): Pro
  * "家族から返事がまだ。急ぐなら電話して" (NOT_REACHED instead while the family was never told) and
  * every family member is notified again, once. The state
  * stays as it is, so nothing tells the protected person it is solved. A case whose whole family the
- * budget cannot cover is left for a later tick, unclaimed. A case more than a day old is not
+ * budget cannot cover, or that the tick's D1 calls would not fit, is left for a later tick, unclaimed. A case more than a day old is not
  * reminded about any more, so rows that never got a reminder do not all come back at once.
  */
 export async function watchUnanswered(env: Env, now: number, budget: ExternalBudget): Promise<void> {
+  if (budget.d1Remaining < 1 + WATCH_D1) return;
   const due = await env.DB.prepare(
     `SELECT c.id, c.family_id, c.family_notified_at, a.summary FROM cases c LEFT JOIN alerts a ON a.id = c.alert_id
       WHERE c.state != 'resolved' AND c.renotified_at IS NULL AND c.notified_at <= ? AND c.notified_at > ?
@@ -461,6 +473,8 @@ export async function watchUnanswered(env: Env, now: number, budget: ExternalBud
     .all<{ id: string; family_id: string; family_notified_at: number | null; summary: string | null }>();
 
   for (const row of due.results) {
+    // Before the claim: a claimed reminder that was never sent would not be sent again.
+    if (budget.d1Remaining < WATCH_D1) break;
     const members = await membersOf(env, row.family_id);
     const needed = members.filter((m) => m.reachable).length;
     if (budget.remaining < needed) break;

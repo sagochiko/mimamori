@@ -979,3 +979,119 @@ describe("the 30-minute watch", () => {
     expect(sent).toHaveLength(3);
   });
 });
+
+// #178: D1's limits page gives Free 50 queries per Worker invocation. One 5-minute tick, every job
+// together, stays within it, and what does not fit is picked up by the next tick.
+describe("the tick's D1 calls", () => {
+  const D1_LIMIT_PER_INVOCATION = 50;
+
+  /**
+   * pushEnv with a DB that counts the calls the tick makes. A prepared statement is counted when it is
+   * prepared, an upper bound since every statement here runs once; a batch is one call however many
+   * statements it carries.
+   */
+  function counted(): { env: Env; calls: () => number } {
+    let n = 0;
+    const db = pushEnv.DB;
+    const DB = {
+      prepare: (query: string) => {
+        n += 1;
+        return db.prepare(query);
+      },
+      batch: (statements: D1PreparedStatement[]) => {
+        n += 1 - statements.length;
+        return db.batch(statements);
+      },
+      exec: (query: string) => {
+        n += 1;
+        return db.exec(query);
+      },
+      withSession: db.withSession.bind(db),
+      dump: db.dump.bind(db),
+    } as unknown as D1Database;
+    return { env: { ...pushEnv, DB }, calls: () => n };
+  }
+
+  async function countedTick(scheduledTime: number): Promise<number> {
+    const { env: tickEnv, calls } = counted();
+    const ctx = createExecutionContext();
+    await worker.scheduled(createScheduledController({ scheduledTime, cron: "*/5 * * * *" }), tickEnv, ctx);
+    await waitOnExecutionContext(ctx);
+    return calls();
+  }
+
+  beforeEach(async () => {
+    await env.DB.prepare("DELETE FROM cases").run();
+  });
+
+  it("sends twenty untold first notices over several ticks, each tick within the limit", async () => {
+    const f = await family();
+    const now = Date.now();
+    const alertIds: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      const alertId = await newAlert(f.familyId);
+      await env.DB.prepare(
+        "INSERT INTO cases (id, family_id, alert_id, state, notified_at) VALUES (?, ?, ?, 'notified', ?)",
+      )
+        .bind(crypto.randomUUID(), f.familyId, alertId, now - i * 1000)
+        .run();
+      alertIds.push(alertId);
+    }
+    sent = [];
+
+    const first = await countedTick(now);
+    expect(first).toBeLessThanOrEqual(D1_LIMIT_PER_INVOCATION);
+    const rows = await Promise.all(alertIds.map(caseOf));
+    const told = rows.filter((r) => r?.family_notified_at !== null);
+    expect(told.length).toBeGreaterThan(0);
+    expect(told.length).toBeLessThan(20);
+    // The rest are neither told nor held by a claim, so the next tick takes them at once.
+    for (const r of rows.filter((r) => r?.family_notified_at === null)) {
+      expect(r?.family_notice_claimed_at).toBeNull();
+    }
+
+    for (let t = 1; t <= 3; t++) {
+      expect(await countedTick(now + t * 5 * 60_000)).toBeLessThanOrEqual(D1_LIMIT_PER_INVOCATION);
+    }
+    for (const alertId of alertIds) {
+      expect(await caseOf(alertId)).toMatchObject({ family_notified_at: expect.any(Number) });
+    }
+    // Every case once to each family device, never twice.
+    expect(to(f.author)).toHaveLength(20);
+    expect(to(f.sister)).toHaveLength(20);
+  });
+
+  it("reminds about twenty unresolved cases over several ticks, each tick within the limit", async () => {
+    const now = Date.now();
+    const caseIds: string[] = [];
+    // A family of one each, so the outside-call budget (40) is not what stops the tick.
+    for (let i = 0; i < 20; i++) {
+      const author = await createFamily("作者");
+      await env.DB.prepare("UPDATE members SET apns_token = ?, apns_env = 'sandbox' WHERE id = ?")
+        .bind(hexToken(), author.memberId)
+        .run();
+      const alertId = await newAlert(author.familyId);
+      const caseId = crypto.randomUUID();
+      await env.DB.prepare(
+        "INSERT INTO cases (id, family_id, alert_id, state, notified_at, family_notified_at) VALUES (?, ?, ?, 'notified', ?, ?)",
+      )
+        .bind(caseId, author.familyId, alertId, now - 40 * 60_000 - i * 1000, now - 40 * 60_000)
+        .run();
+      caseIds.push(caseId);
+    }
+    sent = [];
+
+    expect(await countedTick(now)).toBeLessThanOrEqual(D1_LIMIT_PER_INVOCATION);
+    const reminded = async () =>
+      (await Promise.all(caseIds.map(caseRow))).filter((r) => r?.renotified_at !== null).length;
+    const afterFirst = await reminded();
+    expect(afterFirst).toBeGreaterThan(0);
+    expect(afterFirst).toBeLessThan(20);
+
+    for (let t = 1; t <= 3; t++) {
+      expect(await countedTick(now + t * 5 * 60_000)).toBeLessThanOrEqual(D1_LIMIT_PER_INVOCATION);
+    }
+    expect(await reminded()).toBe(20);
+    expect(sent).toHaveLength(20);
+  });
+});
