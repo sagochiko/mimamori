@@ -6,7 +6,7 @@ Built during [Built with Claude Japan 2026](https://cerebralvalley.ai/e/built-wi
 
 [日本語版](README.ja.md)
 
-This README describes what runs on 2026-11-06. Where something is not built yet, it says so.
+This README describes what is in the code on 2026-11-07. Where something is built but not yet tried on a real iPhone, or not built at all, it says so.
 
 <!-- Screenshots of the mother's and the family's iPhone go here (taken on the demo build, not on the real family). -->
 <!-- Demo video: link goes here. -->
@@ -29,7 +29,7 @@ On 2026-11-04 the author ran this on his own iPhone, playing the mother, with a 
 
 ## What it notices without her doing anything
 
-| Channel | How | State on 2026-11-06 |
+| Channel | How | State on 2026-11-07 |
 |---|---|---|
 | SMS from unknown senders | iOS Message Filter extension. Apple sends the message to our server, and rules answer at once. Only clear scams go to the junk folder; everything else is delivered, and Claude's judgment reaches her and the family | Built (#10). On-device check pending (#139) |
 | Gmail | The server reads new mail in her inbox every 5 minutes (read-only scope) | Built (#15). Waiting for the Google Cloud setup and her consent (#144) |
@@ -44,6 +44,7 @@ What it cannot protect is part of the design. The app never hears the call. In t
 
 - Her side. Local notifications ask about the call and the day. Her chat goes to `POST /consult`.
 - The server. Rules decide in milliseconds. Claude adds a judgment and a reason (SMS, mail, and pages go through Cloudflare Queues). The case is stored in D1, and the server sends APNs pushes to every family device.
+- Afterwards, for SMS, mail, and pages at level 1 or 2, a Claude Managed Agents session looks for an official warning about the same trick, on 20 official sites only. If it finds one, the family's card gains one fixed line, "<site name>の注意喚起" (a warning from that site), read out by VoiceOver.
 - The family side. One card per case, the same for everyone, with no owner or assignee. Level 3 sends no push. The same sender or domain is grouped to one notice an hour.
 
 There are three levels: 1 "don't open it", 2 "wait until you check with the family", and 3 "probably fine, but stop if asked for money or a PIN". The app never says "safe" on any path. If no family device got the notice, her answer says "家族に届いていません。急ぐなら電話して" (the family did not get this; call them if it is urgent) instead of "I told your family", and the server retries every 5 minutes.
@@ -57,7 +58,12 @@ Text inside SMS, mail, pages, and her messages is treated as data. A message tha
 | Instant answer | Rules, no model | Answers in under a millisecond on the dev set, and still works when Claude is down |
 | Judging SMS, mail, pages | Claude Haiku 5.5 (`claude-haiku-5-5`), Structured Outputs | Fast and cheap for every message. The reply is a fixed shape (level, reason, one line for her), so nothing in it can change who is told |
 | Her chat | Claude Sonnet 5.5 (`claude-sonnet-5-5`) | She waits on screen, so the server waits up to 15 seconds and then answers by rules alone. It remembers the last few turns, so "それってどういうこと？" (what does that mean?) works |
-| Research and a summary for the family | Claude Managed Agents | Being built (#12) |
+| Reading a screenshot or a document she shares | Claude Sonnet 5.5, with the image | She shares the image from the share sheet and waits for the answer, as in her chat. For a settings screen, the answer comes with a circle on where to tap |
+| Research after a warning | Claude Managed Agents | No one is waiting for it, so it can take minutes. The instant answer and her chat must not wait on it. Only the research for SMS, mail, and pages is built (#12) |
+
+When Claude judges her consultation, typed, spoken, or an image, to be about a scam, at any level, she hears a fixed sentence, not Claude's own wording (#188, #186). Reviews found that Claude's advice could contain "open the link" or "enter the code you received", and a word filter cannot tell "open the link" from "don't open the link". The fake-police answer and the answers to ordinary phone questions are unchanged.
+
+The research agent's text never reaches the family or D1. The server takes only the official URLs it reports, keeps only the site's origin, and writes its own line. Four reviews of PR #183 each found a reassuring sentence that slipped past a filter on the agent's words, so the filter was dropped.
 
 Family cards never quote her words or the message she received. The topic is a fixed line or a line of 20 characters or fewer that Claude writes itself. If that line copies 8 or more characters from the source, it is replaced. The reasons were legal and practical; see the dev log entry below.
 
@@ -67,7 +73,7 @@ Measured on the dev set, 114 examples across SMS, mail, pages, and spoken consul
 
 | Method | Missed scams | Genuine messages flagged | Unneeded family notices | Median time | Measured |
 |---|---:|---:|---:|---:|---|
-| Rules only | 28.3% (17/60) | 0.0% (0/54) | 0 | 0.04 ms | 2026-11-06 |
+| Rules only | 28.3% (17/60) | 0.0% (0/54) | 0 | 0.04 ms | 2026-11-07 |
 | Rules + Claude | 0.0% (0/60) | 7.4% (4/54) | 4 | 1845 ms | 2026-11-05 |
 
 The rules + Claude line was measured before #137 changed which SMS, mail, and pages reach Claude. That run sent more unflagged examples to Claude than production does now, so its miss rate is lower than production would be. A new run is waiting on the author (#181). The first rules + Claude run flagged 36 of 54 genuine messages. The prompt itself defined level 2 as "suspicious or undecided", and Claude followed it. After the fix, 4 of 54 were flagged (#109).
@@ -80,14 +86,37 @@ The rules + Claude line was measured before #137 changed which SMS, mail, and pa
 - Cases, notices, and smile photos are deleted automatically after 30 days, every day at a fixed time.
 - Smile photos are shared only inside the family and never sent to Claude.
 - SMS, mail, and pages judged level 3 leave no record, so the server does not become a copy of her inbox.
-- "Delete everything" exists on the server (`DELETE /families/me`). It removes the family's data, revokes Gmail access, and deletes Managed Agents sessions. The button in the app is not built yet.
+- Screenshots and documents she shares are sent to Claude for that answer and are not stored. A test checks that no D1 column holds the image.
+- "すべて消す" (delete everything) is in the menu on her screen (at the end of the smile row) and on the family's screen (top right). After a confirmation with only "消す" (delete) and "やめる" (cancel), the app calls `DELETE /families/me`. The server removes the family's data, revokes Gmail access, and deletes Managed Agents sessions. Only after the server answers does the phone forget its key and clear the chat, cards, smiles, and scheduled questions. If the call fails, nothing is deleted (#190). Checked on the simulator, not yet on a real iPhone.
 - Secrets live in Workers secrets. This repository holds only test examples, with no real messages or family details.
+
+## Built, not yet tried on a real iPhone
+
+These are merged and covered by tests, but nobody has used them on a real iPhone yet.
+
+- The SMS filter (#139) and the Gmail watch (#144), as in the table above.
+- The main scene with two real iPhones, one for her and one for the family (#48, #31).
+- Sharing a screenshot or a document to the app (#13). The share extension and the server side are built and the extension builds for the simulator, but it has not run end to end on the simulator or a device. The checks on the author's iPhone, including how often the circle lands on the right spot on 10 Settings screenshots, are in #187.
+- The demo mode (#100) was checked on the simulator. Whether it shows on the TestFlight build is in #187.
+- Managed Agents research. On 2026-11-07 the production D1 had no alert with a research session yet, so no evidence line has been written by the real API.
 
 ## Not built yet
 
-DNS (#11), the weekly review (#18), the morning alarm that stops when she smiles (#17), reading screenshots and fake documents (#13; the Share extension that would receive them is an empty stub), the list of scam phone numbers (the Call Directory extension is also an empty stub), the app's own checkups such as low storage (#19, #20), and the demo mode for judges (#100). Managed Agents is being built (#12).
+DNS (#11), the weekly review (#18), the morning alarm that stops when she smiles (#17), the list of scam phone numbers (the Call Directory extension is an empty stub), and the app's own checkups such as low storage (#19, #20). From Managed Agents (#12), the summary of a consultation for the family and the hand-off session are not built.
 
-<!-- How judges can try it: TestFlight link and demo mode steps go here. -->
+## How judges can try it
+
+<!-- TestFlight public link goes here once it exists. -->
+
+The demo mode shows her screen and the card the family would get, on one iPhone, without joining a family. Nothing reaches any family.
+
+1. Install the build from TestFlight and open it. Do not join a family.
+2. On the first screen, tap "体験" (try it), the third button under "見守られる人" (the person watched over) and "家族" (family).
+3. Her screen shows "さっきの電話、大丈夫だった？" (Was that call just now all right?). Tap the microphone. It plays her consultation about a call from the police, her answer at level 1, and the card and notification the family would get.
+4. Tap "解決" (resolve) on the card, or "30分後" (30 minutes later) to see what both screens show when no one resolves it. The demo card has no Call button.
+5. An SMS field follows, with a fictional fake delivery notice. Edit it if you like and tap "送る" (send). It goes to the server's rules at `/sms/demo`, which tell no family. The result is "迷惑" (junk) with the card the family would get, or "カードなし" (no card). "最初から" (from the start) starts over.
+
+The consultation in the demo is played on the phone from the server's fixed fake-police lines, not sent to `POST /consult`, so judges do not create families in the production D1. Only the SMS reaches the server.
 
 ## What her use changed
 
@@ -96,11 +125,11 @@ DNS (#11), the weekly review (#18), the morning alarm that stops when she smiles
 
 ## Built during the hackathon
 
-Every line of code here was written in this repository after the kickoff on 2026-11-02. The first commit is dated 2026-11-03. On 2026-11-06, `origin/main` had 688 commits (533 without merges, 496 of them co-authored by Claude). There were 84 merged pull requests and 94 issues (61 closed). The tests were 1,505 server tests (Vitest) and 256 `ios/Core` tests (`swift test`). The pre-hackathon design was copied in on 2026-11-03; [`docs/design.md`](docs/design.md) says what changed and why.
+Every line of code here was written in this repository after the kickoff on 2026-11-02. The first commit is dated 2026-11-03. On 2026-11-07, `origin/main` had 773 commits (602 without merges, 565 of them co-authored by Claude). There were 93 merged pull requests and 98 issues (64 closed). The tests were 1,637 server tests (Vitest, 17 files), 296 `ios/Core` tests (`swift test`, 47 suites), and 19 tests for the eval scripts. The server has 7 D1 migrations. The pre-hackathon design was copied in on 2026-11-03; [`docs/design.md`](docs/design.md) says what changed and why.
 
 ## From the development log
 
-[`docs/dev-log.md`](docs/dev-log.md) has 74 dated entries. Three of them shaped the product:
+[`docs/dev-log.md`](docs/dev-log.md) has 79 dated entries. Three of them shaped the product:
 
 - 2026-11-04. We dropped "take ownership" and "reply to her" from the family screen. While someone owned a case, the AI only told her that person was looking, and her spoken replies reached no one. Relaying messages between users and forwarding her first 30 characters were also close to examples in the Ministry of Internal Affairs and Communications' telecom business manual. Now everyone sees the same card and calls her.
 - 2026-11-04. The first on-device test crashed when she pressed the microphone (a Swift 6 isolation check in the speech permission callback). The main line came out at level 2, not 1, because "警察から電話" (a call from the police) was not part of the script rules. The eval had not caught it because it ran consultations through the SMS rules. Both were fixed, and the eval now measures consultations on the real path (#57, #72, #74).
@@ -108,7 +137,7 @@ Every line of code here was written in this repository after the kickoff on 2026
 
 ## How Claude Code built it
 
-The harness is the setup that lets Claude Code build this under hackathon rules. It is described in [`docs/harness.md`](docs/harness.md), with the project rules in [`CLAUDE.md`](CLAUDE.md) and everything else in [`.claude/`](.claude/). Hooks block rule-breaking actions, such as opening the author's earlier projects, reading the holdout set, reading secrets, or merging an unreviewed PR. Each issue goes through separate implementer, verifier, and reviewer subagents, and the reviewer's report is kept on the PR. Counts from the hook log, 2026-11-03 to 2026-11-06, are in [`docs/claude-usage.md`](docs/claude-usage.md): 132 reviewer launches and 21 resumes, 64 implementer launches, 50 verifier launches, and 195 actions that hooks blocked or sent to the author. The 150 review reports are kept unedited in [`docs/audits/raw/`](docs/audits/raw/).
+The harness is the setup that lets Claude Code build this under hackathon rules. It is described in [`docs/harness.md`](docs/harness.md), with the project rules in [`CLAUDE.md`](CLAUDE.md) and everything else in [`.claude/`](.claude/). Hooks block rule-breaking actions, such as opening the author's earlier projects, reading the holdout set, reading secrets, or merging an unreviewed PR. Each issue goes through separate implementer, verifier, and reviewer subagents, and the reviewer's report is kept on the PR. Counts from the hook log, 2026-11-03 to 2026-11-06, are in [`docs/claude-usage.md`](docs/claude-usage.md): 132 reviewer launches and 21 resumes, 64 implementer launches, 50 verifier launches, and 195 actions that hooks blocked or sent to the author. On 2026-11-07, [`docs/audits/raw/`](docs/audits/raw/) held 175 reviewer reports, kept unedited.
 
 ## Repository
 
