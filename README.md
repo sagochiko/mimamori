@@ -13,7 +13,7 @@ This README describes what runs on 2026-11-06. Where something is not built yet,
 
 ## Why fake-police scams
 
-In 2025, special fraud (特殊詐欺) in Japan took 142.31 billion yen, the worst on record. Fake-police scams (ニセ警察詐欺) took 100.50 billion yen of it, or about 70.6%. The National Police Agency publishes both amounts. The 70.6% is our own division of the two; the agency itself gives the scam's share of reported cases, 39.6%. Sources: the agency's [final figures for 2025](https://www.npa.go.jp/bureau/safetylife/sos47/new-topics/260605/01.html) and the [press release (PDF)](https://www.npa.go.jp/bureau/criminal/souni/tokusyusagi/hurikomesagi_toukei2025.pdf), dated 2026-05-22. A [correction dated 2026-07-02 (PDF)](https://www.npa.go.jp/bureau/criminal/souni/tokusyusagi/teisei_sagi2025.pdf) fixes one graph on page 14 of the awareness material (「バナー等広告の主な当初接触ツールの推移」, how banner ads first reached victims). It does not change these figures.
+In 2025, special fraud (特殊詐欺) in Japan took 142.31 billion yen, the highest in the ten years shown in the agency's press release. Fake-police scams (ニセ警察詐欺) took 100.50 billion yen of it, or about 70.6%. The National Police Agency publishes both amounts. The 70.6% is our own division of the two; the agency itself gives the scam's share of reported cases, 39.6%. Sources: the agency's [final figures for 2025](https://www.npa.go.jp/bureau/safetylife/sos47/new-topics/260605/01.html) and the agency's press release of 2026-05-22 ([PDF](https://www.npa.go.jp/bureau/criminal/souni/tokusyusagi/hurikomesagi_toukei2025.pdf)). A [correction (PDF)](https://www.npa.go.jp/bureau/criminal/souni/tokusyusagi/teisei_sagi2025.pdf) fixes one graph on page 14 of the awareness material (「バナー等広告の主な当初接触ツールの推移」, how banner ads first reached victims). It does not change these figures.
 
 The scammer calls and says her bank account was used in a crime. Then they tell her to keep it secret and to move her money to prove she is innocent. An iPhone app cannot listen to calls or read LINE, and the caller has told her to tell no one. So the app comes to her after the call and asks.
 
@@ -25,7 +25,7 @@ The scammer calls and says her bank account was used in a crime. Then they tell 
 4. Every family member's iPhone gets a card with the level, a one-line topic ("警察を名乗る電話の相談", a consultation about a call from someone claiming to be the police), and what the AI told her. The card has two buttons, Call and Resolve.
 5. Whoever talks to her presses Resolve, and the others see who resolved it. If nobody does within 30 minutes, the family is reminded and her screen says the family has not answered yet, call them if it is urgent.
 
-On 2026-11-04 the author ran this on his own iPhone, playing the mother, with a simulator as the family. The notice reached the family about one second after the consultation was sent ([`docs/dev-log.md`](docs/dev-log.md), #57). That first try came out at level 2. After the fix in #72, the author confirmed level 1 and the fixed answer on his iPhone (#77). The check with two real iPhones is still waiting for the author (#48, #31).
+On 2026-11-04 the author ran this on his own iPhone, playing the mother, with a simulator as the family. The notice reached the family about one second after the consultation was sent (#57). That first try came out at level 2. After the fix in #72, the author confirmed level 1 and the fixed answer on his iPhone (#77). The check with two real iPhones is still waiting for the author (#48, #31).
 
 ## What it notices without her doing anything
 
@@ -85,7 +85,7 @@ The rules + Claude line was measured before #137 changed which SMS, mail, and pa
 
 ## Not built yet
 
-DNS (#11), the weekly review (#18), the morning alarm that stops when she smiles (#17), reading screenshots and fake documents (#13), the list of scam phone numbers (Call Directory, a stub for now), the app's own checkups such as low storage (#19, #20), and the demo mode for judges (#100). Managed Agents is being built (#12).
+DNS (#11), the weekly review (#18), the morning alarm that stops when she smiles (#17), reading screenshots and fake documents (#13; the Share extension that would receive them is an empty stub), the list of scam phone numbers (the Call Directory extension is also an empty stub), the app's own checkups such as low storage (#19, #20), and the demo mode for judges (#100). Managed Agents is being built (#12).
 
 <!-- How judges can try it: TestFlight link and demo mode steps go here. -->
 
