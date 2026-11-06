@@ -17,6 +17,7 @@
 // a notice still being sent is never read as told: not by her answer to a consultation, her screen,
 // or the 30-minute watch (#64).
 
+import { storedEvidence, type Evidence } from "./agents";
 import { requireMember, type Role } from "./auth";
 import { ExternalBudget } from "./budget";
 import { HttpError, json } from "./http";
@@ -57,7 +58,7 @@ export interface CaseView {
    */
   familyNotifiedAt: string | null;
   /** The summary is one line made by the rules or Claude, never her words or the received text cut out. */
-  alert: { level: 1 | 2 | 3; source: string; summary: string; reasons: string[] } | null;
+  alert: { level: 1 | 2 | 3; source: string; summary: string; reasons: string[]; evidence: Evidence[] } | null;
   /** The last answer the AI gave the protected person in this case. */
   aiReply: string | null;
 }
@@ -77,6 +78,7 @@ interface CaseRow {
   source: string | null;
   summary: string | null;
   reasons: string | null;
+  evidence: string | null;
 }
 
 interface MemberRow {
@@ -122,7 +124,7 @@ async function loadViews(
   const rows = await env.DB.prepare(
     `SELECT c.id, c.alert_id, c.state, c.assignee_member_id, m.display_name AS resolver_name,
             c.notified_at, c.resolved_at, c.renotified_at, c.family_notified_at, c.ai_reply,
-            a.level, a.source, a.summary, a.reasons
+            a.level, a.source, a.summary, a.reasons, a.evidence
        FROM cases c
        LEFT JOIN alerts a ON a.id = c.alert_id
        LEFT JOIN members m ON m.id = c.assignee_member_id
@@ -150,7 +152,14 @@ async function loadViews(
       alert:
         r.level === null
           ? null
-          : { level: r.level, source: r.source ?? "", summary: r.summary ?? "", reasons: parseReasons(r.reasons) },
+          : {
+              level: r.level,
+              source: r.source ?? "",
+              summary: r.summary ?? "",
+              reasons: parseReasons(r.reasons),
+              // What the research in the background found (task 11); [] until it is read, or when none.
+              evidence: storedEvidence(r.evidence),
+            },
       aiReply: r.ai_reply,
     };
   });

@@ -43,6 +43,7 @@
   // GOOGLE_CLIENT_SECRET (Gmail, src/gmail.ts) are set the same way but not listed here, since deploy
   // fails while a listed secret is missing and the Google client comes later. Until they are set, the
   // Gmail routes answer 503 and the watch does nothing. Add them here once the author has set them.
+  // ANTHROPIC_WEBHOOK_SIGNING_KEY (Managed Agents webhook, src/agents.ts) is left out the same way.
   "secrets": {
     "required": ["APNS_KEY_P8", "APNS_KEY_ID", "APNS_TEAM_ID", "ANTHROPIC_API_KEY", "TOKEN_ENC_KEY"]
   }
