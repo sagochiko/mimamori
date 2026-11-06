@@ -1003,6 +1003,41 @@ describe("judge consumer", () => {
     expect(pushes).toHaveLength(30);
   });
 
+  // #53 (6): with three tickets a job, 40 leave one after 13 jobs. A check of the Claude call alone
+  // would start the 14th and call Claude for it.
+  it("does not start a job, or call Claude for it, when the tickets left cover Claude but not the pushes", async () => {
+    const fam = await setupFamily();
+    await env.DB.prepare("UPDATE members SET apns_token = NULL WHERE id = ?").bind(fam.family[1]).run();
+    const jobs = Array.from({ length: 14 }, (_, i) =>
+      smsJob(fam.familyId, { sender: `+8190000001${String(i).padStart(2, "0")}`, url: `https://t${i}.example/` }),
+    );
+    const deps = fakes();
+    const { result } = await run(jobs, deps);
+    expect(deps.claudeCalls).toBe(13);
+    expect(result.explicitAcks).toHaveLength(13);
+    expect(result.retryMessages).toHaveLength(1);
+    expect(await alertsOf(fam.familyId)).toHaveLength(13);
+  });
+
+  it("does not open the case of a redelivery when the tickets left do not cover the family's devices", async () => {
+    const fam = await setupFamily();
+    const message = messageOf(queued(smsJob(fam.familyId)));
+    await runMessages([message], fakes({ openCase: () => Promise.reject(new CaseNoticeDeferred("no_budget")) }));
+    expect(pushesTo([fam.tokens.mother])).toHaveLength(1);
+
+    // Ten new jobs use all 40 tickets; the redelivery after them needs two for the family.
+    const others = Array.from({ length: 10 }, (_, i) =>
+      messageOf(
+        queued(smsJob(fam.familyId, { sender: `+8190000002${String(i).padStart(2, "0")}`, url: `https://u${i}.example/` })),
+      ),
+    );
+    const deps = fakes();
+    const { result } = await runMessages([...others, redelivered(message, 2)], deps);
+    expect(deps.opened).toHaveLength(10);
+    expect(deps.opened).not.toContain(message.body.alertId);
+    expect(result.retryMessages).toHaveLength(1);
+  });
+
   it("retries a job when the rules throw", async () => {
     const fam = await setupFamily();
     const deps = fakes();
