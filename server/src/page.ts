@@ -124,14 +124,16 @@ export async function pageRoute(request: Request, env: Env): Promise<Response> {
 
   // Only the mother's pages are told about. A family member's own phone gets the warning, not a notice
   // about themselves to everyone.
-  // A second look of a display whose first look was queued is not queued again when the rules still
-  // decide nothing (#174). When they now give 1 or 2 (a fake warning came after the first look), it is
-  // queued again: the queue judges the text it was given, so only this one can tell the family. A second
-  // notice is stopped by the queue's one-hour grouping on the page's domain (src/judge.ts).
+  // A second look of a display whose first look was queued is queued again only on a sign other than
+  // the password or card field (#174): a level or a reason from the rules, a page speaking as another
+  // company, or a support number. Those can come with a fake warning added after the first look, and the
+  // queue judges the text it was given, so only this one can tell the family. The field was already on
+  // the first look's text, so it alone does not queue the display twice. A second notice is stopped by
+  // the queue's one-hour grouping on the page's domain (src/judge.ts).
+  const seen = { url: url.toString(), text, hasSecretField };
   const asking =
     me.role === "protected" &&
-    (!alreadyQueued || level !== null) &&
-    pageWorthAsking(rule, { url: url.toString(), text, hasSecretField });
+    pageWorthAsking(rule, alreadyQueued ? { ...seen, hasSecretField: false } : seen);
   // Waited on, so queued is said only when the page is on the queue: a refused send leaves the second
   // look free to try again. One queue send adds little to the reply.
   const queued =

@@ -7,6 +7,7 @@ import { env } from "cloudflare:workers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JudgeMessageBody } from "../src/judge";
 import { PAGE_TEXT_MAX_CHARS } from "../src/page";
+import { pageWorthAsking } from "../src/page-gate";
 import { judgeByRules } from "../src/rules";
 import { call, createFamily, invite, join } from "./helpers";
 
@@ -355,19 +356,17 @@ describe("one display of a page is queued at most once (#174)", () => {
     expect(sent).toHaveLength(1);
   });
 
-  it("does not queue again a second look the rules still leave undecided, when the first look was queued", async () => {
+  it("does not queue again a second look whose only sign is the card or password field, when the first look was queued", async () => {
     const m = await mother();
     const { sent, queueEnv } = fakeQueue();
-    const url = "https://secure-account-check.com/login";
-    const text = "Amazon サインイン メールアドレスまたは携帯電話番号";
-    expect(judgeByRules({ source: "page", url, text }).level).toBeNull();
+    const url = "https://shop-outlet.example/checkout";
+    const text = "人気のバッグが90%オフ。お支払い情報を入力して注文を確定してください。";
+    const grown = `${text} 送料は無料です。`;
+    // The field is the only sign, on both looks.
+    expect(pageWorthAsking(judgeByRules({ source: "page", url, text: grown }), { url, text: grown, hasSecretField: false })).toBe(false);
     const first = await ask(m.deviceKey, { url, text, hasSecretField: true }, queueEnv);
     expect(first.body).toMatchObject({ queued: true });
-    const { res, body } = await ask(
-      m.deviceKey,
-      { url, text: `${text} パスワードをお忘れの場合`, hasSecretField: true, alreadyQueued: true },
-      queueEnv,
-    );
+    const { res, body } = await ask(m.deviceKey, { url, text: grown, hasSecretField: true, alreadyQueued: true }, queueEnv);
     expect(res.status).toBe(200);
     expect(body).toEqual({ level: null, reasons: [] });
     expect(sent).toHaveLength(1);
@@ -393,6 +392,23 @@ describe("one display of a page is queued at most once (#174)", () => {
     }
     expect(sent).toHaveLength(3);
     expect(sent[1]?.payload.text).toContain("サポートセンター");
+  });
+
+  it("still queues a second look that gained a support number though the rules decide nothing (PR #180)", async () => {
+    // The first look went to Claude for its password field only; a fake support box with a phone
+    // number came later. The rules give no level, but the number is a sign of its own (callsForSupport).
+    const m = await mother();
+    const { sent, queueEnv } = fakeQueue();
+    const url = "https://secure-account-check.com/login";
+    const text = "Amazon サインイン メールアドレスまたは携帯電話番号";
+    await ask(m.deviceKey, { url, text, hasSecretField: true }, queueEnv);
+    expect(sent).toHaveLength(1);
+    const grown = `${text} お困りの方はサポートセンター 050-0000-0000 までお電話ください`;
+    expect(judgeByRules({ source: "page", url, text: grown }).level).toBeNull();
+    const { body } = await ask(m.deviceKey, { url, text: grown, hasSecretField: true, alreadyQueued: true }, queueEnv);
+    expect(body).toMatchObject({ level: null, queued: true });
+    expect(sent).toHaveLength(2);
+    expect(sent[1]?.payload.text).toContain("050-0000-0000");
   });
 
   it("does not say queued when the queue refused the page, so the second look tries again", async () => {
