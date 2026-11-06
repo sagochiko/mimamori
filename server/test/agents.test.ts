@@ -14,6 +14,7 @@ import {
   parseEvidence,
   RESEARCH_GIVE_UP_MS,
   SESSION_CREATE_TIMEOUT_MS,
+  SITE_NAMES,
   startInvestigation,
   verifyWebhook,
   watchInvestigations,
@@ -157,7 +158,8 @@ async function started(family: Created): Promise<{ alertId: string; sessionId: s
   return { alertId, sessionId };
 }
 
-const GOOD = { text: "同じ手口の偽 SMS に宅配会社が注意を呼びかけている", url: "https://www.post.japanpost.jp/notification/" };
+/** What the family gets for a report that cites this page, whatever text came with it. */
+const GOOD = { text: "日本郵政グループの注意喚起", url: "https://www.post.japanpost.jp/notification/" };
 
 describe("startInvestigation", () => {
   it("makes the agent and environment once, and gives the session only the sender, the domain, and the text as data", async () => {
@@ -304,70 +306,85 @@ describe("startInvestigation", () => {
   });
 });
 
+// Every line the agent wrote in the four reviews of PR #183, safe-sounding, reassuring, denying, or
+// copying what arrived. None of it may reach the family: only "<表示名>の注意喚起" comes out.
+const AGENT_LINES = [
+  "公式の注意喚起は見つからず、安全です",
+  "詐欺ではないと考えられる",
+  "お荷物をお届けにあがりましたが不在と書いてある",
+  "「不在のため持ち帰り」と同じ文面の注意喚起がある",
+  "example.top は注意喚起に載っている",
+  "折り返し先 090-1234-5678 が注意喚起に載っている",
+  "日本郵便も同じ不在の連絡を SMS で送っている",
+  "公式の注意喚起は見つからなかった",
+  "公式サイトに正規の案内として載っている",
+  "本物の連絡と同じ形式である",
+  "該当なし",
+  "宅配会社の公式の案内と一致している",
+  "偽物ではなく本物の案内と分かった",
+  "フィッシングの注意喚起はあるが今回の連絡は公式からのもの",
+  "注意喚起はあるが今回のSMSは公式から届いた",
+  "本物の案内で、偽装ではない",
+  "正規の連絡で、偽装された形跡はない",
+  "宛先の宅配業者は実在し、偽装の手口ではない",
+  "本物の連絡で、偽サイトに似せたものではない",
+  "公式からの連絡で、なりすましを装ったものではない",
+  "偽装されていない",
+  "詐欺の手口と一致しない",
+  "注意喚起の対象外の正しい連絡",
+  "家族に知らせなくてよい",
+  "あ".repeat(500),
+];
+
 describe("parseEvidence", () => {
-  const received = [SMS_TEXT, "example.top"];
-
-  it("keeps lines with an official source", () => {
-    expect(parseEvidence({ items: [GOOD] }, received)).toEqual([GOOD]);
+  it("puts out only the fixed line for each official site, whatever the agent wrote", () => {
+    for (const text of AGENT_LINES) {
+      const out = parseEvidence({ items: [{ text, url: GOOD.url }] });
+      expect(out, text).toEqual([GOOD]);
+    }
+    // The same with no text at all, which is the shape the report tool asks for.
+    expect(parseEvidence({ items: [{ url: "https://www.npa.go.jp/bureau/" }] })).toEqual([
+      { text: "警察庁の注意喚起", url: "https://www.npa.go.jp/bureau/" },
+    ]);
   });
 
-  it("drops lines that sound safe, quote what arrived, carry a number or address, or cite another site", () => {
-    const items = [
-      { text: "公式の注意喚起は見つからず、安全です", url: GOOD.url },
-      { text: "詐欺ではないと考えられる", url: GOOD.url },
-      { text: "お荷物をお届けにあがりましたが不在と書いてある", url: GOOD.url },
-      { text: "「不在のため持ち帰り」と同じ文面の注意喚起がある", url: GOOD.url },
-      { text: "example.top は注意喚起に載っている", url: GOOD.url },
-      { text: "折り返し先 090-1234-5678 が注意喚起に載っている", url: GOOD.url },
-      { text: "同じ手口の注意喚起がある", url: "https://example.top/official" },
-      { text: "同じ手口の注意喚起がある", url: "http://www.npa.go.jp/" },
-      { text: "同じ手口の注意喚起がある", url: "https://npa.go.jp.example.top/" },
-      { text: "あ".repeat(61), url: GOOD.url },
-      GOOD,
+  it("puts out nothing the agent wrote, even in the stored url", () => {
+    const out = parseEvidence({
+      items: [{ text: "安全です", url: "https://www.npa.go.jp/a?note=安全です#本物の連絡" }],
+    });
+    expect(out).toEqual([{ text: "警察庁の注意喚起", url: "https://www.npa.go.jp/a" }]);
+    for (const e of out) for (const line of AGENT_LINES) expect(JSON.stringify(e)).not.toContain(line);
+  });
+
+  it("names a site once, and keeps at most three", () => {
+    const sameSite = [
+      { url: "https://www.npa.go.jp/a" },
+      { url: "https://www.npa.go.jp/b" },
     ];
-    expect(parseEvidence({ items }, received)).toEqual([GOOD]);
+    expect(parseEvidence({ items: sameSite })).toEqual([{ text: "警察庁の注意喚起", url: "https://www.npa.go.jp/a" }]);
+    const many = ["npa.go.jp", "caa.go.jp", "kokusen.go.jp", "antiphishing.jp"].map((d) => ({ url: `https://www.${d}/` }));
+    expect(parseEvidence({ items: many })).toHaveLength(3);
   });
 
-  it("keeps only lines that warn, and drops lines that would reassure", () => {
-    const warn = [
-      { text: "宅配会社がなりすましの SMS に注意を呼びかけている", url: GOOD.url },
-      { text: "警察庁が同じ手口のフィッシングを注意喚起している", url: "https://www.npa.go.jp/" },
-      // "実在", "本物", "正規" followed by a word of disguise describe the scam (review 2 of PR #183).
-      { text: "実在する宅配業者を装った偽 SMS に注意を呼びかけている", url: GOOD.url },
-      { text: "本物そっくりの偽サイトへ誘導する手口を警告している", url: "https://www.npa.go.jp/" },
-      { text: "正規のサイトを装うフィッシングに注意を呼びかけている", url: "https://www.antiphishing.jp/" },
-    ];
-    const reassure = [
-      { text: "日本郵便も同じ不在の連絡を SMS で送っている", url: GOOD.url },
-      { text: "公式の注意喚起は見つからなかった", url: GOOD.url },
-      { text: "公式サイトに正規の案内として載っている", url: GOOD.url },
-      { text: "本物の連絡と同じ形式である", url: GOOD.url },
-      { text: "該当なし", url: GOOD.url },
-      { text: "宅配会社の公式の案内と一致している", url: GOOD.url },
-      { text: "偽物ではなく本物の案内と分かった", url: GOOD.url },
-      { text: "フィッシングの注意喚起はあるが今回の連絡は公式からのもの", url: GOOD.url },
-      { text: "注意喚起はあるが今回のSMSは公式から届いた", url: GOOD.url },
-      // A denied word of disguise must not let a line through (review 3 of PR #183).
-      { text: "本物の案内で、偽装ではない", url: GOOD.url },
-      { text: "正規の連絡で、偽装された形跡はない", url: GOOD.url },
-      { text: "宛先の宅配業者は実在し、偽装の手口ではない", url: GOOD.url },
-      { text: "本物の連絡で、偽サイトに似せたものではない", url: GOOD.url },
-      { text: "公式からの連絡で、なりすましを装ったものではない", url: GOOD.url },
-    ];
-    // One at a time: at most three are kept per report.
-    for (const w of warn) expect(parseEvidence({ items: [w] }, received), w.text).toEqual([w]);
-    for (const r of reassure) expect(parseEvidence({ items: [r] }, received), r.text).toEqual([]);
+  it("drops sources that are not the official sites over https", () => {
+    for (const url of [
+      "https://example.top/official",
+      "http://www.npa.go.jp/",
+      "https://npa.go.jp.example.top/",
+      "https://user:pass@www.npa.go.jp/",
+      "javascript:alert(1)",
+    ]) {
+      expect(parseEvidence({ items: [{ url }] }), url).toEqual([]);
+    }
+    expect(parseEvidence("not an object")).toEqual([]);
+    expect(parseEvidence({ items: "x" })).toEqual([]);
   });
 
-  it("keeps at most three, and reads anything else as none", () => {
-    const many = Array.from({ length: 5 }, (_, i) => ({ text: `警察庁が同じ手口を注意喚起している${i}`, url: "https://www.npa.go.jp/" }));
-    expect(parseEvidence({ items: many }, received)).toHaveLength(3);
-    expect(parseEvidence("not an object", received)).toEqual([]);
-    expect(parseEvidence({ items: "x" }, received)).toEqual([]);
-  });
-
-  it("lists only sites that are ASCII domains (allowed_hosts takes no other form)", () => {
-    for (const d of OFFICIAL_SITES) expect(d).toMatch(/^[a-z0-9.-]+\.[a-z]+$/);
+  it("has a display name for every site, and lists only ASCII domains (allowed_hosts takes no other form)", () => {
+    for (const d of OFFICIAL_SITES) {
+      expect(d).toMatch(/^[a-z0-9.-]+\.[a-z]+$/);
+      expect(SITE_NAMES[d], d).toMatch(/\S/);
+    }
   });
 });
 
@@ -397,7 +414,7 @@ describe("collectInvestigation", () => {
     expect(JSON.parse((await alertRow(alertId))?.evidence ?? "null")).toEqual([GOOD]);
   });
 
-  it("adds no evidence when its own first message could not be read back to check for quotes", async () => {
+  it("adds no evidence when its own first message could not be read back", async () => {
     mockApi({ noUserMessage: true });
     const family = await createFamily();
     const { alertId, sessionId } = await started(family);
@@ -440,7 +457,7 @@ describe("collectInvestigation", () => {
     const { alertId, sessionId } = await started(family);
     statuses.set(sessionId, "idle");
     reports.set(sessionId, { items: [GOOD] });
-    const first = [{ text: "警察庁が同じ手口を注意喚起している", url: "https://www.npa.go.jp/" }];
+    const first = [{ text: "警察庁の注意喚起", url: "https://www.npa.go.jp/" }];
     duringGet = async () => {
       await env.DB.prepare("UPDATE alerts SET evidence = ?, investigated_at = ? WHERE id = ?")
         .bind(JSON.stringify(first), T0 + 1, alertId)
