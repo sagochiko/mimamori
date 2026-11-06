@@ -1407,7 +1407,8 @@ jq -nc --arg b "前置き
 連絡先 $ph" '[{id: 11, body: $b, path: "docs/audits/raw/x.md", pull_request_url: "https://api.github.com/repos/o/r/pulls/7"}]' >"$T/review-comments.json"
 jq -nc '[{id: 12, body: "Tanukiyama に聞いた", path: "docs/a.md", pull_request_url: "https://api.github.com/repos/o/r/pulls/8"}]' >>"$T/review-comments.json"
 mkdir -p "$T/histbin2" "$T/histbin3"
-printf '#!/bin/sh\ncase "$*" in *pulls/comments*) cat "%s/review-comments.json" ;; *) echo "[]" ;; esac\n' "$T" >"$T/histbin2/gh"
+# Only a call with --paginate gets the second page, so dropping it fails the test below.
+printf '#!/bin/sh\ncase "$*" in *pulls/comments*--paginate*|*--paginate*pulls/comments*) cat "%s/review-comments.json" ;; *pulls/comments*) head -n 1 "%s/review-comments.json" ;; *) echo "[]" ;; esac\n' "$T" "$T" >"$T/histbin2/gh"
 printf '#!/bin/sh\ncase "$1" in api) exit 1 ;; *) echo "[]" ;; esac\n' >"$T/histbin3/gh"
 chmod +x "$T/histbin2/gh" "$T/histbin3/gh"
 hout=$(histout "$T/histbin2")
