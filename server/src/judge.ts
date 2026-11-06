@@ -31,7 +31,7 @@ import {
 import { sendPush, type PushPayload } from "./push";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
 import { INJECTION } from "./rules/phrases";
-import { ownLines, quotes } from "./summary";
+import { carriesContact, ownLines, quotes } from "./summary";
 
 export interface JudgePayload {
   sender?: string;
@@ -214,8 +214,13 @@ interface Notice {
   checking: boolean;
 }
 
+/**
+ * "開かないで" and one reason. A reason with a phone number or an address in it is skipped, so the
+ * scam's callback number or fake site never reaches her as the app's own words (#53); with none
+ * left, the fixed line. The family's card keeps every reason as it was.
+ */
 function toMother(alertId: string, notice: Notice): PushPayload {
-  const reason = notice.reasons[0] ?? FALLBACK_REASON;
+  const reason = notice.reasons.find((r) => r.trim() !== "" && !carriesContact(r)) ?? FALLBACK_REASON;
   return {
     title: MOTHER_TITLE,
     body: notice.checking ? `${reason}\n${CHECKING}` : reason,

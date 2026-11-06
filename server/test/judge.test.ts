@@ -500,6 +500,72 @@ describe("judge consumer", () => {
     expect(JSON.parse(alert?.reasons ?? "")).toEqual(["急がせる言い回しがある"]);
   });
 
+  // A number to call or a place to open in a reason would come to the mother as the app's own words
+  // (#53, review 4 of PR #41). Her notice skips such a reason; the family's card and line are as before.
+  // The numbers and domains here are not in the received text, so cardReasons does not drop them first.
+  describe("the reason in the mother's notice", () => {
+    const text = "至急ご確認ください";
+    const dirty = [
+      "公式窓口 0120-000-000 に電話して確かめて",
+      "０３－１２３４－５６７８ に折り返させる",
+      "https://other-check.example/ で確かめさせる",
+      "other-check.example を開かせる",
+    ];
+
+    it.each(dirty)("is the fixed line when the only reason is %s, and the family still gets it", async (reason) => {
+      const fam = await setupFamily();
+      const deps = fakes({
+        rule: { level: null, reasons: [], confident: false },
+        claude: claudeSays({ reasons: [reason] }),
+      });
+      await run([smsJob(fam.familyId, { text, url: undefined })], deps);
+
+      const [toMother] = pushesTo([fam.tokens.mother]);
+      expect(toMother?.title).toBe("開かないで");
+      expect(toMother?.body).toBe("家族に確かめるまで待って");
+      const [alert] = await alertsOf(fam.familyId);
+      expect(JSON.parse(alert?.reasons ?? "")).toEqual([reason]);
+      expect(alert?.summary).toBe(`SMS ${reason}`);
+      expect(pushesTo(fam.tokens.family).map((p) => p.body)).toEqual([alert?.summary, alert?.summary]);
+    });
+
+    it("is the first reason without a number or an address", async () => {
+      const fam = await setupFamily();
+      const deps = fakes({
+        rule: { level: null, reasons: [], confident: false },
+        claude: claudeSays({ reasons: [dirty[0] ?? "", "知らない番号に電話させようとしている"] }),
+      });
+      await run([smsJob(fam.familyId, { text, url: undefined })], deps);
+      expect(pushesTo([fam.tokens.mother])[0]?.body).toBe("知らない番号に電話させようとしている");
+    });
+
+    it("is the fixed line with 確かめ中 when Claude gave nothing", async () => {
+      const fam = await setupFamily();
+      const deps = fakes({ rule: { level: 2, reasons: [dirty[0] ?? ""], confident: false }, claude: null });
+      await run([smsJob(fam.familyId, { text, url: undefined })], deps);
+      expect(pushesTo([fam.tokens.mother])[0]?.body).toBe("家族に確かめるまで待って\n確かめ中");
+    });
+
+    it("is the fixed line on a redelivery too, from the stored reasons", async () => {
+      const fam = await setupFamily();
+      const message = messageOf(queued(smsJob(fam.familyId, { text, url: undefined })));
+      const deps = () =>
+        fakes({
+          rule: { level: null, reasons: [], confident: false },
+          claude: claudeSays({ reasons: [dirty[0] ?? ""] }),
+        });
+      failingTokens.add(fam.tokens.mother);
+      await runMessages([message], deps());
+      expect(pushesTo([fam.tokens.mother])).toHaveLength(0);
+
+      failingTokens.clear();
+      const second = deps();
+      await runMessages([redelivered(message, 2)], second);
+      expect(second.claudeCalls).toBe(0);
+      expect(pushesTo([fam.tokens.mother]).map((p) => p.body)).toEqual(["家族に確かめるまで待って"]);
+    });
+  });
+
   // The family's one line names the route, the first reason, and the domain; the received text is
   // never cut out into it (decided by the author on 2026-11-04).
   describe("the one line the family gets", () => {

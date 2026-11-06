@@ -1,7 +1,7 @@
 // src/summary.ts: what counts as cutting her words or the received text out into the family's line.
 
 import { describe, expect, it } from "vitest";
-import { ownLines, QUOTE_RUN, quotes, repeats } from "../src/summary";
+import { carriesContact, ownLines, QUOTE_RUN, quotes, repeats } from "../src/summary";
 
 describe("repeats", () => {
   it("counts eight characters in a row from the source", () => {
@@ -52,5 +52,43 @@ describe("ownLines", () => {
     expect(ownLines(["口座が凍結されると急がせている"], ["口座が凍結されると急がせている"], said, [])).toEqual([
       "口座が凍結されると急がせている",
     ]);
+  });
+});
+
+// A reason with a number to call or a place to open does not go to the mother (#53, review 4 of PR #41).
+describe("carriesContact", () => {
+  it.each([
+    "公式窓口 0120-000-000 に電話して確かめて",
+    "０１２０－０００－０００ に電話させる",
+    "0120 000 000 へ折り返させる",
+    "03(1234)5678 にかけさせる",
+    "090ー1234ー5678 へ連絡させる",
+    "+81 90 1234 5678 へ連絡させる",
+    "https://bank-check.example/ を開かせる",
+    "ｈｔｔｐｓ：／／bank-check.example を開かせる",
+    "bank-check.example にアクセスさせる",
+    "ＢＡＮＫ－ＣＨＥＣＫ．ＥＸＡＭＰＬＥ を開かせる",
+    "www.example.jp で手続きさせる",
+    "0120・000・000 に電話させる",
+    "03/1234/5678 にかけさせる",
+    "0120〜000〜000 へ折り返させる",
+    "bank-check。example を開かせる",
+    "bank-check . example を開かせる",
+    "bad[.]example を開かせる",
+    "hxxps://bad-check.example を開かせる",
+    "support@bank-check.example に返信させる",
+  ])("is true for %s", (line) => {
+    expect(carriesContact(line)).toBe(true);
+  });
+
+  it.each([
+    "知らない番号に電話させようとしている",
+    "2026年11月6日に届いた",
+    "100,000円を振り込ませる",
+    "110番を名乗る",
+    "送り主のドメインが公式と違う",
+    "家族に確かめるまで待って",
+  ])("is false for %s", (line) => {
+    expect(carriesContact(line)).toBe(false);
   });
 });
