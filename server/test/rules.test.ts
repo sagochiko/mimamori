@@ -6,6 +6,7 @@ import { officialBrandOf, OFFICIAL_DOMAINS } from "../src/rules/domains";
 import { consultByRules } from "../src/consult-judge";
 import { judgeByRules, type RuleInput, type RuleResult } from "../src/rules/index";
 import { matchSpans, POLICE_CALLER } from "../src/rules/phrases";
+import pr40Inputs from "./fixtures/pr40-review-inputs.json";
 
 const LEVELS = [1, 2, 3, null];
 
@@ -918,5 +919,27 @@ describe("a genuine-looking secrecy line does not lower a scam (#51)", () => {
     const result = judge({ source, sender, text });
     expect(result.level).toBe(level);
     expect(result.confident).toBe(confident);
+  });
+});
+
+// The inputs the reviewer made in the three rounds of PR #40 (docs/audits/raw/20261104-0240-mm-reviewer-
+// a1169d3c.md and 20261104-0900-mm-reviewer-ae46dee6.md; the first round's are in the parent's summary on
+// PR #40). Each round's fix opened a new hole, so every run checks that none of them moves the wrong way
+// from the level pinned in the fixture: a scam never gets lighter or loses confident, and a genuine one
+// never gets heavier or becomes confident (the junk folder). Scams the rules leave at null today (r1-N,
+// r3-P1d, r3-C7) are left out, since nothing can be lighter than null. Changing a pinned level needs a
+// reason in the commit (#51).
+describe("the PR #40 review inputs do not move the wrong way (#51)", () => {
+  const severity = (level: RuleResult["level"]) => (level === null ? 0 : 4 - level);
+  it.each(pr40Inputs.map((c) => [c.id, c] as const))("%s", (_id, c) => {
+    const result = judge(c.input as RuleInput);
+    const pinned = c.level as RuleResult["level"];
+    if (c.is_scam) {
+      expect(severity(result.level)).toBeGreaterThanOrEqual(severity(pinned));
+      if (c.confident) expect(result.confident).toBe(true);
+    } else {
+      expect(severity(result.level)).toBeLessThanOrEqual(severity(pinned));
+      expect(result.confident).toBe(false);
+    }
   });
 });
