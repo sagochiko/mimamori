@@ -77,6 +77,12 @@ export const RESEARCH_BUDGET_CENTS = "50";
 export const RESEARCH_GIVE_UP_MS = 2 * 3600_000;
 /** Sessions looked at per tick; each takes up to three outside calls (get, events, delete). */
 export const RESEARCH_PER_TICK = 10;
+/**
+ * D1 calls in the tick (#178): one to forget a deleted session, and up to three to read one result
+ * (the alert, the evidence, forgetting the session).
+ */
+const DROP_D1 = 1;
+const COLLECT_D1 = 3;
 export const EVIDENCE_MAX = 3;
 const REPORT_TOOL = "report_evidence";
 const SOURCES = ["sms", "gmail", "page", "dns"] as const;
@@ -493,6 +499,7 @@ export async function collectInvestigation(
  * no webhook does. Each takes up to three outside calls, and the rest wait for the next tick.
  */
 export async function watchInvestigations(env: Env, now: number, budget: ExternalBudget): Promise<void> {
+  if (budget.d1Remaining < 1 + DROP_D1) return;
   // Sessions whose result was read but whose delete failed: one call each, tried again every tick.
   const undeleted = await env.DB.prepare(
     `SELECT id, investigation_session_id AS session FROM alerts
@@ -502,10 +509,10 @@ export async function watchInvestigations(env: Env, now: number, budget: Externa
     .bind(RESEARCH_PER_TICK)
     .all<{ id: string; session: string }>();
   for (const row of undeleted.results) {
-    if (budget.remaining < 1) return;
+    if (budget.remaining < 1 || budget.d1Remaining < DROP_D1) return;
     await dropSession(env, row.id, row.session, budget);
   }
-  if (budget.remaining < 3) return;
+  if (budget.remaining < 3 || budget.d1Remaining < 1 + COLLECT_D1) return;
   const due = await env.DB.prepare(
     `SELECT investigation_session_id AS id FROM alerts
       WHERE investigation_session_id IS NOT NULL AND investigated_at IS NULL
@@ -514,7 +521,7 @@ export async function watchInvestigations(env: Env, now: number, budget: Externa
     .bind(RESEARCH_PER_TICK)
     .all<{ id: string }>();
   for (const row of due.results) {
-    if (budget.remaining < 3) return;
+    if (budget.remaining < 3 || budget.d1Remaining < COLLECT_D1) return;
     await collectInvestigation(env, row.id, budget, now);
   }
 }
