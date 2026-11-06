@@ -9,6 +9,8 @@ struct SmileStrip: View {
   var onCamera: (() -> Void)?
   /// With it, a second button opens the set words.
   var onNote: (() -> Void)?
+  /// With it, the menu with "すべて消す" comes last in the row (her screen, which has no toolbar).
+  var showsMenu = false
   @State private var opened: Smile?
 
   var body: some View {
@@ -27,6 +29,9 @@ struct SmileStrip: View {
             SmileTile(smile: smile)
           }
           .buttonStyle(.plain)
+        }
+        if showsMenu {
+          WipeMenu().frame(height: 72)
         }
       }
       .padding(.horizontal, 2)

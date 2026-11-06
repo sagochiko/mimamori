@@ -48,6 +48,8 @@ public struct CallFollowUpState: Codable, Equatable, Sendable {
 public protocol CallFollowUpStore: Sendable {
   func load() -> CallFollowUpState
   func save(_ state: CallFollowUpState)
+  /// Deletes what is kept. Nothing kept is not an error.
+  func clear()
 }
 
 public final class InMemoryCallFollowUpStore: CallFollowUpStore, @unchecked Sendable {
@@ -56,6 +58,7 @@ public final class InMemoryCallFollowUpStore: CallFollowUpStore, @unchecked Send
   public init() {}
   public func load() -> CallFollowUpState { lock.withLock { state } }
   public func save(_ state: CallFollowUpState) { lock.withLock { self.state = state } }
+  public func clear() { lock.withLock { state = CallFollowUpState() } }
 }
 
 public final class CallFollowUp: @unchecked Sendable {
@@ -134,6 +137,12 @@ public final class CallFollowUp: @unchecked Sendable {
   /// She started talking to the microphone; the prompt has done its job.
   public func consultStarted() {
     clearPending()
+  }
+
+  /// This iPhone is no longer in a family ("すべて消す", a 401, or leaving): the waiting prompt and
+  /// what was asked go with the key.
+  public func forget() {
+    lock.withLock { store.clear() }
   }
 
   private func clearPending() {

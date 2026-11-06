@@ -291,6 +291,18 @@ struct DeleteEverythingTests {
     #expect(log.routes.isEmpty)
   }
 
+  @Test("鍵がもう効かない(401)ときは、鍵を消して役の選択に戻る")
+  func unauthorizedGoesToRoleSelection() async throws {
+    let store = InMemoryDeviceKeyStore(.sample)
+    let (session, log) = session(StubTransport(status: 401), store: store)
+
+    await #expect(throws: APIError.unauthorized) { try await session.deleteEverything() }
+
+    #expect(store.load() == nil)
+    #expect(session.route == .chooseRole)
+    #expect(log.routes == [.chooseRole])
+  }
+
   @Test("家族に入っていなければ、何も送らない")
   func notJoinedSendsNothing() async throws {
     let transport = StubTransport(status: 204, body: "")
