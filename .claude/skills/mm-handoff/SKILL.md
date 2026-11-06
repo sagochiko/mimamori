@@ -9,7 +9,7 @@ A long session gets compacted near the top of its window, and a summary loses de
 
 ## 1. Pick the moment
 
-- At an issue boundary: after the merge and the retro of `/mm-task`, before the next issue starts. When pacer.sh reported 80%, or when the author typed `/mm-autopilot` in the middle of an issue and this session is not on Fable, do not wait for the boundary; commit the work in progress on its branch instead. In the autopilot case, every hour spent finishing the issue here is an hour the author is away and the Fable session has not started.
+- At an issue boundary: after the merge and the retro of `/mm-task`, before the next issue starts. When pacer.sh reported 80%, or when the author typed `/mm-autopilot` in the middle of an issue and this session is not on Opus, do not wait for the boundary; commit the work in progress on its branch instead. In the autopilot case, every hour spent finishing the issue here is an hour the author is away and the Opus session has not started.
 - Only when no background subagent is running. Their reports come back to this conversation, so wait for every one first.
 - Push every branch with commits, so nothing lives only in this session's memory.
 
@@ -49,14 +49,14 @@ No keys, tokens, or family data go in the brief, as anywhere else.
 
 ## 4. Open the new session
 
-Pick the model of the new main session by who it works with (the author decided on 2026-11-04):
+The new main session runs on Opus either way (the author decided on 2026-11-06; until then the autopilot line launched Fable). Pick the prompt by who it works with:
 
-- The author is here, or this is not an autopilot run: `model=opus` and `prompt="$brief を読んで、その指示に従って進めて"`. Talking with the author is mostly design and rule decisions.
-- This session is running `/mm-autopilot` (the author is away): `model=fable` and `prompt="/mm-autopilot $brief を先に読み、その続きから進めて"`. The skill name goes first, so the new session runs the skill; Claude cannot start it itself, since the skill sets `disable-model-invocation`.
+- The author is here, or this is not an autopilot run: `prompt="$brief を読んで、その指示に従って進めて"`.
+- This session is running `/mm-autopilot` (the author is away): `prompt="/mm-autopilot $brief を先に読み、その続きから進めて"`. The skill name goes first, so the new session runs the skill; Claude cannot start it itself, since the skill sets `disable-model-invocation`.
 
 ```sh
 stamp=<the same YYYYMMDD-HHMM>
-model=<opus or fable, from the list above>
+model=opus
 mkdir -p "$HOME/tmp"
 brief="$HOME/tmp/mimamori-handoff-$stamp.md"
 prompt=<the prompt from the list above>
@@ -76,13 +76,13 @@ chmod +x "$launcher"
 open -a Terminal "$launcher"
 ```
 
-The heredoc is unquoted on purpose: the repository path, the model, the prompt with the brief path, and the `claude` binary are filled in now, from this shell where `claude` is on the PATH. The session starts in the main checkout, so it loads the project's settings and hooks. `--model` takes an alias such as `opus` or `fable` and applies to the launched session only (https://code.claude.com/docs/en/cli-reference, https://code.claude.com/docs/en/model-config). The project's `modelSettings` sets `medium` effort for both Opus 5.5 and Fable 5.1.
+The heredoc is unquoted on purpose: the repository path, the model, the prompt with the brief path, and the `claude` binary are filled in now, from this shell where `claude` is on the PATH. The session starts in the main checkout, so it loads the project's settings and hooks. `--model` takes an alias such as `opus` and applies to the launched session only (https://code.claude.com/docs/en/cli-reference, https://code.claude.com/docs/en/model-config). It is passed even though Opus is the default, because "`/model` saves your choice as the default for new sessions by writing the `model` field in your user settings" (model-config): a model the author picked earlier with `/model` would otherwise carry into the new window. The project's `modelSettings` sets `medium` effort for Opus 5.5.
 
 Open the `.command` file with `open -a Terminal`. Do not drive Terminal with AppleScript (`tell application "Terminal" to do script`): called from a Claude Code shell it times out. Opening a `.command` file needs no extra permission.
 
 ## 5. Check that it started
 
-A running process is not enough. The new window can sit before its first turn: an interactive session on Fable can show a one-time usage-credits consent prompt ("In interactive sessions, Claude Code can show a Fable usage-credits consent prompt", https://code.claude.com/docs/en/model-config), and whether `/mm-autopilot` at the head of the launch prompt runs the skill is not written in the docs. So wait for the first turn in the new session's transcript: a transcript that is not in the list step 4 took before the launch, holds the brief's path, and has an answer from Claude with a tool call in it and that call's result. For the autopilot line, it must also hold the line Claude Code adds when a skill runs (`Base directory for this skill: ...`), seen in this repository's transcripts. An answer alone is not enough: a failed API request is kept as an assistant line too (`"isApiErrorMessage": true`), while both launch prompts start by reading a file, so a real first turn calls a tool. The call alone is not enough either: Claude Code writes it before a permission prompt is answered, and the brief lies outside the working directory, where "The first time Claude uses the Read, Grep, or Glob tool on a path outside them, Claude Code asks whether to allow that read" (https://code.claude.com/docs/en/permission-modes). A window stopped at that prompt has the call but no result. [`scripts/handoff-started.sh`](../../../scripts/handoff-started.sh) does the check once, and `scripts/test-hooks.sh` runs it on made-up transcripts.
+A running process is not enough. The new window can sit before its first turn, or fail in it: it can stop at a permission prompt (below), its first request can fail on an API error, and whether `/mm-autopilot` at the head of the launch prompt runs the skill is not written in the docs. So wait for the first turn in the new session's transcript: a transcript that is not in the list step 4 took before the launch, holds the brief's path, and has an answer from Claude with a tool call in it and that call's result. For the autopilot line, it must also hold the line Claude Code adds when a skill runs (`Base directory for this skill: ...`), seen in this repository's transcripts. An answer alone is not enough: a failed API request is kept as an assistant line too (`"isApiErrorMessage": true`), while both launch prompts start by reading a file, so a real first turn calls a tool. The call alone is not enough either: Claude Code writes it before a permission prompt is answered, and the brief lies outside the working directory, where "The first time Claude uses the Read, Grep, or Glob tool on a path outside them, Claude Code asks whether to allow that read" (https://code.claude.com/docs/en/permission-modes). A window stopped at that prompt has the call but no result. [`scripts/handoff-started.sh`](../../../scripts/handoff-started.sh) does the check once, and `scripts/test-hooks.sh` runs it on made-up transcripts.
 
 Run this in the background (`run_in_background`), not as a foreground sleep, with the values from step 4 filled in. It gives up after 10 minutes:
 
@@ -106,8 +106,8 @@ On exit 2, the list from step 4 is missing, so the new window cannot be told fro
 
 On exit 1, do not go to step 6. First see whether the window started claude at all (`pgrep -fl "mimamori-handoff-$stamp.md"`); if not, look at the `.command` file and try step 4 once more. If it did start but never reached its first turn:
 
-- When the author is here (not the autopilot), ask once with AskUserQuestion: the new window has not started its first turn; if it shows the Fable consent prompt, choose to continue on Fable. After the answer, run the loop once more.
-- For the autopilot, do not ask: a question has no time limit and nobody is there to answer it. Stop the new session so two sessions never work on the same tree: `pkill -f "mimamori-handoff-$stamp.md"`, then check with `pgrep` that it is gone. Stay in this session and keep going: for the autopilot, run its loop here on this model. Queue the consent as an "作者:" step with `/mm-human-queue`, so the next autopilot gets Fable. Stopping until morning is the worst outcome while the author is away (the author, 2026-11-05).
+- When the author is here (not the autopilot), ask once with AskUserQuestion: the new window has not started its first turn; if it shows a prompt (such as allowing the read of the brief), answer it. After the answer, run the loop once more.
+- For the autopilot, do not ask: a question has no time limit and nobody is there to answer it. Stop the new session so two sessions never work on the same tree: `pkill -f "mimamori-handoff-$stamp.md"`, then check with `pgrep` that it is gone. Stay in this session and keep going: for the autopilot, run its loop here on this model, and say in its final summary which model ran it and that the new window never started. Stopping until morning is the worst outcome while the author is away (the author, 2026-11-05).
 
 ## 6. Stop here
 
