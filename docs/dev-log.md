@@ -870,3 +870,14 @@ Gmail は止まった記録の ID と扱い済みのメールを `gmail_auth` �
 `/sms/demo` のように、相談にも家族に知らせない問い合わせ先があると思っていた。
 
 審査員のビルドと母のビルドの違いはもう SMS の印(`demo` か母の家族の印か)にあったので、それを App の Info.plist にも出して体験の入口の切り替えにした。母のビルドでは入口が出ない(#133 が済むまでは母の版も `demo` なので、母の版でも役を選ぶ画面に出る。誰にも何も送らない)。相談は裏側を呼ばず、ニセ警察の筋書きで裏側が返す決まった文(`MATCH_BASIS` と `POLICE_ACTION`、`POLICE_TOPIC`)を端末の中で流し、30分は体験の時計を進めて、母の画面の帯は本物と同じ `ProtectedNotice.notices` で作る。体験用の問い合わせ先を裏側に足す案は、計画の API の約束を変えるので採らず、審査員の家族を本番に作る案は D1 に審査員の行が残るので採らなかった。そのため体験の相談には Claude の答えが出ない。SMS だけは本物の規則で `/sms/demo` が判定する。使ったのは mm-implementer、advisor、`swift test`、Vitest。
+## 2026年11月6日 worktree から数えた Claude Code の回数が0件になった (#22)
+
+`docs/claude-usage.md` を11月6日までの記録で数え直していた。11月3日に数えたきりで、サブエージェントの起動が合わせて20回に見えていた。
+
+主の会話からは「手順が書いてあれば .claude/logs などの記録から数え直し、2026年11月6日までの回数と期間に更新する」と頼まれた。
+
+作業の木は `.claude/worktrees/docs-readme-usage` で、そこには `.claude/logs` が無かった。フック(`lib.sh` の `log_event`)は worktree の中で動いても本体の木の `.claude/logs/usage.jsonl` に書く。一方の `scripts/usage-report.sh` は自分の木の記録を読むので、worktree から `make usage` を流すと「まだ記録が無い」になる。本体の記録は1,459行で、サブエージェントの起動は292回あった。
+
+`make usage` はどの木からでも同じ記録を数えると思っていた。期間の行が UTC の時刻つきの日時を書くのも、時刻を書かない決まりと食い違っていた。
+
+`usage-report.sh` が `git rev-parse --git-common-dir` で本体の木を探して読むようにし、期間の行は日本時間の日付だけにした。試験は `scripts/test-hooks.sh` に2つ足した(試験用の worktree から本体の記録を数えること、期間に時刻が出ないこと)。本体の木の `scripts/usage-report.sh` を直接流して worktree のファイルに書く手もあり最初はそうしたが、次に worktree で数える人がまた同じところで止まるので、スクリプトの側を直した。使ったのは mm-implementer、advisor、`bash scripts/test-hooks.sh`。
