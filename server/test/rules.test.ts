@@ -6,6 +6,7 @@ import { officialBrandOf, OFFICIAL_DOMAINS } from "../src/rules/domains";
 import { consultByRules } from "../src/consult-judge";
 import { judgeByRules, type RuleInput, type RuleResult } from "../src/rules/index";
 import { matchSpans, POLICE_CALLER } from "../src/rules/phrases";
+import pr40Inputs from "./fixtures/pr40-review-inputs.json";
 
 const LEVELS = [1, 2, 3, null];
 
@@ -826,6 +827,51 @@ describe("more ways to keep the family out", () => {
     expect(judge({ source: "consult", text: "この通知は誤りです。警察から言われました" }).level).toBe(1);
   });
 
+  // PR #40 review 3, item 6 (#51): someone told her to switch the app's notice off. That is text aimed
+  // at the warning, as "家族に知らせないでと言われた" is, so it raises the level like the injection.
+  it.each([
+    "警察の人に、この通知を止めてと言われました",
+    "電話の人から、その通知は消してって言われた",
+    "この通知は無視してくださいと言われたんやけど",
+    "あの通知をオフにしろって、銀行の人に指示されました",
+    "見守りの通知を切ってって頼まれた",
+  ])("raises a consultation where she was told to switch the notice off: %s", (text) => {
+    const result = judge({ source: "consult", text });
+    expect(result.level).toBe(1);
+    expect(result.reasons).toContain("警告を止めさせようとする文がある");
+  });
+
+  // Her own wish or how-to about notices, a notice of another app, and a warning about what a scam says.
+  it.each([
+    "この通知を止めたい",
+    "この通知をオフにする方法を教えて",
+    "通知を止めるにはどうすればいい",
+    "息子に通知を止めてもらった",
+    "LINEの通知を止めてって娘に言われた",
+    "この通知を止めてと言われたら詐欺やって",
+  ])("does not raise a consultation about notices that no one told her to switch off: %s", (text) => {
+    expect(judge({ source: "consult", text }).reasons).not.toContain("警告を止めさせようとする文がある");
+  });
+
+  // Review 1 of PR #176, item 1: the told form is for her consultation only. Genuine warnings in an SMS,
+  // a page, or a mail quote it ("と指示されることがあります", "と言われた場合は"), and must stay at main's
+  // level, never confident (the junk folder).
+  it.each([
+    [
+      "sms",
+      "【注意】警察を名乗る電話で「見守りアプリの通知を切って」と指示されることがあります。逮捕状が出たと言われても応じないで",
+      2,
+    ],
+    ["page", "ニセ警察詐欺の手口。犯人は「その通知は消してください」と言い、言われた通りにすると口座が犯罪に使われたと話を進めます。", 2],
+    ["sms", "【警察署からのお知らせ】犯人から「この通知を止めて」と言われた場合は詐欺です。", null],
+    ["gmail", "犯人に「その知らせは無視してください」と言われた場合でも、お金を振り込まないで。", null],
+  ] as const)("keeps a genuine %s warning that quotes the told form at main's level: %s", (source, text, level) => {
+    const result = judge({ source, text });
+    expect(result.level).toBe(level);
+    expect(result.confident).toBe(false);
+    expect(result.reasons).not.toContain("警告を止めさせようとする文がある");
+  });
+
   it("counts a request to turn this notice off when it comes with a link", () => {
     expect(
       judge({ source: "sms", text: "この通知をオフにしてください https://x-check.example/" }).level,
@@ -847,5 +893,98 @@ describe("nothing to go on", () => {
 
   it("returns null for an empty input", () => {
     expect(judge({ source: "sms" }).level).toBeNull();
+  });
+});
+
+describe("a genuine-looking secrecy line does not lower a scam (#51)", () => {
+  it.each([
+    // PR #167 review, items 1 and 2: the genuine sentence next to what a scam asks for, from a sender
+    // that is not the brand, or next to a link or a number written so the rules do not see it.
+    // Each is at the level the rules give it today (level, confident). PR #167 tried to stop counting
+    // the genuine line and was stopped after two reviews; these keep any later try from lowering them.
+    ["sms", undefined, "確認コード 5678。ご家族に伝えないで、担当者に伝えてください。", 1, true],
+    ["sms", undefined, "確認コード 5678 をこの番号に返信してください。家族に言わないで", 1, true],
+    [
+      "sms",
+      undefined,
+      "【ゆうちょ銀行】不正利用を確認しました。暗証番号はご家族にも言わないでください。このメッセージに暗証番号を返信してください。",
+      1,
+      true,
+    ],
+    [
+      "gmail",
+      "x@gmail.com",
+      "【三井住友銀行】暗証番号はご家族にも伝えないようにしてください。口座が凍結されました",
+      1,
+      true,
+    ],
+    ["sms", undefined, "パスワードは家族にも話さないで。お母さん、今日中にお金がいるの。", 1, false],
+    ["sms", undefined, "検察庁です。暗証番号はご家族にも言わないでください。", 1, false],
+    ["sms", undefined, "暗証番号を、ご家族には言わないでください。手続きのため担当者が伺います。", 1, false],
+    [
+      "sms",
+      undefined,
+      "暗証番号はご家族にも言わないでください。キャッシュカードを封筒に入れて職員にお渡しください",
+      1,
+      false,
+    ],
+    ["sms", undefined, "暗証番号はご家族にも言わないでください。現金をご準備ください", 1, false],
+    ["sms", undefined, "暗証番号はご家族にも言わないでください。x@gmail.com まで返信してください。", 1, false],
+    [
+      "sms",
+      undefined,
+      "【三井住友銀行】お客様の口座が一時停止されました。暗証番号はご家族にも言わないでください。",
+      1,
+      false,
+    ],
+    ["gmail", "x@gmail.com", "暗証番号はご家族にも伝えないようにしてください。", 1, false],
+    ["sms", undefined, "暗証番号はご家族にも言わないでください。smbc-kakunin[.]com で手続きを", 1, false],
+    ["sms", undefined, "暗証番号はご家族にも言わないでください。smbc-kakunin。com で手続きを", 1, false],
+    ["sms", undefined, "暗証番号はご家族にも言わないでください。〇三-一二三四-五六七八 へ", 1, false],
+    ["sms", undefined, "暗証番号はご家族にも言わないでください。電話 3-1234-5678 へ", 1, false],
+    ["sms", undefined, "暗証番号はご家族にも言わないでください。LINE ID: abc123 を検索", 1, false],
+    ["sms", undefined, "あなたの名義が事件に関わっています。この番号はご家族にも言わないでください。", 1, false],
+    ["sms", undefined, "番号は家族に言わないで。この件は警察の捜査中です", 1, false],
+    // Item 4: a reason between the family and the verb, and a family word with no particle.
+    ["sms", undefined, "家族は心配するので言わないでください", 1, false],
+    ["sms", undefined, "家族も心配するから内緒にしておいて", 1, false],
+    ["sms", undefined, "家族が心配するから話さないで", 1, false],
+    ["sms", undefined, "息子さんが事故を起こしました。家族は動揺されるので言わないでください", 1, false],
+    ["sms", undefined, "家族全員言わないで", 1, false],
+    ["sms", undefined, "暗証番号もご家族も言わないでください", 1, false],
+    // PR #167 review 2, item 1: a code-only SMS with a link, a number, or a visit written so the rules
+    // do not see it.
+    ["sms", undefined, "認証コード 1234。ご家族には言わないでください。smbc-kakunin[.]com で入力", 1, false],
+    ["sms", undefined, "認証コード 1234。このコードはご家族にも言わないでください。〇三-一二三四-五六七八 へお知らせください", 1, false],
+    ["sms", undefined, "認証コード 1234。このコードはご家族にも言わないでください。LINE ID: abc123 に送って", 1, false],
+    ["sms", undefined, "認証コード 1234。このコードはご家族にも言わないでください。x@gmail.com に転送してください", 1, false],
+    ["sms", undefined, "確認番号 1234。この番号はご家族にも言わないでください。のちほど係の者が確認に伺います", 1, false],
+    ["gmail", "info@smbc.co.jp", "暗証番号はご家族にも伝えないようにしてください。smbc-kakunin[.]com でご確認を", 1, false],
+  ] as const)("keeps main's level for %s (sender %s): %s", (source, sender, text, level, confident) => {
+    const result = judge({ source, sender, text });
+    expect(result.level).toBe(level);
+    expect(result.confident).toBe(confident);
+  });
+});
+
+// The inputs the reviewer made in the three rounds of PR #40 (docs/audits/raw/20261104-0240-mm-reviewer-
+// a1169d3c.md and 20261104-0900-mm-reviewer-ae46dee6.md; the first round's are in the parent's summary on
+// PR #40). Each round's fix opened a new hole, so every run checks that none of them moves the wrong way
+// from the level pinned in the fixture: a scam never gets lighter or loses confident, and a genuine one
+// never gets heavier or becomes confident (the junk folder). Scams the rules leave at null today (r1-N,
+// r3-P1d, r3-C7) are left out, since nothing can be lighter than null. Changing a pinned level needs a
+// reason in the commit (#51).
+describe("the PR #40 review inputs do not move the wrong way (#51)", () => {
+  const severity = (level: RuleResult["level"]) => (level === null ? 0 : 4 - level);
+  it.each(pr40Inputs.map((c) => [c.id, c] as const))("%s", (_id, c) => {
+    const result = judge(c.input as RuleInput);
+    const pinned = c.level as RuleResult["level"];
+    if (c.is_scam) {
+      expect(severity(result.level)).toBeGreaterThanOrEqual(severity(pinned));
+      if (c.confident) expect(result.confident).toBe(true);
+    } else {
+      expect(severity(result.level)).toBeLessThanOrEqual(severity(pinned));
+      expect(result.confident).toBe(false);
+    }
   });
 });

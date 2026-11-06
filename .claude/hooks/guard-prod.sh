@@ -169,19 +169,39 @@ for k in "${starts[@]}"; do
 done
 
 # --- gh api ---------------------------------------------------------------------------------------
-# Writing through gh api skips guard-private.sh and guard-merge.sh, which read gh issue, gh pr, and
-# gh pr merge, and it can make the repository public or move main.
+# Since 2026-11-06 gh api writes run without asking: the author found the prompts slow for writes that
+# do no harm (docs/harness.md, "gh の書き込みを止めなくなった"). Some still ask. DELETE (and a graphql
+# mutation that deletes) cannot be undone. Merging (PUT pulls/<n>/merge, POST merges, a graphql
+# mergePullRequest or auto-merge) skips guard-merge.sh. Making the repository public (a visibility or
+# private field) and moving main (git/refs/heads/main) are what CLAUDE.md asks the author about. A
+# method, endpoint, or graphql query the hook cannot read asks too, since it might be any of these.
 upper() { tr '[:lower:]' '[:upper:]' <<<"$1"; }
 field() { # <-f|-F> <name=value>: -F reads @file, -f takes the text as it is
   fields=1
   [[ "$1" == -F && "$2" == query=@* ]] && fromfile=1
-  [[ "$(upper "$2")" == *MUTATION* ]] && mutation=1
+  local v
+  v=$(upper "$2")
+  [[ "$v" == VISIBILITY=* || "$v" == PRIVATE=* ]] && publishes=1
+  # The key as written (GitHub reads "branch", not "Branch"); a value from @file is unreadable, and
+  # refs/heads/main is main.
+  if [[ "$2" == branch=* ]]; then
+    branch=$(upper "${2#branch=}")
+    branch=${branch#REFS/HEADS/}
+    [[ "$1" == -F && "$branch" == @* ]] && branch=MAIN
+  fi
+  if [[ "$v" == QUERY=* && "$v" == *MUTATION* ]]; then
+    [[ "$v" == *DELETE* ]] && deletes=1
+    [[ "$v" == *MERGE* ]] && merges=1
+    [[ "$v" == *VISIBILITY* ]] && publishes=1
+    # A commit or a ref move by graphql can land on main; the hook does not read which branch.
+    [[ "$v" == *CREATECOMMITONBRANCH* || "$v" == *UPDATEREF* ]] && moves=1
+  fi
 }
 while read -r k _; do
   [[ "${WORDS[k]}" == api ]] || continue
   behind_xargs "$k" && ask "gh api behind xargs, which adds words from stdin this hook cannot read: confirm with the author"
   ((k++))
-  method="" fields=0 input=0 endpoint="" fromfile=0 mutation=0
+  method="" fields=0 input=0 endpoint="" fromfile=0 deletes=0 merges=0 publishes=0 moves=0 branch=""
   while ((k < m)) && ! is_op "${WORDS[k]}"; do
     w=${WORDS[k]}
     ((k++))
@@ -211,15 +231,41 @@ while read -r k _; do
       *) [[ -n "$endpoint" ]] || endpoint=$w ;;
     esac
   done
-  if [[ "$endpoint" == graphql ]]; then
-    # graphql is always a POST; most calls only read, so only a mutation, or a query the hook cannot see, asks.
-    ((mutation)) && ask "gh api graphql mutation writes to GitHub: confirm with the author"
-    ((fromfile || input)) && ask "gh api graphql query read from a file or stdin, which this hook cannot check: confirm with the author"
-    ((HIDDEN || EXPANDS)) && ask "gh api graphql query built at run time, which this hook cannot check: confirm with the author"
-  elif [[ -n "$method" ]]; then
-    [[ "$(upper "$method")" =~ ^(GET|HEAD)$ ]] || ask "gh api -X $method writes to GitHub: confirm with the author. Write issues, PRs, and comments with gh issue and gh pr."
-  elif ((fields || input)); then
-    ask "gh api with fields sends a POST, which writes to GitHub: confirm with the author. Write issues, PRs, and comments with gh issue and gh pr."
+  # graphql also as /graphql or the full URL, which gh sends to the same place.
+  if [[ "${endpoint%%\?*}" =~ (^|/)graphql/?$ ]]; then
+    # graphql is always a POST. A mutation that deletes or merges asks; so does a query the hook cannot see.
+    ((deletes)) && ask "gh api graphql mutation that deletes: confirm with the author"
+    ((moves)) && ask "gh api graphql mutation that commits or moves a ref, which may land on main: confirm with the author"
+    ((merges)) && ask "gh api graphql mutation that merges, which skips the merge gate (guard-merge.sh): confirm with the author. Merge with gh pr merge <number> --merge."
+    ((publishes)) && ask "gh api graphql mutation that changes the repository's visibility: confirm with the author"
+    ((fromfile || input)) && ask "gh api graphql query read from a file or stdin, which this hook cannot check for a delete or a merge: confirm with the author"
+    ((HIDDEN || EXPANDS)) && ask "gh api graphql query built at run time, which this hook cannot check for a delete or a merge: confirm with the author"
+  else
+    # REST. gh sends POST when fields or --input come without -X.
+    [[ -z "$method" ]] && ((fields || input)) && method=POST
+    [[ -z "$method" ]] && method=GET
+    M=$(upper "$method")
+    if [[ "$M" =~ ^(GET|HEAD)$ ]]; then
+      :
+    elif [[ "$M" == *'$'* || "$M" == *'`'* ]]; then
+      ask "gh api with a method the hook cannot read, which may be DELETE: confirm with the author"
+    elif [[ "$M" == DELETE ]]; then
+      ask "gh api DELETE cannot be undone: confirm with the author"
+    elif [[ -z "$endpoint" || "$endpoint" == *'$'* || "$endpoint" == *'`'* ]]; then
+      ask "gh api -X $method to an endpoint the hook cannot read, which may merge a PR: confirm with the author"
+    elif [[ "$endpoint" =~ (^|/)pulls/[0-9]+/merge/?(\?|$) || "$endpoint" =~ (^|/)merges/?(\?|$) ]]; then
+      ask "gh api $endpoint merges, which skips the merge gate (guard-merge.sh): confirm with the author. Merge with gh pr merge <number> --merge."
+    elif ((input || HIDDEN || EXPANDS)) && [[ "${endpoint%%\?*}" =~ (^|/)repos/[^/]+/[^/]+/?$ || "$endpoint" =~ (^|/)(contents|git/refs|branches)(/|\?|$) ]]; then
+      # Only where an unread body could publish the repository or move main. An issue or a comment with
+      # a body from $(...) or --input passes, as the author chose (docs/harness.md).
+      ask "gh api -X $method to $endpoint with a body the hook cannot read (--input, a variable, or \$(...)), which may publish the repository or move main: confirm with the author"
+    elif ((publishes)); then
+      ask "gh api changes the repository's visibility, which publishes it: confirm with the author"
+    elif [[ "$endpoint" =~ (^|/)git/refs/heads/main/?(\?|$) || "$endpoint" =~ (^|/)branches/main(/|\?|$) ]]; then
+      ask "gh api moves or changes main: confirm with the author. Changes reach main through a reviewed PR."
+    elif [[ "$endpoint" =~ (^|/)contents/ && ( -z "$branch" || "$branch" == MAIN ) ]]; then
+      ask "gh api writes a file without naming a branch other than main, so it commits to main: confirm with the author"
+    fi
   fi
 done < <(gh_calls)
 
@@ -236,11 +282,44 @@ if [[ "$text" =~ gh[[:space:]]+api && "$text" =~ (-X|--method)[[:space:]=]*[\'\"
   ask "gh api DELETE: confirm with the author"
 fi
 
+# read_only_select: a read the author need not confirm (#151). Its SQL is a --command in single quotes
+# (so the shell cannot change it), and that SQL is one SELECT with no word that writes. The whole line must be one of two shapes, nothing else on it (review 1 of PR #172 found that cutting
+# the raw text at ) | ; & < > let a second --command after a redirect, a quoted |, a line continuation,
+# a quoted "execute", or xargs through):
+#   [npx] wrangler d1 execute <db> <flags> [> <file>]
+#   <name>=$([npx] wrangler d1 execute <db> <flags>)
+# where <flags> are only --remote, --json, and exactly one --command '<sql>' (or --command='<sql>'),
+# and <file> is a plain path or "$HOME/<plain path>". Any other line keeps the old check.
+read_only_select() {
+  local sql lower sp='[[:space:]]+' flag line
+  [[ "$cmd" == *$'\n'* || "$cmd" == *'\'* ]] && return 1
+  flag="(--remote|--json|--command(=|$sp)'[^']*')"
+  line="^[[:space:]]*(npx$sp)?wrangler${sp}d1${sp}execute$sp[A-Za-z0-9_-]+($sp$flag)+"
+  line+="([[:space:]]*>[[:space:]]*([A-Za-z0-9_./-]+|\"\\\$HOME/[A-Za-z0-9_./-]+\"))?[[:space:]]*$"
+  if [[ ! "$cmd" =~ $line ]]; then
+    line="^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=\\\$\\((npx$sp)?wrangler${sp}d1${sp}execute$sp[A-Za-z0-9_-]+($sp$flag)+[[:space:]]*\\)[[:space:]]*$"
+    [[ "$cmd" =~ $line ]] || return 1
+  fi
+  [[ $(grep -o -- '--command' <<<"$cmd" | wc -l) -eq 1 ]] || return 1
+  [[ "$cmd" =~ --command(=|$sp)\'([^\']*)\' ]] || return 1
+  sql=${BASH_REMATCH[2]}
+  lower=$(tr '[:upper:]' '[:lower:]' <<<"$sql")
+  [[ "$lower" =~ ^[[:space:]]*select[[:space:]] ]] || return 1
+  [[ "${lower%%;*}" == "$lower" || "${lower#*;}" =~ ^[[:space:]]*$ ]] || return 1
+  [[ "$lower" =~ (^|[^[:alnum:]_])(drop|delete|truncate|update|insert|alter|replace|create|attach|detach|pragma|vacuum|reindex)([^[:alnum:]_]|$) ]] && return 1
+  return 0
+}
+
 # Remote D1 SQL. A word match, so a column such as deleted_at does not count.
 destructive='(^|[^[:alnum:]_])(drop|delete|truncate)([^[:alnum:]_]|$)'
 if [[ "$text" =~ wrangler[[:space:]]+d1[[:space:]]+execute && "$text" =~ --(remote|preview) ]]; then
   [[ "$text" =~ $destructive ]] && ask "SQL with DROP, DELETE, or TRUNCATE on the remote D1: confirm with the author"
-  [[ "$body" == *'$'* || "$body" == *'`'* ]] && ask "remote D1 SQL built at run time, which this hook cannot read: confirm with the author"
+  # A $ or a backtick anywhere in the line used to ask, also when it only took the output of a
+  # literal SELECT into a variable (#151: a token read without showing it, while the author slept).
+  # A read alone passes now: read_only_select below says when the SQL itself cannot be built at run time.
+  if ! read_only_select; then
+    [[ "$body" == *'$'* || "$body" == *'`'* ]] && ask "remote D1 SQL built at run time, which this hook cannot read: confirm with the author"
+  fi
   # Every --file, from the words and from the raw text; a relative one is looked up from every base.
   files=()
   for ((k = 0; k < m; k++)); do

@@ -17,6 +17,7 @@
 // a notice still being sent is never read as told: not by her answer to a consultation, her screen,
 // or the 30-minute watch (#64).
 
+import { storedEvidence, type Evidence } from "./agents";
 import { requireMember, type Role } from "./auth";
 import { ExternalBudget } from "./budget";
 import { HttpError, json } from "./http";
@@ -57,7 +58,7 @@ export interface CaseView {
    */
   familyNotifiedAt: string | null;
   /** The summary is one line made by the rules or Claude, never her words or the received text cut out. */
-  alert: { level: 1 | 2 | 3; source: string; summary: string; reasons: string[] } | null;
+  alert: { level: 1 | 2 | 3; source: string; summary: string; reasons: string[]; evidence: Evidence[] } | null;
   /** The last answer the AI gave the protected person in this case. */
   aiReply: string | null;
 }
@@ -77,6 +78,7 @@ interface CaseRow {
   source: string | null;
   summary: string | null;
   reasons: string | null;
+  evidence: string | null;
 }
 
 interface MemberRow {
@@ -122,7 +124,7 @@ async function loadViews(
   const rows = await env.DB.prepare(
     `SELECT c.id, c.alert_id, c.state, c.assignee_member_id, m.display_name AS resolver_name,
             c.notified_at, c.resolved_at, c.renotified_at, c.family_notified_at, c.ai_reply,
-            a.level, a.source, a.summary, a.reasons
+            a.level, a.source, a.summary, a.reasons, a.evidence
        FROM cases c
        LEFT JOIN alerts a ON a.id = c.alert_id
        LEFT JOIN members m ON m.id = c.assignee_member_id
@@ -150,7 +152,14 @@ async function loadViews(
       alert:
         r.level === null
           ? null
-          : { level: r.level, source: r.source ?? "", summary: r.summary ?? "", reasons: parseReasons(r.reasons) },
+          : {
+              level: r.level,
+              source: r.source ?? "",
+              summary: r.summary ?? "",
+              reasons: parseReasons(r.reasons),
+              // What the research in the background found (task 11); [] until it is read, or when none.
+              evidence: storedEvidence(r.evidence),
+            },
       aiReply: r.ai_reply,
     };
   });
@@ -217,7 +226,10 @@ const FIRST_NOTICE_BATCH = 20;
  * it, in the same statement that lets go of the claim. "already" means told, or another caller is
  * sending it right now; either way this call sends nothing, and the case reads as told only once
  * family_notified_at is set. A family with no device to send to is not told either (#60): the case
- * waits, and the 5-minute tick sends it once someone registers a device.
+ * waits, and the 5-minute tick sends it once someone registers a device. A case the family resolved
+ * before the notice got through is not claimed (#49): a family member already talked with her, and a
+ * retry by the queue or the tick would tell the family again about something they settled. The old
+ * 'accepted' state counts as not resolved, as everywhere else in this file.
  *
  * When this call's claim was taken over (it ran past CLAIM_TTL_MS) and its notice still went out,
  * family_notified_at stays NULL and the case keeps reading as not told until the newer claim's sender
@@ -231,7 +243,7 @@ async function tellFamily(
   const claimedAt = Date.now();
   const claimed = await env.DB.prepare(
     `UPDATE cases SET family_notice_claimed_at = ?
-      WHERE id = ? AND family_notified_at IS NULL
+      WHERE id = ? AND family_notified_at IS NULL AND state != 'resolved'
         AND (family_notice_claimed_at IS NULL OR family_notice_claimed_at < ?)`,
   )
     .bind(claimedAt, c.id, claimedAt - CLAIM_TTL_MS)
@@ -327,7 +339,8 @@ export async function tellFamilyHeavier(env: Env, caseId: string, budget: Extern
  * 30-minute watch see it whatever happens to the notice. When the shared budget cannot cover every
  * family device, or no family device took the notice (none registered counts too), the case stays
  * untold and CaseNoticeDeferred is thrown; calling again with the same alert tells the family, and a
- * call after they were told returns the case without notifying or taking tickets. A call while another
+ * call after they were told, or after the family resolved the case (#49), returns the case without
+ * notifying or taking tickets. A call while another
  * caller is sending the notice does the same and does not throw; the case reads as untold until that
  * send gets through, and the tick retries it if it does not. When at least one family member was told,
  * the case counts as told and the watch covers the others.

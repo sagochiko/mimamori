@@ -44,8 +44,8 @@ targets:
         product: MimamoriCore
       - target: MessageFilter
       - target: SafariExtension
-      # ShareExtension is not embedded until task 12 makes it send something. Embedded as a stub, it
-      # shows up in share sheets and closes without sending, so the person could think the family got it.
+      # Sends a shared screenshot or document to POST /consult and shows the answer (task 12, #13).
+      - target: ShareExtension
       - target: CallDirectory
     settings:
       base:
@@ -62,6 +62,9 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleLocalizations: [ja, en]
         MimamoriAPIBaseURL: https://$(MIMAMORI_API_HOST)
+        # The judges' tour shows only when this is `demo` (MimamoriCore DemoMode, #100). The same token
+        # is already in the Message Filter extension's URL, so no build carries anything new.
+        MimamoriSMSFamilyToken: $(MIMAMORI_SMS_FAMILY_TOKEN)
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIBackgroundModes: [remote-notification]
@@ -158,6 +161,11 @@ targets:
     platform: iOS
     sources:
       - ShareExtension
+      # The same Keychain adapter as the app, reading the device key from the app group's access group.
+      - path: App/KeychainDeviceKeyStore.swift
+    dependencies:
+      - package: Core
+        product: MimamoriCore
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1"
@@ -168,14 +176,15 @@ targets:
         CFBundleDisplayName: みまもり
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Where POST /consult goes (same value as the app).
+        MimamoriAPIBaseURL: https://$(MIMAMORI_API_HOST)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.share-services
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
           NSExtensionAttributes:
+            # Images only: text and links would show みまもり in their share sheets and send nothing.
             NSExtensionActivationRule:
               NSExtensionActivationSupportsImageWithMaxCount: 1
-              NSExtensionActivationSupportsText: true
-              NSExtensionActivationSupportsWebURLWithMaxCount: 1
     entitlements:
       path: ShareExtension/ShareExtension.entitlements
       properties:

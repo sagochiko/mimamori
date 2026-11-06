@@ -77,7 +77,7 @@ struct ProtectedHomeView: View {
     ScrollView {
       VStack(spacing: 8) {
         if let prompt = model.followUpPrompt {
-          FollowUpView(prompt: prompt)
+          FollowUpView(prompt: prompt) { model.followUpFine() }
         }
         if !notices.isEmpty {
           NoticeStrip(notices: notices, open: $noticesOpen)
@@ -85,8 +85,10 @@ struct ProtectedHomeView: View {
               stripBottom = $0
             }
         }
-        // The family's smiles and replies, and her own (#14).
-        SmileStrip(onCamera: { camera = true }, onNote: { choosingNote = true })
+        // The family's smiles and replies, and her own (#14). The menu with "すべて消す" (#190) is the
+        // row's last item, so her screen gets no navigation bar and no extra line, and the row still
+        // runs to the edge of the screen.
+        SmileStrip(onCamera: { camera = true }, onNote: { choosingNote = true }, showsMenu: true)
         // Only with no grant or one about to run out (Google ends it after 7 days); the family guides her.
         if model.offersGmail {
           Button("Gmail") { Task { await model.connectGmail() } }
@@ -305,7 +307,7 @@ private struct ConversationViewport: Equatable {
 /// small grey bubble on the right, as in the AI chat apps (the author chose this on 2026-11-05, #87).
 /// The time it was sent goes small beside her bubble and under the answer, as in the usual chat apps
 /// (#113); a message kept without a time has none.
-private struct ChatTurn: View {
+struct ChatTurn: View {
   let message: ChatMessage
   let time: ChatStamp?
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -382,7 +384,7 @@ private struct DayRow: View {
   }
 }
 
-private struct Bubble: View {
+struct Bubble: View {
   let text: String
   let fill: Color
   let foreground: Color
@@ -437,9 +439,10 @@ private struct LiveView: View {
 }
 
 /// "さっきの電話、大丈夫だった？" with one button. Talking or writing to the AI is the other answer.
-private struct FollowUpView: View {
+struct FollowUpView: View {
   let prompt: String
-  @Environment(AppModel.self) private var model
+  /// "大丈夫". Her screen closes the prompt; the judges' tour does the same in its own state.
+  let onFine: () -> Void
 
   var body: some View {
     HStack(spacing: 12) {
@@ -448,7 +451,7 @@ private struct FollowUpView: View {
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityHint("さっきの長い電話で気になることがあれば、マイクを押して話すか、下の欄に書いてください")
-      Button("大丈夫") { model.followUpFine() }
+      Button("大丈夫") { onFine() }
         .font(.subheadline.weight(.semibold))
         .buttonStyle(.bordered)
         .accessibilityHint("押すと、この声かけを閉じます。家族には何も知らせません")
@@ -461,7 +464,7 @@ private struct FollowUpView: View {
 
 /// The family notices in one strip: the most pressing one (`ProtectedNotice.mostPressing`), how many
 /// there are, and a chevron. A tap opens every notice with what was passed to the family.
-private struct NoticeStrip: View {
+struct NoticeStrip: View {
   let notices: [ProtectedNotice]
   @Binding var open: Bool
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -573,7 +576,7 @@ private struct NoticeStrip: View {
   }
 }
 
-private struct NoticeRow: View {
+struct NoticeRow: View {
   let notice: ProtectedNotice
 
   var body: some View {

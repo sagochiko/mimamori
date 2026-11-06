@@ -86,6 +86,17 @@ public final class APIClient: Sendable {
       "POST", "consult", body: ConsultBody(text: text, history: history.isEmpty ? nil : history), auth: true)
   }
 
+  /// `POST /consult` with a shared screenshot or document (`image`), and her words when there are any.
+  /// The answer's `tap` is in the pixels of the image sent.
+  public func consult(image: ConsultImage, text: String = "") async throws -> ConsultAnswer {
+    let body = ConsultBody(
+      text: text.isEmpty ? nil : text, history: nil,
+      image: ImageBody(
+        mediaType: image.mediaType.rawValue, data: image.data.base64EncodedString(), width: image.size.width,
+        height: image.size.height))
+    return try await send("POST", "consult", body: body, auth: true)
+  }
+
   /// `GET /smiles`. Everyone's smiles and replies from the last week, newest first.
   public func smiles() async throws -> SmileBoard {
     try await send("GET", "smiles", body: Empty?.none, auth: true)
@@ -112,6 +123,14 @@ public final class APIClient: Sendable {
     let answer: DeadlineAnswer = try await send(
       "PUT", "families/me/smile-deadline", body: DeadlineBody(hour: hour), auth: true)
     return answer.deadlineHour
+  }
+
+  /// `DELETE /families/me` ("すべて消す"). The server deletes the whole family, this device's member
+  /// included, so the stored key is cleared only after a 2xx. Any failure (502 `cleanup_failed` when
+  /// Google or Anthropic refused, offline) leaves the key as it was, and pressing again finishes the job.
+  public func deleteEverything() async throws {
+    try await perform("DELETE", "families/me", body: Empty?.none, auth: true)
+    store.clear()
   }
 
   // MARK: Plumbing
@@ -238,9 +257,17 @@ private struct CaseList: Decodable {
 }
 
 private struct ConsultBody: Encodable {
-  let text: String
-  /// Nil is left out of the JSON (Encodable skips nil optionals).
+  /// Nil only with an image. Nil is left out of the JSON (Encodable skips nil optionals).
+  let text: String?
   let history: [ConsultTurn]?
+  var image: ImageBody? = nil
+}
+
+private struct ImageBody: Encodable {
+  let mediaType: String
+  let data: String
+  let width: Int
+  let height: Int
 }
 
 private struct NameBody: Encodable {

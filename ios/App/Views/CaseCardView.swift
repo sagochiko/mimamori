@@ -3,10 +3,13 @@ import SwiftUI
 
 /// One case on a family member's screen: the level, the one line of what she is troubled by, what
 /// the AI told her, whether it was solved, and "電話する" and "解決". Every family member sees the same
-/// card. The reasons are read by VoiceOver only. "解決" asks first in an alert titled with the card's
+/// card. The reasons, and what the research in the background found (task 11), are read by VoiceOver
+/// only (docs/design.md, "家族の画面"). "解決" asks first in an alert titled with the card's
 /// one line, with "解決にする" and "やめる" and no sentence of its own (#60).
 struct CaseCardView: View {
   let card: FamilyCard
+  /// "解決にする". Nil sends `POST /cases/{id}/resolve`; the judges' tour resolves in its own state.
+  var onResolve: ((Case) -> Void)? = nil
   @Environment(AppModel.self) private var model
   @Environment(\.openURL) private var openURL
   @State private var askingNumber = false
@@ -22,6 +25,7 @@ struct CaseCardView: View {
           .font(.title3.bold())
           .fixedSize(horizontal: false, vertical: true)
           .accessibilityLabel(summaryLabel(alert))
+          .accessibilityHint(evidenceHint(alert))
       }
       if let reply = item.aiReply {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -36,7 +40,7 @@ struct CaseCardView: View {
         .font(.headline)
         .foregroundStyle(item.state == .resolved ? Color.secondary : Color.accentColor)
         .accessibilityHint(statusHint)
-      if !card.actions.isEmpty { buttons }
+      if !actions.isEmpty { buttons }
     }
     .padding(20)
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -54,7 +58,7 @@ struct CaseCardView: View {
       ForEach(ResolveChoice.allCases, id: \.self) { choice in
         Button(choice.title, role: choice == .cancel ? .cancel : nil) {
           if let chosen = confirmation.choose(choice) {
-            Task { await model.resolve(chosen) }
+            if let onResolve { onResolve(chosen) } else { Task { await model.resolve(chosen) } }
           }
         }
         .accessibilityHint(choice.hint)
@@ -70,7 +74,16 @@ struct CaseCardView: View {
 
   private func summaryLabel(_ alert: CaseAlert) -> String {
     let reasons = alert.reasons.isEmpty ? "" : "。理由、\(alert.reasons.joined(separator: "、"))"
-    return "困りごと、\(alert.summary)\(reasons)"
+    let evidence =
+      alert.evidence.isEmpty
+      ? "" : "。出典、\(alert.evidence.map(\.text).joined(separator: "、"))"
+    return "困りごと、\(alert.summary)\(reasons)\(evidence)"
+  }
+
+  /// Where the evidence was read, by site name, so it can be looked up; nothing on screen.
+  private func evidenceHint(_ alert: CaseAlert) -> String {
+    let hosts = alert.evidence.compactMap { $0.url.host() }
+    return hosts.isEmpty ? "" : "出典、\(hosts.joined(separator: "、"))"
   }
 
   private var statusHint: String {
@@ -106,9 +119,15 @@ struct CaseCardView: View {
     }
   }
 
+  /// The judges' tour (`onResolve` set) has no mother to call, so "電話する" is left out there; asking
+  /// for 母の電話番号 would keep whatever a judge typed on this iPhone.
+  private var actions: [CardAction] {
+    onResolve == nil ? card.actions : card.actions.filter { $0 != .call }
+  }
+
   private var buttons: some View {
     HStack(spacing: 10) {
-      ForEach(card.actions, id: \.self) { action in
+      ForEach(actions, id: \.self) { action in
         Button {
           perform(action)
         } label: {

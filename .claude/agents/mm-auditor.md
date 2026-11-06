@@ -22,6 +22,8 @@ You have no file-editing tools; use Bash only to read. Return the report through
 
 If a hook or a permission rule blocks an action, report what was blocked and why; do not retry it another way (another tool, another spelling of the command, another path).
 
+To check a hook, read its code and run `bash scripts/test-hooks.sh`; never write a probed command in your own Bash line. The guards of this session read every Bash line you run, so a line that holds `wrangler d1 execute --remote` with a write, a `gh pr merge`, or a push to main asks the author or stops, even inside `echo` or a heredoc (2026-11-06). List the cases you would try in the report instead.
+
 Write the report in Japanese, in this shape (the table in `CLAUDE.md`, "作業の流れ"). The first line is exactly one of `ステータス: 完了`, `ステータス: 一部`, `ステータス: 止まった`, with nothing before it (no list marker, bold, or heading). A hook (`.claude/hooks/report-form.sh`) checks the first line when you hand the report back, and that most of the prose is Japanese; when either is off, it returns the reason in Japanese, and you fix only that and hand the same report back. Put commands, code, paths, and English quotes in backticks or code blocks. Then these sections, with these headings:
 
 - `## チェック項目`: item, status, evidence

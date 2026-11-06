@@ -31,6 +31,11 @@
     /// With `-mimamori-stub-note-open`, the home screen opens the set words ("ひと言") at once.
     static var gmailButton: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-gmail") }
     static var noteOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-note-open") }
+    /// With `-mimamori-stub-wipe-open`, the check before "すべて消す" ("消す" or "やめる") opens at once.
+    static var wipeOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-wipe-open") }
+    /// With `-mimamori-stub-wipe-fail`, "すべて消す" answers 502 `cleanup_failed`, as when Google or
+    /// Anthropic refused, so the failure can be shot.
+    static var wipeFails: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-wipe-fail") }
     /// With `-mimamori-stub-camera-hold`, the stand-in camera never "sees" the smile, so the camera
     /// screen itself can be shot.
     static var cameraHold: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-camera-hold") }
@@ -79,6 +84,8 @@
           Self.gmailButton
             ? (200, #"{"url":"https://accounts.google.com/o/oauth2/v2/auth","grantedAt":null}"#)
             : (503, #"{"error":"gmail_not_configured"}"#)
+        case ("DELETE", "/families/me"):
+          Self.wipeFails ? (502, #"{"error":"cleanup_failed","pending":["gmail"]}"#) : (204, "")
         case ("PUT", "/families/me/smile-deadline"):
           StubSmiles.shared.setHour(Self.body(of: request)["hour"] as? Int)
         default:
@@ -274,6 +281,15 @@
           "id": "c-police", "alertId": "a-1", "state": "notified", "notifiedAt": at(3), "familyNotifiedAt": at(3),
           "alert": alert(1, "consult", "警察を名乗る電話の相談", "口座が犯罪に使われたという話がある"),
           "aiReply": "詐欺で使われる説明と一致しています。送金せず、いったん電話を切って家族に確かめて",
+        ],
+        [
+          // An SMS whose research in the background came back (task 11); the evidence is read by VoiceOver.
+          "id": "c-sms", "alertId": "a-5", "state": "notified", "notifiedAt": at(6), "familyNotifiedAt": at(6),
+          "alert": alert(1, "sms", "SMS 宅配便を名乗る example.top", "送り主のドメインが公式と違う")
+            .merging(["evidence": [[
+              "text": "日本郵政グループの注意喚起",
+              "url": "https://www.post.japanpost.jp/notification/",
+            ]]]) { $1 },
         ],
         [
           "id": "c-unreached", "alertId": "a-4", "state": "notified", "notifiedAt": at(2), "familyNotifiedAt": NSNull(),

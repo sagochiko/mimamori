@@ -412,3 +412,68 @@ describe("cron", () => {
     expect((await countFor(family.familyId)).alerts).toBe(1);
   });
 });
+
+// Task 11: research sessions hang on alerts (alerts.investigation_session_id), and their transcripts
+// hold the received text, so they go with "delete everything" and the 30-day cleanup as cases' do.
+describe("research sessions", () => {
+  const cleanupTick = Date.UTC(2026, 10, 5, 19, 0, 0);
+  async function alertWithSession(family: Created, sessionId: string, at: number): Promise<string> {
+    const id = crypto.randomUUID();
+    await env.DB.prepare(
+      `INSERT INTO alerts (id, family_id, source, level, reasons, summary, created_at, notified,
+         investigation_session_id, investigated_at, evidence)
+       VALUES (?, ?, 'sms', 1, '[]', 'x', ?, 1, ?, ?, '[]')`,
+    )
+      .bind(id, family.familyId, at, sessionId, at)
+      .run();
+    return id;
+  }
+
+  it("are deleted with everything else, and the alert waits while one cannot be", async () => {
+    const family = await createFamily();
+    await alertWithSession(family, "sesn_research_a", Date.now());
+    const deleted: string[] = [];
+    let refuse = true;
+    network.use(
+      http.delete("https://api.anthropic.com/v1/sessions/:id", ({ params }) => {
+        if (refuse) return HttpResponse.json({ type: "error" }, { status: 400 });
+        deleted.push(String(params.id));
+        return HttpResponse.json({ id: params.id, type: "session_deleted" });
+      }),
+    );
+    const first = await call("DELETE", "/families/me", { deviceKey: family.deviceKey });
+    expect(first.status).toBe(502);
+    expect(await first.json()).toEqual({ error: "cleanup_failed", pending: ["agent_sessions"] });
+    expect((await countFor(family.familyId)).alerts).toBe(1);
+
+    refuse = false;
+    expect((await call("DELETE", "/families/me", { deviceKey: family.deviceKey })).status).toBe(204);
+    expect(deleted).toEqual(["sesn_research_a"]);
+    expect((await countFor(family.familyId)).alerts).toBe(0);
+  });
+
+  it("are deleted 30 days on, and an old alert stays until its session is gone", async () => {
+    const family = await createFamily();
+    const done = await alertWithSession(family, "sesn_research_old", cleanupTick - 31 * DAY);
+    const stuck = await alertWithSession(family, "sesn_research_stuck", cleanupTick - 31 * DAY);
+    const recent = await alertWithSession(family, "sesn_research_new", cleanupTick - 29 * DAY);
+    const deleted: string[] = [];
+    network.use(
+      http.delete("https://api.anthropic.com/v1/sessions/:id", ({ params }) => {
+        if (params.id === "sesn_research_stuck") return HttpResponse.json({ type: "error" }, { status: 400 });
+        deleted.push(String(params.id));
+        return HttpResponse.json({ id: params.id, type: "session_deleted" });
+      }),
+    );
+    await tick(cleanupTick);
+    expect(deleted).toContain("sesn_research_old");
+    expect(deleted).toContain("sesn_research_new");
+    // The recent one's result was read, so the 5-minute watch deletes its session too (review 1 of
+    // PR #183); its alert row stays, since it is younger than 30 days.
+    const left = await env.DB.prepare("SELECT id FROM alerts WHERE family_id = ?")
+      .bind(family.familyId)
+      .all<{ id: string }>();
+    expect(left.results.map((r) => r.id).sort()).toEqual([stuck, recent].sort());
+    expect(left.results.map((r) => r.id)).not.toContain(done);
+  });
+});

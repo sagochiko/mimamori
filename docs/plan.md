@@ -104,12 +104,13 @@ mimamori/
 | `families` | `id`、`token`、`created_at`、`smile_deadline_hour`(母の笑顔を待つ時刻。日本時間の5〜12時で、既定は9)、`smile_missed_notified_on`(笑顔が無いと家族に知らせた日本時間の日付。1日1回にするため) |
 | `members` | `id`、`family_id`、`role`(`protected` か `family`)、`display_name`、`device_key_hash`、`apns_token`、`apns_env` |
 | `invites` | `code`(6桁)、`family_id`、`expires_at`、`used_at` |
-| `alerts` | `id`、`family_id`、`source`(`sms`、`gmail`、`dns`、`page`、`call`、`consult`)、`level`(1、2、3)、`reasons`(JSON)、`summary`、`rule_level`、`claude_level`、`created_at`、`sender_key` と `domain_key`(送り主とドメインを家族の ID と合わせた SHA-256。1時間に1回にまとめるために使う)、`notified`(家族と母に知らせる行なら1。3段階と、まとめて知らせなかった行は0)、`protected_notified_at`(母への通知が届いた時刻。届くまでは空) |
+| `alerts` | `id`、`family_id`、`source`(`sms`、`gmail`、`dns`、`page`、`call`、`consult`)、`level`(1、2、3)、`reasons`(JSON)、`summary`、`rule_level`、`claude_level`、`created_at`、`sender_key` と `domain_key`(送り主とドメインを家族の ID と合わせ、`TOKEN_ENC_KEY` から HKDF で導いた鍵で取った HMAC-SHA256。鍵なしの SHA-256 では携帯の番号を総当たりで戻せるため(#53)。1時間に1回にまとめるために使う)、`notified`(家族と母に知らせる行なら1。3段階と、まとめて知らせなかった行は0)、`protected_notified_at`(母への通知が届いた時刻。届くまでは空)、`investigation_session_id`、`investigated_at`、`evidence`(裏の調べもののセッション、結果を読んだ時刻、見つかった根拠の `[{ text, url }]` の JSON。届いた文は D1 に残さないので、調べものは判定のキューが持っている送り主、ドメイン、本文で始める。結果を読んだらセッションを消して ID を空に戻し、消せなかったものは「すべて消す」と30日の削除が消す。2026年11月6日に #12 で足した(`0007`)) |
 | `cases` | `id`、`family_id`、`alert_id`、`state`(`notified`、`resolved`。前の版の `accepted` が残っていたら解決していないものとして扱う)、`assignee_member_id`(解決を押した家族)、`agent_session_id`、`notified_at`、`resolved_at`、`renotified_at`、`ai_reply`(AI が母に最後に答えたこと)、`family_notified_at`(家族に最初の知らせが届いた時刻。届くまでは空)、`family_notice_claimed_at`(最初の知らせを送る前に立て、届くか諦めたら空に戻す claim の時刻で、5分より古いものは次の送り手が引き継ぐ。#64)。`accepted_at` は残すが読み書きしない |
 | `relays` | `id`、`case_id`、`from_member_id`、`body`、`created_at`。家族から母への返事を外したので、読み書きせず、相談と一緒に消すだけにする(本番の D1 を変えないため、表は残す) |
 | `smiles` | `id`、`family_id`、`member_id`、`r2_key`、`score`、`note`(ひと言。決まった5つの語のどれかを語のまま入れる)、`created_at`。家族の誰の笑顔も入る。写真の無いひと言だけの行は `r2_key` を空の文字にし、「すべて消す」と30日の削除は R2 を消すときにその行を飛ばす(行は消す)。`note` と2つの `families` の列は2026年11月5日に #14 で足した(`0005`) |
-| `gmail_auth` | `family_id`、`refresh_token_enc`、`granted_at`、`last_history_id`、`expired_notified_at` |
+| `gmail_auth` | `family_id`、`refresh_token_enc`、`granted_at`、`last_history_id`、`expired_notified_at`、`partial_record_id` と `partial_message_ids`(見張りが履歴の記録の途中で止まったときの、その記録の ID と、もう扱ったメールの ID の JSON の配列。次の実行はそのメールを積み直さない。記録を読み終えたら空に戻す。`last_history_id` は記録の単位でしか進まないため、2026年11月6日に #174 で足した(`0006`)) |
 | `usage_daily` | `date`、`doh_requests` |
+| `agent_resources` | `name`、`id`、`created_at`。Managed Agents の調べもののエージェントと環境の ID。Worker が最初に要ったときに作って置き、名前に設定の版(`research-agent-v2`)を入れる。プロンプトや開いてよいサイトを変えるときは版を上げて作り直す(#12、`0007`) |
 
 `gmail_auth` の `expired_notified_at` は、許可から6日たって「Gmail の許可がもうすぐ切れます」を家族に送った時刻にする。Google が `invalid_grant` を返したら「Gmail の許可の取り直しが要ります」を家族に1回送り、その行を消して見張りを止める。行が無ければ2回目は送らない。知らせ1つに表の列を足さずに済むため、2026年11月6日に #15 の実装の中で主のセッションがこの形にし、作者には PR #143 で伝える。許可を取り直すと行を上書きし、`expired_notified_at` を空に戻す
 
@@ -146,10 +147,11 @@ Structured Outputs で次の形だけを受け取る。
 | `PUT /members/me/apns` | APNs の端末トークンを登録する |
 | `POST /sms/{familyToken}` | Apple から届く問い合わせ。Apple の形で答える |
 | `GET`、`POST /dns-query/{familyToken}` | DoH。`application/dns-message` |
-| `POST /page` | Safari の拡張機能から URL とページの文字を送る。本文は `{ url, text?, hasSecretField? }` で、`hasSecretField` はページにパスワードかカード番号の欄があったか(真偽だけ。入力の中身は読まない)。真偽でなければ400 `page_invalid`。Claude に回すかの判定にだけ使い、段階は変えない。2026年11月6日に #137 で足した |
-| `POST /consult` | 母の相談(文字にした声か書いた言葉、スクショ)。答えの文字と、押す場所の座標が返る。本文は `{ text, history? }` で、`history` は同じ会話の前のやり取りを古い順に `[{ role: "protected" \| "ai", text }]` で6件まで、1件500字まで。7件以上、501字以上、ほかの role、空の文は 400(`consult_history_invalid`)。無ければ今までどおり。今の言葉が前を指すだけの問いかけなら、端末は60分を最後のやり取りから数えるので、前の日の会話の終わりが届くこともある(形と上限は同じ、#118)。前のやり取りは Claude に `<untrusted>` の中のデータとして渡し、`ai` の行を assistant の発言にしない。ニセ警察の筋書きは今の言葉と前の母の言葉を合わせて数える。2026年11月4日に #73 で足した |
+| `POST /page` | Safari の拡張機能から URL とページの文字を送る。本文は `{ url, text?, hasSecretField? }` で、`hasSecretField` はページにパスワードかカード番号の欄があったか(真偽だけ。入力の中身は読まない)。真偽でなければ400 `page_invalid`。Claude に回すかの判定にだけ使い、段階は変えない。2026年11月6日に #137 で足した。答えは `{ level, reasons }` で、そのページを判定のキューに回したときだけ `queued: true` が付く。本文の `alreadyQueued`(真偽。真偽でなければ400 `page_invalid`)は、本文が増えたあとの同じ表示の2回目の問い合わせで、1回目がキューに回ったかを拡張が伝えるもの。真なら、パスワードとカード番号の欄を除いた印で回すかを決める。規則の段階か理由、ほかの会社を名乗るページ、サポートの電話番号のどれかがあれば、あとから足された偽警告を家族に知らせるために回し、二重の知らせは1時間のまとめが止める。印が欄だけの2回目は規則で答えるだけでキューに回さず、1つの表示を2回積まない(欄は1回目の本文にもあったため)。1回目が回らなかった2回目は今までどおり回す。`queued` はキューへの送信を待ち、届いたときだけ付ける(2026年11月6日、#174) |
+| `POST /consult` | 母の相談(文字にした声か書いた言葉、スクショ)。答えの文字と、押す場所の座標が返る。本文は `{ text, history? }` で、`history` は同じ会話の前のやり取りを古い順に `[{ role: "protected" \| "ai", text }]` で6件まで、1件500字まで。7件以上、501字以上、ほかの role、空の文は 400(`consult_history_invalid`)。無ければ今までどおり。今の言葉が前を指すだけの問いかけなら、端末は60分を最後のやり取りから数えるので、前の日の会話の終わりが届くこともある(形と上限は同じ、#118)。前のやり取りは Claude に `<untrusted>` の中のデータとして渡し、`ai` の行を assistant の発言にしない。ニセ警察の筋書きは今の言葉と前の母の言葉を合わせて数える。2026年11月4日に #73 で足した。共有したスクショや書類の画像は `image: { mediaType, data, width, height }` で送る(`mediaType` は `image/jpeg` か `image/png`、`data` は base64 で300万字まで、超えると413 `consult_image_too_large`)。`width` と `height` は Claude が縮めずに読む大きさ(長辺2,576、28ピクセルの区切りで4,784まで)に端末が縮めた寸法で、外れると400 `consult_image_invalid`。画像があれば `text` は省ける。`tap` は送った画像の絶対ピクセルで、Claude の操作の案内を母に返すときだけ付き、画像の外なら付かない。画像はどこにも残さない。2026年11月7日に #13 で足した |
 | `GET /alerts` | 最近の知らせ |
-| `GET /cases`、`POST /cases/{id}/resolve` | 家族への知らせと解決。相談は `{ id, alertId, state, notifiedAt, resolvedAt, resolvedBy, renotifiedAt, familyNotifiedAt, alert: { level, source, summary, reasons }, aiReply }`。`familyNotifiedAt` は家族の端末に最初の知らせが届いた時刻(`cases.family_notified_at`)で、どの端末にも届いていなければ `null`。母の画面が「家族に伝えました」の代わりに「家族に届いていません。急ぐなら電話して」と出せるよう、2026年11月4日に #60 で足した。キーが無い古い裏側の答えは届いた相談として読む(裏側はまだデプロイしておらず、古い裏側は実際には無い)。解決は家族の誰でも押せ、ほかの家族に「(名前)が解決」と知らせる。`POST /cases/{id}/accept` と `POST /cases/{id}/relay` は2026年11月4日に外し、404 を返す |
+| `GET /cases`、`POST /cases/{id}/resolve` | 家族への知らせと解決。相談は `{ id, alertId, state, notifiedAt, resolvedAt, resolvedBy, renotifiedAt, familyNotifiedAt, alert: { level, source, summary, reasons, evidence }, aiReply }`。`familyNotifiedAt` は家族の端末に最初の知らせが届いた時刻(`cases.family_notified_at`)で、どの端末にも届いていなければ `null`。母の画面が「家族に伝えました」の代わりに「家族に届いていません。急ぐなら電話して」と出せるよう、2026年11月4日に #60 で足した。キーが無い古い裏側の答えは届いた相談として読む(裏側はまだデプロイしておらず、古い裏側は実際には無い)。解決は家族の誰でも押せ、ほかの家族に「(名前)が解決」と知らせる。`POST /cases/{id}/accept` と `POST /cases/{id}/relay` は2026年11月4日に外し、404 を返す |
+| `POST /agents/webhook` | Managed Agents の Webhook の受け口。`webhook-id`、`webhook-timestamp`、`webhook-signature` を `ANTHROPIC_WEBHOOK_SIGNING_KEY` で確かめ(5分より古いものと合わないものは401、鍵が無ければ503)、`session.status_idled` と `session.status_terminated` でそのセッションの結果を読みに行く。ほかの種類は204で捨てる。Webhook は落ちることがあるので、結果が届くのは5分ごとの見張りが正で、Webhook は早めるだけ。`GET /cases` の `alert.evidence` は `[{ text, url }]` で、`text` はこちらで決めた「<表示名>の注意喚起」(`SITE_NAMES` の「警察庁」「日本郵政グループ」など)だけ、`url` は開いてよい公式のサイトの https の origin だけ(`https://www.npa.go.jp` の形)で、道筋、問い合わせ、`#` のあとは落とす。どれもエージェントが選んだ URL に書けるので、D1 にも `GET /cases` にも出さない(2026年11月7日、PR #183 の5回目のレビュー)。1つのサイトは1回だけ、最大3つ。エージェントが書いた文は家族にも D1 にも出さない。結果を読む前と、見つからなかったときは `[]`。2026年11月6日に #12 で足した |
 | `POST /smiles`、`GET /smiles` | 笑顔の写真の登録と一覧(写真は R2)。家族の誰でも送れる。`POST` の本文は `{ photo?, score?, note? }` で、`photo` は base64 の JPEG(500KB まで、超えると413)、`score` は0〜1、`note` はひと言で、決まった5つの語(`good-morning` おはよう、`nice-smile` いい笑顔、`thanks` ありがとう、`doing-fine` 元気だよ、`see-you` またね)の ID か語そのものだけを受け付け、外れたら400 `note_not_allowed`。自由な文は運ばない(2026年11月5日に作者が決めた。design.md の「毎朝の笑顔」)。写真かひと言のどちらかが要る(無ければ400 `smile_empty`)。送ると本人のほかの家族全員に、音を鳴らさない通知(`interruption-level` が `passive`)が届く。`GET` は家族全員の最近7日の笑顔を新しい順に `{ smiles: [{ id, memberId, displayName, role, score, note, hasPhoto, createdAt }], deadlineHour }` で返す。抜けた人の行は `displayName` が「家族」、`role` が `null` |
 | `GET /smiles/{id}/photo` | 写真の JPEG。同じ家族の端末だけに返し、別の家族の `deviceKey` には403、無い笑顔と写真の無いひと言には404。R2 のバインディングからは署名つきの URL を作れない([Cloudflare の Presigned URLs](https://developers.cloudflare.com/r2/api/s3/presigned-urls/) の「The R2 Workers API binding cannot generate presigned URLs」)。S3 の鍵を足すより秘密が増えないので、Worker が R2 から読んで流す(#14) |
 | `PUT /families/me/smile-deadline` | `{ hour }` で母の笑顔を待つ時刻(日本時間の5〜12時の整数)を変える。家族の役だけで、母の端末からは403。その時刻までに母の笑顔の写真がその日に無ければ(写真の無いひと言は数えない)、家族の役の全員に1日1回、音を鳴らさない通知で知らせる。家族の笑顔は数えず、母には送らない(#14) |
@@ -298,15 +300,17 @@ Safari の拡張機能、背面タップ、DNS のサーバーが止まったと
 - 家族への知らせは、相談の ID を持つ `openCase` からだけ送る。受け手は母にだけ送る。枠を前もって確かめるときは、母の端末の数に家族の届く端末の数を足す
 - `enqueueJudge` が `crypto.randomUUID()` で知らせの ID(`alertId`)を作り、キューの本文に入れる。受け手はキューのメッセージの ID ではなく、本文のこの ID で `alerts` の行を作る。Cloudflare の文書はメッセージの ID がやり直しで変わらないとは書いていないためで、本文に ID が無いか UUID の形でないメッセージは、Claude を呼ばずに捨てる
 - `openCase` が `CaseNoticeDeferred` を投げたら、メッセージをやり直す。やり直しで届いた同じ本文は、家族に知らせる知らせの行(`notified = 1`。3段階と、1時間に1回にまとめて知らせなかった行は除く)があり、相談が無いか家族に届いていない(`family_notified_at` が空)ときは `openCase(env, alertId, budget)` だけを呼び、Claude の判定も母への通知も飛ばす。キューがやり直しをあきらめても相談の行は残り、5分ごとの Cron が1日のあいだ家族への最初の知らせを送り直す
+- 母への通知は、送る前に印(`protected_notified_at`)を条件つきの UPDATE で立て、送れなかったと分かったときだけ戻す。必ず送ることより二重に送らないことを取る。送る途中で Worker の処理が打ち切られると、印だけ残って母に届かないことがあり、それは受け入れる。家族への最初の知らせは期限つきの取り置き(`family_notice_claimed_at`)なので、打ち切られても期限が切れたあと Cron が送り直す(#53、2026年11月6日)
+- 1時間に1回のまとめは、母への通知が届いた知らせ(`protected_notified_at` が空でない行。母に端末が無ければ届いたとみなす)だけを数える。母のやり直しはキューの再配送しかないので、届いていない知らせで次の知らせを止めないため。そのとき家族には同じ送り主の知らせが2回届きうる(#53)
 
 **手順**
 
 - [ ] テストを書く(Claude は差し替えて試す)。3段階の知らせは家族に通知を送らない。同じ送り主やドメインの知らせは1時間に1回にまとめる。Claude の答えが決まった形でなければ規則の判定だけで知らせる。`injection_suspected` が `true` なら1段階重くする。Claude の呼び出しが失敗しても、規則で2段階以上なら母と家族に知らせ、母には「確かめ中」と出す。Claude が `level` を規則より軽くしても、`confident` の規則の判定より軽くはしない
 - [ ] 実装してテストを通す。プロンプトでは、届いた文面を `<untrusted>` で囲み、中の指示に従わないよう書く
-- [ ] 母への通知は「開かないで」と理由1つ。家族への通知は `openCase` が送り、カードに要約の1行を載せる。理由は画面に出さず、カードの読み上げ(VoiceOver)で読む。作者が画面の例で選んだカードの形に、理由の行が無かったため
+- [ ] 母への通知は「開かないで」と理由1つ。電話番号らしい並びや URL、ドメインを含む理由は母に出さず、残りが無ければ決まった文(「家族に確かめるまで待って」)にする(#53)。家族への通知は `openCase` が送り、カードに要約の1行を載せる。理由は画面に出さず、カードの読み上げ(VoiceOver)で読む。作者が画面の例で選んだカードの形に、理由の行が無かったため
 - [ ] `eval/run.ts` で「規則と Claude」の数字を出す
 - [ ] 母の iPhone に TestFlight で配り、FaceTime で SMS のフィルタの有効化と拡張の選択を案内する。使うことと動画に映すことの同意を別々にもらう
-- [ ] 体験モードの画面を作る。審査員の1台で、家族に届くカードを並べて見せる。最初は電話の相談(通話のあとの声かけから)で、家族が解決を押す場合と、30分たっても解決しない場合を選べる。そのあとに SMS の判定を試せる
+- [x] 体験モードの画面を作る。審査員の1台で、家族に届くカードを並べて見せる。最初は電話の相談(通話のあとの声かけから)で、家族が解決を押す場合と、30分たっても解決しない場合を選べる。そのあとに SMS の判定を試せる。2026年11月6日に #100 で作った。入口は役を選ぶ画面の「体験」で、ビルドの SMS の印が `demo` のときだけ出る。相談は `POST /consult` が実の家族の見守られる人の端末を要るので呼ばず、裏側のニセ警察の決まった文を端末の中で流す。SMS は `/sms/demo` に端末の鍵なしで問い合わせる。#133 が済むまでは母の版も `demo` なので、母の版でも役を選ぶ画面に「体験」が出る(誰にも何も送らない)
 - [ ] `docs/dev-log.md` を作る。期間中に実際にぶつかった問題ごとに、何が起きたか、Claude Code が何を提案したか、採るかどうか決めた理由、直した結果、コミットへのリンクを書く。わざと失敗を作って見せることはしない
 - [ ] `docs/mother-feedback.md` を作り、11月7日まで、母が止まったところ、どう直したか、直したあと手助けなしでできたかを日付つきで書く(個人情報は伏せる)
 - [ ] コミットする
@@ -390,7 +394,7 @@ Safari の拡張機能、背面タップ、DNS のサーバーが止まったと
 **つなぎ目**
 
 - 使うもの `alerts`、`sendPush`
-- 渡すもの `openCase(env, alertId, budget)`(`budget` は呼び出し1回で共有する外への通信の枠。相談の行は最初に入れて残す。家族の端末の数だけ枠が取れないときと、家族の誰にも知らせが届かなかったとき(通知を受けられる端末が無いときも含む)は、`family_notified_at` を空のまま `CaseNoticeDeferred` を投げる。同じ `alertId` でもう一度呼ぶと家族に知らせ、知らせ済みなら知らせも枠の消費もせずに相談を返す。別の呼び出しがその知らせを送っている最中(`family_notice_claimed_at` が立っている)なら、投げずに相談を返し、届くまでは届いていないと読む)、`resolveCase(env, caseId, memberId)`、`recordAiReply(env, caseId, text)`(AI の答えをカードのために残す。AI はいつも母に答える)
+- 渡すもの `openCase(env, alertId, budget)`(`budget` は呼び出し1回で共有する外への通信の枠。相談の行は最初に入れて残す。家族の端末の数だけ枠が取れないときと、家族の誰にも知らせが届かなかったとき(通知を受けられる端末が無いときも含む)は、`family_notified_at` を空のまま `CaseNoticeDeferred` を投げる。同じ `alertId` でもう一度呼ぶと家族に知らせ、知らせ済みなら知らせも枠の消費もせずに相談を返す。別の呼び出しがその知らせを送っている最中(`family_notice_claimed_at` が立っている)なら、投げずに相談を返し、届くまでは届いていないと読む。最初の知らせが届く前に家族が解決した相談も、知らせも枠の消費もせず、投げずに返す(#49))、`resolveCase(env, caseId, memberId)`、`recordAiReply(env, caseId, text)`(AI の答えをカードのために残す。AI はいつも母に答える)
 
 **手順**
 
@@ -411,7 +415,9 @@ Safari の拡張機能、背面タップ、DNS のサーバーが止まったと
 **つなぎ目**
 
 - 使うもの `alerts`、`cases`、`sendPush`
-- 渡すもの `startInvestigation(env, alertId)`、`startCaseSession(env, caseId)`
+- 渡すもの `startInvestigation(env, alertId, input, budget)`(`input` は `{ source, sender?, domain?, text? }`)、`collectInvestigation(env, sessionId, budget)`、`watchInvestigations`(5分ごとの Cron)、`POST /agents/webhook`、`startCaseSession(env, caseId)`
+- `alerts` に本文を残さないので、`startInvestigation` は判定のキュー(`judge.ts`)が知らせを送ったあとに、持っている送り主、ドメイン、本文を渡して呼ぶ。2026年11月6日に #12 の実装の中で、計画の `startInvestigation(env, alertId)` から引数を足した。相談と電話のあとは調べない(母の言葉を渡さないため)
+- 調べもののエージェントの道具は `web_search` と `web_fetch` と、結果を決まった形で受け取るための自前の道具 `report_evidence` だけ(Managed Agents には Structured Outputs が無い)。`report_evidence` が受け取るのは公式のページの URL の配列 `urls` だけで、文は受け取らない。家族の読み上げの1行は「<表示名>の注意喚起」に決め、「同じ手口が載っている」とは言い切らない。エージェントの主張が正しいかをこちらで確かめられないため。PR #183 の4回のレビューで、根拠の文を網でふるう作りは安心させる言い換えを追いきれないと分かり、2026年11月7日にこの形にした。環境は `limited` で、開けるのは `OFFICIAL_SITES`(警察庁、消費者庁、国民生活センター、フィッシング対策協議会、携帯電話の会社、宅配の会社など20)だけ。詐欺のリンクは開けず、送り主のドメインを直に調べることもしない。公式の注意喚起に同じドメインや手口が載っているかを調べる
 
 **手順**
 
@@ -436,12 +442,12 @@ Safari の拡張機能、背面タップ、DNS のサーバーが止まったと
 **つなぎ目**
 
 - 使うもの `openCase`(答えきれないとき)、`recordAiReply`
-- 渡すもの `POST /consult` の本文 `{ text: string, history?: Array<{ role: "protected" | "ai", text: string }> }`(`history` は6件まで、1件500字まで、#73)と、答え `{ reply: string, speak: string, tap?: { x, y }, handoff: boolean }`
+- 渡すもの `POST /consult` の本文 `{ text?: string, history?: Array<{ role: "protected" | "ai", text: string }>, image?: { mediaType, data, width, height } }`(`history` は6件まで、1件500字まで、#73。`text` を省けるのは `image` があるときだけ、#13)と、答え `{ reply: string, speak: string, tap?: { x, y }, handoff: boolean }`
 
 **手順**
 
-- [ ] `CoordinateMapper` のテストを書く。1179×2556 のスクショは縮小しないのでそのまま、長辺が2,576を超える画像は縮小した寸法で戻す(パディングした寸法は使わない)、画面の外の座標は捨てる
-- [ ] 実装してテストを通す
+- [x] `CoordinateMapper` のテストを書く。1179×2556 のスクショは縮小しないのでそのまま、長辺が2,576を超える画像は縮小した寸法で戻す(パディングした寸法は使わない)、画面の外の座標は捨てる
+- [x] 実装してテストを通す。端末は送る前に Claude が読む寸法(公式の参照実装、長辺2,576、28ピクセルの区切りで4,784まで)へ縮め、返った座標を元の画像に戻す(2026年11月7日、#13)
 - [x] 通話のあとの声かけのテストを書く(`Core` の `CallFollowUp`)。3分以上の通話が終わったら1回だけ「さっきの電話、大丈夫だった？」を出す。3分未満なら出さない。同じ通話で2回出さない。夜22時から朝7時は出さず、次にアプリを開いたときに聞く。「大丈夫」を押したら何もしない
 - [x] 実装してテストを通し、ローカル通知につなぐ
 - [x] 声かけを二段にする(#99、2026年11月5日に作者が決めた)。通話の終わりはアプリが前面のときしか届かなかった([#25 のコメント](https://github.com/sagochiko/mimamori/issues/25#issuecomment-6645207853))ので、1段目は前面のあいだ `CXCallObserver` を持ち、つながってから終わるまでの長さ(`Core` の `CallTracker`)で `CallFollowUp.callEnded(_:)` に渡す。電話番号は読まず、残さない。2段目は毎日の声かけ(`Core` の `DailyCheckIn`)で、「今日、知らない人から電話や連絡はあった？」をローカル通知で聞き、押すと母のチャットが開く。テストは、オンなら選んだ時刻に1日1回、夜22時から朝7時は出さない、通話のあとの声かけを出した日は出さない、オフなら出さない。iOS の「設定」の「みまもり」(`ios/App/Settings.bundle`)に、オンとオフ(既定はオン)と時刻(17時から21時、既定は18時)を置き、アプリを前面に開いたときと役が変わったときに、今日から30日分の通知を組み直す(「設定」で変えた値もそのときに読む)。デモの短い電話のために、Debug だけ起動の引数 `-mimamori-followup-min-seconds` で下限を縮める(Release は3分のまま)
@@ -451,6 +457,7 @@ Safari の拡張機能、背面タップ、DNS のサーバーが止まったと
 - [ ] `consult.ts` のテストを書く(Claude は差し替える)。スクショは記録に残さない。送金、認証コード、構成プロファイル、データの削除に関わる相談は、案内せず `handoff: true` にして相談を開く。AI は家族が見ていてもいつも答える。家族への1行は、ニセ警察なら「警察を名乗る電話の相談」、Claude に聞いた相談は構造化出力の `topic`(20字以内)、使えないときは理由か「スマホの相談」にし、母の言葉を切り出さない
 - [ ] 実装してテストを通す。押す場所は絶対ピクセルの `[x, y]` で返させる(0から1000の正規化は使わない)
 - [ ] 母の画面を作る。声は iPhone の中で文字にする。タスク1で使えなければ、サーバー側で文字にする方法を作者に聞く。答えは `AVSpeechSynthesizer` で読み上げる(「設定」の「読み上げ」がオンのときだけ。既定はオフ、#115)。丸を付けたら「押せたらもう一度見せて」で次のスクショを待つ
+- [x] 共有の拡張(`ios/ShareExtension`)から、共有したスクショや書類の画像を `POST /consult` の `image` で送り、答えと、押す場所があれば丸を付けた画像を共有の画面に出す。受けるのは画像1枚だけで、声で聞いたときではないので読み上げない。画像は端末にも裏側にも残さない(2026年11月7日、#13)。母のチャットの会話には入らない
 - [ ] タスク1から移した確認。背面タップに割り当てたショートカットで「スクリーンショットを撮る」から「URL の内容を取得」(POST、ファイル)まで一続きで動くかを確かめ、動けばショートカットを用意する。動かなければ、共有の受け口だけにする
 - [ ] 実機で、設定アプリの画面のスクショを10枚試し、丸が正しい場所に付いた数を記録する
 - [ ] スマホの困りごとの相談のテストを書く(Claude は差し替える)。「ストレージがいっぱいと出た」には設定の「iPhone ストレージ」への案内を返し、広告の掃除アプリは入れなくてよいと伝える。「広告のアプリを入れていいか」「画面に出た番号に電話したら、アプリを入れてと言われた」は詐欺の手口との一致を根拠つきで返し、後者は1段階にして家族に知らせる

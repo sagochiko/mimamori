@@ -97,12 +97,49 @@ public struct CaseAlert: Codable, Hashable, Sendable {
     public let source: AlertSource
     public let summary: String
     public let reasons: [String]
+    /// What the research in the background found on official sites (task 11). Empty until the
+    /// research is read, when it found nothing, and from a server that does not send the key.
+    public let evidence: [CaseEvidence]
 
-    public init(level: Level, source: AlertSource, summary: String, reasons: [String]) {
+    public init(level: Level, source: AlertSource, summary: String, reasons: [String], evidence: [CaseEvidence] = []) {
         self.level = level
         self.source = source
         self.summary = summary
         self.reasons = reasons
+        self.evidence = evidence
+    }
+
+    private enum CodingKeys: String, CodingKey { case level, source, summary, reasons, evidence }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        level = try c.decode(Level.self, forKey: .level)
+        source = try c.decode(AlertSource.self, forKey: .source)
+        summary = try c.decode(String.self, forKey: .summary)
+        reasons = try c.decode([String].self, forKey: .reasons)
+        // One broken entry must not hide the case: each is read on its own, and the rest are kept.
+        let raw = try c.decodeIfPresent([LossyEvidence].self, forKey: .evidence) ?? []
+        evidence = raw.compactMap(\.value)
+    }
+}
+
+/// One finding of the research, with the official page it was read on. Only https sources are kept.
+public struct CaseEvidence: Codable, Hashable, Sendable {
+    public let text: String
+    public let url: URL
+
+    public init(text: String, url: URL) {
+        self.text = text
+        self.url = url
+    }
+}
+
+private struct LossyEvidence: Decodable {
+    let value: CaseEvidence?
+
+    init(from decoder: any Decoder) throws {
+        let item = try? CaseEvidence(from: decoder)
+        value = item.flatMap { $0.url.scheme == "https" && $0.url.host != nil ? $0 : nil }
     }
 }
 

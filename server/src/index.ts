@@ -1,5 +1,7 @@
 // Routing. Each route lives in its own module; this file only matches method and path.
 
+import { webhookRoute } from "./agents";
+import { ExternalBudget } from "./budget";
 import { listCases, resolveRoute } from "./cases";
 import { consultRoute } from "./consult";
 import { runScheduled } from "./cron";
@@ -22,7 +24,7 @@ const routes: Array<[method: string, pattern: RegExp, handler: Handler]> = [
   ["DELETE", /^\/members\/([^/]+)$/, (req, env, [id]) => leaveFamily(req, env, id ?? "")],
   ["DELETE", /^\/families\/me$/, (req, env) => deleteEverything(req, env)],
   ["POST", /^\/sms\/([^/]+)$/, (req, env, [token], ctx) => smsRoute(req, env, ctx, token ?? "")],
-  ["POST", /^\/page$/, (req, env, _, ctx) => pageRoute(req, env, ctx)],
+  ["POST", /^\/page$/, (req, env) => pageRoute(req, env)],
   ["GET", /^\/\.well-known\/apple-app-site-association$/, async () => siteAssociation()],
   ["POST", /^\/consult$/, (req, env) => consultRoute(req, env)],
   ["GET", /^\/cases$/, (req, env) => listCases(req, env)],
@@ -33,6 +35,8 @@ const routes: Array<[method: string, pattern: RegExp, handler: Handler]> = [
   ["PUT", /^\/families\/me\/smile-deadline$/, (req, env) => setSmileDeadline(req, env)],
   ["GET", /^\/gmail\/connect$/, (req, env) => connectRoute(req, env)],
   ["GET", /^\/gmail\/callback$/, (req, env) => callbackRoute(req, env)],
+  // Managed Agents tells us a research session went idle or ended (src/agents.ts).
+  ["POST", /^\/agents\/webhook$/, (req, env) => webhookRoute(req, env, new ExternalBudget())],
 ];
 
 export async function route(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

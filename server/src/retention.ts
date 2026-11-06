@@ -21,7 +21,8 @@ export async function purgeExpired(env: Env, now: number): Promise<void> {
   for (let i = 0; i < keys.length; i += 1000) await env.PHOTOS.delete(keys.slice(i, i + 1000));
 
   await env.DB.batch([
-    env.DB.prepare("DELETE FROM alerts WHERE created_at < ?").bind(cutoff),
+    // An alert whose research session is still there waits for purgeExpiredSessions (task 11).
+    env.DB.prepare("DELETE FROM alerts WHERE created_at < ? AND investigation_session_id IS NULL").bind(cutoff),
     env.DB.prepare("DELETE FROM smiles WHERE created_at < ?").bind(cutoff),
     env.DB.prepare("DELETE FROM invites WHERE expires_at < ?").bind(cutoff),
     env.DB.prepare(
@@ -38,6 +39,11 @@ export async function purgeExpired(env: Env, now: number): Promise<void> {
  */
 export async function purgeExpiredSessions(env: Env, now: number, budget: ExternalBudget): Promise<void> {
   if (budget.remaining <= 0) return;
+  await purgeCaseSessions(env, now, budget);
+  await purgeExpiredResearch(env, now, budget);
+}
+
+async function purgeCaseSessions(env: Env, now: number, budget: ExternalBudget): Promise<void> {
   const due = await env.DB.prepare(
     "SELECT id, agent_session_id FROM cases WHERE notified_at < ? AND agent_session_id IS NOT NULL ORDER BY random() LIMIT ?",
   )
@@ -55,4 +61,20 @@ export async function purgeExpiredSessions(env: Env, now: number, budget: Extern
     env.DB.prepare("DELETE FROM relays WHERE case_id IN (SELECT value FROM json_each(?))").bind(done),
     env.DB.prepare("DELETE FROM cases WHERE id IN (SELECT value FROM json_each(?))").bind(done),
   ]);
+}
+
+/** The research sessions of old alerts (task 11), then those alerts, with what the budget has left. */
+async function purgeExpiredResearch(env: Env, now: number, budget: ExternalBudget): Promise<void> {
+  if (budget.remaining <= 0) return;
+  const due = await env.DB.prepare(
+    "SELECT id, investigation_session_id AS session FROM alerts WHERE created_at < ? AND investigation_session_id IS NOT NULL ORDER BY random() LIMIT ?",
+  )
+    .bind(now - RETENTION_MS, budget.remaining)
+    .all<{ id: string; session: string }>();
+  if (due.results.length === 0) return;
+  const outcomes = await Promise.all(
+    due.results.map(async (row) => (budget.take() && (await deleteAgentSession(env, row.session)) ? row.id : null)),
+  );
+  const done = JSON.stringify(outcomes.filter((id): id is string => id !== null));
+  await env.DB.prepare("DELETE FROM alerts WHERE id IN (SELECT value FROM json_each(?))").bind(done).run();
 }

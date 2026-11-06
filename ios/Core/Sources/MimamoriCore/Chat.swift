@@ -156,25 +156,49 @@ public struct ChatLog: Codable, Equatable, Sendable {
   }
 
   /// Words that only point back at what came just before ("それってどういうこと?", "どうすればいい?",
-  /// "そのやり方を教えて"): short, beginning with a pointing or "how" word (after "うん", "ねえ", "あの" and
-  /// the like from a closed list, or as "なにそれ"),
-  /// and no word that opens a new topic. "振込のやり方を教えて" and "そうじのアプリを入れたい" start a new
-  /// one; "その消し方を教えて" points back (#124).
+  /// "そのやり方を教えて"): short, beginning with a pointing or "how" word (after fillers, or as "なにそれ"),
+  /// and no word that opens a new topic. A filler is one of a few roots stretched by ー, っ, a small vowel,
+  /// or the vowel of its last kana ("ねえ", "えーっと", "あのう", "うーーん", #158), and a run of them counts
+  /// only before a break (white space, punctuation, or a symbol such as 〜), so "あの、おそれがある" and
+  /// "ねこの飼い方" do not point back (review 1 of PR #165). With no break (spoken words come without
+  /// punctuation), only the closed list of the earlier form counts, so "うんそれってどういうこと" points
+  /// back and "うーーんそれってなに" does not. Do not add words to that list (#84, #156, #158). "振込のやり方を教えて" and
+  /// "そうじのアプリを入れたい" start a new one; "その消し方を教えて" points back (#124).
   /// The same test as `pointsBack` in server/src/consult-judge.ts, which reads only such words as about
   /// her last earlier ones, so the app sends the conversation before for exactly the words the server
   /// reads that way. Both run server/test/fixtures/points-back.json; change them together.
   public static func pointsBack(_ text: String) -> Bool {
-    // normalize() and /[\s\p{P}\p{S}]+/gu on the server: NFKC, lowercase, then no white space (as
-    // JavaScript's \s), punctuation, or symbols.
+    // normalize() and .replace(/[\s\p{P}\p{S}]+/gu, " ").trim() on the server: NFKC, lowercase, then
+    // every run of white space (as JavaScript's \s), punctuation, or symbols as one space, none at the ends.
     let lowered = text.precomposedStringWithCompatibilityMapping.lowercased()
-    let kept = String(String.UnicodeScalarView(lowered.unicodeScalars.filter { !ignored($0) }))
+    var marked = String.UnicodeScalarView()
+    var broken = false
+    for scalar in lowered.unicodeScalars {
+      if ignored(scalar) {
+        broken = !marked.isEmpty
+      } else {
+        if broken { marked.append(" ") }
+        broken = false
+        marked.append(scalar)
+      }
+    }
+    let spaced = String(marked)
+    let kept = String(String.UnicodeScalarView(marked.filter { $0 != " " }))
     // The server counts code points.
     guard kept.unicodeScalars.count <= pointsBackMaxCharacters else { return false }
+    // FILLERS on the server: fillers count only with the break after them.
+    let fillers =
+      /^((ね[ーっぁぃぅぇぉえ]*|え[ーっぁぃぅぇぉえ]*(と[ーっぁぃぅぇぉお]*)?|あの[ーっぁぃぅぇぉおう]*|あ[ーっぁぃぅぇぉあ]*|う[ーっぁぃぅぇぉう]*ん[ーっ]*|は[ーっ]*い[ーっぁぃぅぇぉい]*|じゃ[ーっぁぃぅぇぉあ]*|で[ーっぁぃぅぇぉえ]*(も[ーっぁぃぅぇぉお]*)?|ちょ[ーっぁぃぅぇぉお]*と[ーっぁぃぅぇぉお]*)+ )*/
+    let afterFillers =
+      spaced.prefixMatch(of: fillers.matchingSemantics(.unicodeScalar)).map { spaced[$0.range.upperBound...] }
+      ?? spaced[...]
+    let rest = String(String.UnicodeScalarView(afterFillers.unicodeScalars.filter { $0 != " " }))
     // POINTS_BACK and NEW_TOPIC on the server, matched on code points as JavaScript's u flag does.
+    // The closed list at its head is for fillers with no break after them. Do not add words to it.
     let pointing =
       /^(ねえ|ねぇ|ねー|えーっと|えーと|えっと|ええと|えっ|えー|ええ|え|じゃあ|じゃ|でも|で|うーん|うん|はい|あのう|あのー|あのね|あの|あ|ちょっと)*((なに|何)?(それ|これ|あれ)|そう(なの|なん|か|です|でしょ|いう|$)|どうやる|どうやって|どうすれば|どうしたら|どういう|やり方|(この|その|あの)(やり方|方法|こと|件|やつ|操作|\p{Script=Han}\p{Script=Hiragana}?方))/
     let newTopic = /それより|それと|それから|ところで|別の|ほかの|他の/
-    return kept.contains(pointing.matchingSemantics(.unicodeScalar))
+    return rest.contains(pointing.matchingSemantics(.unicodeScalar))
       && !kept.contains(newTopic.matchingSemantics(.unicodeScalar))
   }
 

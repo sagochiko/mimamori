@@ -563,6 +563,82 @@ describe("the 5-minute watch", () => {
     expect((await authRow(f.owner.familyId))?.last_history_id).toBe("1002");
   });
 
+  it("does not queue again a mail queued before a failure in the same history record (#174)", async () => {
+    const f = await family();
+    const { box } = await grant(f.owner.familyId);
+    // One record carries two mails, as Gmail may when they arrive together.
+    for (const id of ["m1", "m2"]) box.messages.set(id, { id, from: SCAM_FROM, subject: SCAM_SUBJECT, body: SCAM_BODY });
+    box.records.push({ id: "1001", messageIds: ["m1", "m2"] });
+    box.historyId = "1001";
+    const sent: JudgeMessageBody[] = [];
+    let failNext = false;
+    const queue = {
+      send: async (body: JudgeMessageBody) => {
+        if (failNext) {
+          failNext = false;
+          throw new Error("queue down");
+        }
+        sent.push(body);
+        // The mail after the first one fails to go on the queue this tick.
+        if (sent.length === 1) failNext = true;
+      },
+    } as unknown as Queue;
+    const queueEnv = { ...pushEnv, JUDGE_QUEUE: queue } as Env;
+
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(sent).toHaveLength(1);
+    expect((await authRow(f.owner.familyId))?.last_history_id).toBe("1000");
+
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(sent).toHaveLength(2);
+    expect(calls.messages).toEqual(["m1", "m2", "m2"]);
+    expect((await authRow(f.owner.familyId))?.last_history_id).toBe("1001");
+
+    // The record is done; a later tick reads nothing again, and a new mail is read once.
+    deliver(box, { id: "m3", from: SCAM_FROM, subject: SCAM_SUBJECT, body: SCAM_BODY });
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(sent).toHaveLength(3);
+    expect(calls.messages).toEqual(["m1", "m2", "m2", "m3"]);
+  });
+
+  it("keeps what it handled in a record through a tick whose history call fails (#174)", async () => {
+    const f = await family();
+    const { box } = await grant(f.owner.familyId);
+    const ids = Array.from({ length: MESSAGES_PER_FAMILY + 1 }, (_, i) => `m${i}`);
+    for (const id of ids) box.messages.set(id, { id, from: SCAM_FROM, subject: SCAM_SUBJECT, body: SCAM_BODY });
+    box.records.push({ id: "1001", messageIds: ids });
+    box.historyId = "1001";
+    const { sent, queueEnv } = fakeQueue();
+
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(sent).toHaveLength(MESSAGES_PER_FAMILY);
+
+    network.use(http.get(`${GMAIL}/history`, () => HttpResponse.json({ error: { code: 503 } }, { status: 503 }), { once: true }));
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(sent).toHaveLength(MESSAGES_PER_FAMILY);
+
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(sent).toHaveLength(MESSAGES_PER_FAMILY + 1);
+    expect(calls.messages).toEqual(ids);
+  });
+
+  it("does not read again a mail read before the per-tick cap in the same history record (#174)", async () => {
+    const f = await family();
+    const { box } = await grant(f.owner.familyId);
+    const ids = Array.from({ length: MESSAGES_PER_FAMILY + 2 }, (_, i) => `m${i}`);
+    for (const id of ids) box.messages.set(id, { id, from: SCAM_FROM, subject: SCAM_SUBJECT, body: SCAM_BODY });
+    box.records.push({ id: "1001", messageIds: ids });
+    box.historyId = "1001";
+    const { sent, queueEnv } = fakeQueue();
+
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(sent).toHaveLength(MESSAGES_PER_FAMILY);
+    await watchGmail(queueEnv, Date.now(), new ExternalBudget());
+    expect(sent).toHaveLength(MESSAGES_PER_FAMILY + 2);
+    expect(calls.messages).toEqual(ids);
+    expect((await authRow(f.owner.familyId))?.last_history_id).toBe("1001");
+  });
+
   it("stops where the budget runs out and goes on from there on the next tick", async () => {
     const f = await family();
     const { box } = await grant(f.owner.familyId);
@@ -832,6 +908,53 @@ describe("reading one mail", () => {
     });
     expect(payload.sender).toBe("info@nta-refund.example");
     expect(payload.text).toBe("【国税庁】未納のお知らせ\n未納の税金があります。本日中にお支払いがない場合は差押えとなります");
+  });
+
+  // The sender is the addr-spec: the last <...> at the end of From, or the whole From when it is a
+  // bare address. A display name can say anything, an address in angle brackets included (#170).
+  describe("takes the sender from the address, not the display name", () => {
+    const senderOf = (from: string) =>
+      mailPayload({ mimeType: "text/plain", headers: [{ name: "From", value: from }], body: { data: b64url("本文") } })
+        .sender;
+
+    it.each([
+      ["a display name with an address in angle brackets", "Bank <info@bank.example> <scam@free-mail.example>", "scam@free-mail.example"],
+      ["a quoted display name with an address in angle brackets", '"Bank <info@bank.example>" <scam@free-mail.example>', "scam@free-mail.example"],
+      ["a quoted display name that is an address", '"info@bank.example" <scam@free-mail.example>', "scam@free-mail.example"],
+      ["a display name that is a bare address", "info@bank.example <scam@free-mail.example>", "scam@free-mail.example"],
+      ["a plain name-addr", "Bank <info@bank.example>", "info@bank.example"],
+      ["a bare address", "scam@free-mail.example", "scam@free-mail.example"],
+      ["a bare address with spaces around", "  scam@free-mail.example  ", "scam@free-mail.example"],
+      ["a quoted display name with a comma", '"Bank, Support" <scam@free-mail.example>', "scam@free-mail.example"],
+      ["a domain that ends with a dot", "<scam@free-mail.example.>", "scam@free-mail.example."],
+      ["a local part with ASCII symbols", "<scam+info.x_y@free-mail.example>", "scam+info.x_y@free-mail.example"],
+      ["an encoded-word display name", "=?UTF-8?B?PGluZm9AYmFuay5leGFtcGxlPg==?= <scam@free-mail.example>", "scam@free-mail.example"],
+    ])("%s", (_, from, sender) => {
+      expect(senderOf(from)).toBe(sender);
+    });
+
+    it.each([
+      ["an unclosed angle bracket after an address", "Bank <info@bank.example> <scam@free-mail.example"],
+      ["text after the last angle bracket", "<scam@free-mail.example> Bank <info@bank.example"],
+      ["a last angle bracket with no address", "Bank <info@bank.example> <broken>"],
+      ["an empty angle bracket", "Bank <info@bank.example> <>"],
+      ["a display name only", "Bank"],
+      ["two bare addresses", "info@bank.example scam@free-mail.example"],
+      ["two mailboxes", "<scam@free-mail.example>, <info@bank.example>"],
+      ["two quoted mailboxes", '"Shop" <scam@free-mail.example>, "Bank" <info@bank.example>'],
+      // An encoded word may only stand for a display name, so it is never decoded into an address.
+      ["an encoded word that decodes to an address", "<scam@free-mail.example> =?UTF-8?B?PGluZm9AYmFuay5leGFtcGxlPg==?="],
+      // Cut to the limit, this would read as an address at the made-up bank (#170).
+      // The rules read the domain as a URL host after NFKC, so these would read as the made-up bank.
+      ["a domain with a query mark", "Bank <scam@bank.example?x.free-mail.example>"],
+      ["a domain with a slash", "Bank <scam@bank.example/free-mail.example>"],
+      ["a domain with a hash", "Bank <scam@bank.example#free-mail.example>"],
+      ["a domain with a full-width at sign", "Bank <scam@free-mail.example＠bank.example>"],
+      ["a local part outside printable ASCII", "Bank <ｉｎｆｏ@free-mail.example>"],
+      ["an address longer than the queue keeps", `<${"a".repeat(487)}@bank.example.${"b".repeat(40)}.example>`],
+    ])("leaves out the sender for %s", (_, from) => {
+      expect(senderOf(from)).toBeUndefined();
+    });
   });
 
   it("keeps the text within what the queue carries", () => {

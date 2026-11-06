@@ -16,6 +16,7 @@
 // message is retried. Queues "offers at-least once delivery" (Workers, Storage options), so the same
 // body can come more than once, and the id it carries is what makes that harmless.
 
+import { startInvestigation, type ResearchInput } from "./agents";
 import { ExternalBudget } from "./budget";
 import { CaseNoticeDeferred, openCase } from "./cases";
 import {
@@ -29,9 +30,10 @@ import {
   type Level,
 } from "./claude";
 import { sendPush, type PushPayload } from "./push";
+import { dedupeDigest } from "./secretbox";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
 import { INJECTION } from "./rules/phrases";
-import { ownLines, quotes } from "./summary";
+import { carriesContact, ownLines, quotes } from "./summary";
 
 export interface JudgePayload {
   sender?: string;
@@ -58,6 +60,11 @@ export interface JudgeDeps {
   /** Opens the case and tells the family; throws CaseNoticeDeferred when the family was not told yet. */
   openCase(env: Env, alertId: string, budget: ExternalBudget): Promise<unknown>;
   now(): number;
+  /**
+   * Starts the research in the background for an alert that told the family (task 11). Left out, no
+   * research is started; the tests' fakes leave it out so they never reach Managed Agents.
+   */
+  investigate?(env: Env, alertId: string, input: ResearchInput, budget: ExternalBudget): Promise<boolean>;
 }
 
 export const defaultJudgeDeps: JudgeDeps = {
@@ -65,7 +72,11 @@ export const defaultJudgeDeps: JudgeDeps = {
   askClaude: (env, input, rule) => requestClaudeJudgment(env, input, rule),
   openCase,
   now: () => Date.now(),
+  investigate: (env, alertId, input, budget) => startInvestigation(env, alertId, input, budget),
 };
+
+/** Routes whose message the research may read: never a consultation or a call, which carry her words. */
+const RESEARCHED: readonly AlertSource[] = ["sms", "gmail", "page", "dns"];
 
 /** Queues messages can be 128 KB; the page route sends the first 5,000 characters too (task 8). */
 export const JUDGE_TEXT_MAX_CHARS = 5000;
@@ -158,10 +169,14 @@ function normalizeSender(sender: string | undefined): string | null {
   return s === "" ? null : s;
 }
 
-async function keyFor(familyId: string, kind: "sender" | "domain", value: string | null): Promise<string | null> {
+async function keyFor(
+  env: Env,
+  familyId: string,
+  kind: "sender" | "domain",
+  value: string | null,
+): Promise<string | null> {
   if (value === null) return null;
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${familyId}\n${kind}\n${value}`));
-  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+  return dedupeDigest(env.TOKEN_ENC_KEY, `${familyId}\n${kind}\n${value}`);
 }
 
 /**
@@ -191,7 +206,9 @@ export function summarize(job: JudgeJob, domain: string | null, rule: RuleResult
   const received = receivedOf(job);
   const own = (r: string) => r !== PLACEHOLDER_REASON && (rule.reasons.includes(r) || !quotes(r, received));
   const reason = [...reasons, ...rule.reasons].map((r) => r.trim()).find((r) => r !== "" && own(r));
-  return [SOURCE_LABELS[job.source], reason ?? "", domain ?? ""].filter((s) => s !== "").join(" ");
+  // The look-alike reason already names the domain ("公式に似せたドメイン x.example"); name it once (#100).
+  const named = domain !== null && reason !== undefined && reason.includes(domain);
+  return [SOURCE_LABELS[job.source], reason ?? "", named ? "" : (domain ?? "")].filter((s) => s !== "").join(" ");
 }
 
 interface Recipient {
@@ -214,8 +231,13 @@ interface Notice {
   checking: boolean;
 }
 
+/**
+ * "開かないで" and one reason. A reason with a phone number or an address in it is skipped, so the
+ * scam's callback number or fake site never reaches her as the app's own words (#53); with none
+ * left, the fixed line. The family's card keeps every reason as it was.
+ */
 function toMother(alertId: string, notice: Notice): PushPayload {
-  const reason = notice.reasons[0] ?? FALLBACK_REASON;
+  const reason = notice.reasons.find((r) => r.trim() !== "" && !carriesContact(r)) ?? FALLBACK_REASON;
   return {
     title: MOTHER_TITLE,
     body: notice.checking ? `${reason}\n${CHECKING}` : reason,
@@ -315,11 +337,18 @@ function storedReasons(text: string): string[] {
   }
 }
 
+/** A research to start once every notice of the batch went out (see handleJudgeBatch). */
+interface PendingResearch {
+  alertId: string;
+  input: ResearchInput;
+}
+
 async function judgeOne(
   env: Env,
   message: Message<unknown>,
   budget: ExternalBudget,
   deps: JudgeDeps,
+  research: PendingResearch[] = [],
 ): Promise<Outcome> {
   const job = parseJob(message.body);
   if (!job) {
@@ -378,8 +407,8 @@ async function judgeOne(
 
   const now = deps.now();
   const domain = normalizeDomain(job);
-  const senderKey = await keyFor(job.familyId, "sender", normalizeSender(job.payload.sender));
-  const domainKey = await keyFor(job.familyId, "domain", domain);
+  const senderKey = await keyFor(env, job.familyId, "sender", normalizeSender(job.payload.sender));
+  const domainKey = await keyFor(env, job.familyId, "domain", domain);
 
   // An SMS, a mail, or a page at level 3, and one no one decided (decideFor), leaves no row: these routes
   // send Claude most of what she receives or opens, and a row for each would keep a log of her inbox
@@ -387,11 +416,14 @@ async function judgeOne(
   if (level === 3 && QUIET_WHEN_UNDECIDED.includes(job.source)) return "done";
 
   // Levels 1 and 2 notify; a level-3 consultation is only kept (docs/design.md, データの扱い).
+  // An earlier alert counts for the one-an-hour rule only once its push reached the mother (or she has
+  // no device): her push is retried by the queue alone, and one she never got must not hold back the
+  // next (#53). The family may then be told twice about one sender; that is the cost chosen.
   let notify = level <= 2;
   if (notify && (senderKey !== null || domainKey !== null)) {
     const recent = await env.DB.prepare(
-      `SELECT 1 FROM alerts WHERE family_id = ? AND notified = 1 AND created_at > ? AND level <= ?
-         AND (sender_key = ? OR domain_key = ?) LIMIT 1`,
+      `SELECT 1 FROM alerts WHERE family_id = ? AND notified = 1 AND protected_notified_at IS NOT NULL
+         AND created_at > ? AND level <= ? AND (sender_key = ? OR domain_key = ?) LIMIT 1`,
     )
       .bind(job.familyId, now - DEDUPE_WINDOW_MS, level, senderKey, domainKey)
       .first();
@@ -422,7 +454,17 @@ async function judgeOne(
   if (inserted.meta.changes === 0 || !notify) return "done";
 
   const notice = { level, reasons, checking: decision.checking };
-  return finishNotices(env, alertId, notice, { mother: true, family: true }, members, budget, deps);
+  const outcome = await finishNotices(env, alertId, notice, { mother: true, family: true }, members, budget, deps);
+  // Only here, on the first delivery: the text is not in D1, so a redelivery cannot start it, and a
+  // research that is lost leaves the card as it is. It starts after the whole batch (handleJudgeBatch).
+  if (deps.investigate && RESEARCHED.includes(job.source)) {
+    const input: ResearchInput = { source: job.source };
+    if (job.payload.sender) input.sender = job.payload.sender;
+    if (domain) input.domain = domain;
+    if (job.payload.text) input.text = job.payload.text;
+    research.push({ alertId, input });
+  }
+  return outcome;
 }
 
 /**
@@ -435,14 +477,24 @@ export async function handleJudgeBatch(
   deps: JudgeDeps = defaultJudgeDeps,
 ): Promise<void> {
   const budget = new ExternalBudget();
+  const research: PendingResearch[] = [];
   for (const message of batch.messages) {
     try {
-      const outcome = await judgeOne(env, message, budget, deps);
+      const outcome = await judgeOne(env, message, budget, deps, research);
       if (outcome === "retry") message.retry({ delaySeconds: RETRY_DELAY_SECONDS });
       else message.ack();
     } catch (error) {
       console.error("judge failed", error instanceof Error ? error.name : typeof error);
       message.retry({ delaySeconds: RETRY_DELAY_SECONDS });
+    }
+  }
+  // The research comes last, with the tickets every notice of the batch left, so an extra on the card
+  // never sends a later notice of the same batch to a retry (review 1 of PR #183).
+  for (const { alertId, input } of research) {
+    try {
+      await deps.investigate?.(env, alertId, input, budget);
+    } catch (error) {
+      console.error("investigation failed", error instanceof Error ? error.name : typeof error);
     }
   }
 }
