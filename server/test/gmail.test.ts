@@ -1067,13 +1067,32 @@ describe("reading one mail", () => {
   it.each([
     ["a < in a quoted title", '<a title="1<2" href="https://nta-refund.example/pay">お支払い</a>'],
     ["a tag in a quoted value", '<a data-x="<b>" href="https://nta-refund.example/pay">お支払い</a>'],
-  ])("keeps the link in the text of an HTML-only mail whose <a> has %s, and none of the tag", (_, tag) => {
+  ])("keeps the link in the text of an HTML-only mail whose <a> has %s", (_, tag) => {
     const html = `<p>未納の税金があります。</p>${tag}<p>本日中にお支払いください。</p>`;
     const payload = mailPayload({ mimeType: "text/html", headers: [], body: { data: b64url(html) } });
     expect(payload.text).toContain("https://nta-refund.example/pay");
     expect(payload.text).toContain("お支払い");
     expect(payload.text).toContain("本日中にお支払いください");
-    expect(payload.text).not.toMatch(/title=|data-x=|href=/);
+    expect(payload.url).toBe("https://nta-refund.example/pay");
+  });
+
+  // A browser shows this text: a quote that is not where a value starts, or one that runs on to a
+  // later tag, must not take the text with it (review 3 of PR #250). Removing tags reads no quotes;
+  // a tag ends at its first ">".
+  it.each([
+    ["an = with no name", '<p =">未納の税金があります https://nta-refund.example/pay</p><p>">'],
+    ["a quote after a second =", '<p a=b=">未納の税金があります https://nta-refund.example/pay</p><p>">'],
+    ["a single quote after a second =", "<b c=d='>未納の税金があります https://nta-refund.example/pay</b><b>'>"],
+    ["a <br> with an = and a quote", '<br =">未納の税金があります https://nta-refund.example/pay<br>">'],
+    [
+      "a quote that runs on to a later tag",
+      '<span a=b="></span><div>未納の税金があります https://nta-refund.example/pay</div><span c=">">',
+    ],
+  ])("keeps the text and the link after %s", (_, html) => {
+    const payload = mailPayload({ mimeType: "text/html", headers: [], body: { data: b64url(html) } });
+    expect(payload.text).toContain("未納の税金があります");
+    expect(payload.text).toContain("https://nta-refund.example/pay");
+    expect(payload.url).toBe("https://nta-refund.example/pay");
   });
 
   it("keeps the text after a tag whose unquoted value has a lone quote", () => {

@@ -704,56 +704,15 @@ function dropBlocks(html: string): string {
   return out + html.slice(kept);
 }
 
-/**
- * Replaces each tag with a space. A tag ends at the first ">" outside quotes, so a "<" or ">" in a
- * quoted value stays inside it (review 2 of PR #250). As in HTML, a quote opens a value only right
- * after "=" (spaces between allowed), so the "'" of an unquoted Don't does not swallow the text after
- * the tag; and it counts only when the same quote comes again later in the mail. A "<" that meets another "<" outside quotes before any ">" is text, as the
- * pattern <[^<>]*> treated it, and reading goes on from that "<"; one with no ">" after it leaves the
- * rest as text. Every character is passed once, so the time stays linear in the length of the mail.
- */
-function dropTags(html: string): string {
-  const last = { '"': html.lastIndexOf('"'), "'": html.lastIndexOf("'") };
-  let out = "";
-  let i = 0;
-  while (i < html.length) {
-    const open = html.indexOf("<", i);
-    if (open === -1) break;
-    out += html.slice(i, open);
-    let j = open + 1;
-    let end = -1;
-    let before = "";
-    while (j < html.length) {
-      const c = html[j] ?? "";
-      if ((c === '"' || c === "'") && before === "=" && j < last[c]) {
-        j = html.indexOf(c, j + 1) + 1;
-        before = c;
-        continue;
-      }
-      if (!/\s/.test(c)) before = c;
-      if (c === ">") {
-        end = j;
-        break;
-      }
-      if (c === "<") break;
-      j += 1;
-    }
-    if (end !== -1) {
-      out += " ";
-      i = end + 1;
-    } else if (j < html.length) {
-      out += html.slice(open, j);
-      i = j;
-    } else {
-      out += html.slice(open);
-      i = html.length;
-    }
-  }
-  return out + html.slice(i);
-}
-
 function htmlToText(html: string): string {
-  return dropTags(dropBlocks(html).replace(/<br\s*\/?>|<\/(p|div|tr|li|h\d)>/gi, "\n"))
+  return dropBlocks(html)
+    .replace(/<br\s*\/?>|<\/(p|div|tr|li|h\d)>/gi, "\n")
+    // No quotes are read: a tag ends at its first ">" (review 3 of PR #250). Reading quotes let one
+    // that a browser does not take as a value (<p =">) remove text she sees. Some of a quoted value
+    // may stay in the text instead, which is the safer way to be wrong; the links in it are taken by
+    // anchorHrefs on its own. [^<>], not [^>]: a "<" that never closes is passed over at once instead
+    // of read to the end, so the time stays linear.
+    .replace(/<[^<>]*>/g, " ")
     .replace(/&nbsp;/gi, " ")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
