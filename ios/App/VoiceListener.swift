@@ -15,6 +15,9 @@ final class VoiceListener {
     case started
     case partial(String)
     case final(String)
+    /// How loud one buffer of the microphone's input was (root mean square, full scale 1), for the
+    /// dots of the recording field (#224). Used on the screen only; never kept or sent.
+    case level(Double)
     case failed(ConsultFailure)
   }
 
@@ -45,7 +48,12 @@ final class VoiceListener {
       request.requiresOnDeviceRecognition = true
       request.shouldReportPartialResults = true
       request.taskHint = .dictation
-      Self.feed(engine.inputNode, into: request)
+      Self.feed(engine.inputNode, into: request) { [weak self] rms in
+        Task { @MainActor in
+          guard let self, current == self.generation, self.task != nil else { return }
+          self.onEvent?(.level(rms))
+        }
+      }
       engine.prepare()
       try engine.start()
       self.request = request
@@ -65,6 +73,13 @@ final class VoiceListener {
   func stop() {
     stopAudio()
     request?.endAudio()
+  }
+
+  /// The trash button: ends the audio and the recognition at once, and drops whatever would still
+  /// come from them. A `start()` still waiting on the permission sheets stops at its next check.
+  func cancel() {
+    generation += 1
+    teardown()
   }
 
   private func handle(text: String?, isFinal: Bool, failed: Bool, generation current: Int) {
@@ -104,13 +119,24 @@ final class VoiceListener {
   // functions so they do not inherit the main actor, which Swift 6 would check at run time.
 
   nonisolated private static func feed(
-    _ input: AVAudioInputNode, into request: SFSpeechAudioBufferRecognitionRequest
+    _ input: AVAudioInputNode, into request: SFSpeechAudioBufferRecognitionRequest,
+    level: @escaping @Sendable (Double) -> Void
   ) {
     nonisolated(unsafe) let request = request
     input.installTap(onBus: 0, bufferSize: 1024, format: input.outputFormat(forBus: 0)) {
       buffer, _ in
       request.append(buffer)
+      level(rms(of: buffer))
     }
+  }
+
+  /// The root mean square of the first channel. The samples stay here; only this one number leaves.
+  nonisolated private static func rms(of buffer: AVAudioPCMBuffer) -> Double {
+    guard let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return 0 }
+    let count = Int(buffer.frameLength)
+    var sum: Float = 0
+    for i in 0..<count { sum += samples[i] * samples[i] }
+    return Double((sum / Float(count)).squareRoot())
   }
 
   nonisolated private static func recognize(

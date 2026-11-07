@@ -43,6 +43,10 @@
     /// With `-mimamori-stub-camera-hold`, the stand-in camera never "sees" the smile, so the camera
     /// screen itself can be shot.
     static var cameraHold: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-camera-hold") }
+    /// `-mimamori-stub-listening`: the microphone is pressed at launch and keeps "listening" (no
+    /// microphone, no silence stop), so the recording field (#224) can be shot and its trash, stop, and
+    /// send pressed. With `-mimamori-stub-heard <text>`, that text is what was heard so far.
+    static var listening: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-listening") }
     /// `-mimamori-stub-settings-open`: her settings screen (#222) is open at launch.
     static var settingsOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-settings-open") }
     /// The stub keeps the key in memory, so the real marker file is left alone.
