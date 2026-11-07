@@ -662,6 +662,7 @@ export function parseClaudeConsult(value: unknown): ClaudeConsult | null {
 export type ParseFailure =
   | "schema"
   | "too_many_reasons"
+  | "reason_too_long"
   | "empty_action"
   | "action_too_long"
   | "http"
@@ -672,8 +673,7 @@ export type ParseFailure =
 
 /**
  * parseClaudeConsult with the reason it dropped an answer. Since the eval after #251 it keeps what is safe
- * to keep: a reason over the limit is dropped alone (reasons only go to the family's card, cut there
- * anyway), a basis over the limit becomes empty (it is only read at level 3, and an empty one is not), and
+ * to keep: on a scam answer a reason over the limit is dropped alone (reasons only go to the family's card), a basis over the limit becomes empty (it is only read at level 3, and an empty one is not), and
  * a scam answer may have an empty action (it is never read at 1 and 2; at level 3 lowConcernWords leaves
  * it out and the fixed line stands). Phone help with an empty action still needs a search query, and an
  * action over the limit still drops the answer: that is what she would hear.
@@ -695,6 +695,12 @@ export function readClaudeConsult(value: unknown): { answer: ClaudeConsult } | {
   if (reasons.length > MAX_REASONS) return { failure: "too_many_reasons" };
   if (typeof basis !== "string" || typeof action !== "string") return schema;
   if (chars(action) > ACTION_MAX_CHARS) return { failure: "action_too_long" };
+  // On phone help a reason over the limit drops the answer as before: the nets on an image read Claude's
+  // reasons (claudeLines, guidedLines, guidesContact), and a reason dropped here would be one they never
+  // see (review 1 of PR #255). Only a scam answer, whose reasons only go to the family's card, loses it alone.
+  if (kind === "help" && (reasons as string[]).some((r) => chars(r) > REASON_MAX_CHARS)) {
+    return { failure: "reason_too_long" };
+  }
   // An empty action on phone help only with a search query: Claude leaves the answer to the second call
   // (#251, the production check of 2026-11-07, where such an answer was dropped and the family told).
   if (kind === "help" && action.trim() === "" && (typeof searchQuery !== "string" || searchQuery.trim() === "")) {
@@ -769,8 +775,12 @@ export async function requestClaudeConsult(
   } catch {
     return fail("network");
   }
+  // A body that is not an object, or content that is not a list, is no answer: never a throw (review 1
+  // of PR #255).
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return fail("no_text");
   if (body.stop_reason !== "end_turn") return fail("stop_reason");
-  const answer = body.content?.find((block) => block.type === "text")?.text;
+  if (!Array.isArray(body.content)) return fail("no_text");
+  const answer = body.content.find((block) => typeof block === "object" && block !== null && block.type === "text")?.text;
   if (typeof answer !== "string") return fail("no_text");
   let value: unknown;
   try {

@@ -28,6 +28,7 @@ import {
   HANDOFF_REPLY,
   pointsBack,
   readClaudeConsult,
+  requestClaudeConsult,
   saysNothing,
 } from "../src/consult-judge";
 import { resetApnsJwtCache } from "../src/push";
@@ -4347,5 +4348,24 @@ describe("what the parser keeps and why it drops (#251)", () => {
     ["schema", null],
   ])("names the failure %s", (name, value) => {
     expect(readClaudeConsult(value)).toEqual({ failure: name });
+  });
+});
+
+// Review 1 of PR #255: the request names what went wrong, and never throws on a strange body.
+describe("why the consultation request gave nothing (review 1 of PR #255)", () => {
+  const rule: RuleResult = { level: null, reasons: [], confident: false };
+  const env1 = { ANTHROPIC_API_KEY: "test" };
+
+  it.each([
+    ["http", () => new HttpResponse(null, { status: 529 })],
+    ["json", () => HttpResponse.json({ stop_reason: "end_turn", content: [{ type: "text", text: "{not json" }] })],
+    ["no_text", () => HttpResponse.json(null)],
+    ["no_text", () => HttpResponse.json({ stop_reason: "end_turn", content: "x" })],
+  ] as const)("names %s and returns null", async (name, reply) => {
+    network.use(http.post(MESSAGES_URL, reply));
+    const failures: string[] = [];
+    const answer = await requestClaudeConsult(env1, "Wi-Fi", rule, [], undefined, undefined, [], (f) => failures.push(f));
+    expect(answer).toBeNull();
+    expect(failures).toEqual([name]);
   });
 });

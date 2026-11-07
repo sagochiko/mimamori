@@ -645,3 +645,23 @@ describe("what the judge's parser keeps and why it drops (#251)", () => {
     expect(readClaudeJudgment(value)).toEqual({ failure: name });
   });
 });
+
+// Review 1 of PR #255: the judge's request names what went wrong, and never throws on a strange body.
+describe("why the judge's request gave nothing (review 1 of PR #255)", () => {
+  const rule: RuleResult = { level: null, reasons: [], confident: false };
+
+  it.each([
+    ["http", () => new HttpResponse(null, { status: 529 })],
+    ["json", () => HttpResponse.json({ stop_reason: "end_turn", content: [{ type: "text", text: "{not json" }] })],
+    ["no_text", () => HttpResponse.json(null)],
+    ["no_text", () => HttpResponse.json({ stop_reason: "end_turn", content: "x" })],
+  ] as const)("names %s and returns null", async (name, reply) => {
+    network.use(http.post("https://api.anthropic.com/v1/messages", reply));
+    const failures: string[] = [];
+    const answer = await requestClaudeJudgment({ ANTHROPIC_API_KEY: "test" }, { source: "sms", text: "x" }, rule, undefined, (f) =>
+      failures.push(f),
+    );
+    expect(answer).toBeNull();
+    expect(failures).toEqual([name]);
+  });
+});

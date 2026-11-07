@@ -432,8 +432,12 @@ export async function requestClaudeJudgment(
   } catch {
     return fail("network");
   }
+  // A body that is not an object, or content that is not a list, is no answer: never a throw (review 1
+  // of PR #255).
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return fail("no_text");
   if (body.stop_reason !== "end_turn") return fail("stop_reason");
-  const text = body.content?.find((block) => block.type === "text")?.text;
+  if (!Array.isArray(body.content)) return fail("no_text");
+  const text = body.content.find((block) => typeof block === "object" && block !== null && block.type === "text")?.text;
   if (typeof text !== "string") return fail("no_text");
   let value: unknown;
   try {
