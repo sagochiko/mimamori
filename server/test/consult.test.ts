@@ -21,7 +21,7 @@ import {
   type ConsultDeps,
   type ConsultTurn,
 } from "../src/consult";
-import { ASK_PICTURE_REPLY, pointsBack, saysNothing } from "../src/consult-judge";
+import { ASK_PICTURE_REPLY, ASK_SCREEN_REPLY, pointsBack, saysNothing } from "../src/consult-judge";
 import { resetApnsJwtCache } from "../src/push";
 import { judgeByRules, type RuleInput, type RuleResult } from "../src/rules";
 import { MONEY_MOVE, POLICE_SCRIPT } from "../src/rules/phrases";
@@ -3987,5 +3987,62 @@ describe("words that do not go on with the script told before (#219)", () => {
     ["😊", false],
   ] as const)("reads %s as saying nothing: %s", (text, expected) => {
     expect(saysNothing(text)).toBe(expected);
+  });
+});
+
+// #251: a screen the AI has not seen is asked for, not handed to the family or guessed at.
+describe("a screen the AI has not seen (#251)", () => {
+  const UNKNOWN_APP = "町内会のアプリで回覧板を読むにはどうするの";
+  // What Claude did on the author's iPhone: a handoff for an app it does not know.
+  const unseen = (over: Partial<ClaudeConsult> = {}) =>
+    help({ action: "そのアプリの画面が分からないので、家族と一緒にやろう", handoff: true, needs_screen: true, topic: "アプリの使い方の相談", ...over });
+
+  it("asks for a picture of the screen and tells no one", async () => {
+    const fam = await setupFamily();
+    const answer = await consult(consultEnv, motherOf(fam), UNKNOWN_APP, new ExternalBudget(), fakes(unseen()));
+    expect(answer.reply).toBe(ASK_SCREEN_REPLY);
+    expect(answer.handoff).toBe(false);
+    expect(familyPushes(fam)).toHaveLength(0);
+    expect(await casesOf(fam.familyId)).toHaveLength(0);
+    // Written down at level 3 with no notice, so the family can look later.
+    const alerts = await alertsOf(fam.familyId);
+    expect(alerts.map((a) => [a.level, a.notified])).toEqual([[3, 0]]);
+  });
+
+  it("asks for it without a handoff too, and reads none of Claude's guessed steps", async () => {
+    const judged = await judgeConsult(UNKNOWN_APP, [], async () =>
+      unseen({ handoff: false, action: "右下の「回覧」ボタンを押して、「既読にする」を選んでね" }),
+    );
+    expect(judged.reply).toBe(ASK_SCREEN_REPLY);
+    expect(judged.toFamily).toBe(false);
+    expect(judged.record).toBe(true);
+  });
+
+  it("guides from the screen when she sent one", async () => {
+    const action = "画面の右下の「回覧」を押すと読めるよ";
+    const judged = await judgeConsult(UNKNOWN_APP, [], async () => unseen({ handoff: false, action }), judgeByRules, true);
+    expect(judged.reply).toBe(action);
+    expect(judged.toFamily).toBe(false);
+  });
+
+  it.each([
+    ["a topic the AI does not guide", "このアプリで振込のやり方を教えて", unseen()],
+    ["a sign of a scam", "このアプリを入れろって警察から電話があった", unseen({ kind: "scam", level: 2, handoff: false })],
+  ])("still goes to the family on %s", async (_label, text, said) => {
+    const judged = await judgeConsult(text, [], async () => said);
+    expect(judged.reply).not.toBe(ASK_SCREEN_REPLY);
+    expect(judged.toFamily).toBe(true);
+  });
+
+  it("asks the prompt not to make up names on a screen it has not seen", () => {
+    const { system } = buildConsultRequest(UNKNOWN_APP, judgeByRules({ source: "consult", text: UNKNOWN_APP }));
+    expect(system).toContain("needs_screen");
+    expect(system).toMatch(/見ていない画面.*(ボタン|欄).*名前/);
+  });
+
+  it("parses needs_screen and keeps an answer without it", () => {
+    expect(parseClaudeConsult({ ...help(), needs_screen: true })?.needs_screen).toBe(true);
+    expect(parseClaudeConsult(help())).toEqual(help());
+    expect(parseClaudeConsult({ ...help(), needs_screen: "yes" })).toBeNull();
   });
 });
