@@ -41,6 +41,18 @@ public enum ShareConsult {
     return "\(trimmed)。\(askNext)"
   }
 
+  /// What the server answers to an image with no words when it asks what she wants
+  /// (server/src/consult-judge.ts, ASK_PICTURE_REPLY, #234).
+  public static let askPicture = "この画面で何をしたい?"
+  /// The share sheet has no field to answer in, so there she is sent to the app (review 1 of PR #237).
+  public static let askInApp = "みまもりを開いて何をしたいか教えてね"
+
+  /// The answer as the share extension shows it: `reply(for:)`, with the server's question about an
+  /// image alone put as `askInApp`. The server's answer itself is unchanged.
+  public static func extensionReply(for answer: ConsultAnswer) -> String {
+    answer.reply == askPicture ? askInApp : reply(for: answer)
+  }
+
   /// Where the circle goes on the image she shared, or nil when there is none or it is off the image.
   public static func circle(for answer: ConsultAnswer, sent: PixelSize, original: PixelSize) -> PixelPoint? {
     guard let tap = answer.tap else { return nil }

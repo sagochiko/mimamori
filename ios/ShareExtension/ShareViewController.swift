@@ -71,7 +71,7 @@ final class ShareModel {
     let client = APIClient(baseURL: base, store: KeychainDeviceKeyStore())
     do {
       let answer = try await client.consult(image: image)
-      phase = .answered(reply: ShareConsult.reply(for: answer), circle: picture.circle(for: answer))
+      phase = .answered(reply: ShareConsult.extensionReply(for: answer), circle: picture.circle(for: answer))
     } catch {
       phase = .failed
     }

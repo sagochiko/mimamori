@@ -210,9 +210,11 @@ public struct VoiceConsult: Sendable {
     }
   }
 
-  /// Whether the send button sends now: an image on the field, or words in it (#234).
+  /// Whether the send button sends now: words in the field, with or without an image (#234). An image
+  /// alone does not go from the app: the server would ask what she wants, and her answer would come
+  /// without the image (review 1 of PR #237).
   public func canSend(draft: String) -> Bool {
-    acceptsText && (hasPicture || !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    acceptsText && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
   /// She picked an image with the photo button: it waits on the field instead of going at once, so she
@@ -231,9 +233,9 @@ public struct VoiceConsult: Sendable {
   }
 
   /// She typed and pressed send. Sent as it is (trimmed, at most `maxCharacters`); never read aloud.
-  /// With an image on the field, the image goes with the words, which may be none.
+  /// With an image on the field, the image goes with the words. Nothing goes without words.
   public mutating func typed(_ text: String, at now: Date) -> [ConsultEffect] {
-    guard acceptsText else { return [] }
+    guard canSend(draft: text) else { return [] }
     if hasPicture { return pictured(text, at: now) }
     let said = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.maxCharacters))
     guard !said.isEmpty else { return [] }

@@ -35,6 +35,22 @@ struct ShareConsultTests {
     #expect(ShareConsult.reply(for: answer) == "丸のところを押して。押せたらもう一度見せて")
   }
 
+  @Test("拡張では、画像だけへの聞き返しをアプリで話してもらう1行に言い換える")
+  func extensionRewordsAsk() {
+    let ask = ConsultAnswer(reply: "この画面で何をしたい?", speak: "この画面で何をしたい?", tap: nil, handoff: false)
+    #expect(ShareConsult.extensionReply(for: ask) == "みまもりを開いて何をしたいか教えてね")
+    // In the app's chat the line stays as it is.
+    #expect(ShareConsult.reply(for: ask) == "この画面で何をしたい?")
+  }
+
+  @Test("拡張でも、聞き返し以外の答えは今までどおり")
+  func extensionKeepsOthers() {
+    let circled = ConsultAnswer(reply: "丸のところを押して", speak: "丸のところを押して", tap: .init(x: 1, y: 2), handoff: false)
+    #expect(ShareConsult.extensionReply(for: circled) == ShareConsult.reply(for: circled))
+    let warned = ConsultAnswer(reply: "家族に伝えました", speak: "家族に伝えました", tap: nil, handoff: true)
+    #expect(ShareConsult.extensionReply(for: warned) == "家族に伝えました")
+  }
+
   @Test("丸が無ければ答えのまま")
   func noCircle() {
     let answer = ConsultAnswer(reply: "家族に伝えました", speak: "家族に伝えました", tap: nil, handoff: true)
