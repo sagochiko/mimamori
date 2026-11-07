@@ -15,8 +15,8 @@ struct DemoView: View {
     ScrollViewReader { proxy in
       ScrollView {
         VStack(alignment: .leading, spacing: 20) {
-          // After "大丈夫" her screen has nothing left to show, so no empty frame.
-          if tour.step != .fine {
+          // After "わかった" her screen has nothing left to show, so no empty frame.
+          if tour.step != .acknowledged {
             DemoSection(tag: "母", hint: "見守られる人のiPhoneに出る画面です") { motherScreen }
           }
           if let item = tour.familyCase {
@@ -59,7 +59,7 @@ struct DemoView: View {
   private var motherScreen: some View {
     VStack(spacing: 16) {
       if let prompt = tour.prompt {
-        FollowUpView(prompt: prompt) { withAnimation { tour.fine() } }
+        FollowUpView(prompt: prompt) { withAnimation { tour.acknowledge() } }
       }
       let notices = tour.protectedNotices(now: .now)
       if !notices.isEmpty {

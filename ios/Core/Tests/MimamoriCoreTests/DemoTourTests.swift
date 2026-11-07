@@ -31,14 +31,21 @@ private let start = Date(timeIntervalSince1970: 1_793_000_000)
     #expect(!tour.canChoose)
   }
 
-  @Test func fineTellsNoOne() {
+  @Test func theFollowUpIsNotAQuestion() {
+    // The tour shows her screen's line as it is (#123): nothing on it asks for a "yes" or "no".
+    let prompt = DemoTour().prompt ?? ""
+    #expect(!prompt.contains("？"))
+    #expect(!prompt.contains("?"))
+  }
+
+  @Test func closingTellsNoOne() {
     var tour = DemoTour()
-    tour.fine()
+    tour.acknowledge()
     #expect(tour.prompt == nil)
     #expect(tour.familyCase == nil)
     #expect(tour.familyPush == nil)
     #expect(tour.isFinished)
-    // Nothing can be consulted after "大丈夫" without starting over.
+    // Nothing can be consulted after "わかった" without starting over.
     tour.consult(at: start)
     #expect(tour.familyCase == nil)
   }
