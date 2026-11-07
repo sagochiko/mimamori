@@ -34,7 +34,7 @@ final class AppModel {
   /// The screenshot she picked with the photo button, waiting on the field to go with her words
   /// (#234). In memory only, like `shownPicture`.
   private(set) var attachedPicture: ConsultPicture?
-  /// "さっきの電話、大丈夫だった？" while a long call waits for an answer.
+  /// `CallFollowUp.prompt` after a long call, until she closes it or starts talking.
   private(set) var followUpPrompt: String?
   /// "iPhoneの空きが残り0.8GB。一緒に空けよう" while free space is low (#19). The amount is read on
   /// this iPhone for this line only and never sent.
@@ -87,6 +87,9 @@ final class AppModel {
       isProtectedDataAvailable: { UIApplication.shared.isProtectedDataAvailable })
     self.session = session
     self.route = session.route
+    #if DEBUG
+      if DebugLaunch.followUpReset { followUp.resetDailyLimit() }
+    #endif
     session.onRouteChange = { [weak self] route in
       self?.route = route
       if route == .chooseRole {
@@ -645,9 +648,9 @@ final class AppModel {
     followUpPrompt = followUp.promptToShow(at: .now)
   }
 
-  /// "大丈夫": nothing else happens.
-  func followUpFine() {
-    followUp.answeredFine()
+  /// "わかった": the prompt closes and nothing else happens.
+  func followUpAcknowledged() {
+    followUp.acknowledged()
     followUpPrompt = nil
   }
 

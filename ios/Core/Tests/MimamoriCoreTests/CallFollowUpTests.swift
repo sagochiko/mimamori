@@ -37,12 +37,111 @@ struct CallFollowUpTests {
     #expect(store.load() == CallFollowUpState())
   }
 
-  @Test("3分以上の通話が終わったら1回だけ通知で聞く")
+  @Test("3分以上の通話が終わったら1回だけ通知で声をかける")
   func longCallAsksOnce() {
     let (followUp, _) = make()
     #expect(followUp.callEnded(Self.call(minutes: 3)) == .notifyNow)
-    #expect(CallFollowUp.prompt == "さっきの電話、大丈夫だった？")
     #expect(followUp.promptToShow(at: Self.at(15, 1)) == CallFollowUp.prompt)
+  }
+
+  @Test("声かけは問いかけにしない(2026年11月7日に作者が決めた、#123)")
+  func promptIsNotAQuestion() {
+    #expect(CallFollowUp.prompt == "知らない人や勧誘の電話で困ったら教えてね")
+    #expect(!CallFollowUp.prompt.contains("？"))
+    #expect(!CallFollowUp.prompt.contains("?"))
+    // A short line on her screen carries no joining comma (CLAUDE.md, the copy rules).
+    #expect(!CallFollowUp.prompt.contains("、"))
+  }
+
+  @Test("同じ日の2本目の長い通話のあとは声をかけない(1日1回まで)")
+  func onceADay() {
+    let (followUp, store) = make()
+    #expect(followUp.callEnded(Self.call("c1", minutes: 5, endedAt: Self.at(11))) == .notifyNow)
+    let afterFirst = store.load()
+    #expect(followUp.callEnded(Self.call("c2", minutes: 30, endedAt: Self.at(21, 59))) == .nothing)
+    // The skipped call changes nothing: the first prompt still waits, and the day it was asked stays.
+    #expect(store.load() == afterFirst)
+    #expect(followUp.promptToShow(at: Self.at(22)) == CallFollowUp.prompt)
+  }
+
+  @Test("声かけを閉じたあとでも、同じ日の次の通話では声をかけない")
+  func onceADayEvenAfterClosing() {
+    let (followUp, _) = make()
+    _ = followUp.callEnded(Self.call("c1", minutes: 5, endedAt: Self.at(9)))
+    followUp.acknowledged()
+    #expect(followUp.callEnded(Self.call("c2", minutes: 5, endedAt: Self.at(16))) == .nothing)
+    #expect(followUp.promptToShow(at: Self.at(16, 1)) == nil)
+  }
+
+  @Test("夜に残した声かけもその日の1回に数える")
+  func nightPromptCountsForThatDay() {
+    let (followUp, _) = make()
+    #expect(followUp.callEnded(Self.call("c1", minutes: 5, endedAt: Self.at(0, 30))) == .askOnNextOpen)
+    #expect(followUp.callEnded(Self.call("c2", minutes: 5, endedAt: Self.at(15))) == .nothing)
+  }
+
+  @Test("アプリと同じ順(通話の終わりのすぐあとに画面へ出す)で、夜の声かけは消えたあともその日の1回に数える")
+  func nightPromptShownAtOnceCountsForThatDay() {
+    let (followUp, _) = make()
+    let ended = Self.at(0, 30)
+    // AppModel.callEnded calls refreshFollowUp right after: the end of a call is only heard while
+    // the app is in front, so the prompt is on her screen at that moment.
+    #expect(followUp.callEnded(Self.call("c1", minutes: 5, endedAt: ended)) == .askOnNextOpen)
+    #expect(followUp.promptToShow(at: ended) == CallFollowUp.prompt)
+    #expect(followUp.promptToShow(at: Self.at(12, 31)) == nil)
+    #expect(followUp.callEnded(Self.call("c2", minutes: 5, endedAt: Self.at(15))) == .nothing)
+  }
+
+  @Test("日付が変われば、23時59分のあとの0時1分の通話でもまた声をかける")
+  func newDayAtMidnight() {
+    let (followUp, _) = make()
+    #expect(followUp.callEnded(Self.call("c1", minutes: 5, endedAt: Self.at(23, 59))) == .askOnNextOpen)
+    // 0:01 is in the quiet hours, so it waits on her screen rather than notifying.
+    #expect(
+      followUp.callEnded(Self.call("c2", minutes: 5, endedAt: Self.at(0, 1, day: 5))) == .askOnNextOpen)
+    #expect(followUp.callEnded(Self.call("c3", minutes: 5, endedAt: Self.at(15, day: 5))) == .nothing)
+  }
+
+  @Test("1日1回の記録だけを消すと、同じ日の次の通話でもまた声をかける(デモを撮り直す Debug の起動の引数)")
+  func resetDailyLimitAllowsAnotherToday() {
+    let (followUp, store) = make()
+    #expect(followUp.callEnded(Self.call("c1", minutes: 5, endedAt: Self.at(10))) == .notifyNow)
+    #expect(followUp.callEnded(Self.call("c2", minutes: 5, endedAt: Self.at(11))) == .nothing)
+
+    followUp.resetDailyLimit()
+
+    let state = store.load()
+    #expect(state.lastAskedAt == nil)
+    // Only the day's record goes: the calls already asked about and the waiting prompt stay.
+    #expect(state.handled == ["c1"])
+    #expect(state.pendingCallId == "c1")
+    #expect(followUp.callEnded(Self.call("c1", minutes: 5, endedAt: Self.at(12))) == .nothing)
+    #expect(followUp.callEnded(Self.call("c3", minutes: 5, endedAt: Self.at(12))) == .notifyNow)
+    #expect(followUp.callEnded(Self.call("c4", minutes: 5, endedAt: Self.at(13))) == .nothing)
+  }
+
+  @Test("次の日の同じ時刻なら、また通知で声をかける")
+  func nextDaySameHour() {
+    let (followUp, _) = make()
+    #expect(followUp.callEnded(Self.call("c1", minutes: 5, endedAt: Self.at(15))) == .notifyNow)
+    #expect(followUp.callEnded(Self.call("c2", minutes: 5, endedAt: Self.at(15, day: 5))) == .notifyNow)
+  }
+
+  @Test("1日の区切りは端末の暦で数える(東京の0時は UTC では前の日)")
+  func dayFollowsTheDeviceCalendar() {
+    var utc = Calendar(identifier: .gregorian)
+    utc.timeZone = TimeZone(identifier: "UTC")!
+    // 東京の23時59分と次の日の0時1分は、UTC ではどちらも同じ日の14時台になる。
+    let first = Self.call("c1", minutes: 5, endedAt: Self.at(23, 59))
+    let second = Self.call("c2", minutes: 5, endedAt: Self.at(0, 1, day: 5))
+
+    let inUTC = CallFollowUp(store: InMemoryCallFollowUpStore(), calendar: utc)
+    #expect(inUTC.callEnded(first) == .notifyNow)
+    #expect(inUTC.callEnded(second) == .nothing)
+
+    let (inTokyo, _) = make()
+    #expect(inTokyo.callEnded(first) != .nothing)
+    #expect(inTokyo.callEnded(second) != .nothing)
   }
 
   @Test("3分未満なら聞かない")
@@ -70,15 +169,16 @@ struct CallFollowUpTests {
   func sameCallOnce() {
     let (followUp, _) = make()
     #expect(followUp.callEnded(Self.call(minutes: 10)) == .notifyNow)
-    #expect(followUp.callEnded(Self.call(minutes: 10, endedAt: Self.at(15, 1))) == .nothing)
+    // The next day, so only the call's own id keeps it from being asked about again.
+    #expect(followUp.callEnded(Self.call(minutes: 10, endedAt: Self.at(15, day: 5))) == .nothing)
   }
 
-  @Test("別の通話ならまた聞く")
+  @Test("別の日の別の通話ならまた声をかける")
   func anotherCallAsks() {
     let (followUp, _) = make()
     _ = followUp.callEnded(Self.call("c1", minutes: 5))
-    followUp.answeredFine()
-    #expect(followUp.callEnded(Self.call("c2", minutes: 5, endedAt: Self.at(16))) == .notifyNow)
+    followUp.acknowledged()
+    #expect(followUp.callEnded(Self.call("c2", minutes: 5, endedAt: Self.at(16, day: 5))) == .notifyNow)
   }
 
   @Test("夜22時から朝7時は通知を出さず、次にアプリを開いたときに聞く", arguments: [(22, 0), (23, 30), (0, 0), (6, 59)])
@@ -96,11 +196,11 @@ struct CallFollowUpTests {
       followUp.callEnded(Self.call(minutes: 20, endedAt: Self.at(hour, minute))) == .notifyNow)
   }
 
-  @Test("「大丈夫」を押したら何もしない(もう聞かず、相談も家族への知らせもしない)")
-  func fineDoesNothing() {
+  @Test("「わかった」を押したら閉じるだけ(もう出さず、相談も家族への知らせもしない)")
+  func acknowledgedDoesNothing() {
     let (followUp, _) = make()
     _ = followUp.callEnded(Self.call(minutes: 5))
-    followUp.answeredFine()
+    followUp.acknowledged()
     #expect(followUp.promptToShow(at: Self.at(15, 1)) == nil)
     #expect(followUp.callEnded(Self.call(minutes: 5)) == .nothing)
   }
@@ -113,7 +213,7 @@ struct CallFollowUpTests {
     #expect(followUp.promptToShow(at: Self.at(15, 1)) == nil)
   }
 
-  @Test("12時間たった声かけは出さない(「さっきの電話」と言えなくなる)")
+  @Test("12時間たった声かけは出さない(電話から時間がたつと声かけの意味が薄れる)")
   func oldPromptExpires() {
     let (followUp, _) = make()
     _ = followUp.callEnded(Self.call(minutes: 5, endedAt: Self.at(23)))
@@ -128,15 +228,18 @@ struct CallFollowUpTests {
       Self.call(minutes: 5, endedAt: Self.at(23)))
     let reopened = CallFollowUp(store: store, calendar: Self.tokyo)
     #expect(reopened.promptToShow(at: Self.at(8, day: 5)) == CallFollowUp.prompt)
-    #expect(reopened.callEnded(Self.call(minutes: 5, endedAt: Self.at(23))) == .nothing)
+    #expect(reopened.callEnded(Self.call(minutes: 5, endedAt: Self.at(23, day: 5))) == .nothing)
   }
 
   @Test("覚える通話の数には上限がある")
   func remembersBoundedNumber() {
     let (followUp, store) = make()
+    // One call a day, so each one is asked about and remembered (only one a day is, #123).
     for i in 0..<200 {
-      _ = followUp.callEnded(
-        Self.call("c\(i)", minutes: 5, endedAt: Self.at(15).addingTimeInterval(Double(i))))
+      #expect(
+        followUp.callEnded(
+          Self.call("c\(i)", minutes: 5, endedAt: Self.at(15).addingTimeInterval(Double(i) * 86_400)))
+          == .notifyNow)
     }
     #expect(store.load().handled.count <= CallFollowUp.remembered)
   }

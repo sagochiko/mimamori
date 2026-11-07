@@ -1,6 +1,8 @@
 import Foundation
 
-// "さっきの電話、大丈夫だった？" after a long call ("検知" and "アプリからの声かけ" in docs/design.md).
+// "知らない人や勧誘の電話で困ったら教えてね" after a long call, at most once a day ("検知" and
+// "アプリからの声かけ" in docs/design.md). Not a question: on 2026年11月7日 the author found a question
+// after every call too much for her (#123).
 //
 // Only the rules live here. On the author's iPhone 16 (iOS 27.2) CXCallObserver reported the end of a
 // call only while the app was in front, not after going home or being swiped away (#25, 2026年11月5日).
@@ -23,7 +25,7 @@ public struct EndedCall: Equatable, Sendable {
 
 /// What to do right after a call ended.
 public enum FollowUpAction: Equatable, Sendable {
-  /// Short call, or this call was already asked about.
+  /// Short call, this call was already asked about, or a call was already asked about that day.
   case nothing
   /// A local notification now, and the prompt on her screen.
   case notifyNow
@@ -62,14 +64,14 @@ public final class InMemoryCallFollowUpStore: CallFollowUpStore, @unchecked Send
 }
 
 public final class CallFollowUp: @unchecked Sendable {
-  public static let prompt = "さっきの電話、大丈夫だった？"
+  public static let prompt = "知らない人や勧誘の電話で困ったら教えてね"
   /// Calls shorter than this are not asked about. Release builds always use this; a Debug launch
   /// argument can pass a shorter one to the initializer, to film the demo with a short call.
   public static let minimumDuration: TimeInterval = 3 * 60
   /// No notification from 22:00 up to 7:00, device time.
   static let quietFrom = 22
   static let quietUntil = 7
-  /// After this, "さっきの電話" no longer makes sense, so the prompt is dropped.
+  /// After this the prompt is too far from the call to mean anything, so it is dropped.
   public static let promptLifetime: TimeInterval = 12 * 3600
   /// Call ids kept, so the stored list does not grow without end.
   public static let remembered = 50
@@ -88,12 +90,19 @@ public final class CallFollowUp: @unchecked Sendable {
     self.minimum = minimumDuration
   }
 
-  /// A call ended. Asks at most once per call, and only after a call of 3 minutes or more (or the
-  /// shorter minimum a Debug build was launched with).
+  /// A call ended. Asks at most once per call and once a day, and only after a call of 3 minutes or
+  /// more (or the shorter minimum a Debug build was launched with).
+  ///
+  /// The day is the calendar day of the device (`calendar`) the call ended on, compared with the day
+  /// of `lastAskedAt`. A prompt left on her screen for the night counts as that night's day, so a call
+  /// at 0:30 and another at 15:00 get one prompt. A skipped call changes nothing that is kept.
   public func callEnded(_ call: EndedCall) -> FollowUpAction {
     lock.withLock {
       var state = store.load()
       guard call.duration >= minimum, !state.handled.contains(call.id) else {
+        return .nothing
+      }
+      if let asked = state.lastAskedAt, calendar.isDate(asked, inSameDayAs: call.endedAt) {
         return .nothing
       }
       state.handled.append(call.id)
@@ -129,14 +138,25 @@ public final class CallFollowUp: @unchecked Sendable {
     return DailyCheckIn.schedule(settings, now: now, lastCallFollowUpAt: asked, calendar: calendar)
   }
 
-  /// "大丈夫": nothing else happens. No consultation, nothing to the family.
-  public func answeredFine() {
+  /// "わかった": the prompt closes and nothing else happens. No consultation, nothing to the family.
+  public func acknowledged() {
     clearPending()
   }
 
   /// She started talking to the microphone; the prompt has done its job.
   public func consultStarted() {
     clearPending()
+  }
+
+  /// Forgets only which day a call was last asked about, so the next long call today is asked about
+  /// again. For filming the demo more than once a day (a Debug launch argument,
+  /// `-mimamori-followup-reset`); the calls already asked about and a waiting prompt stay.
+  public func resetDailyLimit() {
+    lock.withLock {
+      var state = store.load()
+      state.lastAskedAt = nil
+      store.save(state)
+    }
   }
 
   /// This iPhone is no longer in a family ("すべて消す", a 401, or leaving): the waiting prompt and

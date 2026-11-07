@@ -12,7 +12,7 @@ These are the demo mode screens on the iOS 26.5 simulator, from the first screen
 
 | | | |
 |---|---|---|
-| <img src="docs/screens/demo-01-role.png" width="200" alt="First screen with 見守られる人, 家族 and 体験"> | <img src="docs/screens/demo-02-followup.png" width="200" alt="さっきの電話、大丈夫だった？ on her screen"> | <img src="docs/screens/demo-03-consult.png" width="200" alt="Her consultation about a police call, the level-1 answer, and the family's card"> |
+| <img src="docs/screens/demo-01-role.png" width="200" alt="First screen with 見守られる人, 家族 and 体験"> | <img src="docs/screens/demo-02-followup.png" width="200" alt="知らない人や勧誘の電話で困ったら教えてね on her screen"> | <img src="docs/screens/demo-03-consult.png" width="200" alt="Her consultation about a police call, the level-1 answer, and the family's card"> |
 | First screen | After a long call | Her words and the family's card |
 | <img src="docs/screens/demo-05-resolved.png" width="200" alt="The card after 解決"> | <img src="docs/screens/demo-06-sms.png" width="200" alt="An SMS judged as junk with the family's card"> | |
 | After 解決 | An SMS judged | |
@@ -26,7 +26,7 @@ The scammer calls and says her bank account was used in a crime. Then they tell 
 
 ## The main scene
 
-1. A call of three minutes or more ends while the app is open. The app asks her: "さっきの電話、大丈夫だった？" (Was that call just now all right?).
+1. A call of three minutes or more ends while the app is open. The app tells her: "知らない人や勧誘の電話で困ったら教えてね" (If a stranger or a sales call troubles you, tell me). It is not a question, and it comes at most once a day.
 2. She says, in her own words, that the police called about her account.
 3. Rules on the server recognize the fake-police script (police, account used in a crime, keep it secret, a video call, moving money). They answer at once with level 1: hang up and check with the family before sending any money.
 4. Every family member's iPhone gets a card with the level, a one-line topic ("警察を名乗る電話の相談", a consultation about a call from someone claiming to be the police), and what the AI told her. The card has two buttons, Call and Resolve.
@@ -34,7 +34,9 @@ The scammer calls and says her bank account was used in a crime. Then they tell 
 
 On 2026-11-04 the author ran this on his own iPhone, playing the mother, with a simulator as the family. The notice reached the family about one second after the consultation was sent (#57). That first try came out at level 2. After the fix in #72, the author confirmed level 1 and the fixed answer on his iPhone (#77).
 
-On 2026-11-07 he ran it again with build 9, his iPhone as the mother and a simulator as the family (#48). The answer was level 1. The family simulator got the push "1段階 警察を名乗る電話の相談" and the card, and neither showed her own words. Pressing Resolve on the simulator changed the card to "(name)が解決", and the "家族から返事がまだ" (the family has not answered yet) band on her screen left the resolved case out. In the same run, a plain "おはよう" (good morning) after the case reached the family as a second card at level 2, because Claude was given the earlier police turns. Since #219 (PR #220), greetings, thanks, and short acknowledgements are sent to Claude without the earlier turns, and the author checked the fix against the production server. Still unchecked: whether a second family iPhone sees who resolved it, and whether Call dials her number (the simulator has no phone). Both wait for a second real iPhone (#48, #31).
+On 2026-11-07 the author ran it again with build 9, his iPhone as the mother and a simulator as the family (#48). The answer was level 1. The family simulator got the push "1段階 警察を名乗る電話の相談" and the card, and neither showed her own words. Pressing Resolve on the simulator changed the card to "(name)が解決", and the "家族から返事がまだ" (the family has not answered yet) band on her screen left the resolved case out. In the same run, a plain "おはよう" (good morning) after the case reached the family as a second card at level 2, because Claude was given the earlier police turns. Since #219 (PR #220), greetings, thanks, and short acknowledgements are sent to Claude without the earlier turns, and the author checked the fix against the production server.
+
+The same day, with no second real iPhone at hand, Claude ran the scene on three simulators against the production server, in a new test family: one as the mother and two as the family (#48, #31). They ran a Debug build of the current code, and since a simulator cannot hear, her words were put in the text field and sent. The two family simulators each got exactly one "警察を名乗る電話の相談" push and the same level-1 card, without her words. Pressing Resolve on one sent "(name)が解決" only to the other, and its card changed too; this was read from each simulator's push log, not just the screen. Her "家族に伝えました" band was still there right after Resolve and was gone once her app was opened again. Simulators use the development push service, so the production one was checked separately: a family simulator in the author's family sent a short message twice, and both notices showed on the author's iPhone, in the mother role, running the TestFlight build. No family-role phone with the TestFlight build has received a production push yet; family notices go out through the same sending code (`sendPush` in [`server/src/push.ts`](server/src/push.ts)). Still unchecked: whether Call dials her number, which needs a real phone in the family role (#233).
 
 ## What it notices without her doing anything
 
@@ -47,7 +49,7 @@ On 2026-11-07 he ran it again with build 9, his iPhone as the mother and a simul
 | DNS (bank sites after a warning, remote-control apps) | Planned as a DoH resolver | Not built (#11) |
 | LINE, iMessage, call audio | Not visible to any app | Cannot be done |
 
-What it cannot protect is part of the design. The app never hears the call. In the main scene she still has to answer the question after the call, or start the chat herself. When the app is suspended, it cannot know a call ended (Apple DTS confirms this; see [`docs/design.md`](docs/design.md)), which is why the daily question exists. Other browsers and in-app browsers do not run the Safari extension.
+What it cannot protect is part of the design. The app never hears the call. In the main scene she still has to speak up after the prompt that follows the call, or start the chat herself. When the app is suspended, it cannot know a call ended (Apple DTS confirms this; see [`docs/design.md`](docs/design.md)), which is why the daily question exists. Other browsers and in-app browsers do not run the Safari extension.
 
 ## How a notice travels
 
@@ -120,7 +122,7 @@ On 2026-11-07 the author used build 9 on his own iPhone (iOS 27.2) as the mother
 These are merged and covered by tests, but nobody has used them, or the part named, on a real iPhone yet.
 
 - The SMS filter (#139) and the Gmail watch (#144), as in the table above.
-- The main scene on a second family iPhone, and the Call button (#48, #31).
+- The Call button on a family iPhone (#233). Two family devices were checked on simulators only (#48, #31).
 - The photo button in her chat (#221, PR #227). A button with no label at the left of the input field opens the photo picker, and the picked screenshot goes to the same consultation as a shared one, with the circle shown only on screen until the next consultation. On the simulator the picker opened without asking for photo access, but picking a photo could not be driven there, so the step after it was checked with a Debug launch argument that hands in a fixed image.
 - A settings screen inside her app (#222, PR #226), opened from the menu at the end of her smile row, with the daily question, its time, and read-aloud. It reads and writes the same values as iOS Settings. Checked on the simulator.
 - The two items above are not in build 9 (`ios/project.yml` on `origin/main` still says 9 on 2026-11-07). They go out in build 10.
@@ -141,7 +143,7 @@ The demo mode shows her screen and the card the family would get, on one iPhone,
 
 1. Install the build from TestFlight and open it. Do not join a family.
 2. On the first screen, tap "体験" (try it), the third button under "見守られる人" (the person watched over) and "家族" (family).
-3. Her screen shows "さっきの電話、大丈夫だった？" (Was that call just now all right?). Tap the microphone. It plays her consultation about a call from the police, her answer at level 1, and the card and notification the family would get.
+3. Her screen shows "知らない人や勧誘の電話で困ったら教えてね" (If a stranger or a sales call troubles you, tell me). Tap the microphone. It plays her consultation about a call from the police, her answer at level 1, and the card and notification the family would get.
 4. Tap "解決" (resolve) on the card, then "解決にする" (mark resolved) in the alert that asks, or "30分後" (30 minutes later) to see what both screens show when no one resolves it. The demo card has no Call button.
 5. An SMS field follows, with a fictional fake delivery notice. Edit it if you like and tap "送る" (send). It goes to the server's rules at `/sms/demo`, which tell no family. There are three results. A clear scam (level 1, and the rules are sure) shows "迷惑" (junk, where the iPhone would file it) above the card the family would get. Level 1 without that certainty, or level 2, shows only the card. Anything else shows "カードなし" (no card). "最初から" (from the start) starts over.
 

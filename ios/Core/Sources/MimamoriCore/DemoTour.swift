@@ -35,10 +35,10 @@ public struct DemoPush: Equatable, Sendable {
 
 public struct DemoTour: Equatable, Sendable {
   public enum Step: Equatable, Sendable {
-    /// "さっきの電話、大丈夫だった？" waits on her screen.
+    /// `CallFollowUp.prompt` waits on her screen.
     case asked
-    /// She pressed "大丈夫": nothing goes to anyone.
-    case fine
+    /// She pressed "わかった" and closed it: nothing goes to anyone.
+    case acknowledged
     /// She told the AI about the call; the family has the card.
     case consulted
     /// A family member pressed "解決".
@@ -76,11 +76,11 @@ public struct DemoTour: Equatable, Sendable {
   public var canChoose: Bool { step == .consulted }
 
   /// The tour reached one of its ends; the SMS and "最初から" come next.
-  public var isFinished: Bool { step == .fine || step == .resolved || step == .unanswered }
+  public var isFinished: Bool { step == .acknowledged || step == .resolved || step == .unanswered }
 
-  public mutating func fine() {
+  public mutating func acknowledge() {
     guard step == .asked else { return }
-    step = .fine
+    step = .acknowledged
   }
 
   public mutating func consult(at now: Date) {
@@ -123,7 +123,7 @@ public struct DemoTour: Equatable, Sendable {
 
   /// The case the family's screen shows, as `GET /cases` would return it.
   public var familyCase: Case? {
-    guard let consultedAt, step != .asked, step != .fine else { return nil }
+    guard let consultedAt, step != .asked, step != .acknowledged else { return nil }
     let resolved = step == .resolved
     return Case(
       id: "demo-police", alertId: nil, state: resolved ? .resolved : .notified,
@@ -145,7 +145,7 @@ public struct DemoTour: Equatable, Sendable {
   /// others "(名前)が解決", but the card the judge sees is the one who pressed it.
   public var familyPush: DemoPush? {
     switch step {
-    case .asked, .fine: nil
+    case .asked, .acknowledged: nil
     case .consulted, .resolved:
       waited
         ? DemoPush(title: Self.notResolvedYet, body: Self.topic)
