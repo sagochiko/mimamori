@@ -333,7 +333,9 @@ struct ProtectedHomeView: View {
           ? "聞き取った言葉が入っています。直してから送るボタンを押してください。声で聞いたときと同じに扱います"
           : model.attachedPicture != nil
             ? "付けたスクショで何をしたいかを書いて、送るボタンを押してください。マイクで話しても一緒に送ります。書かずに送ると、スクショだけを送ります"
-            : "スマホの困りごとや気になる電話のことを書いて、送るボタンを押してください。答えは読み上げません"
+            : "スマホの困りごとや気になる電話のことを書いて、送るボタンを押してください。答えは読み上げません",
+        // A screenshot copied and pasted into the field goes onto it like a picked one (#243).
+        onPasteImage: model.voice.acceptsText ? { picked($0) } : nil
       )
       .padding(.vertical, 11)
       Group {

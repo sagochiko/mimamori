@@ -1,6 +1,7 @@
 import SwiftUI
 import Testing
 import UIKit
+import UniformTypeIdentifiers
 
 @testable import Mimamori
 
@@ -62,6 +63,68 @@ struct MessageFieldTests {
     field.insertText("は")
     #expect(box.text == "は")
     #expect(field.text == "は")
+  }
+
+  /// A small image, as a copied screenshot would be.
+  private static func picture() -> UIImage {
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    return UIGraphicsImageRenderer(size: CGSize(width: 30, height: 60), format: format).image { context in
+      UIColor.systemTeal.setFill()
+      context.fill(CGRect(x: 0, y: 0, width: 30, height: 60))
+    }
+  }
+
+  // #243: the field's long press paste took only text. A named pasteboard stands in for the general
+  // one, so the test reads nothing of the Mac's or the simulator's clipboard.
+  @Test func pastingAnImageHandsItToTheChatAndWritesNothing() async throws {
+    let field = try await field()
+    _ = field.becomeFirstResponder()
+    let board = UIPasteboard.withUniqueName()
+    defer { UIPasteboard.remove(withName: board.name) }
+    field.pasteboard = board
+    var pasted: [Data] = []
+    field.onPasteImage = { pasted.append($0) }
+    board.image = Self.picture()
+
+    #expect(field.canPerformAction(#selector(UIResponderStandardEditActions.paste(_:)), withSender: nil))
+    field.paste(nil)
+    #expect(pasted.count == 1)
+    let data = try #require(pasted.first)
+    let image = try #require(UIImage(data: data))
+    #expect(image.size == CGSize(width: 30, height: 60))
+    #expect(field.text == "")
+    #expect(box.text == "")
+  }
+
+  @Test func pastingWordsStillPastesWords() async throws {
+    let field = try await field()
+    _ = field.becomeFirstResponder()
+    let board = UIPasteboard.withUniqueName()
+    defer { UIPasteboard.remove(withName: board.name) }
+    field.pasteboard = board
+    var pasted = 0
+    field.onPasteImage = { _ in pasted += 1 }
+    // Words and an image both: the words are pasted, as before #243.
+    board.items = [
+      [UTType.utf8PlainText.identifier: "Wi-Fi がつながらない", UTType.png.identifier: try #require(Self.picture().pngData())]
+    ]
+    #expect(board.hasImages)
+
+    field.paste(nil)
+    #expect(pasted == 0)
+    #expect(box.text == "Wi-Fi がつながらない")
+  }
+
+  @Test func withoutAPlaceForImagesAnImageCannotBePasted() async throws {
+    let field = try await field()
+    _ = field.becomeFirstResponder()
+    let board = UIPasteboard.withUniqueName()
+    defer { UIPasteboard.remove(withName: board.name) }
+    field.pasteboard = board
+    field.onPasteImage = nil
+    board.image = Self.picture()
+    #expect(!field.canPerformAction(#selector(UIResponderStandardEditActions.paste(_:)), withSender: nil))
   }
 
   @Test func sendingConfirmedWordsEmptiesTheField() async throws {

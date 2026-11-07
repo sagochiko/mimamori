@@ -18,6 +18,8 @@ struct MessageField: UIViewRepresentable {
   var maxLines: Int
   /// Read by VoiceOver after the name (the placeholder).
   var hint: String
+  /// An image pasted with the field's Paste (#243), as image data. Without it, only words paste.
+  var onPasteImage: ((Data) -> Void)? = nil
 
   func makeUIView(context: Context) -> MessageTextView {
     let view = MessageTextView()
@@ -28,6 +30,7 @@ struct MessageField: UIViewRepresentable {
 
   func updateUIView(_ view: MessageTextView, context: Context) {
     context.coordinator.parent = self
+    view.onPasteImage = onPasteImage
     view.style(textStyle: textStyle, maxLines: maxLines, placeholder: placeholder, hint: hint)
     context.coordinator.applying {
       view.show(text)
@@ -85,6 +88,10 @@ struct MessageField: UIViewRepresentable {
 final class MessageTextView: UITextView {
   let placeholderLabel = UILabel()
   private var maxLines = 5
+  /// Takes a pasted image (#243). SwiftUI's and UIKit's text views paste only words.
+  var onPasteImage: ((Data) -> Void)?
+  /// The general pasteboard; tests put a named one here.
+  var pasteboard: UIPasteboard = .general
 
   init() {
     super.init(frame: .zero, textContainer: nil)
@@ -134,6 +141,30 @@ final class MessageTextView: UITextView {
     if markedTextRange != nil { unmarkText() }
     text = value
     refreshPlaceholder()
+  }
+
+  // Paste with an image on the clipboard (#243). `hasImages` only asks what is there and does not
+  // tell her the app read the clipboard (Apple's UIPasteboard documentation lists it among the
+  // properties that avoid the notice); the image is read only when she presses Paste. When the
+  // clipboard holds words too, the words are pasted as before.
+  override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+    if action == #selector(paste(_:)), takesImage { return true }
+    return super.canPerformAction(action, withSender: sender)
+  }
+
+  override func paste(_ sender: Any?) {
+    if takesImage, let onPasteImage, let data = pasteboard.image?.pngData() {
+      onPasteImage(data)
+      return
+    }
+    guard pasteboard !== UIPasteboard.general else { return super.paste(sender) }
+    // A named pasteboard (tests): UITextView's own paste reads only the general one.
+    if let words = pasteboard.string { insertText(words) }
+  }
+
+  /// An image and no words on the clipboard, and somewhere to put it.
+  private var takesImage: Bool {
+    onPasteImage != nil && isEditable && pasteboard.hasImages && !pasteboard.hasStrings
   }
 
   func refreshPlaceholder() {
