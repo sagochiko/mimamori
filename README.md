@@ -170,7 +170,7 @@ git ls-tree --name-only a916f02 server/migrations/ | wc -l
 
 ## From the development log
 
-[`docs/dev-log.md`](docs/dev-log.md) has 91 dated entries (2026-11-07, `grep -c '^## 20'`). Three of them shaped the product:
+[`docs/dev-log.md`](docs/dev-log.md) has 91 dated entries (2026-11-07, `git show a916f02:docs/dev-log.md | grep -c '^## 20'`). Three of them shaped the product:
 
 - 2026-11-04. We dropped "take ownership" and "reply to her" from the family screen. While someone owned a case, the AI only told her that person was looking, and her spoken replies reached no one. Relaying messages between users and forwarding her first 30 characters were also close to examples in the Ministry of Internal Affairs and Communications' telecom business manual. Now everyone sees the same card and calls her.
 - 2026-11-04. The first on-device test crashed when she pressed the microphone (a Swift 6 isolation check in the speech permission callback). The main line came out at level 2, not 1, because "警察から電話" (a call from the police) was not part of the script rules. The eval had not caught it because it ran consultations through the SMS rules. Both were fixed, and the eval now measures consultations on the real path (#57, #72, #74).
@@ -178,7 +178,7 @@ git ls-tree --name-only a916f02 server/migrations/ | wc -l
 
 ## How Claude Code built it
 
-The harness is the setup that lets Claude Code build this under hackathon rules. It is described in [`docs/harness.md`](docs/harness.md), with the project rules in [`CLAUDE.md`](CLAUDE.md) and everything else in [`.claude/`](.claude/). Hooks block rule-breaking actions, such as opening the author's earlier projects, reading the holdout set, reading secrets, or merging an unreviewed PR. Each issue goes through separate implementer, verifier, and reviewer subagents, and the reviewer's report is kept on the PR. Counts from the hook log, 2026-11-03 to 2026-11-07, are in [`docs/claude-usage.md`](docs/claude-usage.md): 170 reviewer launches and 21 resumes, 76 implementer launches, 61 verifier launches, 6 judge runs, and 208 actions that hooks blocked or sent to the author. On 2026-11-07 (`a916f02`), [`docs/audits/raw/`](docs/audits/raw/) held 209 reviewer reports (`ls docs/audits/raw | grep -c mm-reviewer`), kept unedited.
+The harness is the setup that lets Claude Code build this under hackathon rules. It is described in [`docs/harness.md`](docs/harness.md), with the project rules in [`CLAUDE.md`](CLAUDE.md) and everything else in [`.claude/`](.claude/). Hooks block rule-breaking actions, such as opening the author's earlier projects, reading the holdout set, reading secrets, or merging an unreviewed PR. Each issue goes through separate implementer, verifier, and reviewer subagents, and the reviewer's report is kept on the PR. Counts from the hook log, 2026-11-03 to 2026-11-07, are in [`docs/claude-usage.md`](docs/claude-usage.md): 170 reviewer launches and 21 resumes, 76 implementer launches, 61 verifier launches, 6 judge runs, and 208 actions that hooks blocked or sent to the author. On 2026-11-07 (`a916f02`), [`docs/audits/raw/`](docs/audits/raw/) held 209 reviewer reports (`git ls-tree --name-only a916f02 docs/audits/raw/ | grep -c mm-reviewer`), kept unedited.
 
 ## Repository
 
