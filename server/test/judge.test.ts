@@ -1166,6 +1166,114 @@ describe("judge consumer", () => {
   });
 });
 
+describe("a mail Claude gives nothing for, which the rules alone would tell about (#249)", () => {
+  // Mail waits for Claude on the queue's retries instead of telling the family on the rules alone,
+  // up to the third delivery (docs/design.md, the Gmail paragraphs). SMS and pages do not wait.
+  const mailJob = (familyId: string): JudgeJob => ({
+    familyId,
+    source: "gmail",
+    payload: { sender: "info@shop.example", text: "ご注文の確認 https://shop-check.example/", url: "https://shop-check.example/" },
+  });
+  const notSure: RuleResult = { level: 2, reasons: ["名乗る会社と違うドメインへ誘っている"], confident: false };
+
+  it.each([
+    ["level 2", notSure],
+    ["level 1 that is not confident", { level: 1, reasons: ["公式に似せたドメイン shop-check.example"], confident: false }],
+    ["no level but a sign", { level: null, reasons: ["急がせる言い回しがある"], confident: false }],
+  ] as Array<[string, RuleResult]>)(
+    "writes nothing, tells no one, and retries after 120 seconds for %s on the first two deliveries",
+    async (_label, rule) => {
+      for (const attempts of [1, 2]) {
+        const fam = await setupFamily();
+        const deps = fakes({ rule, claude: null });
+        // getQueueResult does not report the delay, so the retry call itself is watched.
+        const batch = createMessageBatch<unknown>("mimamori-judge", [messageOf(queued(mailJob(fam.familyId)), attempts)]);
+        const retry = vi.spyOn(batch.messages[0] as Message<unknown>, "retry");
+        await handleJudgeBatch(batch, judgeEnv, deps);
+        const result = await getQueueResult(batch, createExecutionContext());
+        expect(deps.claudeCalls).toBe(1);
+        expect(await alertsOf(fam.familyId)).toEqual([]);
+        expect(pushes).toHaveLength(0);
+        expect(deps.opened).toHaveLength(0);
+        expect(result.explicitAcks).toHaveLength(0);
+        expect(result.retryMessages).toHaveLength(1);
+        expect(retry).toHaveBeenCalledWith({ delaySeconds: 120 });
+      }
+    },
+  );
+
+  it("tells everyone on the rules' level with 確かめ中 on the third delivery, so the mail is not missed", async () => {
+    const fam = await setupFamily();
+    const deps = fakes({ rule: notSure, claude: null });
+    const { result } = await run([mailJob(fam.familyId)], deps, 3);
+    expect(await alertsOf(fam.familyId)).toMatchObject([{ source: "gmail", level: 2, rule_level: 2, claude_level: null }]);
+    const [toMother] = pushesTo([fam.tokens.mother]);
+    expect(toMother?.body).toContain("確かめ中");
+    expect(pushesTo(fam.tokens.family)).toHaveLength(2);
+    expect(deps.opened).toHaveLength(1);
+    expect(result.explicitAcks).toHaveLength(1);
+    expect(result.retryMessages).toHaveLength(0);
+    await expectNothingSaysSafe(fam.familyId);
+  });
+
+  it("tells everyone at once when Claude answers on a later delivery", async () => {
+    const fam = await setupFamily();
+    let answers = 0;
+    const deps = fakes({
+      rule: notSure,
+      claude: async () => (++answers === 1 ? null : claudeSays({ level: 2, reasons: ["送り主と違う店へ誘う"] })),
+    });
+    const body = queued(mailJob(fam.familyId));
+    await runMessages([messageOf(body, 1)], deps);
+    expect(pushes).toHaveLength(0);
+    const { result } = await runMessages([messageOf(body, 2)], deps);
+    expect(await alertsOf(fam.familyId)).toMatchObject([{ level: 2, rule_level: 2, claude_level: 2 }]);
+    expect(pushesTo([fam.tokens.mother])[0]?.body).toBe("送り主と違う店へ誘う");
+    expect(result.explicitAcks).toHaveLength(1);
+  });
+
+  it("does not wait on a confident level 1", async () => {
+    const fam = await setupFamily();
+    const deps = fakes({ rule: { level: 1, reasons: ["警察を名乗る"], confident: true }, claude: null });
+    const { result } = await run([mailJob(fam.familyId)], deps, 1);
+    expect(await alertsOf(fam.familyId)).toMatchObject([{ level: 1, rule_level: 1, claude_level: null }]);
+    expect(pushesTo([fam.tokens.mother])[0]?.body).toContain("確かめ中");
+    expect(result.explicitAcks).toHaveLength(1);
+  });
+
+  it("decides on any delivery past the third too, however the earlier ones ended", async () => {
+    // An earlier delivery may have been sent back for lack of outside calls before Claude was asked.
+    const fam = await setupFamily();
+    const deps = fakes({ rule: notSure, claude: null });
+    const { result } = await run([mailJob(fam.familyId)], deps, 4);
+    expect(await alertsOf(fam.familyId)).toHaveLength(1);
+    expect(result.explicitAcks).toHaveLength(1);
+  });
+
+  it.each([
+    ["sms", (familyId: string) => smsJob(familyId)],
+    [
+      "page",
+      (familyId: string): JudgeJob => ({
+        familyId,
+        source: "page",
+        payload: { url: "https://shop-check.example/", text: "ご注文の確認" },
+      }),
+    ],
+  ] as Array<[string, (familyId: string) => JudgeJob]>)(
+    "still tells everyone at once with 確かめ中 for %s",
+    async (_source, job) => {
+      const fam = await setupFamily();
+      const deps = fakes({ rule: notSure, claude: null });
+      const { result } = await run([job(fam.familyId)], deps, 1);
+      expect(await alertsOf(fam.familyId)).toMatchObject([{ level: 2, claude_level: null }]);
+      expect(pushesTo([fam.tokens.mother])[0]?.body).toContain("確かめ中");
+      expect(pushesTo(fam.tokens.family)).toHaveLength(2);
+      expect(result.explicitAcks).toHaveLength(1);
+    },
+  );
+});
+
 describe("a genuine mail that names a company and loads a font (#249)", () => {
   const b64url = (text: string) =>
     btoa(String.fromCharCode(...new TextEncoder().encode(text)))

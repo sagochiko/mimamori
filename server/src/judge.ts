@@ -84,6 +84,16 @@ export const JUDGE_TEXT_MAX_CHARS = 5000;
 const FIELD_MAX_CHARS = 500;
 export const DEDUPE_WINDOW_MS = 3600_000;
 const RETRY_DELAY_SECONDS = 30;
+/**
+ * A mail that only the rules decided waits for Claude on the queue's retries (#249): it is asked again
+ * on each delivery before this one, and from this one on it is told about on the rules alone, as
+ * before. The queue has max_retries 3 and no dead letter queue, so a message past the limit is gone;
+ * the third delivery comes before that on either reading of how many deliveries max_retries 3 allows,
+ * and leaves one for a notice that did not get through (docs/design.md, the Gmail paragraphs).
+ */
+export const MAIL_CLAUDE_DELIVERIES = 3;
+/** Between those deliveries: about four minutes in all, close to the 5-minute watch of the inbox. */
+export const MAIL_WAIT_DELAY_SECONDS = 120;
 
 const MOTHER_TITLE = "開かないで";
 const CHECKING = "確かめ中";
@@ -208,7 +218,8 @@ interface Recipient {
   role: "protected" | "family";
 }
 
-type Outcome = "done" | "retry";
+/** "wait": a mail asks Claude again on a later delivery, with nothing written or told yet (#249). */
+type Outcome = "done" | "retry" | "wait";
 
 async function reachableMembers(env: Env, familyId: string): Promise<Recipient[]> {
   const rows = await env.DB.prepare("SELECT id, role FROM members WHERE family_id = ? AND apns_token IS NOT NULL")
@@ -394,6 +405,18 @@ async function judgeOne(
   // rules found no sign in (decideFor, #137).
   const decision = decideFor(job.source, rule, claude);
   const level = decision.level;
+  // A mail the rules alone would tell about, without being sure, waits for Claude instead (#249): two
+  // of the first three alarms from the mail watch were genuine mail. Before any row is written, so the
+  // next delivery starts over as a first one. SMS and pages are told about at once, as before.
+  if (
+    job.source === "gmail" &&
+    claude === null &&
+    !rule.confident &&
+    level <= 2 &&
+    message.attempts < MAIL_CLAUDE_DELIVERIES
+  ) {
+    return "wait";
+  }
   const steered = rule.reasons.includes(INJECTION.reason) || (claude?.injection_suspected ?? false);
   const reasons = cardReasons(job, rule, decision.reasons, steered);
 
@@ -474,6 +497,7 @@ export async function handleJudgeBatch(
     try {
       const outcome = await judgeOne(env, message, budget, deps, research);
       if (outcome === "retry") message.retry({ delaySeconds: RETRY_DELAY_SECONDS });
+      else if (outcome === "wait") message.retry({ delaySeconds: MAIL_WAIT_DELAY_SECONDS });
       else message.ack();
     } catch (error) {
       console.error("judge failed", error instanceof Error ? error.name : typeof error);
