@@ -120,7 +120,7 @@ DNS (#11), the weekly review (#18), the morning alarm that stops when she smiles
 
 ## How judges can try it
 
-<!-- TestFlight public link goes here once it exists. -->
+TestFlight: <https://testflight.apple.com/join/EZhN4k78> (build 9, up to 100 testers through the link)
 
 The demo mode shows her screen and the card the family would get, on one iPhone, without joining a family. Nothing reaches any family.
 
@@ -164,3 +164,7 @@ docs/     design, plan, development log, harness
 ```
 
 The design ([`docs/design.md`](docs/design.md)) and the plan ([`docs/plan.md`](docs/plan.md)) are in Japanese.
+
+## License
+
+[MIT](LICENSE)

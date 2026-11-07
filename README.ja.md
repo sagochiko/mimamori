@@ -118,7 +118,7 @@ DNS(#11)、週ごとのふり返り(#18)、笑うと止まる朝のアラーム(
 
 ## 審査員の試し方
 
-<!-- TestFlight の公開リンクができたらここに置く。 -->
+TestFlight の公開リンクは <https://testflight.apple.com/join/EZhN4k78>(ビルド9。リンクから入れるのは100人まで)
 
 体験モードでは、家族に入らずに、母の画面と家族に届くはずのカードを1台の iPhone で見られる。本当の家族には何も届かない。
 
@@ -166,3 +166,7 @@ docs/     設計、計画、開発の記録、ハーネス
 ```
 
 設計は [`docs/design.md`](docs/design.md)、計画は [`docs/plan.md`](docs/plan.md) にある。
+
+## ライセンス
+
+[MIT](LICENSE)
