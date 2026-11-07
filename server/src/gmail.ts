@@ -23,6 +23,7 @@
 
 import { requireMember } from "./auth";
 import type { ExternalBudget } from "./budget";
+import { isMailDomain, MAIL_DMARC, type MailAuth } from "./claude";
 import { errorResponse, json } from "./http";
 import { firstLink, worthAsking } from "./inbound";
 import { enqueueJudge, JUDGE_TEXT_MAX_CHARS, normalizeDomain, type JudgePayload } from "./judge";
@@ -493,7 +494,8 @@ async function judgeMessage(env: Env, familyId: string, id: string, auth: Record
   if (labels.includes("SENT") || labels.includes("DRAFT")) return true;
 
   const payload = mailPayload(message.payload);
-  const rule = judgeByRules({ source: "gmail", ...payload });
+  const { mailAuth: _forClaude, ...forRules } = payload;
+  const rule = judgeByRules({ source: "gmail", ...forRules });
   if (!worthAsking(rule)) return true;
   try {
     await enqueueJudge(env, { familyId, source: "gmail", payload });
@@ -525,7 +527,28 @@ export function mailPayload(part: MessagePart): JudgePayload {
   if (url) out.url = url;
   const domain = normalizeDomain({ familyId: "", source: "gmail", payload: out });
   if (domain) out.domain = domain;
+  out.mailAuth = gmailAuth(part.headers ?? []);
   return out;
+}
+
+/**
+ * DMARC and header.from from the Authentication-Results Gmail wrote (#249), for Claude only. Gmail
+ * puts its own above the sender's, which a sender can write with the same name: seen on one mail of
+ * the author's inbox, not stated in Google's reference (docs/design.md). So only the first header
+ * whose value starts with "mx.google.com;" is read. Anything else is "unknown".
+ */
+function gmailAuth(headers: Array<{ name?: string; value?: string }>): MailAuth {
+  const value = headers
+    .filter((h) => h.name?.toLowerCase() === "authentication-results")
+    .map((h) => h.value?.trim() ?? "")
+    .find((v) => /^mx\.google\.com\s*;/i.test(v));
+  if (value === undefined) return { dmarc: "unknown" };
+  const clause = value.split(";").find((c) => /^\s*dmarc\s*=/i.test(c));
+  const result = /^\s*dmarc\s*=\s*([A-Za-z]+)(?![A-Za-z])/i.exec(clause ?? "")?.[1]?.toLowerCase();
+  const dmarc = MAIL_DMARC.find((d) => d === result);
+  if (!dmarc) return { dmarc: "unknown" };
+  const from = /\bheader\.from\s*=\s*([^\s;()]+)/i.exec(clause ?? "")?.[1];
+  return from && isMailDomain(from) ? { dmarc, from: from.toLowerCase() } : { dmarc };
 }
 
 /** How far into one <a ...> the href is looked for: up to the next "<", and no more than this. */

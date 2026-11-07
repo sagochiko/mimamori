@@ -22,13 +22,17 @@ import { CaseNoticeDeferred, openCase } from "./cases";
 import {
   ALERT_SOURCES,
   decideFor,
+  isMailDomain,
+  MAIL_DMARC,
   PLACEHOLDER_REASON,
   QUIET_WHEN_UNDECIDED,
   requestClaudeJudgment,
   SOURCE_LABELS,
   type AlertSource,
+  type ClaudeInput,
   type ClaudeJudgment,
   type Level,
+  type MailAuth,
 } from "./claude";
 import { sendPush, type PushPayload } from "./push";
 import { dedupeDigest } from "./secretbox";
@@ -41,6 +45,8 @@ export interface JudgePayload {
   domain?: string;
   text?: string;
   url?: string;
+  /** A mail's authentication results from Gmail's own header (#249), for Claude only. */
+  mailAuth?: MailAuth;
 }
 
 export interface JudgeJob {
@@ -57,7 +63,7 @@ export interface JudgeMessageBody extends JudgeJob {
 export interface JudgeDeps {
   judgeByRules(input: RuleInput): RuleResult;
   /** Returns null for any failure; a throw is treated the same way. */
-  askClaude(env: Env, input: RuleInput, rule: RuleResult): Promise<ClaudeJudgment | null>;
+  askClaude(env: Env, input: ClaudeInput, rule: RuleResult): Promise<ClaudeJudgment | null>;
   /** Opens the case and tells the family; throws CaseNoticeDeferred when the family was not told yet. */
   openCase(env: Env, alertId: string, budget: ExternalBudget): Promise<unknown>;
   now(): number;
@@ -114,6 +120,15 @@ function optionalString(value: unknown, max: number): string | undefined | null 
 /** The form crypto.randomUUID() gives. Upper case is refused so one alert cannot have two spellings. */
 const ALERT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+function parseMailAuth(value: unknown): MailAuth | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const { dmarc, from, ...rest } = value as Record<string, unknown>;
+  if (Object.keys(rest).length > 0) return null;
+  if (dmarc !== "unknown" && !(MAIL_DMARC as readonly unknown[]).includes(dmarc)) return null;
+  if (from !== undefined && (typeof from !== "string" || !isMailDomain(from))) return null;
+  return from === undefined ? { dmarc: dmarc as MailAuth["dmarc"] } : { dmarc: dmarc as MailAuth["dmarc"], from };
+}
+
 function parseJob(body: unknown): JudgeMessageBody | null {
   if (typeof body !== "object" || body === null) return null;
   const { alertId, familyId, source, payload } = body as Record<string, unknown>;
@@ -134,6 +149,11 @@ function parseJob(body: unknown): JudgeMessageBody | null {
     const value = optionalString(p[key], max);
     if (value === null) return null;
     if (value !== undefined) out[key] = value;
+  }
+  if (p.mailAuth !== undefined) {
+    const mailAuth = parseMailAuth(p.mailAuth);
+    if (!mailAuth) return null;
+    out.mailAuth = mailAuth;
   }
   return { alertId, familyId, source: source as AlertSource, payload: out };
 }
@@ -391,12 +411,14 @@ async function judgeOne(
   // A job starts only when all of it fits.
   if (budget.remaining < 1 + members.length) return "retry";
 
-  const input: RuleInput = { source: job.source, ...job.payload };
+  // The mail's authentication results go to Claude alone, never to the rules (#249).
+  const { mailAuth, ...fields } = job.payload;
+  const input: RuleInput = { source: job.source, ...fields };
   const rule = deps.judgeByRules(input);
   budget.take();
   let claude: ClaudeJudgment | null;
   try {
-    claude = await deps.askClaude(env, input, rule);
+    claude = await deps.askClaude(env, mailAuth ? { ...input, mailAuth } : input, rule);
   } catch {
     claude = null;
   }
