@@ -104,7 +104,7 @@ The 10.0% for rules only was reached by fixing the rules while reading each dev 
 | Rules only | 25.8% (16/62) | 4.7% (3/64) | 3 | 0.11 ms | 2026-11-07 |
 | Rules + Claude | 6.5% (4/62) | 9.4% (6/64) | 6 | 1697 ms | 2026-11-07 |
 
-The rules alone missed far more than on dev (25.8% against 10.0%), so they were fitted to the dev set. With Claude on top, misses fell to 4 of 62 (3 spoken consultations, 1 page), also higher than the 1.7% on dev. Flagged genuine messages rose from 7.4% to 9.4%: 5 consultations and 1 SMS. Only 1 of the 6 was a topic the AI does not guide; unlike dev, the other 5 were the rules' or Claude's judgment. Per-example results are not kept for the holdout set, so the counts above come from the per-route totals in the last two lines of [`eval/RESULTS.md`](eval/RESULTS.md). The rules and prompts are not changed after this measurement, so these numbers stay the honest ones.
+The rules alone missed far more than on dev (25.8% against 10.0%), so they were fitted to the dev set. With Claude on top, misses fell to 4 of 62 (3 spoken consultations, 1 page), also higher than the 1.7% on dev. Flagged genuine messages rose from 7.4% to 9.4%: 5 consultations and 1 SMS. Only 1 of the 6 was a topic the AI does not guide; unlike dev, the other 5 were decided by the rules or Claude's answer. Per-example results are not kept for the holdout set, so the counts above come from the per-route totals in the last two lines of [`eval/RESULTS.md`](eval/RESULTS.md). The rules and prompts are not changed after this measurement, so these numbers stay the honest ones.
 
 ## Her data
 
