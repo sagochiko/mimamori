@@ -116,7 +116,7 @@ export const Observation: React.FC = () => (
           <br />
           → 「その画面を写真で見せてね」と聞き返す(#251)
           <br />
-          家族に回すのは案内のあとも困っているときだけ
+          使い方の相談を家族に回すのは案内のあとも困っているときだけ
         </div>
       </Rise>
       <Rise delay={1.6}>
@@ -129,7 +129,7 @@ export const Observation: React.FC = () => (
                         lineHeight: 1.5,
           }}
         >
-          2026年11月7日 母が1人で誘導なしに1回使った(家族の側は作者の iPhone)
+          2026年11月7日 母が1人で誘導なしに2回相談した(家族の側は作者の iPhone)
         </div>
       </Rise>
     </AbsoluteFill>
