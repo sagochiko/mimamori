@@ -368,7 +368,8 @@ const CONSULT_SCHEMA = {
     },
     handoff: {
       type: "boolean",
-      description: "案内しない話題か、答えきれず家族の手が要るなら true。本物か確かめられないだけなら false",
+      description:
+        "案内しない話題か、AI の案内のあとも本人が同じ話題で「できない」「分からない」と続け、家族の手が要るなら true。1回目の相談、知らないアプリ、本物か確かめられないだけなら false",
     },
     injection_suspected: {
       type: "boolean",
@@ -448,7 +449,7 @@ basis には見えた根拠を一文で、action には勧める行動を書き�
 
 スマホの困りごと以外の質問(料理の作り方、天気、言葉の意味、ちょっとした調べもの)にも、ふつうの話し相手として答えます。このときも kind は help、level は 3、handoff は false にし、action にその答えを${ACTION_MAX_CHARS}字以内で書きます。読み上げられることがあるので、表や記号の並びではなく、話し言葉の短い文にします。分からないことは分からないと書き、作り話をしません。
 
-送金、認証コードや暗証番号を教えること、構成プロファイルを入れること、iPhone を初期化、消去、まるごとリセットすること、写真やデータを全部消すこと、みまもりのアプリを消すことは案内しません。そのときと、答えきれないときは handoff を true にします。写真、トーク、アプリを消すことは、ほかの困りごとと同じく案内し、handoff は false にします。本物か確かめられないことは、答えきれない理由にしません。知らないアプリや、見ていない画面のことも、答えきれない理由にしません。そのときは kind を scam にして危なさを答え、自分で調べた正しい番号にかけ直す、のような確かめ方を action に書きます。あなたから見えないもの(通帳の金額、手元の書類や画面など)を見てほしいと言われたときも、答えきれないとはせず、本人が自分で確かめる方法を案内します。
+送金、認証コードや暗証番号を教えること、構成プロファイルを入れること、iPhone を初期化、消去、まるごとリセットすること、写真やデータを全部消すこと、みまもりのアプリを消すことは案内しません。そのときと、答えきれないときは handoff を true にします。答えきれないとするのは、同じ会話で先に AI が案内していて、本人が同じ話題で「できない」「分からない」「無理」と続けたときだけです。AI がまだ案内していない1回目の相談では、案内しない話題でなければ handoff を false にし、必ず自分で答えるか、needs_screen で画面を見せてもらいます。写真、トーク、アプリを消すことは、ほかの困りごとと同じく案内し、handoff は false にします。本物か確かめられないことは、答えきれない理由にしません。知らないアプリや、見ていない画面のことも、答えきれない理由にしません。そのときは kind を scam にして危なさを答え、自分で調べた正しい番号にかけ直す、のような確かめ方を action に書きます。あなたから見えないもの(通帳の金額、手元の書類や画面など)を見てほしいと言われたときも、答えきれないとはせず、本人が自分で確かめる方法を案内します。
 
 「安全」「問題ない」「心配ない」「大丈夫」「安心」「本物」「詐欺ではない」「気にしなくていい」「開いていい」とは書かないでください。これらが入った文は本人に読み上げず、決まった文に置き換えます。
 
@@ -746,6 +747,16 @@ export function allOf(said: Said): string[] {
 const POINTS_BACK =
   /^(ねえ|ねぇ|ねー|えーっと|えーと|えっと|ええと|えっ|えー|ええ|え|じゃあ|じゃ|でも|で|うーん|うん|はい|あのう|あのー|あのね|あの|あ|ちょっと)*((なに|何)?(それ|これ|あれ)|そう(なの|なん|か|です|でしょ|いう|$)|どうやる|どうやって|どうすれば|どうしたら|どういう|やり方|(この|その|あの)(やり方|方法|こと|件|やつ|操作|\p{Script=Han}\p{Script=Hiragana}?方))/u;
 const NEW_TOPIC = /それより|それと|それから|ところで|別の|ほかの|他の/;
+
+// She could not do what the AI guided (#251): short words that say so, and nothing else. "このメールが本物か
+// わからないので教えて" is a question of its own, so the words count only in a short turn, as pointsBack does.
+const STUCK = /(でき|出来)(な|ませ)|(わ|分)から(な|ん)|無理|むり|だめ|ダメ|駄目|うまくいかな|変わらな|(動か|進ま|出)な(い|かった)/;
+const STUCK_MAX_CHARS = 20;
+
+function saysStuck(text: string): boolean {
+  const t = normalize(text).replace(/[\s\p{P}\p{S}]+/gu, "");
+  return [...t].length <= STUCK_MAX_CHARS && STUCK.test(t) && !NEW_TOPIC.test(t);
+}
 const POINTS_BACK_MAX_CHARS = 15;
 
 const FILLERS =
@@ -983,7 +994,7 @@ function plan(
   floor: RuleResult = rule,
   image = false,
 ): Plan {
-  const p = decidePlan(said, rule, claude, floor, image);
+  const p = decidePlan(said, rule, claude, floor, image, history.some((t) => t.role === "ai"));
   // Text aimed at the AI or at keeping the family out, in this turn or in any earlier one (an "ai"
   // turn too: it came from her device, and Claude read it).
   const earlierSteers = history.some((t) => matchSpans(CONSULT_INJECTION, normalize(t.text)).length > 0);
@@ -1067,6 +1078,12 @@ function decidePlan(
   claude: ClaudeConsult | null,
   floor: RuleResult,
   image: boolean,
+  /**
+   * The conversation has an AI answer before this turn (#251). The rows come from her device, so a
+   * forged or missing one only moves a level 3 consultation between the AI's answer and the family's,
+   * never a sign of a scam or a topic the AI does not guide.
+   */
+  aiAnswered = false,
 ): Omit<Plan, "summary"> {
   // Her words carry text that tries to switch the warning off or keep the family out: the rules'
   // level is the floor, whatever Claude answers and whether or not it flags it. `floor` is the rules
@@ -1109,6 +1126,34 @@ function decidePlan(
   const reasons = [...decision.reasons];
   // Her own words only (Plan.unguided): guidance Claude wrote that hits such a topic is Claude's answer.
   const base = { ruleLevel: decision.ruleLevel, claudeLevel: decision.claudeLevel, unguided: ownSensitive.length > 0 };
+
+  // Who takes a level 3 consultation with no topic the AI does not guide, no sign, nothing the rules
+  // saw, and nothing about a message, a call, or a link (#251, the author's call on 2026-11-07: "AI でも
+  // 解決できなかった時に家族に共有"). The first answer is always the AI's: a handoff from Claude with no AI
+  // answer before it is not followed. After the AI's guidance, her saying she could not do it hands it to
+  // the family, whatever Claude answers. Everything else is as before: the nets below still send a
+  // dangerous consultation and one about sending money, a code, a profile, or a wipe to the family at once.
+  const plainLevel3 =
+    claude !== null &&
+    sensitive.length === 0 &&
+    level === 3 &&
+    rule.level === null &&
+    !told.some((t) => CONTACT.test(t)) &&
+    !CONTACT.test(claudeLine(claude.action)) &&
+    !claudeLines.some((l) => CONTACT.test(l)) &&
+    // The police, a part of the script, or moving money anywhere in her words (namesSomething): Claude's
+    // handoff on "これ、警察から" stays the family's (#114).
+    !allOf(said).some((t) => {
+      const n = normalize(t);
+      return (
+        POLICE_WORD.test(n) ||
+        [...POLICE_SCRIPT, ...CONSULT_MORE_PARTS, CONSULT_MONEY_MOVE].some((r) => matchSpans(r, n).length > 0)
+      );
+    });
+  const stuck = plainLevel3 && aiAnswered && saysStuck(said.text);
+  // Not on an image: Claude saw the screen, and its handoff on it is followed as before (review 1 of PR #186).
+  const firstAnswer = plainLevel3 && !aiAnswered && !image && (claude?.handoff ?? false);
+  const handoff = stuck || ((claude?.handoff ?? false) && !firstAnswer);
 
   // "それってどういうこと" with nothing of hers in the conversation to point at (#114): Claude cannot tell
   // what "それ" is. It says it cannot answer, which is no trouble for the family, or it reads a scam
@@ -1161,6 +1206,7 @@ function decidePlan(
   if (
     claude !== null &&
     (claude.needs_screen ?? false) &&
+    !stuck &&
     !image &&
     sensitive.length === 0 &&
     level === 3 &&
@@ -1180,7 +1226,7 @@ function decidePlan(
   // A topic the AI does not guide, or one Claude cannot answer: the family takes it, at any level, and
   // Claude's action is not read out (it may be the very guidance that is not given). At level 2 or
   // heavier she still hears the warning and what to do, then that the family was told.
-  if (sensitive.length > 0 || (claude?.handoff ?? false)) {
+  if (sensitive.length > 0 || handoff) {
     if (!unanswered && level <= 2) {
       const both = [...new Set([...sensitive, ...reasons])];
       // With the police in her words, the fixed police lines tell her to hang up ("警察を名乗る人に暗証番号を
@@ -1228,6 +1274,13 @@ function decidePlan(
   ) {
     // About a message, a call, or a link, or the rules saw something: not Claude's free guidance.
     return { level: 3, reasons, reply: LOW_CONCERN_ACTION, toFamily: false, record: true, sign: false, ...base };
+  }
+  if (firstAnswer) {
+    // Claude handed it over and has nothing she can hear: she is asked again rather than the family
+    // taking it, written down at level 3 with no notice so the family can look later.
+    if (!usable(claude.action)) {
+      return { level, reasons, reply: ASK_AGAIN_REPLY, toFamily: false, record: true, sign: false, ...base };
+    }
   }
   if (unanswered || claude === null || !usable(claude.action)) {
     const why = reasons.length > 0 ? reasons : [UNANSWERED_REASON];

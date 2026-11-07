@@ -21,7 +21,14 @@ import {
   type ConsultDeps,
   type ConsultTurn,
 } from "../src/consult";
-import { ASK_PICTURE_REPLY, ASK_SCREEN_REPLY, pointsBack, saysNothing } from "../src/consult-judge";
+import {
+  ASK_AGAIN_REPLY,
+  ASK_PICTURE_REPLY,
+  ASK_SCREEN_REPLY,
+  HANDOFF_REPLY,
+  pointsBack,
+  saysNothing,
+} from "../src/consult-judge";
 import { resetApnsJwtCache } from "../src/push";
 import { judgeByRules, type RuleInput, type RuleResult } from "../src/rules";
 import { MONEY_MOVE, POLICE_SCRIPT } from "../src/rules/phrases";
@@ -4091,5 +4098,71 @@ describe("questions that are not about the phone (#251)", () => {
     const { system } = buildConsultRequest("肉じゃがの作り方を教えて", judgeByRules({ source: "consult", text: "肉じゃが" }));
     expect(system).toMatch(/料理/);
     expect(system).toMatch(/スマホの困りごと以外/);
+  });
+});
+
+// #251: the AI answers first; the family takes it when she is still stuck after the AI's guidance.
+describe("the first answer is the AI's (#251)", () => {
+  const turn = (role: "protected" | "ai", text: string): ConsultTurn => ({ role, text });
+  const HOW = "写真を大きくして見るにはどうするの";
+  const GUIDE = "写真を開いて、2本の指で広げると大きくなるよ";
+  const after = [turn("protected", HOW), turn("ai", GUIDE)];
+
+  it("answers a handoff with no AI answer before it, and tells no one", async () => {
+    const fam = await setupFamily();
+    const deps = fakes(help({ action: GUIDE, handoff: true, topic: "写真の見方の相談" }));
+    const answer = await consult(consultEnv, motherOf(fam), HOW, new ExternalBudget(), deps);
+    expect(answer.reply).toBe(GUIDE);
+    expect(answer.handoff).toBe(false);
+    expect(familyPushes(fam)).toHaveLength(0);
+    expect(await casesOf(fam.familyId)).toHaveLength(0);
+  });
+
+  it("asks her again when the handoff came with nothing she can hear", async () => {
+    const judged = await judgeConsult(HOW, [], async () =>
+      help({ action: "これは家族と一緒にやろう。家族に伝えました", handoff: true }),
+    );
+    expect(judged.reply).toBe(ASK_AGAIN_REPLY);
+    expect(judged.toFamily).toBe(false);
+  });
+
+  it.each(["できない", "やっぱり分からない", "わからないよ", "無理だよ", "だめだった", "うまくできません"])(
+    "hands it to the family when she says %s after the AI's guidance",
+    async (text) => {
+      const judged = await judgeConsult(text, after, async () => help({ action: GUIDE, handoff: false }));
+      expect(judged.reply).toBe(HANDOFF_REPLY);
+      expect(judged.toFamily).toBe(true);
+      expect(judged.level).toBe(2);
+    },
+  );
+
+  it("hands it over when Claude says so after its guidance", async () => {
+    const judged = await judgeConsult("言われたとおりにしたけど変わらない", after, async () =>
+      help({ action: GUIDE, handoff: true }),
+    );
+    expect(judged.reply).toBe(HANDOFF_REPLY);
+    expect(judged.toFamily).toBe(true);
+  });
+
+  it.each([
+    ["she could not do it with no AI answer before", "できない", []],
+    ["a long question that only has the word in it", "このメールが本物かどうか、わからないので教えて", after],
+  ] as const)("does not count %s", async (_label, text, history) => {
+    const judged = await judgeConsult(text, history, async () => help({ action: GUIDE, handoff: false }));
+    expect(judged.reply).not.toBe(HANDOFF_REPLY);
+  });
+
+  it.each([
+    ["sending money", "振込のやり方を教えて", help({ action: GUIDE, handoff: true })],
+    ["a sign of a scam", POLICE_CALL, scam({ level: 2, handoff: true })],
+    ["a message she got", "知らない番号からメッセージが来たけどどうしたら", help({ action: GUIDE, handoff: true })],
+  ])("still hands %s to the family at once", async (_label, text, said) => {
+    const judged = await judgeConsult(text, [], async () => said);
+    expect(judged.toFamily).toBe(true);
+  });
+
+  it("asks Claude to hand over only when she is still stuck after its guidance", () => {
+    const { system } = buildConsultRequest(HOW, judgeByRules({ source: "consult", text: HOW }));
+    expect(system).toMatch(/1回目.*handoff/);
   });
 });
