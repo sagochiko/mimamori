@@ -473,17 +473,26 @@ export async function recordAiReply(env: Env, caseId: string, text: string): Pro
 export async function watchUnanswered(env: Env, now: number, budget: ExternalBudget): Promise<void> {
   if (budget.d1Remaining < 1 + WATCH_D1) return;
   const due = await env.DB.prepare(
-    `SELECT c.id, c.family_id, c.family_notified_at, a.summary FROM cases c LEFT JOIN alerts a ON a.id = c.alert_id
+    `SELECT c.id, c.family_id, c.family_notified_at, a.summary, a.source FROM cases c LEFT JOIN alerts a ON a.id = c.alert_id
       WHERE c.state != 'resolved' AND c.renotified_at IS NULL AND c.notified_at <= ? AND c.notified_at > ?
       ORDER BY c.notified_at LIMIT ${WATCH_BATCH}`,
   )
     .bind(now - UNANSWERED_AFTER_MS, now - WATCH_MAX_AGE_MS)
-    .all<{ id: string; family_id: string; family_notified_at: number | null; summary: string | null }>();
+    .all<{
+      id: string;
+      family_id: string;
+      family_notified_at: number | null;
+      summary: string | null;
+      source: string | null;
+    }>();
 
   for (const row of due.results) {
     // Before the claim: a claimed reminder that was never sent would not be sent again.
     if (budget.d1Remaining < WATCH_D1) break;
-    const members = await membersOf(env, row.family_id);
+    // Only her own consultation reminds her: one the app found is not on her strip (#239), so a
+    // "急ぐなら電話して" about it would point at nothing she can see. The family is reminded of every case.
+    const toMother = row.source === "consult";
+    const members = (await membersOf(env, row.family_id)).filter((m) => toMother || m.role !== "protected");
     const needed = members.filter((m) => m.reachable).length;
     if (budget.remaining < needed) break;
 
