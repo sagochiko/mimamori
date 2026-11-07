@@ -1009,6 +1009,24 @@ export function saidIn(text: string, history: readonly ConsultTurn[]): Said {
   return { text, earlier: history.filter((t) => t.role === "protected").map((t) => t.text) };
 }
 
+// A greeting, a thanks, or a nod, and nothing else (#219): one or more of these words, each with an
+// ending of politeness ("ございます", "ございました", "です"), stretched by ー or 〜, with punctuation,
+// white space, and emoji between them. Any other word, or a question mark, and it says something:
+// "ありがとう、でも振り込んでって言われた". Her voice comes without punctuation (VoiceListener does not
+// set addsPunctuation), so a rising "大丈夫" or "大丈夫よね" has no "?" and is her question after a scam:
+// "大丈夫", "ok", and the endings "ね" and "よ" are not in the list (review 2 of PR #220). Only the
+// server reads it; the app sends the turns by pointsBack as before.
+const NOTHING_WORD =
+  "(おはよう?|こんにち[はわ]|こんばん[はわ]|おやすみ(なさい)?|ありがと(う)?|どうも|はい|うん|ええ|(わ|分)か(った|りました)|了解(です|しました)?|りょうかい)";
+const NOTHING = new RegExp(`^(${NOTHING_WORD}(ございます|ございました|です)*)+$`, "u");
+
+export function saysNothing(text: string): boolean {
+  const t = normalize(text);
+  if (/[?]/.test(t)) return false;
+  const bare = t.replace(/[\s\p{P}\p{S}\p{M}\p{Cf}ー]+/gu, "");
+  return bare !== "" && NOTHING.test(bare);
+}
+
 /** What the rules alone make of one consultation, before Claude is asked or not. */
 export interface ConsultRules {
   /** The rules on this turn, as POST /consult passes them to Claude. */
@@ -1041,14 +1059,15 @@ export interface ConsultJudgment extends Plan {
 
 /**
  * Judges one consultation as POST /consult does, and as eval/ measures it (#74). `ask` is called only
- * when her words do not tell the script, with the rules on this turn; it returns Claude's answer, or
- * null when there is none (failure, no budget left). A throw from it is not caught here.
+ * when her words do not tell the script, with the rules on this turn and the earlier turns Claude is
+ * shown; it returns Claude's answer, or null when there is none (failure, no budget left). A throw
+ * from it is not caught here.
  * Writes nothing: opening the case and telling the family stay in consult().
  */
 export async function judgeConsult(
   text: string,
   history: readonly ConsultTurn[],
-  ask: (rule: RuleResult) => Promise<ClaudeConsult | null>,
+  ask: (rule: RuleResult, history: readonly ConsultTurn[]) => Promise<ClaudeConsult | null>,
   rules: (input: RuleInput) => RuleResult = judgeByRules,
   /** She shared an image with it (POST /consult `image`). */
   image = false,
@@ -1056,14 +1075,21 @@ export async function judgeConsult(
   const { rule, script } = consultByRules(text, history, rules);
   const said = saidIn(text, history);
   if (script) return { ...policePlan(said, rule), script, rule };
-  const claude = await ask(rule);
+  // Words that go on with the conversation: a question that points back, one about a message or a
+  // call, or one the rules see something in.
+  const goesOn = pointsBack(text) || CONTACT.test(normalize(text)) || rule.reasons.length > 0;
+  // Claude sees the earlier turns for every word but a greeting, a thanks, or a nod (saysNothing).
+  // With the script in the turns, Claude answered "おはよう" at level 2 and the family got a second
+  // police card after resolving the first (#219). Leaving the turns out for every word that does not
+  // go on missed the second half of a scam told in two turns ("上司の人が取りに来るらしい" after
+  // "息子から電話があって、携帯の番号が変わったって", review 1 of PR #220): a miss is worse than a false
+  // alarm, so only words that say nothing are judged as on their own.
+  const claude = await ask(rule, saysNothing(text) ? [] : history);
   // Text in her earlier words that tries to keep the family out: the rules judge all she said, as
   // if she had said it at once, and that is the floor (decidePlan).
-  // Only for words that go on with it: a question that points back, one about a message or a call,
-  // or one the rules see something in. "Wi-Fi がつながらない" after it is answered as on its own
+  // Only for words that go on with it: "Wi-Fi がつながらない" after it is answered as on its own
   // (review of PR #79, second round). Her earlier words only: an "ai" turn is what the device kept
   // of the server's answers, not hers.
-  const goesOn = pointsBack(text) || CONTACT.test(normalize(text)) || rule.reasons.length > 0;
   const earlierKeepsOut = goesOn && said.earlier.some((t) => matchSpans(CONSULT_INJECTION, normalize(t)).length > 0);
   const floor = earlierKeepsOut ? rules({ source: "consult", text: allOf(said).join("\n") }) : rule;
   return { ...plan(said, rule, claude, history, floor, image), script, rule };

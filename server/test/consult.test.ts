@@ -21,7 +21,7 @@ import {
   type ConsultDeps,
   type ConsultTurn,
 } from "../src/consult";
-import { pointsBack } from "../src/consult-judge";
+import { pointsBack, saysNothing } from "../src/consult-judge";
 import { resetApnsJwtCache } from "../src/push";
 import { judgeByRules, type RuleInput, type RuleResult } from "../src/rules";
 import { MONEY_MOVE, POLICE_SCRIPT } from "../src/rules/phrases";
@@ -3449,5 +3449,205 @@ describe("Claude's words in a scam answer on words alone (#188)", () => {
     const fam = await setupFamily();
     const answer = await consult(consultEnv, motherOf(fam), MESSAGE, new ExternalBudget(), fakes(scam({ level: 1 })));
     expect(answer.reply).toBe(LIKE_SCAM);
+  });
+});
+
+// After the script, the family resolved the case, and she only said "おはよう" (#219, on the author's
+// iPhone): Claude read the script in the earlier turns and answered level 2, so the family got a
+// second card titled as the police and she heard a warning. Her earlier turns go to Claude only for
+// words that go on with them (judgeConsult's goesOn); other words are judged as on their own. The
+// fake Claude below answers by what it is shown, as the real one did: level 2 with the police title
+// when the script is in the turns it gets, and a greeting otherwise.
+describe("words that do not go on with the script told before (#219)", () => {
+  const turn = (role: "protected" | "ai", text: string): ConsultTurn => ({ role, text });
+  const told = [turn("protected", POLICE), turn("ai", POLICE_REPLY)];
+  const GREETING = "おはよう。今日もいい一日になるといいね";
+
+  function readsHistory(alone: (text: string) => ClaudeConsult) {
+    const deps = fakes(null, T0 + 3 * 60_000);
+    const seen: Array<readonly ConsultTurn[]> = [];
+    deps.askClaude = async (_e, text, _rule, history = []) => {
+      deps.claudeCalls++;
+      seen.push(history);
+      return history.some((t) => t.text === POLICE) ? scam({ level: 2, topic: "警察を名乗る電話の相談" }) : alone(text);
+    };
+    return { deps, seen };
+  }
+
+  async function afterResolvedScript(fam: Family) {
+    await consult(consultEnv, motherOf(fam), POLICE, new ExternalBudget(), fakes(null));
+    const [first] = await casesOf(fam.familyId);
+    await resolveCase(consultEnv, first!.id, fam.sister.id);
+    pushes = [];
+  }
+
+  it.each(["おはよう", "ありがとう"])(
+    "answers %s as on its own and tells nobody, even when Claude says level 2 with the script",
+    async (text) => {
+      // The path of the report: no pointing back, nothing the rules see, so only Claude can raise it.
+      expect(pointsBack(text)).toBe(false);
+      expect(judgeByRules({ source: "consult", text }).reasons).toEqual([]);
+      const fam = await setupFamily();
+      await afterResolvedScript(fam);
+      const { deps, seen } = readsHistory(() => help({ action: GREETING, topic: "あいさつ" }));
+      const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps, told);
+      expect(deps.claudeCalls).toBe(1);
+      expect(seen).toEqual([[]]);
+      expect(answer).toEqual({ reply: GREETING, speak: GREETING, handoff: false });
+      expect(familyPushes(fam)).toEqual([]);
+      expect(await alertsOf(fam.familyId)).toHaveLength(1);
+      expect(await casesOf(fam.familyId)).toHaveLength(1);
+    },
+  );
+
+  it("decides the greeting without Claude's level 2 and police title when judged alone", async () => {
+    // Without the turns passed in, Claude is taken to have seen them, as the request before #219 did.
+    const judged = await judgeConsult("おはよう", told, async (_rule, turns?: readonly ConsultTurn[]) =>
+      turns === undefined || turns.some((t) => t.text === POLICE)
+        ? scam({ level: 2 })
+        : help({ action: GREETING, topic: "あいさつ" }),
+    );
+    expect(judged).toMatchObject({ level: 3, toFamily: false, record: false, reply: GREETING });
+    expect(judged.summary).not.toBe("警察を名乗る電話の相談");
+  });
+
+  it("still sends the earlier turns for a question that points back at the script, with the police line", async () => {
+    const fam = await setupFamily();
+    await afterResolvedScript(fam);
+    const { deps, seen } = readsHistory(() => help({ action: GREETING }));
+    await consult(consultEnv, motherOf(fam), "それってどういうこと?", new ExternalBudget(), deps, told);
+    expect(seen).toEqual([told]);
+    expect(familyPushes(fam).map((p) => [p.title, p.body])).toEqual([
+      ["2段階", "警察を名乗る電話の相談"],
+      ["2段階", "警察を名乗る電話の相談"],
+    ]);
+  });
+
+  // After the script these tell a part of it, and the rules alone make them level 1 (tellsPoliceScript).
+  it.each(["また警察から電話が来た", "お金を振り込めと言われた"])(
+    "still makes %s level 1 after the script, without Claude",
+    async (text) => {
+      const fam = await setupFamily();
+      await afterResolvedScript(fam);
+      const { deps } = readsHistory(() => help({ action: GREETING }));
+      const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps, told);
+      expect(deps.claudeCalls).toBe(0);
+      expect(answer.reply).toBe(POLICE_REPLY);
+      expect(familyPushes(fam).map((p) => p.title)).toEqual(["1段階", "1段階"]);
+    },
+  );
+
+  const wifi = [turn("protected", "Wi-Fi がつながらない"), turn("ai", "設定の Wi-Fi を一度切って、入れ直してみて")];
+  it.each([
+    // About a call: it goes on with the conversation, so the turns go along.
+    "また警察から電話が来た",
+    // The rules see moving money in it.
+    "お金を振り込めと言われた",
+    // Neither, and still a sign of a scam in her words alone (c-fp-vag-02 in eval/cases/dev).
+    "警察の人って言ってたと思うんだけど、お金のことだったかしら",
+  ])("still tells the family at Claude's level for %s, a danger in her words alone", async (text) => {
+    const fam = await setupFamily();
+    const { deps, seen } = readsHistory((t) =>
+      /警察|振り?込/.test(t) ? scam({ level: 2, topic: "お金を求める電話の相談" }) : help({ action: GREETING }),
+    );
+    const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps, wifi);
+    expect(seen).toEqual([wifi]);
+    expect(answer.handoff).toBe(true);
+    const alert = (await alertsOf(fam.familyId)).at(-1);
+    expect(alert).toMatchObject({ level: 2, notified: 1 });
+    expect(familyPushes(fam).map((p) => p.title)).toEqual(["2段階", "2段階"]);
+  });
+
+  // Review 1 of PR #220: the second half of a scam told in two turns looks harmless alone. Claude must
+  // see the first half. The fake Claude answers level 1 when shown it, level 3 phone help when not.
+  const son = [
+    turn("protected", "息子から電話があって、携帯の番号が変わったって"),
+    turn("ai", "詐欺の手口と似ているところがあります。お金や暗証番号の話には応じず、家族に確かめて"),
+  ];
+  it.each([
+    "会社のお金をなくしたから明日までに用意してって",
+    "息子が会社の人を家によこすって",
+    "上司の人が取りに来るらしい",
+    "キャッシュカードを預けてって",
+    "100万円貸してほしいって",
+    "銀行に行ってくるね",
+    "内緒にしてって言われた",
+    "大丈夫かな",
+    "ありがとう、でも振り込んでって言われた",
+  ])("shows Claude the turns before %s and tells the family at its level", async (text) => {
+    const fam = await setupFamily();
+    const deps = fakes(null);
+    const seen: Array<readonly ConsultTurn[]> = [];
+    deps.askClaude = async (_e, _text, _rule, history = []) => {
+      seen.push(history);
+      return history.length > 0 ? scam({ level: 1, topic: "家族を名乗る電話の相談" }) : help({ action: GREETING });
+    };
+    const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps, son);
+    expect(seen).toEqual([son]);
+    expect(answer.handoff).toBe(true);
+    expect(familyPushes(fam).map((p) => p.title)).toEqual(["1段階", "1段階"]);
+  });
+
+  // Review 2 of PR #220: her voice has no "?", so a rising "大丈夫" is her question after the scam.
+  it.each([
+    ["the script", told],
+    ["a caller who says he is her son", son],
+  ] as const)("shows Claude the turns before 大丈夫, 大丈夫よね, 大丈夫ですね, and ok after %s", async (_label, before) => {
+    for (const text of ["大丈夫よね", "大丈夫", "大丈夫ですね", "ok"]) {
+      const fam = await setupFamily();
+      pushes = [];
+      const deps = fakes(null);
+      const seen: Array<readonly ConsultTurn[]> = [];
+      deps.askClaude = async (_e, _text, _rule, history = []) => {
+        seen.push(history);
+        return history.length > 0 ? scam({ level: 1 }) : help({ action: GREETING });
+      };
+      const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps, before);
+      expect(seen, text).toEqual([before]);
+      expect(answer.handoff, text).toBe(true);
+      expect(familyPushes(fam).map((p) => p.title), text).toEqual(["1段階", "1段階"]);
+    }
+  });
+
+  it.each(["おはよう", "ありがとう", "はい", "わかった"])("still judges %s after the script as on its own", async (text) => {
+    const fam = await setupFamily();
+    await afterResolvedScript(fam);
+    const { deps, seen } = readsHistory(() => help({ action: GREETING }));
+    await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps, told);
+    expect(seen).toEqual([[]]);
+    expect(familyPushes(fam)).toEqual([]);
+  });
+
+  it.each([
+    ["おはよう", true],
+    ["おはようございます", true],
+    ["おはよー〜", true],
+    ["こんにちは。", true],
+    ["こんばんは", true],
+    ["おやすみなさい", true],
+    ["ありがとう😊", true],
+    ["ありがとうございました!", true],
+    ["どうもありがとう", true],
+    ["はい、わかった", true],
+    ["うんうん", true],
+    ["了解です", true],
+    ["大丈夫", false],
+    ["大丈夫です", false],
+    ["わかりましたよ", false],
+    ["大丈夫よね", false],
+    ["大丈夫ですね", false],
+    ["ok", false],
+    ["おっけー", false],
+    ["はいね", false],
+    ["大丈夫かな", false],
+    ["大丈夫?", false],
+    ["大丈夫って言われた", false],
+    ["ありがとう、でも振り込んでって言われた", false],
+    ["はい、行ってきます", false],
+    ["銀行に行ってくるね", false],
+    ["", false],
+    ["😊", false],
+  ] as const)("reads %s as saying nothing: %s", (text, expected) => {
+    expect(saysNothing(text)).toBe(expected);
   });
 });

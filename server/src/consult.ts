@@ -233,10 +233,10 @@ export async function consult(
   const p = await judgeConsult(
     text,
     history,
-    async (rule) => {
+    async (rule, turns) => {
       if (!budget.take()) return null;
       try {
-        return await deps.askClaude(env, text, rule, history, image);
+        return await deps.askClaude(env, text, rule, turns, image);
       } catch {
         return null;
       }
