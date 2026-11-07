@@ -38,6 +38,7 @@ struct FamilyHomeView: View {
             .buttonBorderShape(.capsule)
             .accessibilityLabel("ほかの家族を招待する")
             .accessibilityHint("6桁の招待のコードを出します。ほかの家族がこのコードで入ります。24時間使えます")
+            .guideTarget(.invite)
         }
       }
       ToolbarItem(placement: .topBarTrailing) { WipeMenu() }
@@ -114,7 +115,8 @@ private struct JoinedSection: View {
         .accessibilityLabel("今日の\(today.spokenLabel)")
       }
       ForEach(model.familyCards, id: \.item.id) { card in
-        CaseCardView(card: card)
+        // The balloons point at the newest card's buttons only.
+        CaseCardView(card: card, guides: card.item.id == model.familyCards.first?.item.id)
       }
       if !model.smileBoard.photos.isEmpty {
         SmileStrip()

@@ -38,6 +38,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     UNUserNotificationCenter.current().delegate = self
     // Registered before launch ends, as BGTaskScheduler requires.
     CheckupBackground.register { [model] in await model.runCheckups() }
+    OnboardingGuide.configure()
     return true
   }
 

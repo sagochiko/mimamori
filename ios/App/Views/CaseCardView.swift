@@ -10,6 +10,8 @@ struct CaseCardView: View {
   let card: FamilyCard
   /// "解決にする". Nil sends `POST /cases/{id}/resolve`; the judges' tour resolves in its own state.
   var onResolve: ((Case) -> Void)? = nil
+  /// The card whose "電話する" and "解決" get the balloons (`OnboardingGuide`).
+  var guides = false
   @Environment(AppModel.self) private var model
   @Environment(\.openURL) private var openURL
   @State private var askingNumber = false
@@ -136,6 +138,7 @@ struct CaseCardView: View {
         .buttonStyle(CardButtonStyle(prominent: action == .call))
         .disabled(model.isBusy)
         .accessibilityHint(action.hint)
+        .guideTarget(guides ? (action == .call ? .call : .resolve) : nil)
         .contextMenu {
           if action == .call {
             Button("番号を変える") { askingNumber = true }

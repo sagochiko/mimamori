@@ -56,6 +56,7 @@
 		A88C6E7E05120734010F81B5 /* SmilePlaceholder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 549C7E4F7E97FDCD15723C10 /* SmilePlaceholder.swift */; };
 		AA0AD678E7547C38E9194D08 /* icon-96.png in Resources */ = {isa = PBXBuildFile; fileRef = 358E9B4A2B3429F153B655CB /* icon-96.png */; };
 		AAABE0E3CC9080FE4B9B1C29 /* MimamoriCore in Frameworks */ = {isa = PBXBuildFile; productRef = F0D918D888D31C20899E6AAA /* MimamoriCore */; };
+		B1C1E5F7EAF859B546D3F41B /* OnboardingGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = C32612F77F860D5814F46BE4 /* OnboardingGuide.swift */; };
 		B30588DA403943E16C24E603 /* FamilyStartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EB3212F121AF5A1BC7F588E /* FamilyStartView.swift */; };
 		CA60F854809C86C96B2A956E /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04CE476A28DC68FEBBCCD33 /* AppConfig.swift */; };
 		CC53B3BFD66808AB9E8791E7 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 323881E1882ECFEB4C39DB1F /* InfoPlist.strings */; };
@@ -187,6 +188,7 @@
 		BBDC1777B99CB151E280E4BF /* CallEndWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallEndWatcher.swift; sourceTree = "<group>"; };
 		BC84E1DC90613B9EB0164B49 /* ProtectedHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedHomeView.swift; sourceTree = "<group>"; };
 		BE04C0A605888D83870E0B4F /* ConsultPicture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsultPicture.swift; sourceTree = "<group>"; };
+		C32612F77F860D5814F46BE4 /* OnboardingGuide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingGuide.swift; sourceTree = "<group>"; };
 		C9A3D90DB810FD968F731C97 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		D3066EF38E05327DBF8B6F57 /* DailyCheckInNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyCheckInNotifier.swift; sourceTree = "<group>"; };
 		D3927374A99C57B608C75AEA /* MessageField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageField.swift; sourceTree = "<group>"; };
@@ -273,6 +275,7 @@
 				3EB3212F121AF5A1BC7F588E /* FamilyStartView.swift */,
 				3D71E050B6AB7E4A2CC31D69 /* JoinView.swift */,
 				D3927374A99C57B608C75AEA /* MessageField.swift */,
+				C32612F77F860D5814F46BE4 /* OnboardingGuide.swift */,
 				BC84E1DC90613B9EB0164B49 /* ProtectedHomeView.swift */,
 				06074B0D983CF3372440534D /* RoleSelectionView.swift */,
 				95CDB77E0372A19FBBE234F4 /* RootView.swift */,
@@ -700,6 +703,7 @@
 				A6C56C492741A879A53F09EC /* KeychainDeviceKeyStore.swift in Sources */,
 				529376631A3456ECD5E7B916 /* MessageField.swift in Sources */,
 				31980380ADC3240C7EE281BC /* MimamoriApp.swift in Sources */,
+				B1C1E5F7EAF859B546D3F41B /* OnboardingGuide.swift in Sources */,
 				3792C21DC96CFB08E303BF69 /* ProtectedHomeView.swift in Sources */,
 				A47056C1598ECDB8501B26E2 /* ReplySpeaker.swift in Sources */,
 				4B33968B0F409367195FDDED /* RoleSelectionView.swift in Sources */,

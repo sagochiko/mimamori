@@ -3,6 +3,7 @@ import SwiftUI
 
 struct RootView: View {
   @Environment(AppModel.self) private var model
+  @State private var guide = OnboardingGuide()
 
   var body: some View {
     NavigationStack {
@@ -15,6 +16,10 @@ struct RootView: View {
     // A new stack per route: after joining (or a 401) the pushed code or name screen must not stay on top.
     .id(model.route)
     .animation(.default, value: model.route)
+    // The balloons over the buttons of the home screen (the coach mark sample covers the toolbar too).
+    .environment(guide)
+    .overlay { if OnboardingGuide.style == .spotlight { CoachMarkOverlay().environment(guide) } }
+    .onChange(of: model.route, initial: true) { _, route in guide.start(for: route) }
     .alert(
       model.problem.map(\.title) ?? "",
       isPresented: Binding(get: { model.problem != nil }, set: { if !$0 { model.problem = nil } })
