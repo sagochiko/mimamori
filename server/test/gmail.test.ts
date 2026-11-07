@@ -1122,8 +1122,8 @@ describe("reading one mail", () => {
     // (1935 ms) while make verify ran swift test, the hook tests, and the vitest workers at once, and
     // passed alone. The mail is read at two lengths, SMALL and SMALL * SCALE, back to back, so load
     // slows both alike. Linear reading takes about SCALE times as long on the long one; quadratic,
-    // SCALE squared. The limit sits between them, SCALE * 4 (32 against 8 and 64), so it holds a
-    // 4-fold slip either way. Each length keeps the fastest of a few runs, so one pause of the
+    // SCALE squared. The limit sits between them, SCALE * 4 (32 against 8 and 64): linear reading
+    // may slip 4-fold before it fails, and quadratic reading stays 2-fold above it. Each length keeps the fastest of a few runs, so one pause of the
     // machine or the garbage collector does not decide it. Checked on 2026-11-07 by breaking
     // anchorHrefs once so that every 64th piece read on to the end of the mail (quadratic): "<a '"
     // failed at a ratio of 66.7. Unbroken, the ratios were about 7 to 10.
