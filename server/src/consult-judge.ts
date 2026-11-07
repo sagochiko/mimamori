@@ -196,8 +196,7 @@ const SENSITIVE: ReadonlyArray<{ reason: string; pattern: RegExp }> = [
 // guidance it is left out when the guidance names a harmless reset, so a network settings reset is
 // guided; guidance that names only the screen still goes to the family (review 3 of PR #237).
 const RESET_SCREEN = /転送または ?(iphone|ipad)? ?を? ?リセット/g;
-const HARMLESS_RESET =
-  /(ネットワーク設定|パスワード|パスコード|キーボードの変換学習|ホーム画面のレイアウト|位置情報とプライバシー)を?リセット/;
+const HARMLESS_RESET = /(ネットワーク設定|パスワード|パスコード|キーボードの変換学習|ホーム画面のレイアウト|位置情報とプライバシー)を?リセット/;
 /** Claude's line, normalized, with the reset screen's name left out when only a harmless reset is meant. */
 function claudeLine(line: string): string {
   const t = normalize(line);
