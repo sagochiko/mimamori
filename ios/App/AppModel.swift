@@ -41,12 +41,16 @@ final class AppModel {
   private(set) var checkupPrompt: String?
   /// Everyone's smiles and replies (`GET /smiles`), newest first, with the hour her smile is expected by.
   private(set) var smileBoard = SmileBoard()
+  /// Whether the protected member has joined, as this family iPhone can tell from the smiles and
+  /// cases (#244). Before, the family screen shows only "招待".
+  private(set) var protectedJoined: Bool
   /// Her Gmail grant (`GET /gmail/connect`): nil until read, and while the server has no Google client.
   private(set) var gmail: GmailGrant?
   /// Photos already fetched this run, by smile id. They never change, so they are not fetched again.
   @ObservationIgnored private var photoCache: [String: Data] = [:]
 
   @ObservationIgnored private let session: Session
+  @ObservationIgnored private let presence: ProtectedPresence
   @ObservationIgnored private lazy var speaker = ReplySpeaker()
   @ObservationIgnored private lazy var listener: VoiceListener = {
     let listener = VoiceListener()
@@ -79,9 +83,13 @@ final class AppModel {
     transport: any HTTPTransport = URLSessionTransport(),
     baseURL: URL = AppConfig.apiBaseURL,
     marker: any InstallMarkerStore = AppModel.installMarker,
-    chatStore: any ChatLogStore = FileChatLogStore.standard
+    chatStore: any ChatLogStore = FileChatLogStore.standard,
+    presenceStore: any ProtectedPresenceStore = UserDefaultsProtectedPresenceStore()
   ) {
     self.chat = ChatKeeper(store: chatStore)
+    let presence = ProtectedPresence(store: presenceStore)
+    self.presence = presence
+    self.protectedJoined = presence.hasJoined
     let session = Session(
       baseURL: baseURL, transport: transport, store: store, marker: marker,
       isProtectedDataAvailable: { UIApplication.shared.isProtectedDataAvailable })
@@ -96,6 +104,8 @@ final class AppModel {
         self?.invite = nil
         self?.cases = []
         self?.smileBoard = SmileBoard()
+        self?.presence.forget()
+        self?.protectedJoined = false
         self?.gmail = nil
         self?.photoCache = [:]
         self?.shownPicture = nil
@@ -146,7 +156,8 @@ final class AppModel {
           store: InMemoryDeviceKeyStore(ScreenshotStubTransport.joinedAs),
           transport: ScreenshotStubTransport(),
           marker: ScreenshotStubTransport.marker,
-          chatStore: ScreenshotStubTransport.chatStore)
+          chatStore: ScreenshotStubTransport.chatStore,
+          presenceStore: InMemoryProtectedPresenceStore())
       }
     #endif
     return AppModel()
@@ -203,6 +214,11 @@ final class AppModel {
     now = .now
     guard let fresh = try? await session.cases() else { return }
     cases = fresh
+    notePresence()
+  }
+
+  private func notePresence() {
+    protectedJoined = presence.update(smiles: smileBoard.smiles, cases: cases)
   }
 
   /// Every minute while the screen is showing. Cancelled with the view's task.
@@ -221,6 +237,7 @@ final class AppModel {
     guard route != .chooseRole else { return }
     guard let fresh = try? await session.smiles() else { return }
     smileBoard = fresh
+    notePresence()
   }
 
   /// The photo of one smile, fetched with the device key. Nil while it cannot be read.
@@ -717,4 +734,11 @@ struct ShownPicture {
   /// The message it shows under: her line while waiting, the answer once it came.
   let anchor: UUID?
   var circle: PixelPoint? = nil
+}
+
+/// What `ProtectedPresence` remembers on this family iPhone (#244): only whether she has joined.
+struct UserDefaultsProtectedPresenceStore: ProtectedPresenceStore {
+  private let key = "mimamori.protectedJoined"
+  func load() -> Bool { UserDefaults.standard.bool(forKey: key) }
+  func save(_ joined: Bool) { UserDefaults.standard.set(joined, forKey: key) }
 }

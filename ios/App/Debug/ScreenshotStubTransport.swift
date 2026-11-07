@@ -28,6 +28,9 @@
     static var noticesOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-notices-open") }
     /// With `-mimamori-stub-camera-open`, the home screen opens the smile camera at once.
     static var cameraOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-camera-open") }
+    /// With `-mimamori-stub-invite-open`, the family screen shows an invite code at once: in the middle
+    /// before the protected member joined, in the sheet of the top-right "招待" after (#244).
+    static var inviteOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-invite-open") }
     static var gmailButton: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-gmail") }
     /// With `-mimamori-stub-photo-open`, the home screen opens the photo button's picker at once (#221).
     static var photoOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-photo-open") }
@@ -302,6 +305,13 @@
     private var cases: [[String: Any]]
 
     private init() {
+      // `-mimamori-stub-cases none` starts with none, so the family screen before she joined can be shot
+      // (with `-mimamori-stub-smiles none`, #244).
+      let args = ProcessInfo.processInfo.arguments
+      if let i = args.firstIndex(of: "-mimamori-stub-cases"), i + 1 < args.count, args[i + 1] == "none" {
+        cases = []
+        return
+      }
       let now = Date.now
       func at(_ minutesAgo: Double) -> String { now.addingTimeInterval(-minutesAgo * 60).ISO8601Format() }
       func alert(_ level: Int, _ source: String, _ summary: String, _ reason: String) -> [String: Any] {

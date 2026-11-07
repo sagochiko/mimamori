@@ -1,21 +1,22 @@
 import MimamoriCore
 import SwiftUI
 
-/// The family's screen: the morning smiles first, then a card per case, newest first, then the invite.
+/// The family's screen. Until the protected member joins, only "招待" in the middle (#244); after, her
+/// smile today on top, a card per case, newest first, then everyone's smiles and the hour her smile is
+/// expected by, with "笑顔" and "招待" as small buttons at the top right next to the menu.
 struct FamilyHomeView: View {
   @Environment(AppModel.self) private var model
+  @State private var camera = false
+  @State private var inviting = false
 
   var body: some View {
     ScrollView {
-      VStack(spacing: 20) {
-        SmileSection()
-        ForEach(model.familyCards, id: \.item.id) { card in
-          CaseCardView(card: card)
-        }
-        if model.familyCards.isEmpty { Spacer(minLength: 80) }
-        InviteSection()
+      if model.protectedJoined {
+        JoinedSection()
+      } else {
+        WaitingSection()
+          .containerRelativeFrame(.vertical)
       }
-      .padding(24)
     }
     .refreshable {
       await model.loadCases()
@@ -23,20 +24,75 @@ struct FamilyHomeView: View {
     }
     .task { await model.keepCasesFresh() }
     .toolbar {
+      if model.protectedJoined {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("笑顔") { camera = true }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.capsule)
+            .accessibilityLabel("笑顔で返す")
+            .accessibilityHint("前のカメラに向かって笑うと、その場で撮って家族みんなに送ります")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("招待") { inviting = true }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.capsule)
+            .accessibilityLabel("ほかの家族を招待する")
+            .accessibilityHint("6桁の招待のコードを出します。ほかの家族がこのコードで入ります。24時間使えます")
+        }
+      }
       ToolbarItem(placement: .topBarTrailing) { WipeMenu() }
+    }
+    .fullScreenCover(isPresented: $camera) { SmileCaptureView() }
+    .sheet(isPresented: $inviting) {
+      InviteSheet()
+        .presentationDetents([.medium])
+    }
+    .onAppear {
+      #if DEBUG
+        if ScreenshotStubTransport.cameraOpen { camera = true }
+        if ScreenshotStubTransport.inviteOpen, model.protectedJoined { inviting = true }
+      #endif
     }
   }
 }
 
-/// Today's smile of the protected member, large, the button to answer with a smile, everyone's smiles,
-/// and the hour by which her smile is expected (after it, with no smile that day, the family is told
-/// quietly).
-private struct SmileSection: View {
+/// Before she joins: one "招待" in the middle. Once pressed, the code large with "送る" under it, and
+/// a small button for a new code.
+private struct WaitingSection: View {
   @Environment(AppModel.self) private var model
-  @State private var camera = false
 
   var body: some View {
-    VStack(spacing: 16) {
+    VStack(spacing: 24) {
+      if let invite = model.invite {
+        InviteCodeView(invite: invite)
+        NewCodeButton()
+      } else {
+        Button {
+          Task { await model.createInvite() }
+        } label: {
+          if model.isBusy { ProgressView().tint(.white) } else { Text("招待") }
+        }
+        .buttonStyle(BigButtonStyle())
+        .disabled(model.isBusy)
+        .accessibilityLabel("見守られる人を招待する")
+        .accessibilityHint("6桁の招待のコードを出します。見守られる人がこのコードで入ると、ここに笑顔と知らせが並びます。24時間使えます")
+      }
+    }
+    .padding(24)
+    .onAppear {
+      #if DEBUG
+        if ScreenshotStubTransport.inviteOpen, model.invite == nil { Task { await model.createInvite() } }
+      #endif
+    }
+  }
+}
+
+/// After she joined: her smile today, the cards, everyone's smiles, and the hour.
+private struct JoinedSection: View {
+  @Environment(AppModel.self) private var model
+
+  var body: some View {
+    VStack(spacing: 20) {
       if let today = model.smileBoard.todaysProtectedSmile(now: model.now) {
         VStack(spacing: 8) {
           SmilePhoto(smile: today)
@@ -48,21 +104,51 @@ private struct SmileSection: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("今日の\(today.spokenLabel)")
       }
-      Button("笑顔") { camera = true }
-        .buttonStyle(BigButtonStyle())
-        .accessibilityLabel("笑顔で返す")
-        .accessibilityHint("前のカメラに向かって笑うと、その場で撮って家族みんなに送ります")
+      ForEach(model.familyCards, id: \.item.id) { card in
+        CaseCardView(card: card)
+      }
       if !model.smileBoard.photos.isEmpty {
         SmileStrip()
       }
       DeadlineMenu()
     }
-    .fullScreenCover(isPresented: $camera) { SmileCaptureView() }
-    .onAppear {
-      #if DEBUG
-        if ScreenshotStubTransport.cameraOpen { camera = true }
-      #endif
+    .padding(24)
+  }
+}
+
+/// "招待" at the top right after she joined: a code for another family member, made when it opens.
+private struct InviteSheet: View {
+  @Environment(AppModel.self) private var model
+
+  var body: some View {
+    VStack(spacing: 24) {
+      if let invite = model.invite {
+        InviteCodeView(invite: invite)
+        NewCodeButton()
+      } else {
+        ProgressView()
+      }
     }
+    .padding(24)
+    .task { if model.invite == nil { await model.createInvite() } }
+  }
+}
+
+/// A small button for a new code. The old one stays usable until it expires.
+private struct NewCodeButton: View {
+  @Environment(AppModel.self) private var model
+
+  var body: some View {
+    Button {
+      Task { await model.createInvite() }
+    } label: {
+      if model.isBusy { ProgressView() } else { Image(systemName: "arrow.clockwise") }
+    }
+    .buttonStyle(.bordered)
+    .buttonBorderShape(.circle)
+    .disabled(model.isBusy)
+    .accessibilityLabel("新しい招待のコードを出す")
+    .accessibilityHint("今のコードとは別の6桁のコードを出します。24時間使えます")
   }
 }
 
@@ -83,27 +169,6 @@ private struct DeadlineMenu: View {
     }
     .accessibilityLabel("見守られる人の笑顔を待つ時刻、\(hour)時")
     .accessibilityHint("この時刻までにその日の笑顔が届かなければ、家族にそっと知らせます。押すと時刻を変えられます")
-  }
-}
-
-private struct InviteSection: View {
-  @Environment(AppModel.self) private var model
-
-  var body: some View {
-    VStack(spacing: 24) {
-      if let invite = model.invite {
-        InviteCodeView(invite: invite)
-      }
-      Button {
-        Task { await model.createInvite() }
-      } label: {
-        if model.isBusy { ProgressView().tint(.white) } else { Text("招待") }
-      }
-      .buttonStyle(BigButtonStyle(prominent: model.invite == nil && model.familyCards.isEmpty))
-      .disabled(model.isBusy)
-      .accessibilityLabel(model.invite == nil ? "招待のコードを出す" : "新しい招待のコードを出す")
-      .accessibilityHint("見守られる人やほかの家族が、この6桁のコードで入ります。24時間使えます")
-    }
   }
 }
 
@@ -132,7 +197,7 @@ struct InviteCodeView: View {
       ShareLink(item: invite.code.value) {
         Text("送る")
       }
-      .buttonStyle(BigButtonStyle(prominent: false))
+      .buttonStyle(BigButtonStyle())
       .accessibilityLabel("コードを送る")
       .accessibilityHint("メッセージなどで招待のコードを送ります")
     }
