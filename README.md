@@ -32,7 +32,9 @@ The scammer calls and says her bank account was used in a crime. Then they tell 
 4. Every family member's iPhone gets a card with the level, a one-line topic ("警察を名乗る電話の相談", a consultation about a call from someone claiming to be the police), and what the AI told her. The card has two buttons, Call and Resolve.
 5. Whoever talks to her presses Resolve, and the others see who resolved it. If nobody does within 30 minutes, the family is reminded and her screen says the family has not answered yet, call them if it is urgent.
 
-On 2026-11-04 the author ran this on his own iPhone, playing the mother, with a simulator as the family. The notice reached the family about one second after the consultation was sent (#57). That first try came out at level 2. After the fix in #72, the author confirmed level 1 and the fixed answer on his iPhone (#77). The check with two real iPhones is still waiting for the author (#48, #31).
+On 2026-11-04 the author ran this on his own iPhone, playing the mother, with a simulator as the family. The notice reached the family about one second after the consultation was sent (#57). That first try came out at level 2. After the fix in #72, the author confirmed level 1 and the fixed answer on his iPhone (#77).
+
+On 2026-11-07 he ran it again with build 9, his iPhone as the mother and a simulator as the family (#48). The answer was level 1. The family simulator got the push "1段階 警察を名乗る電話の相談" and the card, and neither showed her own words. Pressing Resolve on the simulator changed the card to "(name)が解決", and the "家族から返事がまだ" (the family has not answered yet) band on her screen left the resolved case out. In the same run, a plain "おはよう" (good morning) after the case reached the family as a second card at level 2, because Claude was given the earlier police turns. Since #219 (PR #220), greetings, thanks, and short acknowledgements are sent to Claude without the earlier turns, and the author checked the fix against the production server. Still unchecked: whether a second family iPhone sees who resolved it, and whether Call dials her number (the simulator has no phone). Both wait for a second real iPhone (#48, #31).
 
 ## What it notices without her doing anything
 
@@ -41,7 +43,7 @@ On 2026-11-04 the author ran this on his own iPhone, playing the mother, with a 
 | SMS from unknown senders | iOS Message Filter extension. Apple sends the message to our server, and rules answer at once. Only clear scams go to the junk folder; everything else is delivered, and Claude's judgment reaches her and the family | Built (#10). On-device check pending (#139) |
 | Gmail | The server reads new mail in her inbox every 5 minutes (read-only scope) | Built (#15). Waiting for the Google Cloud setup and her consent (#144) |
 | Web pages in Safari | A Safari extension sends the page to the server and lays a warning over dangerous pages | Built (#16). Checked on the author's iPhone (#145) |
-| Phone calls | The app sees that a call ended only while it is in the foreground. It also asks once a day at a time she can change in Settings | Built (#99). The call itself is never visible |
+| Phone calls | The app sees that a call ended only while it is in the foreground. It also asks once a day at a time she can change in iOS Settings, or in the app's own settings screen from build 10 | Built (#99). The call itself is never visible |
 | DNS (bank sites after a warning, remote-control apps) | Planned as a DoH resolver | Not built (#11) |
 | LINE, iMessage, call audio | Not visible to any app | Cannot be done |
 
@@ -66,7 +68,7 @@ Text inside SMS, mail, pages, and her messages is treated as data. A message tha
 | Instant answer | Rules, no model | Answers in under a millisecond on the dev set, and still works when Claude is down |
 | Judging SMS, mail, pages | Claude Haiku 5.5 (`claude-haiku-5-5`), Structured Outputs | Fast and cheap for every message. The reply is a fixed shape (level, reason, one line for her), so nothing in it can change who is told |
 | Her chat | Claude Sonnet 5.5 (`claude-sonnet-5-5`) | She waits on screen, so the server waits up to 15 seconds and then answers by rules alone. It remembers the last few turns, so "それってどういうこと？" (what does that mean?) works |
-| Reading a screenshot or a document she shares | Claude Sonnet 5.5, with the image | She shares the image from the share sheet and waits for the answer, as in her chat. For a settings screen, the answer comes with a circle on where to tap |
+| Reading a screenshot or a document she shows | Claude Sonnet 5.5, with the image | She shares the image from the share sheet, or picks it with the photo button in her chat, and waits for the answer, as in her chat. For a settings screen, the answer comes with a circle on where to tap |
 | Research after a warning | Claude Managed Agents | No one is waiting for it, so it can take minutes. The instant answer and her chat must not wait on it. Only the research for SMS, mail, and pages is built (#12) |
 
 When Claude judges her consultation, typed, spoken, or an image, to be about a scam, at any level, she hears a fixed sentence, not Claude's own wording (#188, #186). Reviews found that Claude's advice could contain "open the link" or "enter the code you received", and a word filter cannot tell "open the link" from "don't open the link". The fake-police answer and the answers to ordinary phone questions are unchanged.
@@ -103,15 +105,28 @@ The 10.0% for rules only was reached by fixing the rules while reading each dev 
 - Joining a family with the six-digit invite code is limited to 5 tries a minute per source, counted in D1, and the sixth gets 429 (#67, PR #201). The `join_attempts` table keeps only a keyed hash of the source address, never the address itself, and its rows are deleted after a day.
 - Secrets live in Workers secrets. This repository holds only test examples, with no real messages or family details.
 
+## Tried on the author's iPhone
+
+The author used his own iPhone (iOS 27.2) as the mother, with a simulator as the family. The items below are from build 9 on 2026-11-07, except the Safari extension, which he checked on 2026-11-06 with an earlier build. No real family member has used the app yet.
+
+- The main scene up to Resolve, as described above (#48).
+- The Safari extension laid its warning over a dangerous page (#145).
+- Sharing a screenshot from Photos to the app (#13). The answer came back with a circle on the iPhone Storage screen (#187).
+- The low-storage prompt (#19, PR #199). Her screen showed the free space with "あとで" (later) and "空ける" (free it up). "空ける" started the guide, and following it through Settings > General > iPhone Storage reached the list of large apps, with the same words as the guide (#200).
+- Read-aloud is off by default. Her spoken consultation was not read out until it was turned on in iOS Settings (#48, #187).
+
 ## Built, not yet tried on a real iPhone
 
-These are merged and covered by tests, but nobody has used them on a real iPhone yet.
+These are merged and covered by tests, but nobody has used them, or the part named, on a real iPhone yet.
 
 - The SMS filter (#139) and the Gmail watch (#144), as in the table above.
-- The main scene with two real iPhones, one for her and one for the family (#48, #31).
-- Sharing a screenshot or a document to the app (#13). The share extension and the server side are built and the extension builds for the simulator, but it has not run end to end on the simulator or a device. The checks on the author's iPhone, including how often the circle lands on the right spot on 10 Settings screenshots, are in #187.
+- The main scene on a second family iPhone, and the Call button (#48, #31).
+- The photo button in her chat (#221, PR #227). A button with no label at the left of the input field opens the photo picker, and the picked screenshot goes to the same consultation as a shared one, with the circle shown only on screen until the next consultation. On the simulator the picker opened without asking for photo access, but picking a photo could not be driven there, so the step after it was checked with a Debug launch argument that hands in a fixed image.
+- A settings screen inside her app (#222, PR #226), opened from the menu at the end of her smile row, with the daily question, its time, and read-aloud. It reads and writes the same values as iOS Settings. Checked on the simulator.
+- The two items above are not in build 9 (`ios/project.yml` on `origin/main` still says 9 on 2026-11-07). They go out in build 10.
+- Sharing an image received in LINE, and how often the circle lands on the right spot on 10 Settings screenshots (#187).
 - The demo mode (#100) was checked on the simulator. Whether it shows on the TestFlight build is in #187.
-- The low-storage prompt and the watch's self-check (#19, PR #199). When free space runs low, her screen says so with "あとで" (later) and "空ける" (free it up), which starts the guide to Settings > General > iPhone Storage; on the simulator the prompt appeared on her screen. The free-space value never leaves the phone. Her phone reports to the server when it refreshes in the background or opens. If that stops for 48 hours, the family gets one quiet "(name)の見守りが止まっています" (the watch has stopped). Turning notifications off sends "(name)のiPhoneで、みまもりの通知が切られています", and turning background refresh off sends "(name)のiPhoneで、みまもりの「アプリのバックグラウンド更新」が切られています", once each time it is turned off. The checks on a real iPhone are in #200.
+- The watch's self-check (#19, PR #199). The free-space value never leaves the phone. Her phone reports to the server when it refreshes in the background or opens. If that stops for 48 hours, the family gets one quiet "(name)の見守りが止まっています" (the watch has stopped). Turning notifications off sends "(name)のiPhoneで、みまもりの通知が切られています", and turning background refresh off sends "(name)のiPhoneで、みまもりの「アプリのバックグラウンド更新」が切られています", once each time it is turned off. These notices, Low Power Mode, and a day without opening the app are still to be checked (#200).
 - Managed Agents research. On 2026-11-07 the production D1 had no alert with a research session yet, so no evidence line has been written by the real API.
 
 ## Not built yet
@@ -139,11 +154,11 @@ The consultation in the demo is played on the phone from the server's fixed fake
 
 ## Built during the hackathon
 
-Every line of code here was written in this repository after the kickoff on 2026-11-02. The first commit is dated 2026-11-03. On 2026-11-07, at commit `19a56ae` of `origin/main`, there were 844 commits (652 without merges, 615 of them co-authored by Claude), 104 merged pull requests, and 99 issues (67 closed). The tests were 1,733 server tests (Vitest, 20 files), 314 `ios/Core` tests (`swift test`, 50 suites), and 19 tests for the eval scripts. The server has 9 D1 migrations. The pre-hackathon design was copied in on 2026-11-03; [`docs/design.md`](docs/design.md) says what changed and why.
+Every line of code here was written in this repository after the kickoff on 2026-11-02. The first commit is dated 2026-11-03. On 2026-11-07, at commit `a916f02` of `origin/main`, there were 922 commits (711 without merges, 674 of them co-authored by Claude), 119 merged pull requests, and 105 issues (74 closed). The tests were 1,785 server tests (Vitest, 20 files), 333 `ios/Core` tests (`swift test`, 52 suites), and 19 tests for the eval scripts. The server has 9 D1 migrations. Counted with `git rev-list --count` (with `--no-merges`, and `--grep='^Co-Authored-By: Claude'`), `gh pr list --state merged`, `gh issue list --state all` and `--state closed`, `ls server/migrations`, and the test counts that `make verify` writes to `.verify.log`. The pre-hackathon design was copied in on 2026-11-03; [`docs/design.md`](docs/design.md) says what changed and why.
 
 ## From the development log
 
-[`docs/dev-log.md`](docs/dev-log.md) has 85 dated entries. Three of them shaped the product:
+[`docs/dev-log.md`](docs/dev-log.md) has 91 dated entries (2026-11-07, `grep -c '^## 20'`). Three of them shaped the product:
 
 - 2026-11-04. We dropped "take ownership" and "reply to her" from the family screen. While someone owned a case, the AI only told her that person was looking, and her spoken replies reached no one. Relaying messages between users and forwarding her first 30 characters were also close to examples in the Ministry of Internal Affairs and Communications' telecom business manual. Now everyone sees the same card and calls her.
 - 2026-11-04. The first on-device test crashed when she pressed the microphone (a Swift 6 isolation check in the speech permission callback). The main line came out at level 2, not 1, because "警察から電話" (a call from the police) was not part of the script rules. The eval had not caught it because it ran consultations through the SMS rules. Both were fixed, and the eval now measures consultations on the real path (#57, #72, #74).
@@ -151,7 +166,7 @@ Every line of code here was written in this repository after the kickoff on 2026
 
 ## How Claude Code built it
 
-The harness is the setup that lets Claude Code build this under hackathon rules. It is described in [`docs/harness.md`](docs/harness.md), with the project rules in [`CLAUDE.md`](CLAUDE.md) and everything else in [`.claude/`](.claude/). Hooks block rule-breaking actions, such as opening the author's earlier projects, reading the holdout set, reading secrets, or merging an unreviewed PR. Each issue goes through separate implementer, verifier, and reviewer subagents, and the reviewer's report is kept on the PR. Counts from the hook log, 2026-11-03 to 2026-11-07, are in [`docs/claude-usage.md`](docs/claude-usage.md): 170 reviewer launches and 21 resumes, 76 implementer launches, 61 verifier launches, 6 judge runs, and 208 actions that hooks blocked or sent to the author. On 2026-11-07 (`19a56ae`), [`docs/audits/raw/`](docs/audits/raw/) held 191 reviewer reports, kept unedited.
+The harness is the setup that lets Claude Code build this under hackathon rules. It is described in [`docs/harness.md`](docs/harness.md), with the project rules in [`CLAUDE.md`](CLAUDE.md) and everything else in [`.claude/`](.claude/). Hooks block rule-breaking actions, such as opening the author's earlier projects, reading the holdout set, reading secrets, or merging an unreviewed PR. Each issue goes through separate implementer, verifier, and reviewer subagents, and the reviewer's report is kept on the PR. Counts from the hook log, 2026-11-03 to 2026-11-07, are in [`docs/claude-usage.md`](docs/claude-usage.md): 170 reviewer launches and 21 resumes, 76 implementer launches, 61 verifier launches, 6 judge runs, and 208 actions that hooks blocked or sent to the author. On 2026-11-07 (`a916f02`), [`docs/audits/raw/`](docs/audits/raw/) held 209 reviewer reports (`ls docs/audits/raw | grep -c mm-reviewer`), kept unedited.
 
 ## Repository
 
