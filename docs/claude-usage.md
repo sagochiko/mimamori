@@ -4,15 +4,15 @@
 
 ## 公開のリポジトリで数え直せる数
 
-下の表の元の記録(`.claude/logs/`)は公開していない。次の数は、公開のリポジトリだけで同じコマンドを流せば数え直せる。
+下の表の元の記録(`.claude/logs/`)は公開していない。次の数はコミット `06f8418` の時点のもので、公開のリポジトリで同じコマンドを流せば同じ数が出る。原文はサブエージェントが報告を返すたびに1件できるので、同じレビュー役に続きを頼んだ回も数に入る。原文を残し始めたのは2026年11月4日で、それより前のレビューは入っていない。
 
 | 数えたもの | 数 | コマンド |
 |---|---:|---|
-| `docs/audits/raw/` の `mm-reviewer` の原文 | 215 | `ls docs/audits/raw/*-mm-reviewer-*.md \| wc -l` |
-| `docs/audits/raw/` の `mm-judge` の原文 | 6 | `ls docs/audits/raw/*-mm-judge-*.md \| wc -l` |
-| `docs/audits/raw/` の `mm-auditor` の原文 | 2 | `ls docs/audits/raw/*-mm-auditor-*.md \| wc -l` |
-| マージを除くコミット | 730 | `git rev-list --no-merges --count HEAD` |
-| そのうち `Co-Authored-By: Claude` の付いたもの | 693 | `git rev-list --no-merges --count --grep='Co-Authored-By: Claude' HEAD` |
+| `docs/audits/raw/` の `mm-reviewer` の原文 | 216 | `git ls-tree --name-only 06f8418 docs/audits/raw/ \| grep -c -- '-mm-reviewer-'` |
+| `docs/audits/raw/` の `mm-judge` の原文 | 6 | `git ls-tree --name-only 06f8418 docs/audits/raw/ \| grep -c -- '-mm-judge-'` |
+| `docs/audits/raw/` の `mm-auditor` の原文 | 2 | `git ls-tree --name-only 06f8418 docs/audits/raw/ \| grep -c -- '-mm-auditor-'` |
+| マージを除くコミット | 732 | `git rev-list --no-merges --count 06f8418` |
+| そのうち `Co-Authored-By: Claude` の付いたもの | 695 | `git rev-list --no-merges --count --grep='Co-Authored-By: Claude' 06f8418` |
 
 ## サブエージェント
 
@@ -20,10 +20,10 @@
 
 | 名前 | 起動 | 再開 |
 |---|---:|---:|
-| `mm-reviewer` | 189 | 21 |
-| `mm-implementer` | 86 | 50 |
-| `resume` | 0 | 89 |
-| `mm-verifier` | 69 | 2 |
+| `mm-reviewer` | 191 | 21 |
+| `mm-implementer` | 87 | 50 |
+| `resume` | 0 | 92 |
+| `mm-verifier` | 70 | 2 |
 | `web-fetch` | 24 | 1 |
 | `general-purpose` | 14 | 1 |
 | `mm-judge` | 8 | 0 |
