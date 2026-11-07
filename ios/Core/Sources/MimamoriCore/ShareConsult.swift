@@ -18,6 +18,16 @@ public struct ConsultImage: Sendable, Equatable {
     self.data = data
     self.size = size
   }
+
+  /// The server takes no more base64 than this (IMAGE_MAX_BASE64_CHARS in server/src/consult.ts).
+  public static let maxBase64Characters = 3_000_000
+  /// The JPEG qualities the share sheet and the chat's photo button try, best first, until one fits.
+  public static let jpegQualities: [Double] = [0.85, 0.6, 0.4]
+
+  /// Whether an encoded image of `byteCount` bytes is within what the server takes.
+  public static func fitsServer(byteCount: Int) -> Bool {
+    (byteCount + 2) / 3 * 4 <= maxBase64Characters
+  }
 }
 
 /// What the share sheet shows after the answer (task 12 in docs/plan.md): with a circle, the answer

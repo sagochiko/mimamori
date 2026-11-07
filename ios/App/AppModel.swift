@@ -23,6 +23,9 @@ final class AppModel {
   private(set) var voice = VoiceConsult()
   /// Her conversation, kept on this iPhone only (#73).
   private(set) var chat: ChatKeeper
+  /// The screenshot she showed last with the photo button (#221), in memory only, with the ring once
+  /// the answer comes. Gone with her next consultation and when the app quits; never in `chat`.
+  private(set) var shownPicture: ShownPicture?
   /// "さっきの電話、大丈夫だった？" while a long call waits for an answer.
   private(set) var followUpPrompt: String?
   /// "iPhoneの空きが残り0.8GB。一緒に空けよう" while free space is low (#19). The amount is read on
@@ -43,6 +46,8 @@ final class AppModel {
     return listener
   }()
   @ObservationIgnored private var silenceWatch: Task<Void, Never>?
+  /// The picked image between the press and the send effect.
+  @ObservationIgnored private var pendingPicture: (ConsultPicture, ConsultImage)?
   @ObservationIgnored private let followUp = CallFollowUp(
     store: UserDefaultsCallFollowUpStore(), minimumDuration: AppModel.followUpMinimum)
   @ObservationIgnored private let checkup = CheckupPolicy(store: UserDefaultsCheckupStore())
@@ -78,6 +83,7 @@ final class AppModel {
         self?.smileBoard = SmileBoard()
         self?.gmail = nil
         self?.photoCache = [:]
+        self?.shownPicture = nil
         // The key is gone (a 401, or this iPhone left the family): her conversation goes with it.
         // Not before the first unlock, when the Keychain only reads as empty.
         if UIApplication.shared.isProtectedDataAvailable { self?.chat.clear() }
@@ -269,7 +275,32 @@ final class AppModel {
   func sendTyped(_ text: String) {
     followUp.consultStarted()
     followUpPrompt = nil
+    if voice.acceptsText { shownPicture = nil }
     apply(voice.typed(text, at: .now))
+  }
+
+  /// The photo button in the field (#221): the image she picked, with what she had written. Sent
+  /// like a shared screenshot (`ConsultPicture`), never read aloud. Her line and the answer join
+  /// the conversation; the image is shown under the answer until her next consultation. False when
+  /// nothing was sent (she started listening while the picker handed the image over, or it could not
+  /// be read), so the caller keeps what she wrote.
+  @discardableResult
+  func sendPicture(_ data: Data, text: String) -> Bool {
+    guard voice.acceptsText else { return false }
+    guard let picture = ConsultPicture(data: data), let image = picture.encoded() else {
+      voice.pictureUnreadable()
+      return false
+    }
+    followUp.consultStarted()
+    followUpPrompt = nil
+    pendingPicture = (picture, image)
+    apply(voice.pictured(text, at: .now))
+    return true
+  }
+
+  /// The picked image could not be loaded from the picker.
+  func pictureUnreadable() {
+    voice.pictureUnreadable()
   }
 
   /// The microphone: starts listening, or stops it.
@@ -278,6 +309,7 @@ final class AppModel {
     } else {
       followUp.consultStarted()
       followUpPrompt = nil
+      if voice.acceptsText { shownPicture = nil }
     }
     apply(voice.micTapped(at: .now))
   }
@@ -314,6 +346,16 @@ final class AppModel {
         // The turns before this one go with it; then her words join the conversation.
         let history = chat.send(text, at: .now)
         Task { await send(text, history: history) }
+      case .sendPicture(let text):
+        guard let (picture, image) = pendingPicture, case .thinking(let line) = voice.phase else {
+          voice.sendFailed()
+          continue
+        }
+        pendingPicture = nil
+        // Her line only; no earlier turns go with an image, as from the share sheet.
+        chat.pictured(line, at: .now)
+        shownPicture = ShownPicture(picture: picture, anchor: chat.log.messages.last?.id)
+        Task { await send(image, text: text, picture: picture) }
       case .speak(let text):
         speaker.speak([text])
       }
@@ -336,18 +378,42 @@ final class AppModel {
   private func send(_ text: String, history: [ConsultTurn]) async {
     do {
       let answer = try await session.consult(text: text, history: history)
-      // An answer that comes after she started again is dropped (VoiceConsult.answered).
-      guard case .thinking = voice.phase else { return }
-      chat.answered(answer.reply, at: .now)
-      // 「読み上げ」 in Settings > みまもり, off unless turned on (#115). Read for each answer: the
-      // Settings app is another process and sends no notice of the change.
-      let readAloud = ReadAloudSettings(reading: { UserDefaults.standard.object(forKey: $0) })
-      apply(voice.answered(answer, readsAloud: readAloud.isOn))
-      // The case shows up: "家族に伝えました", or "家族に届いていません" while no family device took it.
-      if answer.handoff { await loadCases() }
+      await answered(answer, reply: answer.reply)
     } catch {
       voice.sendFailed()
     }
+  }
+
+  /// The image goes as from the share sheet: the answer asks for the next screenshot when it has a
+  /// ring (`ShareConsult.reply`), and the ring goes on the image shown under it.
+  private func send(_ image: ConsultImage, text: String, picture: ConsultPicture) async {
+    do {
+      let answer = try await session.consult(image: image, text: text)
+      // A dropped answer leaves the picture as it is: a newer consultation has already replaced it.
+      await answered(answer, reply: ShareConsult.reply(for: answer)) {
+        self.shownPicture = ShownPicture(
+          picture: picture, anchor: self.chat.log.messages.last?.id, circle: picture.circle(for: answer))
+      }
+    } catch {
+      voice.sendFailed()
+    }
+  }
+
+  /// Puts the answer in her conversation and reads it aloud when it should be. False when it came
+  /// after she had started again, and was dropped (VoiceConsult.answered). `kept` runs right after
+  /// the answer joins the conversation.
+  @discardableResult
+  private func answered(_ answer: ConsultAnswer, reply: String, kept: () -> Void = {}) async -> Bool {
+    guard case .thinking = voice.phase else { return false }
+    chat.answered(reply, at: .now)
+    kept()
+    // 「読み上げ」 in Settings > みまもり, off unless turned on (#115). Read for each answer: the
+    // Settings app is another process and sends no notice of the change.
+    let readAloud = ReadAloudSettings(reading: { UserDefaults.standard.object(forKey: $0) })
+    apply(voice.answered(answer, readsAloud: readAloud.isOn))
+    // The case shows up: "家族に伝えました", or "家族に届いていません" while no family device took it.
+    if answer.handoff { await loadCases() }
+    return true
   }
 
   // MARK: Call follow-up
@@ -540,4 +606,12 @@ final class AppModel {
       problem = Problem(error, joining: joining)
     }
   }
+}
+
+/// The screenshot under her line, then under the answer, with the ring where to press.
+struct ShownPicture {
+  let picture: ConsultPicture
+  /// The message it shows under: her line while waiting, the answer once it came.
+  let anchor: UUID?
+  var circle: PixelPoint? = nil
 }

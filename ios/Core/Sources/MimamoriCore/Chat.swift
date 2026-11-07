@@ -296,6 +296,14 @@ public struct ChatKeeper: Sendable {
     return history
   }
 
+  /// Her line for a screenshot she showed (`VoiceConsult.pictureLine`). Nothing of the image is
+  /// kept, and no earlier turns go with an image (as from the share sheet), so none are returned.
+  public mutating func pictured(_ line: String, at now: Date) {
+    load(at: now)
+    log.append(.protected, line, at: now)
+    save()
+  }
+
   public mutating func answered(_ reply: String, at now: Date) {
     load(at: now)
     log.append(.ai, reply, at: now)

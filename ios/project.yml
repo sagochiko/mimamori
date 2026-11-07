@@ -165,6 +165,8 @@ targets:
       - ShareExtension
       # The same Keychain adapter as the app, reading the device key from the app group's access group.
       - path: App/KeychainDeviceKeyStore.swift
+      # Shrinking, encoding, and circling the image, the same as the chat's photo button (#221).
+      - path: App/ConsultPicture.swift
     dependencies:
       - package: Core
         product: MimamoriCore

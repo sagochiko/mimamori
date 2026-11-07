@@ -1,4 +1,5 @@
 import MimamoriCore
+import PhotosUI
 import SwiftUI
 
 /// The protected person's screen, a chat like the AI chat apps (#73, #86): what the family was told in
@@ -26,6 +27,10 @@ struct ProtectedHomeView: View {
   @State private var stripBottom: CGFloat = 0
   @State private var screenHeight: CGFloat = 0
   @State private var camera = false
+  /// The photo button's picker (#221). PhotosPicker runs outside the app and hands over only the
+  /// picked image, so no photo library permission is asked.
+  @State private var choosingPhoto = false
+  @State private var pickedPhoto: PhotosPickerItem?
 
   private static let liveID = "live"
 
@@ -42,6 +47,19 @@ struct ProtectedHomeView: View {
     .task { await model.keepCasesFresh() }
     .task { await model.loadGmail() }
     .fullScreenCover(isPresented: $camera) { SmileCaptureView() }
+    .photosPicker(isPresented: $choosingPhoto, selection: $pickedPhoto, matching: .images)
+    .onChange(of: pickedPhoto) { _, item in
+      guard let item else { return }
+      pickedPhoto = nil
+      Task {
+        let data = try? await item.loadTransferable(type: Data.self)
+        guard let data else {
+          model.pictureUnreadable()
+          return
+        }
+        picked(data)
+      }
+    }
     .onAppear {
       model.loadChat()
       model.refreshFollowUp()
@@ -50,6 +68,9 @@ struct ProtectedHomeView: View {
         if draft.isEmpty, let text = ScreenshotStubTransport.draftText { draft = text }
         if ScreenshotStubTransport.noticesOpen { noticesOpen = true }
         if ScreenshotStubTransport.cameraOpen { camera = true }
+        if ScreenshotStubTransport.photoOpen { choosingPhoto = true }
+        // After the draft, so `-mimamori-stub-draft` sends its words with the image.
+        if ScreenshotStubTransport.photoPick { picked(StubPicture.settingsScreen()) }
       #endif
     }
     .onChange(of: scenePhase) { _, phase in
@@ -126,6 +147,9 @@ struct ProtectedHomeView: View {
               DayRow(label: label)
             case .message(let message, let time):
               ChatTurn(message: message, time: time).id(message.id)
+              if let shown = model.shownPicture, shown.anchor == message.id {
+                ShownPictureView(shown: shown)
+              }
             }
           }
           // Always there, even while idle, so it can be scrolled to in the same update that shows
@@ -211,11 +235,13 @@ struct ProtectedHomeView: View {
   /// listening) and the send button once she has written something, as in the AI chat apps.
   private var inputBar: some View {
     HStack(alignment: .bottom, spacing: 4) {
+      photoButton
+        .padding(.leading, 4)
+        .padding(.bottom, 4)
       MessageField(
         text: $draft, isFocused: $writing, placeholder: "メッセージ", textStyle: .body, maxLines: 6,
         hint: "スマホの困りごとや気になる電話のことを書いて、送るボタンを押してください。答えは読み上げません"
       )
-      .padding(.leading, 16)
       .padding(.vertical, 11)
       Group {
         if hasDraft && !listening { sendButton } else { microphone }
@@ -260,6 +286,39 @@ struct ProtectedHomeView: View {
     .accessibilityHint(model.voice.acceptsText ? "書いた言葉を送ります" : "答えを待っています")
   }
 
+  /// The image she picked, with what is in the field. The field is emptied only when it was sent:
+  /// while the picker hands the image over she may have pressed the microphone, and then nothing
+  /// goes and her words stay.
+  private func picked(_ data: Data) {
+    writing = false
+    if model.sendPicture(data, text: draft) { draft = "" }
+  }
+
+  /// A screenshot into the chat, as in the usual chat apps (the author chose this on 2026-11-07,
+  /// #221). What she has written goes with it.
+  private var photoButton: some View {
+    Button {
+      writing = false
+      choosingPhoto = true
+    } label: {
+      Image(systemName: "photo")
+        .font(.body.weight(.semibold))
+        .dynamicTypeSize(...Self.largestButtonType)
+        .foregroundStyle(model.voice.acceptsText ? Color.accentColor : Color.secondary)
+        .frame(width: 34, height: 34)
+        .frame(width: 44, height: 44)
+        .contentShape(Circle())
+    }
+    .buttonStyle(.plain)
+    .disabled(!model.voice.acceptsText)
+    .accessibilityShowsLargeContentViewer { Label("スクショを見せる", systemImage: "photo") }
+    .accessibilityLabel("スクショを見せる")
+    .accessibilityHint(
+      model.voice.acceptsText
+        ? "写真の中からスクショを1枚選ぶと、みまもりが見て、押す場所に丸を付けて答えます。欄に書いた言葉も一緒に送ります。画像は残しません"
+        : "答えを待っています")
+  }
+
   private var microphone: some View {
     Button {
       writing = false
@@ -282,6 +341,21 @@ struct ProtectedHomeView: View {
     }
     .accessibilityLabel(model.voice.micLabel)
     .accessibilityHint(model.voice.micHint)
+  }
+}
+
+/// The screenshot she showed, under her line and then under the answer, with the ring where to press.
+/// At most 420 points tall, so on an iPhone the answer above it and the field below stay in view.
+private struct ShownPictureView: View {
+  let shown: ShownPicture
+
+  var body: some View {
+    let size = shown.picture.original
+    CircledImage(image: shown.picture.image, original: size, circle: shown.circle)
+      .aspectRatio(CGFloat(size.width) / CGFloat(size.height), contentMode: .fit)
+      .frame(maxHeight: 420)
+      .clipShape(RoundedRectangle(cornerRadius: 12))
+      .frame(maxWidth: .infinity, alignment: .leading)
   }
 }
 

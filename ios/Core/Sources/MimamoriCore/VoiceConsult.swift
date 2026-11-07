@@ -45,6 +45,8 @@ public enum ConsultFailure: Equatable, Sendable {
   case unavailable
   /// The answer could not be fetched.
   case offline
+  /// The image she picked with the photo button could not be read or made small enough (#221).
+  case unreadableImage
 
   public var text: String {
     switch self {
@@ -52,6 +54,7 @@ public enum ConsultFailure: Equatable, Sendable {
     case .permissionDenied: "マイクの許可"
     case .unavailable: "聞き取れません"
     case .offline: "つながりません"
+    case .unreadableImage: "画像を読めません"
     }
   }
 
@@ -61,6 +64,7 @@ public enum ConsultFailure: Equatable, Sendable {
     case .permissionDenied: "マイクと音声認識の許可がありません。設定アプリで mimamori のマイクと音声認識をオンにしてください"
     case .unavailable: "この iPhone では今、声を文字にできません。少し待ってからもう一度押すか、家族に電話してください"
     case .offline: "インターネットにつながらず、答えを受け取れませんでした。もう一度押すか、家族に電話してください"
+    case .unreadableImage: "選んだ画像を読めず、送りませんでした。別のスクショを選ぶか、困っていることを書いて送ってください"
     }
   }
 }
@@ -89,6 +93,9 @@ public enum ConsultEffect: Equatable, Sendable {
   case startListening
   case stopListening
   case send(String)
+  /// Send the picked image with these words (empty when she wrote none). The image itself stays with
+  /// the App's adapter; nothing of it is in here.
+  case sendPicture(text: String)
   case speak(String)
   case stopSpeaking
 }
@@ -153,6 +160,26 @@ public struct VoiceConsult: Sendable {
     byVoice = false
     phase = .thinking(said: said)
     return [.stopSpeaking, .send(said)]
+  }
+
+  /// Her line in the conversation for a screenshot she showed with the photo button (#221). The image
+  /// is never kept, so this and the answer are all the conversation holds of it.
+  public static let pictureLine = "画像を見せました"
+
+  /// She picked an image with the photo button, with whatever is in the field. Her line is
+  /// `pictureLine`, followed by her words when there are any. Never read aloud, like typed words.
+  public mutating func pictured(_ text: String, at now: Date) -> [ConsultEffect] {
+    guard acceptsText else { return [] }
+    let words = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.maxCharacters))
+    byVoice = false
+    phase = .thinking(said: words.isEmpty ? Self.pictureLine : "\(Self.pictureLine)。\(words)")
+    return [.stopSpeaking, .sendPicture(text: words)]
+  }
+
+  /// The picked image could not be read; nothing was sent and nothing joins the conversation.
+  public mutating func pictureUnreadable() {
+    guard acceptsText else { return }
+    phase = .failed(.unreadableImage)
   }
 
   /// The recognizer is listening. The first time, this comes after the permission sheets, so the
