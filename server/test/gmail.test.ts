@@ -1120,36 +1120,47 @@ describe("reading one mail", () => {
     //
     // Measured as a ratio, not against a wall-clock limit: "under 1000 ms" failed twice on 2026-11-07
     // (1935 ms) while make verify ran swift test, the hook tests, and the vitest workers at once, and
-    // passed alone. The mail is read at two lengths, SMALL and SMALL * SCALE, back to back, so load
-    // slows both alike. Linear reading takes about SCALE times as long on the long one; quadratic,
-    // SCALE squared. The limit sits between them, SCALE * 4 (32 against 8 and 64): linear reading
-    // may slip 4-fold before it fails, and quadratic reading stays 2-fold above it. Each length keeps the fastest of a few runs, so one pause of the
-    // machine or the garbage collector does not decide it. Checked on 2026-11-07 by breaking
-    // anchorHrefs once so that every 64th piece read on to the end of the mail (quadratic): "<a '"
-    // failed at a ratio of 66.7. Unbroken, the ratios were about 7 to 10.
-    const SMALL = 15_625;
+    // passed alone. The mail is read at two lengths, SMALL and SMALL * SCALE. Linear reading takes
+    // about SCALE times as long on the long one; quadratic, SCALE squared. The limit sits between
+    // them, SCALE * 4 (32 against 8 and 64).
+    //
+    // The two lengths are read in turn (short, long, short, long, ...) so that load which comes and
+    // goes falls on both, and each keeps its fastest run, so one pause of the machine or the garbage
+    // collector does not decide it. SMALL is large enough that the short reading also takes tens of
+    // milliseconds: at about 10 ms it fit in one slice of the scheduler while only the long one was
+    // cut off, and the ratio rose to 27.6 under twice the load the machine has cores for (review 1 of
+    // PR #258).
+    //
+    // Measured on 2026-11-07 on a 10-core Mac, with "yes" processes for load: idle, 8.0 to 10.0 (the
+    // short readings 27 to 46 ms); 10 of them, up to 12.5; 20, up to 16.1 over two runs; 30, up to
+    // 18.7, though the test then ran past its time limit. Broken so that every 2048th piece of
+    // anchorHrefs read on to the end of the mail (quadratic), "<a x" failed at 46.7; "<a '" and
+    // '<a "' gave 18.3 and 30.8 first, since only that part of the work grew as the square.
+    const SMALL = 50_000;
     const SCALE = 8;
-    const fastest = (html: string) => {
-      let best = Infinity;
-      let payload: ReturnType<typeof mailPayload> | undefined;
-      for (let run = 0; run < 3; run++) {
-        const started = performance.now();
-        payload = mailPayload({ mimeType: "text/html", headers: [], body: { data: b64url(html) } });
-        best = Math.min(best, performance.now() - started);
-      }
-      return { ms: best, payload };
+    const read = (html: string) => {
+      const started = performance.now();
+      const payload = mailPayload({ mimeType: "text/html", headers: [], body: { data: b64url(html) } });
+      return { ms: performance.now() - started, payload };
     };
     for (const unit of ["<a '", '<a "', "<a x", '<a x="', "<p a='", "<style ", "<head", "<script "]) {
       // The link first: with a ">" after them, the unclosed tags would end there and cost nothing.
-      const mail = (n: number) => `<a href="https://nta-refund.example/pay">お支払い</a>${unit.repeat(n)}`;
-      const short = fastest(mail(SMALL));
-      const long = fastest(mail(SMALL * SCALE));
+      const shortMail = `<a href="https://nta-refund.example/pay">お支払い</a>${unit.repeat(SMALL)}`;
+      const longMail = `<a href="https://nta-refund.example/pay">お支払い</a>${unit.repeat(SMALL * SCALE)}`;
+      let shortMs = Infinity;
+      let longMs = Infinity;
+      for (let run = 0; run < 3; run++) {
+        shortMs = Math.min(shortMs, read(shortMail).ms);
+        const long = read(longMail);
+        longMs = Math.min(longMs, long.ms);
+        expect(long.payload.url).toBe("https://nta-refund.example/pay");
+      }
       // At least 1 ms, so a short run that rounds to almost nothing cannot blow the ratio up.
-      expect(long.ms / Math.max(short.ms, 1), unit).toBeLessThan(SCALE * 4);
-      expect(long.payload?.url).toBe("https://nta-refund.example/pay");
+      expect(longMs / Math.max(shortMs, 1), unit).toBeLessThan(SCALE * 4);
     }
-    // Six readings of each mail: more than the default 5 s when the machine is busy.
-  }, 30_000);
+    // Six readings of each mail, the long ones of 1.6 to 3.2 million characters: about 10 s idle,
+    // and past 60 s with 30 "yes" processes on 10 cores.
+  }, 120_000);
 
   it("keeps the text within what the queue carries", () => {
     const long = "あ".repeat(6000);
