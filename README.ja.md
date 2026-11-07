@@ -166,3 +166,7 @@ docs/     設計、計画、開発の記録、ハーネス
 ```
 
 設計は [`docs/design.md`](docs/design.md)、計画は [`docs/plan.md`](docs/plan.md) にある。
+
+## ライセンス
+
+[MIT](LICENSE)

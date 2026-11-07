@@ -164,3 +164,7 @@ docs/     design, plan, development log, harness
 ```
 
 The design ([`docs/design.md`](docs/design.md)) and the plan ([`docs/plan.md`](docs/plan.md)) are in Japanese.
+
+## License
+
+[MIT](LICENSE)
