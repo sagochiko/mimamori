@@ -37,17 +37,21 @@ if [[ "$targets" =~ eval/cases/(holdout|pool) ]]; then
     [[ ! "$targets" =~ cases/[^/[:space:]]*[*?[] ]]; then
     git_re='^git[[:space:]]+(add|commit|diff|show|log)([[:space:]]|$)'
     force_re='[[:space:]](-f|--force|-[a-z]*f[a-z]*)([[:space:]]|$)'
+    # Paths only go to the log, never what the files hold.
+    paths=$(grep -oE "eval/cases/(holdout|pool)[^[:space:]\"']*" <<<"$targets" | tr '\n' ' ')
     if [[ "$tool" == "Bash" && ! "$agent" =~ ^(mm-implementer|mm-eval-curator)$ && "$cmd" =~ $git_re ]]; then
       sub=${BASH_REMATCH[1]}
-      # One command only: no chaining, pipes, redirects, substitutions, or second line.
-      if [[ "$cmd" != *[\;\&\|\<\>\$\`]* && "$cmd" != *$'\n'* &&
+      # One command only: no chaining, pipes, redirects, substitutions, or second line, and no
+      # --output, which would copy a case into another file.
+      if [[ "$cmd" != *[\;\&\|\<\>\$\`]* && "$cmd" != *$'\n'* && "$cmd" != *--output* &&
         ! ("$sub" == add && "$cmd" =~ $force_re) ]]; then
-        log_event guard guard-holdout "cases allowed after the holdout run: git $sub by ${agent:-main}"
+        log_event guard guard-holdout "cases allowed after the holdout run: git $sub by ${agent:-main}: ${paths% }"
         exit 0
       fi
     fi
-    if [[ "$tool" == "Read" && "$agent" == "mm-reviewer" && "$targets" != *..* ]]; then
-      log_event guard guard-holdout "cases allowed after the holdout run: Read by mm-reviewer"
+    if [[ "$tool" == "Read" && "$agent" == "mm-reviewer" && "$targets" =~ ^[^[:space:]]*eval/cases/(holdout|pool)/[^[:space:]]+$ &&
+      "$targets" != *..* ]]; then
+      log_event guard guard-holdout "cases allowed after the holdout run: Read by mm-reviewer: ${paths% }"
       exit 0
     fi
   fi

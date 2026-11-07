@@ -1505,8 +1505,13 @@ hx 2 "$ha_read" "the reviewer cannot read holdout before the holdout run is reco
 # 4. Both: measured.
 printf '%s\n%s\n' "$hrow" "$hhold" >"$HM/eval/RESULTS.md"
 hx 0 "$ha_add" "git add on the cases passes after the holdout run"
-grep -q 'guard-holdout.*after the holdout run.*git add' "$MM_LOG_DIR/usage.jsonl" ||
-  { echo "hook test failed: the passed git add is not in the usage log"; fail=1; }
+grep -q 'guard-holdout.*after the holdout run.*git add.*eval/cases/holdout eval/cases/pool' "$MM_LOG_DIR/usage.jsonl" ||
+  { echo "hook test failed: the passed git add and its paths are not in the usage log"; fail=1; }
+hx 2 "$(hb "git diff --output=eval/cases/dev/x.jsonl eval/cases/holdout")" "git diff --output is blocked after the holdout run"
+hx 2 "$(hb "cd /tmp && git add eval/cases/holdout")" "cd chained to git add is blocked after the holdout run"
+hx 2 "$(hb "git -C /tmp add eval/cases/holdout")" "git -C is blocked after the holdout run"
+hx 2 "$(hr mm-reviewer Read eval/cases/holdout.txt)" "the reviewer's Read must be inside the case folders"
+hx 2 "$(hr mm-reviewer Read eval/cases/holdout/../../../server/.dev.vars)" "the reviewer's Read cannot climb out of the cases"
 hx 0 "$(hb "git add eval/cases/holdout/a.jsonl")" "git add on one holdout case passes after the holdout run"
 hx 0 "$(hb "git diff --cached --stat eval/cases/pool")" "git diff on the pool passes after the holdout run"
 hx 0 "$(hb "git show HEAD -- eval/cases/holdout/a.jsonl")" "git show on a holdout case passes after the holdout run"
