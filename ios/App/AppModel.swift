@@ -21,6 +21,11 @@ final class AppModel {
 
   /// The consultation on the protected person's screen, by voice or in writing.
   private(set) var voice = VoiceConsult()
+  /// The dots of the recording field (#224). Apart from `voice`, so the many updates a second
+  /// redraw only the dots and not everything that reads the consultation.
+  private(set) var levels = VoiceLevels()
+  /// Her words from the stop button, waiting for the field to take them (`takeVoiceDraft`).
+  private(set) var voiceDraft: String?
   /// Her conversation, kept on this iPhone only (#73).
   private(set) var chat: ChatKeeper
   /// The screenshot she showed last with the photo button (#221), in memory only, with the ring once
@@ -46,6 +51,10 @@ final class AppModel {
     return listener
   }()
   @ObservationIgnored private var silenceWatch: Task<Void, Never>?
+  #if DEBUG
+    /// `-mimamori-stub-listening`: the made-up voice levels while the stub "listens".
+    @ObservationIgnored private var stubLevels: Task<Void, Never>?
+  #endif
   /// The picked image between the press and the send effect.
   @ObservationIgnored private var pendingPicture: (ConsultPicture, ConsultImage)?
   @ObservationIgnored private let followUp = CallFollowUp(
@@ -314,8 +323,35 @@ final class AppModel {
     apply(voice.micTapped(at: .now))
   }
 
+  /// The recording field's send button: her words go as they are, as by voice.
+  func recordingSendTapped() {
+    apply(voice.sendTapped(at: .now))
+  }
+
+  /// The recording field's stop button: her words go into the field (`voiceDraft`).
+  func recordingStopTapped() {
+    apply(voice.stopTapped(at: .now))
+  }
+
+  /// The recording field's trash button: nothing is sent.
+  func recordingDiscardTapped() {
+    apply(voice.discardTapped())
+  }
+
+  /// The field took the words from the stop button.
+  func takeVoiceDraft() -> String? {
+    defer { voiceDraft = nil }
+    return voiceDraft
+  }
+
+  /// She emptied the field: what she writes next is typed, not said.
+  func draftCleared() {
+    voice.draftCleared()
+  }
+
   private func listened(_ event: VoiceListener.Event) {
     switch event {
+    case .level(let rms): levels.add(rms: rms)
     case .started: apply(voice.listeningStarted(at: .now))
     case .partial(let text): apply(voice.heard(text, isFinal: false, at: .now))
     case .final(let text): apply(voice.heard(text, isFinal: true, at: .now))
@@ -329,7 +365,13 @@ final class AppModel {
       case .stopSpeaking:
         speaker.handOver()
       case .startListening:
+        levels.reset()
         #if DEBUG
+          // Before `-mimamori-stub-heard` alone, which would send at once.
+          if ScreenshotStubTransport.isRequested, ScreenshotStubTransport.listening {
+            stubListen()
+            continue
+          }
           if ScreenshotStubTransport.isRequested, let heard = ScreenshotStubTransport.heardText {
             apply(voice.heard(heard, isFinal: true, at: .now))
             continue
@@ -340,7 +382,20 @@ final class AppModel {
         watchSilence()
         Task { await listener.start() }
       case .stopListening:
+        #if DEBUG
+          if ScreenshotStubTransport.isRequested, ScreenshotStubTransport.listening {
+            stubStop()
+            continue
+          }
+        #endif
         listener.stop()
+      case .cancelListening:
+        #if DEBUG
+          stubLevels?.cancel()
+        #endif
+        listener.cancel()
+      case .fillDraft(let text):
+        voiceDraft = text
       case .send(let text):
         silenceWatch?.cancel()
         // The turns before this one go with it; then her words join the conversation.
@@ -360,8 +415,42 @@ final class AppModel {
         speaker.speak([text])
       }
     }
-    if case .listening = voice.phase {} else { silenceWatch?.cancel() }
+    if case .listening = voice.phase {} else {
+      silenceWatch?.cancel()
+      levels.reset()
+    }
   }
+
+  #if DEBUG
+    /// `-mimamori-stub-listening`: listens without the microphone, with the words of
+    /// `-mimamori-stub-heard` (if any) as heard so far and dots that move, and no silence stop, so
+    /// the recording field can be shot and its buttons pressed on the simulator.
+    private func stubListen() {
+      apply(voice.listeningStarted(at: .now))
+      if let heard = ScreenshotStubTransport.heardText {
+        apply(voice.heard(heard, isFinal: false, at: .now))
+      }
+      stubLevels?.cancel()
+      stubLevels = Task { [weak self] in
+        var step = 0.0
+        while !Task.isCancelled {
+          try? await Task.sleep(for: .milliseconds(60))
+          guard let self, !Task.isCancelled else { return }
+          step += 1
+          // A voice that rises and falls, from about -40 dB to -6 dB.
+          let wave = (sin(step / 3) + sin(step / 1.7)) / 4 + 0.5
+          self.levels.add(rms: pow(10, (-40 + 34 * wave) / 20))
+        }
+      }
+    }
+
+    /// The stub's recognizer hands over what it "heard".
+    private func stubStop() {
+      stubLevels?.cancel()
+      guard case .listening(let heard) = voice.phase else { return }
+      apply(voice.heard(heard, isFinal: true, at: .now))
+    }
+  #endif
 
   /// Twice a second while listening, so listening ends on its own when she stops talking.
   private func watchSilence() {

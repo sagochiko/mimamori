@@ -71,7 +71,16 @@ struct ProtectedHomeView: View {
         if ScreenshotStubTransport.photoOpen { choosingPhoto = true }
         // After the draft, so `-mimamori-stub-draft` sends its words with the image.
         if ScreenshotStubTransport.photoPick { picked(StubPicture.settingsScreen()) }
+        if ScreenshotStubTransport.listening, !listening { model.micTapped() }
       #endif
+    }
+    // The stop button of the recording field put her words here, to fix and send.
+    .onChange(of: model.voiceDraft) { _, words in
+      guard words != nil, let words = model.takeVoiceDraft() else { return }
+      draft = words
+    }
+    .onChange(of: draft) { _, text in
+      if text.isEmpty { model.draftCleared() }
     }
     .onChange(of: scenePhase) { _, phase in
       guard phase == .active else { return }
@@ -231,9 +240,72 @@ struct ProtectedHomeView: View {
     return false
   }
 
-  /// One slim field. The button inside it is the microphone while the field is empty (or while
-  /// listening) and the send button once she has written something, as in the AI chat apps.
+  /// One slim field. The button inside it is the microphone while the field is empty and the send
+  /// button once she has written something, as in the AI chat apps. While listening the whole field is
+  /// the recording field instead (#224).
   private var inputBar: some View {
+    Group {
+      if listening { recordingBar } else { writingBar }
+    }
+    .background(Capsule().fill(Color(.secondarySystemBackground)))
+    .overlay(Capsule().strokeBorder(Color(.separator), lineWidth: 0.5))
+    .padding(.horizontal, 12)
+    .padding(.vertical, 8)
+    .background(Color(.systemBackground))
+    .animation(.snappy, value: hasDraft)
+    .animation(.snappy, value: listening)
+  }
+
+  /// As in the usual chat apps' recording field (the author sent one as the model on 2026-11-07,
+  /// #224): trash, the time, dots that follow her voice, stop, send. No words on the buttons; VoiceOver
+  /// has them. The words heard so far still grow in her bubble in the conversation (`LiveView`).
+  private var recordingBar: some View {
+    HStack(spacing: 4) {
+      roundButton(
+        systemImage: "trash", label: RecordingBar.discardLabel, hint: RecordingBar.discardHint,
+        foreground: .secondary, fill: nil
+      ) { model.recordingDiscardTapped() }
+      .padding(.leading, 4)
+      RecordingClockView(since: model.voice.listeningSince)
+      VoiceLevelDots(values: model.levels.values)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 4)
+      roundButton(
+        systemImage: "stop.fill", label: RecordingBar.stopLabel, hint: RecordingBar.stopHint,
+        foreground: .primary, fill: Color(.tertiarySystemFill)
+      ) { model.recordingStopTapped() }
+      roundButton(
+        systemImage: "arrow.up", label: RecordingBar.sendLabel, hint: RecordingBar.sendHint,
+        foreground: .white, fill: Color.accentColor
+      ) { model.recordingSendTapped() }
+      .padding(.trailing, 4)
+    }
+    .padding(.vertical, 4)
+    .transition(.opacity)
+  }
+
+  /// A glyph in a 34pt circle with a 44pt target, like the field's other buttons.
+  private func roundButton(
+    systemImage: String, label: String, hint: String, foreground: Color, fill: Color?,
+    action: @escaping () -> Void
+  ) -> some View {
+    Button(action: action) {
+      Image(systemName: systemImage)
+        .font(.body.weight(.bold))
+        .dynamicTypeSize(...Self.largestButtonType)
+        .foregroundStyle(foreground)
+        .frame(width: 34, height: 34)
+        .background(Circle().fill(fill ?? Color.clear))
+        .frame(width: 44, height: 44)
+        .contentShape(Circle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityShowsLargeContentViewer { Label(label, systemImage: systemImage) }
+    .accessibilityLabel(label)
+    .accessibilityHint(hint)
+  }
+
+  private var writingBar: some View {
     HStack(alignment: .bottom, spacing: 4) {
       photoButton
         .padding(.leading, 4)
@@ -244,17 +316,11 @@ struct ProtectedHomeView: View {
       )
       .padding(.vertical, 11)
       Group {
-        if hasDraft && !listening { sendButton } else { microphone }
+        if hasDraft { sendButton } else { microphone }
       }
       .padding(.trailing, 4)
       .padding(.bottom, 4)
     }
-    .background(Capsule().fill(Color(.secondarySystemBackground)))
-    .overlay(Capsule().strokeBorder(Color(.separator), lineWidth: 0.5))
-    .padding(.horizontal, 12)
-    .padding(.vertical, 8)
-    .background(Color(.systemBackground))
-    .animation(.snappy, value: hasDraft)
   }
 
   /// The glyphs in the field's 34pt circles grow with the text up to here; at the accessibility
@@ -324,23 +390,65 @@ struct ProtectedHomeView: View {
       writing = false
       model.micTapped()
     } label: {
-      Image(systemName: listening ? "waveform" : "mic.fill")
+      Image(systemName: "mic.fill")
         .font(.body.weight(.semibold))
         .dynamicTypeSize(...Self.largestButtonType)
         .foregroundStyle(.white)
-        .symbolEffect(.variableColor.iterative, isActive: listening)
         .frame(width: 34, height: 34)
-        .background(Circle().fill(listening ? Color.red : Color.accentColor))
+        .background(Circle().fill(Color.accentColor))
         .frame(width: 44, height: 44)
         .contentShape(Circle())
     }
     .buttonStyle(.plain)
     .transition(.scale.combined(with: .opacity))
     .accessibilityShowsLargeContentViewer {
-      Label(model.voice.micLabel, systemImage: listening ? "waveform" : "mic.fill")
+      Label(model.voice.micLabel, systemImage: "mic.fill")
     }
     .accessibilityLabel(model.voice.micLabel)
     .accessibilityHint(model.voice.micHint)
+  }
+}
+
+/// "0:05" since listening started, ticking each second. "0:00" while the permission sheets are up.
+private struct RecordingClockView: View {
+  let since: Date?
+
+  var body: some View {
+    TimelineView(.periodic(from: since ?? .now, by: 1)) { context in
+      let elapsed = since.map { context.date.timeIntervalSince($0) } ?? 0
+      Text(RecordingClock.text(elapsed: elapsed))
+        .font(.body)
+        .monospacedDigit()
+        .foregroundStyle(.secondary)
+        .fixedSize()
+        .accessibilityLabel(RecordingBar.clockLabel(elapsed: elapsed))
+    }
+  }
+}
+
+/// Dots that grow with her voice, newest on the right. Drawn from the microphone's loudness on the
+/// iPhone only.
+private struct VoiceLevelDots: View {
+  let values: [Double]
+
+  var body: some View {
+    GeometryReader { geometry in
+      let spacing: CGFloat = 3
+      let count = values.count
+      let width = max(2, (geometry.size.width - spacing * CGFloat(count - 1)) / CGFloat(count))
+      HStack(spacing: spacing) {
+        ForEach(values.indices, id: \.self) { i in
+          Capsule()
+            .fill(Color.primary.opacity(0.7))
+            .frame(width: width, height: max(width, geometry.size.height * values[i]))
+        }
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .animation(.linear(duration: 0.08), value: values)
+    }
+    .frame(height: 28)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(RecordingBar.levelsLabel)
   }
 }
 
