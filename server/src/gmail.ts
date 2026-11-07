@@ -554,24 +554,40 @@ function gmailAuth(headers: Array<{ name?: string; value?: string }>): MailAuth 
 /**
  * The first http(s) href of each <a> tag, a link she can tap (#249). <link>, <img>, <base>, and CSS
  * url() are what the mail loads; a font sheet from fonts.googleapis.com once made a genuine mail that
- * named a company look like it led elsewhere. Each tag is read on its own, from "<a" followed by a
- * space or "/" up to the next "<", so the time stays linear in the length of the mail: one pattern over
- * the whole HTML that skipped quoted values backtracked for seconds on tags that never close (review 1
- * of PR #250). Quotes are not matched up, so an unquoted value with a "'" in it, or a quote that never
- * closes, does not hide the href after it; "href" must follow a space, "/", or a quote, so data-href
- * does not count. Erring this way can count a link a browser would not follow, never miss one it would.
+ * named a company look like it led elsewhere.
+ *
+ * Each tag is read on its own, from "<a" followed by a space or "/" up to the first ">" outside
+ * quotes, and never past the next such "<a" (review 2 of PR #250: a "<" in a quoted title used to end
+ * it). As in HTML, a quote opens a value only right after "=". The pieces never overlap, so the time stays linear in the length of the mail; one pattern over
+ * the whole HTML backtracked for seconds on tags that never close (review 1). A quote that does not
+ * close before the next "<a" just runs to it, so an unquoted value with a "'" in it, or a quote that
+ * never closes, does not hide the href after it. "href" must follow a space, "/", or a quote, so
+ * data-href does not count. Erring this way can count a link a browser would not follow, or one of a
+ * later tag of the piece, never miss one it would.
  */
 function anchorHrefs(html: string): string[] {
+  const starts = [...html.matchAll(/<a[\s/]/gi)].map((m) => m.index);
   const out: string[] = [];
-  for (const start of html.matchAll(/<a[\s/]/gi)) {
-    const from = start.index + 2;
-    const next = html.indexOf("<", from);
-    // No cap on the length: the pieces never overlap, so all of them together are the mail at most,
-    // and a cap would let padding before href hide the link.
-    const tag = html.slice(from, next === -1 ? html.length : next);
-    const href = /(?<=[\s/"'])href\s*=\s*["']?(https?:\/\/[^"'\s>]+)/i.exec(tag);
+  starts.forEach((from, k) => {
+    const limit = starts[k + 1] ?? html.length;
+    let quote = "";
+    let before = "";
+    let end = limit;
+    for (let i = from + 2; i < limit; i++) {
+      const c = html[i] ?? "";
+      if (quote !== "") {
+        if (c === quote) quote = "";
+      } else if ((c === '"' || c === "'") && before === "=") {
+        quote = c;
+      } else if (c === ">") {
+        end = i;
+        break;
+      }
+      if (!/\s/.test(c)) before = c;
+    }
+    const href = /(?<=[\s/"'])href\s*=\s*["']?(https?:\/\/[^"'\s>]+)/i.exec(html.slice(from + 2, end));
     if (href?.[1]) out.push(href[1]);
-  }
+  });
   return out;
 }
 
@@ -688,11 +704,56 @@ function dropBlocks(html: string): string {
   return out + html.slice(kept);
 }
 
+/**
+ * Replaces each tag with a space. A tag ends at the first ">" outside quotes, so a "<" or ">" in a
+ * quoted value stays inside it (review 2 of PR #250). As in HTML, a quote opens a value only right
+ * after "=" (spaces between allowed), so the "'" of an unquoted Don't does not swallow the text after
+ * the tag; and it counts only when the same quote comes again later in the mail. A "<" that meets another "<" outside quotes before any ">" is text, as the
+ * pattern <[^<>]*> treated it, and reading goes on from that "<"; one with no ">" after it leaves the
+ * rest as text. Every character is passed once, so the time stays linear in the length of the mail.
+ */
+function dropTags(html: string): string {
+  const last = { '"': html.lastIndexOf('"'), "'": html.lastIndexOf("'") };
+  let out = "";
+  let i = 0;
+  while (i < html.length) {
+    const open = html.indexOf("<", i);
+    if (open === -1) break;
+    out += html.slice(i, open);
+    let j = open + 1;
+    let end = -1;
+    let before = "";
+    while (j < html.length) {
+      const c = html[j] ?? "";
+      if ((c === '"' || c === "'") && before === "=" && j < last[c]) {
+        j = html.indexOf(c, j + 1) + 1;
+        before = c;
+        continue;
+      }
+      if (!/\s/.test(c)) before = c;
+      if (c === ">") {
+        end = j;
+        break;
+      }
+      if (c === "<") break;
+      j += 1;
+    }
+    if (end !== -1) {
+      out += " ";
+      i = end + 1;
+    } else if (j < html.length) {
+      out += html.slice(open, j);
+      i = j;
+    } else {
+      out += html.slice(open);
+      i = html.length;
+    }
+  }
+  return out + html.slice(i);
+}
+
 function htmlToText(html: string): string {
-  return dropBlocks(html)
-    .replace(/<br\s*\/?>|<\/(p|div|tr|li|h\d)>/gi, "\n")
-    // [^<>], not [^>]: a "<" that never closes is then passed over at once instead of read to the end.
-    .replace(/<[^<>]*>/g, " ")
+  return dropTags(dropBlocks(html).replace(/<br\s*\/?>|<\/(p|div|tr|li|h\d)>/gi, "\n"))
     .replace(/&nbsp;/gi, " ")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")

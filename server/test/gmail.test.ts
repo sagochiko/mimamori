@@ -1001,6 +1001,9 @@ describe("reading one mail", () => {
       ["an <a> with an unclosed quote before href", '<a x=" href="https://nta-refund.example/pay">お支払い</a>'],
       ["an <a> with a long style before href", `<a style="${"color:red;".repeat(600)}" href="https://nta-refund.example/pay">お支払い</a>`],
       ["an <a> with spaces before href", `<a${" ".repeat(5000)}href="https://nta-refund.example/pay">お支払い</a>`],
+      // A "<" inside a quoted value does not end the tag (review 2 of PR #250).
+      ["an <a> with a < in a quoted title", '<a title="1<2" href="https://nta-refund.example/pay">お支払い</a>'],
+      ["an <a> with a tag in a quoted value", '<a data-x="<b>" href="https://nta-refund.example/pay">お支払い</a>'],
       ["an <A HREF> in capitals over lines", '<A\n  HREF=\'https://nta-refund.example/pay\'>お支払い</A>'],
     ])("keeps %s", (_, tag) => {
       const payload = htmlMail(`<html><head><link href="https://fonts.googleapis.com/css2"></head><body>${tag}</body></html>`);
@@ -1061,6 +1064,27 @@ describe("reading one mail", () => {
     });
   });
 
+  it.each([
+    ["a < in a quoted title", '<a title="1<2" href="https://nta-refund.example/pay">お支払い</a>'],
+    ["a tag in a quoted value", '<a data-x="<b>" href="https://nta-refund.example/pay">お支払い</a>'],
+  ])("keeps the link in the text of an HTML-only mail whose <a> has %s, and none of the tag", (_, tag) => {
+    const html = `<p>未納の税金があります。</p>${tag}<p>本日中にお支払いください。</p>`;
+    const payload = mailPayload({ mimeType: "text/html", headers: [], body: { data: b64url(html) } });
+    expect(payload.text).toContain("https://nta-refund.example/pay");
+    expect(payload.text).toContain("お支払い");
+    expect(payload.text).toContain("本日中にお支払いください");
+    expect(payload.text).not.toMatch(/title=|data-x=|href=/);
+  });
+
+  it("keeps the text after a tag whose unquoted value has a lone quote", () => {
+    // A quote opens a value only right after "=": the "'" of alt=Don't must not swallow the text.
+    const html = `<p><img alt=Don't src=x.png>未納の税金があります https://nta-refund.example/pay</p><p>It's due today</p>`;
+    const payload = mailPayload({ mimeType: "text/html", headers: [], body: { data: b64url(html) } });
+    expect(payload.text).toContain("未納の税金があります");
+    expect(payload.text).toContain("https://nta-refund.example/pay");
+    expect(payload.text).not.toContain("alt=");
+  });
+
   it("keeps the text after a <style> block when letters change length in lower case", () => {
     // "İ" (U+0130) is two code units in lower case, so positions found in a lower-cased copy point
     // elsewhere in the mail (review 2 of PR #250).
@@ -1074,7 +1098,7 @@ describe("reading one mail", () => {
   it("reads the links of a long HTML mail in time linear to its length", () => {
     // Tags that never close: a pattern that backtracks over them took seconds on far less (review 1
     // of PR #250), and the watch has 10 ms of CPU a tick on the Free plan.
-    for (const unit of ["<a '", '<a "', "<a x", "<style ", "<head", "<script "]) {
+    for (const unit of ["<a '", '<a "', "<a x", '<a x="', "<p a='", "<style ", "<head", "<script "]) {
       // The link first: with a ">" after them, the unclosed tags would end there and cost nothing.
       const html = `<a href="https://nta-refund.example/pay">お支払い</a>${unit.repeat(250_000)}`;
       const started = performance.now();
