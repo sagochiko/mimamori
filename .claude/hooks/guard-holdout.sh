@@ -36,7 +36,13 @@ if [[ "$targets" =~ eval/cases/(holdout|pool) ]]; then
     grep -Eq '^\|[^|]*\|[[:space:]]*holdout[[:space:]]*\|' "$main/eval/RESULTS.md" 2>/dev/null &&
     [[ ! "$targets" =~ cases/[^/[:space:]]*[*?[] ]]; then
     git_re='^git[[:space:]]+(add|commit|diff|show|log)([[:space:]]|$)'
-    force_re='[[:space:]](-f|--force|-[a-z]*f[a-z]*)([[:space:]]|$)'
+    # git takes any unambiguous prefix of a long option (--fo for --force), and nocasematch makes -F
+    # and -f the same here, so short clusters with f and every prefix of the long name count.
+    force_re='[[:space:]](-[a-z]*f[a-z]*|--f(o(r(c(e)?)?)?)?)([[:space:]=]|$)'
+    # git commit -F/--file <case> would copy a case into the message: no message file on these lines.
+    file_re='[[:space:]](-[a-z]*f[a-z]*|--f(i(l(e)?)?)?)([[:space:]=]|$)'
+    # git diff --no-index shows files git does not track, cases included.
+    noindex_re='[[:space:]]--no-i(n(d(e(x)?)?)?)?([[:space:]=]|$)'
     # Paths only go to the log, never what the files hold.
     paths=$(grep -oE "eval/cases/(holdout|pool)[^[:space:]\"']*" <<<"$targets" | tr '\n' ' ')
     if [[ "$tool" == "Bash" && ! "$agent" =~ ^(mm-implementer|mm-eval-curator)$ && "$cmd" =~ $git_re ]]; then
@@ -44,7 +50,8 @@ if [[ "$targets" =~ eval/cases/(holdout|pool) ]]; then
       # One command only: no chaining, pipes, redirects, substitutions, or second line, and no
       # --output, which would copy a case into another file.
       if [[ "$cmd" != *[\;\&\|\<\>\$\`]* && "$cmd" != *$'\n'* && "$cmd" != *--output* &&
-        ! ("$sub" == add && "$cmd" =~ $force_re) ]]; then
+        ! ("$sub" == add && "$cmd" =~ $force_re) && ! ("$sub" == commit && "$cmd" =~ $file_re) &&
+        ! "$cmd" =~ $noindex_re ]]; then
         log_event guard guard-holdout "cases allowed after the holdout run: git $sub by ${agent:-main}: ${paths% }"
         exit 0
       fi
