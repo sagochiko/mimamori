@@ -96,7 +96,8 @@ private struct GuideTarget: ViewModifier {
       switch OnboardingGuide.style {
       case .tipKit:
         // Above the field at the bottom, so the balloon does not cover the field.
-        content.popoverTip(guide.tip(for: step), arrowEdge: step == .photo || step == .talk ? .bottom : nil)
+        content.popoverTip(
+          guide.tip(for: step), arrowEdge: step == .photo || step == .talk ? .bottom : nil)
       case .spotlight:
         content.onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) {
           guide.frames[step] = $0
@@ -114,6 +115,9 @@ private struct GuideTarget: ViewModifier {
 /// with the words, "1/3", and "次へ" (on the last, "閉じる"). Taps on the dark part do nothing.
 struct CoachMarkOverlay: View {
   @Environment(OnboardingGuide.self) private var guide
+
+  /// White in light mode; in dark mode a gray lighter than the black screen under the dimming.
+  private static let balloonFill = Color(.tertiarySystemBackground)
 
   var body: some View {
     GeometryReader { proxy in
@@ -142,7 +146,7 @@ struct CoachMarkOverlay: View {
             path.addLine(to: CGPoint(x: x + 10, y: base))
             path.closeSubpath()
           }
-          .fill(Color(.systemBackground))
+          .fill(Self.balloonFill)
           .accessibilityHidden(true)
           balloon(step: step)
             .padding(.horizontal, 16)
@@ -180,7 +184,11 @@ struct CoachMarkOverlay: View {
     }
     .padding(16)
     .frame(maxWidth: 360, alignment: .leading)
-    .background(RoundedRectangle(cornerRadius: 18).fill(Color(.systemBackground)))
+    .background(RoundedRectangle(cornerRadius: 18).fill(Self.balloonFill))
+    // In dark mode the dimmed screen is near black too; a faint edge keeps the balloon apart.
+    .overlay(
+      RoundedRectangle(cornerRadius: 18).strokeBorder(Color.white.opacity(0.25), lineWidth: 1)
+    )
     .accessibilityElement(children: .contain)
     .accessibilityAddTraits(.isModal)
   }
