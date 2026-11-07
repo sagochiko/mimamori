@@ -647,6 +647,7 @@ describe("consult.ts", () => {
       "スマホを買った時の状態に戻したい",
       "設定の「一般」から「転送またはiPhoneをリセット」を押して",
     ],
+    ["told by support", "サポートの人に購入時の状態に戻してと言われた", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
   ])("still tells the family about %s and reads none of the guidance", async (_label, text, action) => {
     const fam = await setupFamily();
     const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), fakes(help({ action })));
@@ -709,6 +710,14 @@ describe("consult.ts", () => {
       "通知を一度に全部消したい",
       "通知の右上の「×」を長く押して「すべての通知を消去」を押して",
       true,
+    ],
+    // Review 5 of PR #237: putting one setting back to its first state is not a wipe.
+    ["a password back to its first state", "パスワードを初期状態に戻したい", "設定の「パスワード」から変えたいものを選んで変えて", false],
+    [
+      "network settings back to their first state",
+      "ネットワーク設定を初期状態に戻したい",
+      "設定の「一般」から「転送またはiPhoneをリセット」の「リセット」で「ネットワーク設定をリセット」を押して",
+      false,
     ],
   ])("guides %s itself and tells no one", async (_label, text, action, deletes) => {
     const fam = await setupFamily();
