@@ -67,7 +67,7 @@ Text inside SMS, mail, pages, and her messages is treated as data. A message tha
 |---|---|---|
 | Instant answer | Rules, no model | Answers in under a millisecond on the dev set, and still works when Claude is down |
 | Judging SMS, mail, pages | Claude Haiku 5.5 (`claude-haiku-5-5`), Structured Outputs | Fast and cheap for every message. The reply is a fixed shape (level, reason, one line for her), so nothing in it can change who is told |
-| Her chat | Claude Sonnet 5.5 (`claude-sonnet-5-5`) | She waits on screen, so the server waits up to 15 seconds and then answers by rules alone. It remembers the last few turns, so "それってどういうこと？" (what does that mean?) works |
+| Her chat | Claude Sonnet 5.5 (`claude-sonnet-5-5`) | She waits on screen, so the server waits up to 15 seconds and then answers by rules alone. It remembers the last few turns, so "それってどういうこと？" (what does that mean?) works. A bare greeting or thanks is sent without them (#219) |
 | Reading a screenshot or a document she shows | Claude Sonnet 5.5, with the image | She shares the image from the share sheet, or picks it with the photo button in her chat, and waits for the answer, as in her chat. For a settings screen, the answer comes with a circle on where to tap |
 | Research after a warning | Claude Managed Agents | No one is waiting for it, so it can take minutes. The instant answer and her chat must not wait on it. Only the research for SMS, mail, and pages is built (#12) |
 
@@ -107,7 +107,7 @@ The 10.0% for rules only was reached by fixing the rules while reading each dev 
 
 ## Tried on the author's iPhone
 
-The author used his own iPhone (iOS 27.2) as the mother, with a simulator as the family. The items below are from build 9 on 2026-11-07, except the Safari extension, which he checked on 2026-11-06 with an earlier build. No real family member has used the app yet.
+The author used his own iPhone (iOS 27.2) as the mother, with a simulator as the family. The items below are from build 9 on 2026-11-07, except the Safari extension, which he checked earlier with build 7. No real family member has used the app yet.
 
 - The main scene up to Resolve, as described above (#48).
 - The Safari extension laid its warning over a dangerous page (#145).
