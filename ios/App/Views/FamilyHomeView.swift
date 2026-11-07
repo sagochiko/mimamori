@@ -130,8 +130,11 @@ private struct InviteSheet: View {
       if let invite = model.invite {
         InviteCodeView(invite: invite)
         NewCodeButton()
-      } else {
+      } else if model.isBusy {
         ProgressView()
+      } else {
+        // A failed request leaves no code; this asks again (review 1 of PR #246).
+        NewCodeButton()
       }
     }
     .padding(24)

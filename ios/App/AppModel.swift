@@ -219,6 +219,9 @@ final class AppModel {
     guard route != .chooseRole else { return }
     now = .now
     guard let fresh = try? await session.cases() else { return }
+    // Checked again after the wait: "すべて消す" can land while this read is in flight, and the old
+    // family's cases must not mark a new family as joined (review 1 of PR #246).
+    guard route != .chooseRole else { return }
     cases = fresh
     notePresence()
   }
@@ -242,6 +245,7 @@ final class AppModel {
   func loadSmiles() async {
     guard route != .chooseRole else { return }
     guard let fresh = try? await session.smiles() else { return }
+    guard route != .chooseRole else { return }  // As in loadCases (review 1 of PR #246).
     smileBoard = fresh
     notePresence()
   }
