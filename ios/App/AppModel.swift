@@ -215,11 +215,6 @@ final class AppModel {
     await sendSmileBody { try await $0.postSmile(photoJPEG: jpeg, score: score) }
   }
 
-  /// One of the set words, without a photo.
-  func sendNote(_ note: SmileNote) async -> Bool {
-    await sendSmileBody { try await $0.postSmile(note: note) }
-  }
-
   private func sendSmileBody(_ body: (Session) async throws -> Smile) async -> Bool {
     var sent = false
     await run(joining: false) { [weak self] session in

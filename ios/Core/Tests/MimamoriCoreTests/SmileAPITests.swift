@@ -134,4 +134,20 @@ struct SmileAPITests {
     #expect(
       board.todaysProtectedSmile(now: now.addingTimeInterval(86_400), calendar: calendar) == nil)
   }
+  @Test("画面に並べるのは写真のある笑顔だけで、ひと言だけの行は出さない")
+  func photosOnly() {
+    func smile(_ id: String, photo: Bool, note: String?) -> Smile {
+      Smile(
+        id: id, memberId: "m", displayName: "x", role: .family, score: nil, note: note, hasPhoto: photo,
+        createdAt: Date(timeIntervalSince1970: 0))
+    }
+    let board = SmileBoard(smiles: [
+      smile("note-only", photo: false, note: "いい笑顔"),
+      smile("photo", photo: true, note: nil),
+      smile("photo-and-note", photo: true, note: "おはよう"),
+      smile("empty", photo: false, note: nil),
+    ])
+    #expect(board.photos.map(\.id) == ["photo", "photo-and-note"])
+    #expect(SmileBoard(smiles: [smile("note-only", photo: false, note: "またね")]).photos.isEmpty)
+  }
 }

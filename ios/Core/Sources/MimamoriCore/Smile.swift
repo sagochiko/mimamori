@@ -2,7 +2,8 @@ import Foundation
 
 /// The words a one-line reply can be, the same list as the server's (`SMILE_NOTES` in
 /// server/src/smiles.ts). No free text goes from one member to another: the author chose set words
-/// on 2026-11-05 (docs/design.md, "毎朝の笑顔"). Sent as the raw value.
+/// on 2026-11-05 (docs/design.md, "毎朝の笑顔"). Sent as the raw value. Since 2026-11-07 (#223) the
+/// app sends none; it stays because `POST /smiles` in docs/plan.md still takes them.
 public enum SmileNote: String, CaseIterable, Sendable, Identifiable {
   case goodMorning = "good-morning"
   case niceSmile = "nice-smile"
@@ -70,6 +71,11 @@ public struct SmileBoard: Codable, Hashable, Sendable {
     smiles = try container.decode([Smile].self, forKey: .smiles)
     deadlineHour = try container.decodeIfPresent(Int.self, forKey: .deadlineHour) ?? Self.defaultDeadlineHour
   }
+
+  /// The rows the screens show: smiles with a photo, newest first. A row with only one of the set
+  /// words is left out, and a photo's words are not shown: the author dropped the set words from both
+  /// screens on 2026-11-07 (#223, docs/design.md, "毎朝の笑顔"). The server still takes and lists them.
+  public var photos: [Smile] { smiles.filter(\.hasPhoto) }
 
   /// The newest photo the protected member took on the calendar day of `now`.
   public func todaysProtectedSmile(now: Date, calendar: Calendar = .current) -> Smile? {
