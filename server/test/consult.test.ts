@@ -654,6 +654,9 @@ describe("consult.ts", () => {
     ["review 6, for now", "スマホをいったん初期状態に戻して", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
     ["review 6, asking if it can", "スマホは初期状態に戻せる？", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
     ["review 6, making it the first state", "スマホを初期状態にしたい", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
+    ["review 7, a fake virus notice", "ウイルスの通知が出て、サポートに初期状態に戻してと言われた", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
+    ["review 7, a leaked password", "パスワードが漏れているので初期状態に戻してくださいと言われた", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
+    ["review 7, a notice then the first state", "通知が来て、初期状態にしてと言われた", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
   ])("still tells the family about %s and reads none of the guidance", async (_label, text, action) => {
     const fam = await setupFamily();
     const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), fakes(help({ action })));

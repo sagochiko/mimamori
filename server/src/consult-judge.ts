@@ -169,7 +169,7 @@ const SENSITIVE: ReadonlyArray<{ reason: string; pattern: RegExp }> = [
       [
         "(?<!(パスワード|パスコード|ネットワーク設定)を?)初期化",
         "工場出荷",
-        `(?<!(${ONE_SETTING})[^。]{0,10})${FIRST_STATE}`,
+        `(?<!(${ONE_SETTING})[^。、]{0,8}(を|が|は|も))${FIRST_STATE}`,
         `(${PHONE})(?:(?!${ONE_SETTING}).){0,10}${FIRST_STATE}`,
         `(${PHONE}|すべての設定|すべてのコンテンツ|転送または)(?:(?!パスワード|パスコード|ネットワーク).){0,8}リセット`,
         `(${PHONE})(?:(?!${ONE_THING}).){0,8}消去`,
