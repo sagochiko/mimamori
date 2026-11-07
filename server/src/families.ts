@@ -5,6 +5,7 @@ import { deleteAgentSession } from "./agents";
 import { ExternalBudget } from "./budget";
 import { revokeGmailGrant } from "./gmail";
 import { errorResponse, HttpError, json, noContent, readJson } from "./http";
+import { takeFamilyCreate } from "./family-limit";
 import { takeJoinAttempt } from "./join-limit";
 import { sendPush } from "./push";
 
@@ -40,8 +41,13 @@ async function insertMember(
   return { memberId, deviceKey, statement };
 }
 
-/** POST /families: the caller becomes the first member, with the family role. */
+/**
+ * POST /families: the caller becomes the first member, with the family role. Each client address may
+ * make FAMILY_CREATES_PER_WINDOW families an hour (src/family-limit.ts), counted before the body is read.
+ */
 export async function createFamily(request: Request, env: Env): Promise<Response> {
+  const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  if (!(await takeFamilyCreate(env, ip, Date.now()))) throw new HttpError(429, "too_many_attempts");
   const body = await readJson(request);
   const name = displayName(body.display_name, false);
   const familyId = crypto.randomUUID();
@@ -246,7 +252,7 @@ export async function deleteEverything(request: Request, env: Env): Promise<Resp
   await deleteFamilyPhotos(env, familyId);
   await env.DB.batch([
     env.DB.prepare("DELETE FROM relays WHERE case_id IN (SELECT id FROM cases WHERE family_id = ?)").bind(familyId),
-    ...["cases", "alerts", "smiles", "invites", "gmail_auth", "members"].map((table) =>
+    ...["cases", "alerts", "smiles", "invites", "gmail_auth", "claude_daily", "members"].map((table) =>
       env.DB.prepare(`DELETE FROM ${table} WHERE family_id = ?`).bind(familyId),
     ),
     env.DB.prepare("DELETE FROM families WHERE id = ?").bind(familyId),

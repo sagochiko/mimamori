@@ -1,10 +1,12 @@
 // "残す期間は30日" (docs/design.md): alerts, cases with their relays and agent sessions, and smiles
-// with their photos are deleted 30 days after they were made. Families and members stay. Join tries
-// (src/join-limit.ts) are kept only a day.
+// with their photos are deleted 30 days after they were made. Families and members stay. Join and
+// family tries (src/join-limit.ts, src/family-limit.ts) are kept only a day, and the daily Claude
+// counts (src/claude-limit.ts) only for today and yesterday.
 
 import { deleteAgentSession } from "./agents";
 import type { ExternalBudget } from "./budget";
 import { JOIN_ATTEMPT_ROW_MS, utcDay } from "./join-limit";
+import { jstDate } from "./time";
 
 export const RETENTION_MS = 30 * 24 * 3600_000;
 
@@ -38,6 +40,9 @@ export async function purgeExpired(env: Env, now: number): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM join_attempts WHERE window_start < ?").bind(now - JOIN_ATTEMPT_ROW_MS),
     env.DB.prepare("DELETE FROM join_daily WHERE day < ?").bind(utcDay(now - JOIN_ATTEMPT_ROW_MS)),
+    env.DB.prepare("DELETE FROM family_attempts WHERE window_start < ?").bind(now - JOIN_ATTEMPT_ROW_MS),
+    // Today's and yesterday's JST counts stay (src/claude-limit.ts).
+    env.DB.prepare("DELETE FROM claude_daily WHERE day < ?").bind(jstDate(now - 24 * 3600_000)),
   ]);
 }
 

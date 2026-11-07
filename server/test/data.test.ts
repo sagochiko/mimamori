@@ -7,11 +7,12 @@ import { describe, expect, it } from "vitest";
 import { dueJobs, JOBS } from "../src/cron";
 import worker from "../src/index";
 import { sealText } from "../src/secretbox";
+import { jstDate } from "../src/time";
 import { call, createFamily, invite, join, type Created } from "./helpers";
 import { network } from "./network";
 
 const DAY = 24 * 3600_000;
-const FAMILY_TABLES = ["members", "invites", "alerts", "cases", "smiles", "gmail_auth"] as const;
+const FAMILY_TABLES = ["members", "invites", "alerts", "cases", "smiles", "gmail_auth", "claude_daily"] as const;
 
 async function joinAs(owner: Created, role: "protected" | "family", name: string) {
   const { code } = await invite(owner.deviceKey);
@@ -47,6 +48,11 @@ async function seed(family: Created, opts: { at?: number; sessionId?: string; re
     env.DB.prepare(
       "INSERT INTO smiles (id, family_id, member_id, r2_key, note, created_at) VALUES (?, ?, ?, '', 'おはよう', ?)",
     ).bind(noteId, family.familyId, family.memberId, at),
+    // The day's count of Claude calls (src/claude-limit.ts) carries the family id too.
+    env.DB.prepare(
+      `INSERT INTO claude_daily (family_id, day, claude_calls, research_starts) VALUES (?, ?, 1, 0)
+       ON CONFLICT (family_id, day) DO UPDATE SET claude_calls = claude_calls + 1`,
+    ).bind(family.familyId, jstDate(at)),
   ];
   if (opts.refreshToken !== undefined) {
     statements.push(
@@ -174,6 +180,7 @@ describe("DELETE /families/me (delete everything)", () => {
       cases: 0,
       smiles: 0,
       gmail_auth: 0,
+      claude_daily: 0,
       relays: 0,
       families: 0,
     });
@@ -183,7 +190,7 @@ describe("DELETE /families/me (delete everything)", () => {
     // The other family is untouched.
     const kept = await countFor(other.familyId);
     // Two smiles: the photo and the one-line reply without one.
-    expect(kept).toMatchObject({ members: 1, alerts: 1, cases: 1, smiles: 2, gmail_auth: 1, relays: 1, families: 1 });
+    expect(kept).toMatchObject({ members: 1, alerts: 1, cases: 1, smiles: 2, gmail_auth: 1, claude_daily: 1, relays: 1, families: 1 });
     expect(await r2Count(`${other.familyId}/`)).toBe(1);
   });
 

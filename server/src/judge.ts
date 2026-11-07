@@ -19,6 +19,7 @@
 import { startInvestigation, type ResearchInput } from "./agents";
 import { ExternalBudget } from "./budget";
 import { CaseNoticeDeferred, openCase } from "./cases";
+import { takeClaudeCall, takeResearchStart } from "./claude-limit";
 import {
   ALERT_SOURCES,
   decideFor,
@@ -364,6 +365,7 @@ function storedReasons(text: string): string[] {
 /** A research to start once every notice of the batch went out (see handleJudgeBatch). */
 interface PendingResearch {
   alertId: string;
+  familyId: string;
   input: ResearchInput;
 }
 
@@ -416,11 +418,14 @@ async function judgeOne(
   const input: RuleInput = { source: job.source, ...fields };
   const rule = deps.judgeByRules(input);
   budget.take();
-  let claude: ClaudeJudgment | null;
-  try {
-    claude = await deps.askClaude(env, mailAuth ? { ...input, mailAuth } : input, rule);
-  } catch {
-    claude = null;
+  let claude: ClaudeJudgment | null = null;
+  // Past the family's calls for the day (src/claude-limit.ts) it goes on as when Claude gives nothing.
+  if (await takeClaudeCall(env, job.familyId, deps.now())) {
+    try {
+      claude = await deps.askClaude(env, mailAuth ? { ...input, mailAuth } : input, rule);
+    } catch {
+      claude = null;
+    }
   }
   // When neither the rules nor Claude decided, a consultation is level 2 with 確かめ中 at once, like
   // any other time Claude gives nothing: one from the mother must not wait on Claude coming back. An
@@ -500,7 +505,7 @@ async function judgeOne(
     if (job.payload.sender) input.sender = job.payload.sender;
     if (domain) input.domain = domain;
     if (job.payload.text) input.text = job.payload.text;
-    research.push({ alertId, input });
+    research.push({ alertId, familyId: job.familyId, input });
   }
   return outcome;
 }
@@ -529,8 +534,10 @@ export async function handleJudgeBatch(
   }
   // The research comes last, with the tickets every notice of the batch left, so an extra on the card
   // never sends a later notice of the same batch to a retry (review 1 of PR #183).
-  for (const { alertId, input } of research) {
+  for (const { alertId, familyId, input } of research) {
     try {
+      // Past the family's research starts for the day (src/claude-limit.ts) the card stays as it is.
+      if (!(await takeResearchStart(env, familyId, deps.now()))) continue;
       await deps.investigate?.(env, alertId, input, budget);
     } catch (error) {
       console.error("investigation failed", error instanceof Error ? error.name : typeof error);

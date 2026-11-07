@@ -22,7 +22,9 @@ import {
   type JudgeJob,
   type JudgeMessageBody,
 } from "../src/judge";
+import { CLAUDE_CALLS_PER_FAMILY_DAY, RESEARCH_STARTS_PER_FAMILY_DAY } from "../src/claude-limit";
 import { mailPayload } from "../src/gmail";
+import { jstDate } from "../src/time";
 import wranglerConfig from "../wrangler.jsonc?raw";
 import { resetApnsJwtCache } from "../src/push";
 import { judgeByRules, type RuleInput, type RuleResult } from "../src/rules";
@@ -1637,5 +1639,83 @@ describe("research in the background", () => {
     await runMessages([redelivered(message, 2)], deps);
     expect(calls).toHaveLength(1);
     expect(pushes).toHaveLength(3);
+  });
+});
+
+// The public-release audit of 2026-11-07, point 1: a family that used up its Claude calls for the day
+// is judged by the rules alone, exactly as when Claude gives no answer, and starts no more research.
+describe("the daily caps per family", () => {
+  async function fill(familyId: string, column: "claude_calls" | "research_starts", n: number) {
+    await env.DB.prepare(
+      `INSERT INTO claude_daily (family_id, day, claude_calls, research_starts) VALUES (?1, ?2, 0, 0)
+       ON CONFLICT (family_id, day) DO NOTHING`,
+    )
+      .bind(familyId, jstDate(T0))
+      .run();
+    await env.DB.prepare(`UPDATE claude_daily SET ${column} = ? WHERE family_id = ? AND day = ?`)
+      .bind(n, familyId, jstDate(T0))
+      .run();
+  }
+
+  it("does not ask Claude past the cap, and tells everyone on the rules with 確かめ中", async () => {
+    const fam = await setupFamily();
+    await fill(fam.familyId, "claude_calls", CLAUDE_CALLS_PER_FAMILY_DAY);
+    const deps = fakes({ rule: { level: 2, reasons: ["急がせる言い回しがある"], confident: false } });
+    const { result } = await run([smsJob(fam.familyId)], deps);
+
+    expect(deps.claudeCalls).toBe(0);
+    const [alert] = await alertsOf(fam.familyId);
+    expect(alert).toMatchObject({ level: 2, rule_level: 2, claude_level: null });
+    const toMother = pushesTo([fam.tokens.mother]);
+    expect(toMother).toHaveLength(1);
+    expect(toMother[0]?.body).toContain("確かめ中");
+    expect(toMother[0]?.data).toMatchObject({ checking: true });
+    expect((await caseOf(alert?.id))?.family_notified_at).not.toBeNull();
+    expect(pushesTo(fam.tokens.family)).toHaveLength(2);
+    expect(result.explicitAcks).toHaveLength(1);
+    await expectNothingSaysSafe(fam.familyId);
+  });
+
+  it("asks Claude one below the cap and counts the call", async () => {
+    const fam = await setupFamily();
+    await fill(fam.familyId, "claude_calls", CLAUDE_CALLS_PER_FAMILY_DAY - 1);
+    const deps = fakes();
+    await run([smsJob(fam.familyId)], deps);
+    expect(deps.claudeCalls).toBe(1);
+    const row = await env.DB.prepare("SELECT claude_calls FROM claude_daily WHERE family_id = ? AND day = ?")
+      .bind(fam.familyId, jstDate(T0))
+      .first<{ claude_calls: number }>();
+    expect(row?.claude_calls).toBe(CLAUDE_CALLS_PER_FAMILY_DAY);
+  });
+
+  it("counts against the family of the job, not another family", async () => {
+    const full = await setupFamily();
+    const other = await setupFamily();
+    await fill(full.familyId, "claude_calls", CLAUDE_CALLS_PER_FAMILY_DAY);
+    const deps = fakes();
+    await run([smsJob(other.familyId)], deps);
+    expect(deps.claudeCalls).toBe(1);
+  });
+
+  it("starts no research past the cap, and one below it starts one", async () => {
+    const full = await setupFamily();
+    await fill(full.familyId, "research_starts", RESEARCH_STARTS_PER_FAMILY_DAY);
+    const started: string[] = [];
+    const deps: JudgeDeps = {
+      ...fakes(),
+      investigate: async (_e, alertId) => {
+        started.push(alertId);
+        return true;
+      },
+    };
+    await run([smsJob(full.familyId)], deps);
+    expect(started).toHaveLength(0);
+    // The notices went out all the same.
+    expect(pushesTo([full.tokens.mother, ...full.tokens.family])).toHaveLength(3);
+
+    const room = await setupFamily();
+    await fill(room.familyId, "research_starts", RESEARCH_STARTS_PER_FAMILY_DAY - 1);
+    await run([smsJob(room.familyId)], deps);
+    expect(started).toHaveLength(1);
   });
 });
