@@ -347,7 +347,7 @@ struct ProtectedHomeView: View {
 }
 
 /// The screenshot she showed, under her line and then under the answer, with the ring where to press.
-/// Never larger than half the screen's height, so the answer and the field stay in view.
+/// At most 420 points tall, so on an iPhone the answer above it and the field below stay in view.
 private struct ShownPictureView: View {
   let shown: ShownPicture
 
