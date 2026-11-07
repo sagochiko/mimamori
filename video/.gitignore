@@ -1,0 +1,17 @@
+node_modules
+dist
+.DS_Store
+.env
+
+# 書き出した動画とコマ
+out
+*.mp4
+*.mov
+
+# 母の撮影と体験モードの録画はリポジトリに入れない(~/mimamori-video/ に置く)
+public/footage/*
+!public/footage/.gitkeep
+public/assets/*
+!public/assets/.gitkeep
+# シミュレータの stub で撮った仮の動画は入れる(試験用の文と描いた顔だけが映る)
+!public/footage-sim/*.mp4
