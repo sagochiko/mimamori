@@ -3588,6 +3588,36 @@ describe("words that do not go on with the script told before (#219)", () => {
     expect(familyPushes(fam).map((p) => p.title)).toEqual(["1段階", "1段階"]);
   });
 
+  // Review 2 of PR #220: her voice has no "?", so a rising "大丈夫" is her question after the scam.
+  it.each([
+    ["the script", told],
+    ["a caller who says he is her son", son],
+  ] as const)("shows Claude the turns before 大丈夫, 大丈夫よね, 大丈夫ですね, and ok after %s", async (_label, before) => {
+    for (const text of ["大丈夫よね", "大丈夫", "大丈夫ですね", "ok"]) {
+      const fam = await setupFamily();
+      pushes = [];
+      const deps = fakes(null);
+      const seen: Array<readonly ConsultTurn[]> = [];
+      deps.askClaude = async (_e, _text, _rule, history = []) => {
+        seen.push(history);
+        return history.length > 0 ? scam({ level: 1 }) : help({ action: GREETING });
+      };
+      const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps, before);
+      expect(seen, text).toEqual([before]);
+      expect(answer.handoff, text).toBe(true);
+      expect(familyPushes(fam).map((p) => p.title), text).toEqual(["1段階", "1段階"]);
+    }
+  });
+
+  it.each(["おはよう", "ありがとう", "はい", "わかった"])("still judges %s after the script as on its own", async (text) => {
+    const fam = await setupFamily();
+    await afterResolvedScript(fam);
+    const { deps, seen } = readsHistory(() => help({ action: GREETING }));
+    await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps, told);
+    expect(seen).toEqual([[]]);
+    expect(familyPushes(fam)).toEqual([]);
+  });
+
   it.each([
     ["おはよう", true],
     ["おはようございます", true],
@@ -3601,9 +3631,14 @@ describe("words that do not go on with the script told before (#219)", () => {
     ["はい、わかった", true],
     ["うんうん", true],
     ["了解です", true],
-    ["大丈夫", true],
-    ["大丈夫です", true],
-    ["わかりましたよ", true],
+    ["大丈夫", false],
+    ["大丈夫です", false],
+    ["わかりましたよ", false],
+    ["大丈夫よね", false],
+    ["大丈夫ですね", false],
+    ["ok", false],
+    ["おっけー", false],
+    ["はいね", false],
     ["大丈夫かな", false],
     ["大丈夫?", false],
     ["大丈夫って言われた", false],

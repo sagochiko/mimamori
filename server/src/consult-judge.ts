@@ -1010,13 +1010,15 @@ export function saidIn(text: string, history: readonly ConsultTurn[]): Said {
 }
 
 // A greeting, a thanks, or a nod, and nothing else (#219): one or more of these words, each with an
-// ending of politeness ("ございます", "です", "ね", "よ"), stretched by ー or 〜, with punctuation, white
-// space, and emoji between them. Any other word, or a question mark ("大丈夫?"), and it says something:
-// "大丈夫かな", "ありがとう、でも振り込んでって言われた". Only the server reads it; the app sends the turns
-// by pointsBack as before.
+// ending of politeness ("ございます", "ございました", "です"), stretched by ー or 〜, with punctuation,
+// white space, and emoji between them. Any other word, or a question mark, and it says something:
+// "ありがとう、でも振り込んでって言われた". Her voice comes without punctuation (VoiceListener does not
+// set addsPunctuation), so a rising "大丈夫" or "大丈夫よね" has no "?" and is her question after a scam:
+// "大丈夫", "ok", and the endings "ね" and "よ" are not in the list (review 2 of PR #220). Only the
+// server reads it; the app sends the turns by pointsBack as before.
 const NOTHING_WORD =
-  "(おはよう?|こんにち[はわ]|こんばん[はわ]|おやすみ(なさい)?|ありがと(う)?|どうも|はい|うん|ええ|(わ|分)か(った|りました)|了解(です|しました)?|りょうかい|大丈夫|だいじょうぶ|おっけ|ok)";
-const NOTHING = new RegExp(`^(${NOTHING_WORD}(ございます|ございました|です|ね|よ)*)+$`, "u");
+  "(おはよう?|こんにち[はわ]|こんばん[はわ]|おやすみ(なさい)?|ありがと(う)?|どうも|はい|うん|ええ|(わ|分)か(った|りました)|了解(です|しました)?|りょうかい)";
+const NOTHING = new RegExp(`^(${NOTHING_WORD}(ございます|ございました|です)*)+$`, "u");
 
 export function saysNothing(text: string): boolean {
   const t = normalize(text);
