@@ -56,7 +56,10 @@ import {
   type Plan,
   type RecentFinding,
   requestClaudeConsult,
+  requestSearchAnswer,
   saidIn,
+  type SearchAnswer,
+  searchTimeLeft,
   TOLD_FAMILY,
 } from "./consult-judge";
 import { HttpError, json, readJson } from "./http";
@@ -119,6 +122,11 @@ export interface ConsultDeps {
   ): Promise<ClaudeConsult | null>;
   openCase(env: Env, alertId: string, budget: ExternalBudget): Promise<unknown>;
   now(): number;
+  /**
+   * The second call with the web search tool (#251), with what is left of the deadline. Absent, as in
+   * most tests, no search is made. Returns null for any failure; a throw is treated the same way.
+   */
+  searchAnswer?(env: Env, text: string, query: string, timeoutMs: number): Promise<SearchAnswer | null>;
 }
 
 export const defaultConsultDeps: ConsultDeps = {
@@ -127,6 +135,7 @@ export const defaultConsultDeps: ConsultDeps = {
     requestClaudeConsult(env, text, rule, history, undefined, image, findings),
   openCase,
   now: () => Date.now(),
+  searchAnswer: (env, text, query, timeoutMs) => requestSearchAnswer(env, text, query, timeoutMs),
 };
 
 /** What is read aloud: the same words, without the brackets that are only there for the eyes. */
@@ -275,11 +284,14 @@ export async function consult(
 
   // The main scene answers at once: she does not wait, and the family is told before she can close
   // the app and cut the request. No ticket is taken for Claude (judgeConsult asks only off the script).
+  // One deadline for both calls to Claude, from the start of the first (#251, .claude/rules/server.md).
+  let startedAt = now;
   const p = await judgeConsult(
     text,
     history,
     async (rule, turns) => {
       if (!budget.take()) return null;
+      startedAt = deps.now();
       // A record that cannot be read must not cost her the answer: Claude is asked without it.
       const findings = await recentFindings(env, member.familyId, now).catch(() => []);
       try {
@@ -290,6 +302,15 @@ export async function consult(
     },
     deps.judgeByRules,
     image !== undefined,
+    async (query) => {
+      const left = searchTimeLeft(startedAt, deps.now());
+      if (deps.searchAnswer === undefined || left === null || !budget.take()) return null;
+      try {
+        return await deps.searchAnswer(env, text, query, left);
+      } catch {
+        return null;
+      }
+    },
   );
   const said = saidIn(text, history);
   if (!p.record) return answer(p.reply, false, tapOn(image, p.tap));
