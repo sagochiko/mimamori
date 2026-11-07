@@ -8,6 +8,7 @@ import SwiftUI
 struct SettingsView: View {
   @Environment(AppModel.self) private var model
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.scenePhase) private var scenePhase
   @State private var daily = DailyCheckInNotifier.settings
   @State private var readAloud = ReadAloudSettings(reading: {
     UserDefaults.standard.object(forKey: $0)
@@ -40,16 +41,21 @@ struct SettingsView: View {
         }
       }
     }
-    // Settings may have changed while the app was away; show what is stored now.
-    .onAppear {
-      daily = DailyCheckInNotifier.settings
-      readAloud = ReadAloudSettings(reading: { UserDefaults.standard.object(forKey: $0) })
-    }
+    // Settings may have changed while the app was away; show what is stored now. Also when she comes
+    // back with this sheet still open, so a toggle here never writes back the hour she changed in
+    // Settings > みまもり meanwhile (review of PR #226).
+    .onAppear(perform: reload)
+    .onChange(of: scenePhase) { _, phase in if phase == .active { reload() } }
     .onChange(of: daily) { _, new in
       write(new.stored)
       model.settingsChanged()
     }
     .onChange(of: readAloud) { _, new in write(new.stored) }
+  }
+
+  private func reload() {
+    daily = DailyCheckInNotifier.settings
+    readAloud = ReadAloudSettings(reading: { UserDefaults.standard.object(forKey: $0) })
   }
 
   private func write(_ values: [String: Any]) {
