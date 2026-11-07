@@ -173,7 +173,15 @@ export async function runEval(options: RunOptions): Promise<{ exitCode: number; 
   }
 
   lines.push(...summary(set, mode, cases.length, metrics));
-  if (unanswered !== null) lines.push(`  claude gave nothing for ${unanswered} of ${cases.length}`);
+  if (unanswered !== null) {
+    // Why, by name only (after #251): the per-case names are in eval/out/dev-latest.json.
+    const why = new Map<string, number>();
+    for (const c of scored) {
+      if (c.claude_parse_failure !== undefined) why.set(c.claude_parse_failure, (why.get(c.claude_parse_failure) ?? 0) + 1);
+    }
+    const names = [...why].map(([name, n]) => `${name} ${n}`).join(", ");
+    lines.push(`  claude gave nothing for ${unanswered} of ${cases.length}${names === "" ? "" : ` (${names})`}`);
+  }
   return { exitCode: 0, lines };
 }
 
