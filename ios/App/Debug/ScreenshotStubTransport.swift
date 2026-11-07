@@ -39,6 +39,8 @@
     /// With `-mimamori-stub-camera-hold`, the stand-in camera never "sees" the smile, so the camera
     /// screen itself can be shot.
     static var cameraHold: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-camera-hold") }
+    /// `-mimamori-stub-settings-open`: her settings screen (#222) is open at launch.
+    static var settingsOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-settings-open") }
     /// The stub keeps the key in memory, so the real marker file is left alone.
     static let marker = FileInstallMarker(url: URL.temporaryDirectory.appending(path: "mimamori-stub-installed"))
     /// The conversation stays in memory too, so her real one is left alone. With

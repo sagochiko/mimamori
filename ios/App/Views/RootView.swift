@@ -35,13 +35,19 @@ extension Problem {
 }
 
 /// The menu on both home screens with "すべて消す", and the check before it: "消す" or "やめる",
-/// nothing else on screen. What goes is read aloud only.
+/// nothing else on screen. What goes is read aloud only. On her screen it also opens her settings
+/// (`SettingsView`, #222); the family's iPhone has no daily prompt or reading aloud.
 struct WipeMenu: View {
   @Environment(AppModel.self) private var model
   @State private var confirming = false
+  @State private var settingsOpen = false
 
   var body: some View {
     Menu {
+      if model.route == .protectedHome {
+        Button("設定", systemImage: "gearshape") { settingsOpen = true }
+          .accessibilityHint("毎日の声かけ、その時刻、読み上げを切り替える画面を開きます")
+      }
       Button("すべて消す", systemImage: "trash", role: .destructive) { confirming = true }
         .accessibilityHint("家族の知らせ、相談、笑顔、Gmail の許可を裏側からすべて消し、この iPhone の鍵と会話も消して、役を選ぶ画面に戻ります。家族のみんなが使えなくなります")
     } label: {
@@ -57,8 +63,10 @@ struct WipeMenu: View {
       Button("消す", role: .destructive) { Task { await model.deleteEverything() } }
       Button("やめる", role: .cancel) {}
     }
+    .sheet(isPresented: $settingsOpen) { SettingsView() }
     .onAppear {
       #if DEBUG
+        if ScreenshotStubTransport.settingsOpen, model.route == .protectedHome { settingsOpen = true }
         if ScreenshotStubTransport.wipeOpen { confirming = true }
       #endif
     }

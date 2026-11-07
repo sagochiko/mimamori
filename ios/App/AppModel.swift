@@ -370,6 +370,13 @@ final class AppModel {
     Task { await runCheckups() }
   }
 
+  /// The app's settings screen (`SettingsView`, #222) wrote a new value. The daily prompts are
+  /// rebuilt now, through the same path as coming to the front; 「読み上げ」 needs nothing, since it is
+  /// read for each answer.
+  func settingsChanged() {
+    scheduleDailyCheckIns()
+  }
+
   // MARK: Checkups (task 17, #19)
 
   /// The checks and the heartbeat, on the protected member's iPhone only: each time the app comes to
