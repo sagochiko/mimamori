@@ -77,6 +77,17 @@ struct RecordingBarTests {
     #expect(flow.answered(VoiceConsultTests.police, readsAloud: true).isEmpty)
   }
 
+  @Test("欄に声の文があるあいだだけ、それと分かる")
+  func hasVoiceDraft() {
+    var flow = Self.listening(heard: "警察から")
+    #expect(!flow.hasVoiceDraft)
+    _ = flow.stopTapped(at: .t0 + 2)
+    _ = flow.heard("警察から", isFinal: true, at: .t0 + 2.1)
+    #expect(flow.hasVoiceDraft)
+    flow.draftCleared()
+    #expect(!flow.hasVoiceDraft)
+  }
+
   @Test("声で入れた文の扱いは次の1回だけで、その次に書いて送ったものは読み上げない")
   func voiceDraftIsOnce() {
     var flow = Self.listening(heard: "警察から")

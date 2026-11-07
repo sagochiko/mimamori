@@ -182,6 +182,9 @@ public struct VoiceConsult: Sendable {
     return [.cancelListening]
   }
 
+  /// The field holds her words from the stop button, so sending them counts as by voice.
+  public var hasVoiceDraft: Bool { voiceDraft }
+
   /// She emptied the field: what she writes next is typed, not said.
   public mutating func draftCleared() {
     voiceDraft = false

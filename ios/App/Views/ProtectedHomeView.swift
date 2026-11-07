@@ -267,7 +267,7 @@ struct ProtectedHomeView: View {
       ) { model.recordingDiscardTapped() }
       .padding(.leading, 4)
       RecordingClockView(since: model.voice.listeningSince)
-      VoiceLevelDots(values: model.levels.values)
+      VoiceLevelDots()
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 4)
       roundButton(
@@ -312,7 +312,9 @@ struct ProtectedHomeView: View {
         .padding(.bottom, 4)
       MessageField(
         text: $draft, isFocused: $writing, placeholder: "メッセージ", textStyle: .body, maxLines: 6,
-        hint: "スマホの困りごとや気になる電話のことを書いて、送るボタンを押してください。答えは読み上げません"
+        hint: model.voice.hasVoiceDraft
+          ? "聞き取った言葉が入っています。直してから送るボタンを押してください。声で聞いたときと同じに扱います"
+          : "スマホの困りごとや気になる電話のことを書いて、送るボタンを押してください。答えは読み上げません"
       )
       .padding(.vertical, 11)
       Group {
@@ -349,7 +351,9 @@ struct ProtectedHomeView: View {
     .transition(.scale.combined(with: .opacity))
     .accessibilityShowsLargeContentViewer { Label("送る", systemImage: "arrow.up") }
     .accessibilityLabel("送る")
-    .accessibilityHint(model.voice.acceptsText ? "書いた言葉を送ります" : "答えを待っています")
+    .accessibilityHint(
+      model.voice.acceptsText
+        ? (model.voice.hasVoiceDraft ? "聞き取った言葉を送ります" : "書いた言葉を送ります") : "答えを待っています")
   }
 
   /// The image she picked, with what is in the field. The field is emptied only when it was sent:
@@ -428,10 +432,12 @@ private struct RecordingClockView: View {
 
 /// Dots that grow with her voice, newest on the right. Drawn from the microphone's loudness on the
 /// iPhone only.
+/// Reads `levels` itself, so their many updates a second redraw only the dots.
 private struct VoiceLevelDots: View {
-  let values: [Double]
+  @Environment(AppModel.self) private var model
 
   var body: some View {
+    let values = model.levels.values
     GeometryReader { geometry in
       let spacing: CGFloat = 3
       let count = values.count
