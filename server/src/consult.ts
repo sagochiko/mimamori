@@ -57,6 +57,17 @@ import {
   type RecentFinding,
   requestClaudeConsult,
   requestSearchAnswer,
+  ASK_AGAIN_REPLY,
+  HANDOFF_REPLY,
+  LIKE_SCAM_BASIS,
+  MATCH_BASIS,
+  POLICE_ACTION,
+  UNANSWERED_REPLY,
+  ASK_PICTURE_REPLY,
+  ASK_SCREEN_REPLY,
+  LOW_CONCERN_ACTION,
+  SEARCH_FAILED_REPLY,
+  type ConsultJudgment,
   saidIn,
   type SearchAnswer,
   searchTimeLeft,
@@ -286,6 +297,8 @@ export async function consult(
   // the app and cut the request. No ticket is taken for Claude (judgeConsult asks only off the script).
   // One deadline for both calls to Claude, from the start of the first (#251, .claude/rules/server.md).
   let startedAt = now;
+  // Wall-clock times for the log line only (deps.now is the case clock, fixed in tests).
+  const ms = { claude: null as number | null, search: null as number | null };
   const p = await judgeConsult(
     text,
     history,
@@ -294,10 +307,13 @@ export async function consult(
       startedAt = deps.now();
       // A record that cannot be read must not cost her the answer: Claude is asked without it.
       const findings = await recentFindings(env, member.familyId, now).catch(() => []);
+      const t0 = Date.now();
       try {
         return await deps.askClaude(env, text, rule, turns, image, findings);
       } catch {
         return null;
+      } finally {
+        ms.claude = Date.now() - t0;
       }
     },
     deps.judgeByRules,
@@ -305,15 +321,21 @@ export async function consult(
     async (query) => {
       const left = searchTimeLeft(startedAt, deps.now());
       if (deps.searchAnswer === undefined || left === null || !budget.take()) return null;
+      const t0 = Date.now();
       try {
         return await deps.searchAnswer(env, text, query, left);
       } catch {
         return null;
+      } finally {
+        ms.search = Date.now() - t0;
       }
     },
   );
   const said = saidIn(text, history);
-  if (!p.record) return answer(p.reply, false, tapOn(image, p.tap));
+  if (!p.record) {
+    logTrace(p, ms);
+    return answer(p.reply, false, tapOn(image, p.tap));
+  }
 
   let caseId: string | null = null;
   if (p.toFamily && open) {
@@ -349,7 +371,46 @@ export async function consult(
   const reply = p.toFamily && !(await familyWasTold(env, caseId)) ? notReachedReply(p.reply) : p.reply;
   // She hears the whole answer; the card gets a fixed line instead when the answer repeats her words.
   if (caseId !== null) await recordAiReply(env, caseId, repeats(reply, allOf(said)) ? AI_REPLY_ON_CARD : reply);
+  logTrace(p, ms);
   return answer(reply, p.toFamily, tapOn(image, p.tap));
+}
+
+// The fixed lines her answer may be, by name, for the log line.
+const FIXED_REPLIES: ReadonlyArray<[string, string]> = [
+  ["ask_again", ASK_AGAIN_REPLY],
+  ["ask_picture", ASK_PICTURE_REPLY],
+  ["ask_screen", ASK_SCREEN_REPLY],
+  ["handoff", HANDOFF_REPLY],
+  ["unanswered", UNANSWERED_REPLY],
+  ["search_failed", SEARCH_FAILED_REPLY],
+  ["low_concern", LOW_CONCERN_ACTION],
+  ["police", `${MATCH_BASIS}${POLICE_ACTION}`],
+  ["warning", LIKE_SCAM_BASIS],
+];
+
+/**
+ * One log line per consultation, to tell in production which way it went (#251): names, flags, and
+ * numbers only. Never her words, Claude's, the search query, a URL, or any id or token
+ * (.claude/rules/server.md).
+ */
+function logTrace(p: ConsultJudgment, ms: { claude: number | null; search: number | null }): void {
+  const fixed = FIXED_REPLIES.find(([, line]) => p.reply === line || p.reply.startsWith(line))?.[0];
+  const reply = fixed ?? (p.reply.endsWith(LOW_CONCERN_ACTION) ? "claude_low_concern" : p.trace?.searchUsed ? "search" : "claude");
+  console.log(
+    JSON.stringify({
+      event: "consult_trace",
+      script: p.script,
+      claude_null: p.trace?.claudeNull ?? null,
+      claude_ms: ms.claude,
+      query: p.trace?.query ?? false,
+      search_called: p.trace?.searchCalled ?? false,
+      search_used: p.trace?.searchUsed ?? false,
+      search_ms: ms.search,
+      level: p.level,
+      to_family: p.toFamily,
+      reply,
+    }),
+  );
 }
 
 /**
