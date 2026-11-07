@@ -27,37 +27,24 @@ fi
 # After the one run, the cases go into git so judges can see what was measured (/mm-endgame step 2,
 # decided by the author on 2026-11-08). Measured means the author's unlock in the main tree and a
 # holdout row in the main tree's eval/RESULTS.md. Then two things pass, and nothing else:
-#   (a) one bare `git add|commit|diff|show|log` line naming the cases, from anyone but the roles that
-#       change rules or prompts (mm-implementer, mm-eval-curator);
+#   (a) `git add` followed only by bare case paths, from anyone but the roles that change rules or
+#       prompts (mm-implementer, mm-eval-curator). An allow list, not a list of forbidden forms: quotes
+#       and backslashes split words past any such list (PR #269 review), so the whole line must match.
+#       The commit needs no exception: a commit line that names no case path never reaches this guard.
 #   (b) mm-reviewer's Read of a case, to review the PR that adds them.
 if [[ "$targets" =~ eval/cases/(holdout|pool) ]]; then
   main=$(main_tree || echo "$PROJECT_DIR")
   if [[ -f "$main/.claude/state/holdout.unlock" ]] &&
     grep -Eq '^\|[^|]*\|[[:space:]]*holdout[[:space:]]*\|' "$main/eval/RESULTS.md" 2>/dev/null &&
-    [[ ! "$targets" =~ cases/[^/[:space:]]*[*?[] ]]; then
-    git_re='^git[[:space:]]+(add|commit|diff|show|log)([[:space:]]|$)'
-    # git takes any unambiguous prefix of a long option (--fo for --force), and nocasematch makes -F
-    # and -f the same here, so short clusters with f and every prefix of the long name count.
-    force_re='[[:space:]](-[a-z]*f[a-z]*|--f(o(r(c(e)?)?)?)?)([[:space:]=]|$)'
-    # git commit -F/--file <case> would copy a case into the message: no message file on these lines.
-    file_re='[[:space:]](-[a-z]*f[a-z]*|--f(i(l(e)?)?)?)([[:space:]=]|$)'
-    # git diff --no-index shows files git does not track, cases included.
-    noindex_re='[[:space:]]--no-i(n(d(e(x)?)?)?)?([[:space:]=]|$)'
+    [[ ! "$targets" =~ cases/[^/[:space:]]*[*?[] && "$targets" != *..* ]]; then
     # Paths only go to the log, never what the files hold.
     paths=$(grep -oE "eval/cases/(holdout|pool)[^[:space:]\"']*" <<<"$targets" | tr '\n' ' ')
-    if [[ "$tool" == "Bash" && ! "$agent" =~ ^(mm-implementer|mm-eval-curator)$ && "$cmd" =~ $git_re ]]; then
-      sub=${BASH_REMATCH[1]}
-      # One command only: no chaining, pipes, redirects, substitutions, or second line, and no
-      # --output, which would copy a case into another file.
-      if [[ "$cmd" != *[\;\&\|\<\>\$\`]* && "$cmd" != *$'\n'* && "$cmd" != *--output* &&
-        ! ("$sub" == add && "$cmd" =~ $force_re) && ! ("$sub" == commit && "$cmd" =~ $file_re) &&
-        ! "$cmd" =~ $noindex_re ]]; then
-        log_event guard guard-holdout "cases allowed after the holdout run: git $sub by ${agent:-main}: ${paths% }"
-        exit 0
-      fi
+    add_re='^git add( eval/cases/(holdout|pool)(/[A-Za-z0-9._-]+)*/?)+$'
+    if [[ "$tool" == "Bash" && ! "$agent" =~ ^(mm-implementer|mm-eval-curator)$ && "$cmd" =~ $add_re ]]; then
+      log_event guard guard-holdout "cases allowed after the holdout run: git add by ${agent:-main}: ${paths% }"
+      exit 0
     fi
-    if [[ "$tool" == "Read" && "$agent" == "mm-reviewer" && "$targets" =~ ^[^[:space:]]*eval/cases/(holdout|pool)/[^[:space:]]+$ &&
-      "$targets" != *..* ]]; then
+    if [[ "$tool" == "Read" && "$agent" == "mm-reviewer" && "$targets" =~ ^[^[:space:]]*eval/cases/(holdout|pool)/[^[:space:]]+$ ]]; then
       log_event guard guard-holdout "cases allowed after the holdout run: Read by mm-reviewer: ${paths% }"
       exit 0
     fi

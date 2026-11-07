@@ -1470,8 +1470,8 @@ jq -nc --arg d "$T/mkwt" '{tool_name:"Bash",tool_input:{command:"make eval-holdo
   { echo "hook test failed: guard-holdout finds the unlock in the main tree from a worktree session"; fail=1; }
 
 # After the one holdout run (the author's unlock in the main tree and a holdout row in its
-# eval/RESULTS.md), the cases go into git so judges can see them: git add, commit, diff, show, and log
-# on the cases pass, and mm-reviewer reads them with Read. Nothing else does (decided 2026-11-08).
+# eval/RESULTS.md), the cases go into git so judges can see them: a `git add` of bare case paths
+# passes, and mm-reviewer reads them with Read. Nothing else does (decided 2026-11-08).
 # The real main tree already has both, so these run in a throwaway main tree and its worktree.
 HM=$T/ho
 git init -q -b main "$HM" && mkdir -p "$HM/.claude/state" "$HM/eval"
@@ -1485,7 +1485,7 @@ hx() { # <expected exit> <json> <label>: guard-holdout from a session in the thr
 hb() { jq -nc --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}'; }
 hba() { jq -nc --arg a "$1" --arg c "$2" '{tool_name:"Bash",agent_type:$a,tool_input:{command:$c}}'; }
 hr() { jq -nc --arg a "$1" --arg t "$2" --arg p "$3" '{tool_name:$t,agent_type:$a,tool_input:{file_path:$p}}'; }
-ha_add=$(hb "git add eval/cases/holdout eval/cases/pool .gitignore")
+ha_add=$(hb "git add eval/cases/holdout eval/cases/pool")
 ha_read=$(hr mm-reviewer Read eval/cases/holdout/a.jsonl)
 hrow='| 2026年11月7日 | dev | rules | 114 | 10.0% (6/60) | 0.0% (0/54) | 0 | 0.1 | x |'
 hhold='| 2026年11月7日 | holdout | rules | 126 | 25.8% (16/62) | 4.7% (3/64) | 3 | 0.11 | x |'
@@ -1504,56 +1504,60 @@ hx 2 "$ha_add" "git add on the cases is blocked before the holdout run is record
 hx 2 "$ha_read" "the reviewer cannot read holdout before the holdout run is recorded"
 # 4. Both: measured.
 printf '%s\n%s\n' "$hrow" "$hhold" >"$HM/eval/RESULTS.md"
-hx 0 "$ha_add" "git add on the cases passes after the holdout run"
+hx 0 "$ha_add" "git add on both case folders passes after the holdout run"
 grep -q 'guard-holdout.*after the holdout run.*git add.*eval/cases/holdout eval/cases/pool' "$MM_LOG_DIR/usage.jsonl" ||
   { echo "hook test failed: the passed git add and its paths are not in the usage log"; fail=1; }
-hx 2 "$(hb "git diff --output=eval/cases/dev/x.jsonl eval/cases/holdout")" "git diff --output is blocked after the holdout run"
-hx 2 "$(hb "git add --forc eval/cases/holdout")" "git add --forc (short for --force) is blocked after the holdout run"
-hx 2 "$(hb "git add --fo eval/cases/pool")" "git add --fo (short for --force) is blocked after the holdout run"
-hx 2 "$(hb "git add --f eval/cases/pool")" "git add --f (short for --force) is blocked after the holdout run"
-hx 0 "$(hb "git add --all eval/cases/pool")" "git add --all on the pool passes after the holdout run"
-hx 2 "$(hb "git commit -F eval/cases/holdout/a.jsonl")" "git commit -F with a case as the message is blocked"
-hx 2 "$(hb "git commit --file=eval/cases/pool/a.jsonl")" "git commit --file= with a case as the message is blocked"
-hx 2 "$(hb "git commit --file eval/cases/pool/a.jsonl")" "git commit --file with a case as the message is blocked"
-hx 2 "$(hb "git commit -qF eval/cases/holdout/a.jsonl")" "git commit -qF with a case as the message is blocked"
-hx 2 "$(hb "git diff --no-index eval/cases/dev/a.jsonl eval/cases/holdout/a.jsonl")" "git diff --no-index is blocked after the holdout run"
-hx 2 "$(hb "git diff --no-i eval/cases/dev/a.jsonl eval/cases/holdout/a.jsonl")" "git diff --no-i (short for --no-index) is blocked after the holdout run"
-hx 2 "$(hb "cd /tmp && git add eval/cases/holdout")" "cd chained to git add is blocked after the holdout run"
-hx 2 "$(hb "git -C /tmp add eval/cases/holdout")" "git -C is blocked after the holdout run"
-hx 2 "$(hr mm-reviewer Read eval/cases/holdout.txt)" "the reviewer's Read must be inside the case folders"
-hx 2 "$(hr mm-reviewer Read eval/cases/holdout/../../../server/.dev.vars)" "the reviewer's Read cannot climb out of the cases"
+hx 0 "$(hb "git add eval/cases/holdout")" "git add on the holdout folder passes after the holdout run"
 hx 0 "$(hb "git add eval/cases/holdout/a.jsonl")" "git add on one holdout case passes after the holdout run"
-hx 0 "$(hb "git diff --cached --stat eval/cases/pool")" "git diff on the pool passes after the holdout run"
-hx 0 "$(hb "git show HEAD -- eval/cases/holdout/a.jsonl")" "git show on a holdout case passes after the holdout run"
-hx 0 "$(hb "git log --stat -- eval/cases/holdout")" "git log on holdout passes after the holdout run"
-hx 0 "$(hb "git commit -m \"eval: eval/cases/holdout の例文を入れる\" -m \"審査員に見せるため\"")" "a commit naming the holdout path passes after the holdout run"
-hx 0 "$(hba mm-reviewer "git diff main...HEAD -- eval/cases/holdout")" "the reviewer's git diff passes after the holdout run"
+hx 0 "$(hb "git add eval/cases/pool/")" "git add on the pool folder with a slash passes after the holdout run"
+hx 0 "$(hba mm-reviewer "git add eval/cases/pool")" "the reviewer's git add passes after the holdout run"
 hx 0 "$ha_read" "the reviewer reads holdout after the holdout run"
 hx 0 "$(hr mm-reviewer Read eval/cases/pool/a.jsonl)" "the reviewer reads the pool after the holdout run"
-# Still blocked after the holdout run.
+# Only bare case paths after `git add`: no options, quotes, backslashes, other paths, or other git commands.
+hx 2 "$(hb "git add eval/cases/holdout eval/cases/pool .gitignore")" "git add with a path outside the cases is blocked"
+hx 2 "$(hb "git add -f eval/cases/holdout")" "git add -f on holdout is blocked after the holdout run"
+hx 2 "$(hb "git add --force eval/cases/pool")" "git add --force on the pool is blocked after the holdout run"
+hx 2 "$(hb "git add --fo eval/cases/pool")" "git add --fo (short for --force) is blocked after the holdout run"
+hx 2 "$(hb "git add \"--force\" eval/cases/holdout")" "git add with a quoted --force is blocked after the holdout run"
+hx 2 "$(hb "git add --for\\ce eval/cases/holdout")" "git add with a backslash inside --force is blocked after the holdout run"
+hx 2 "$(hb "git add --all eval/cases/pool")" "git add --all is blocked after the holdout run"
+hx 2 "$(hb "git add \"eval/cases/holdout\"")" "a quoted case path is blocked after the holdout run"
+hx 2 "$(hb "git add eval/cases/holdout/../dev")" "git add climbing out of the cases is blocked after the holdout run"
+hx 2 "$(hb "git add eval/cases/holdout/..")" "git add on .. is blocked after the holdout run"
+hx 2 "$(hb "git add eval/cases/*/a.jsonl")" "a glob right under eval/cases is blocked after the holdout run"
+hx 2 "$(hb "git add eval/cases/holdout/*.jsonl")" "a glob inside the cases is blocked after the holdout run"
+hx 2 "$(hb " git add eval/cases/holdout")" "git add after a leading space is blocked after the holdout run"
+hx 2 "$(hb "git add eval/cases/holdout && cat eval/cases/holdout/a.jsonl")" "git add chained to cat is blocked after the holdout run"
+hx 2 "$(hb "git add eval/cases/holdout; cat eval/cases/holdout/a.jsonl")" "git add then cat after a semicolon is blocked"
+hx 2 "$(hb "git add eval/cases/holdout"$'\n'"cat eval/cases/holdout/a.jsonl")" "git add then cat on a second line is blocked"
+hx 2 "$(hb "cd /tmp && git add eval/cases/holdout")" "cd chained to git add is blocked after the holdout run"
+hx 2 "$(hb "git -C /tmp add eval/cases/holdout")" "git -C is blocked after the holdout run"
+hx 2 "$(hb "git -c alias.x=!cat add eval/cases/holdout")" "git -c is blocked after the holdout run"
+hx 2 "$(hb "GIT_EXTERNAL_DIFF=cat git add eval/cases/holdout")" "an environment prefix on git is blocked after the holdout run"
+hx 2 "$(hb "git diff eval/cases/holdout/a.jsonl /dev/null")" "git diff against /dev/null (no-index without the flag) is blocked"
+hx 2 "$(hb "git diff --out\"\"put=eval/cases/dev/x.jsonl eval/cases/holdout")" "git diff with a quote-split --output is blocked"
+hx 2 "$(hb "git diff --cached --stat eval/cases/pool")" "git diff on the pool is blocked after the holdout run"
+hx 2 "$(hb "git show HEAD -- eval/cases/holdout/a.jsonl")" "git show on a holdout case is blocked after the holdout run"
+hx 2 "$(hb "git log -p -- eval/cases/holdout")" "git log on holdout is blocked after the holdout run"
+hx 2 "$(hb "git commit -Feval/cases/holdout/a.jsonl")" "git commit -F joined to a case is blocked"
+hx 2 "$(hb "git commit -F eval/cases/holdout/a.jsonl")" "git commit -F with a case is blocked"
+hx 2 "$(hb "git commit -m \"eval: eval/cases/holdout の例文を入れる\"")" "a commit naming the case path is blocked after the holdout run"
+hx 2 "$(hb "git grep x -- eval/cases/holdout")" "git grep on holdout is blocked after the holdout run"
+hx 2 "$(hb "git checkout HEAD -- eval/cases/holdout")" "git checkout on holdout is blocked after the holdout run"
+hx 2 "$(hba mm-implementer "git add eval/cases/holdout")" "the implementer's git add is blocked after the holdout run"
+hx 2 "$(hba mm-eval-curator "git add eval/cases/holdout")" "the curator's git add on holdout is blocked after the holdout run"
+# The other tools stay blocked after the holdout run.
 hx 2 "$(hr "" Read eval/cases/holdout/a.jsonl)" "the main session cannot Read holdout after the holdout run"
 hx 2 "$(hr mm-implementer Read eval/cases/holdout/a.jsonl)" "the implementer cannot Read holdout after the holdout run"
 hx 2 "$(hr mm-verifier Read eval/cases/pool/a.jsonl)" "the verifier cannot Read the pool after the holdout run"
+hx 2 "$(hr mm-reviewer Read eval/cases/holdout.txt)" "the reviewer's Read must be inside the case folders"
+hx 2 "$(hr mm-reviewer Read eval/cases/holdout/../../../server/.dev.vars)" "the reviewer's Read cannot climb out of the cases"
 hx 2 "$(hr mm-reviewer Write eval/cases/holdout/a.jsonl)" "nobody writes holdout after the holdout run"
 hx 2 "$(jq -nc '{tool_name:"Grep",agent_type:"mm-reviewer",tool_input:{pattern:"x",path:"eval/cases/holdout"}}')" "the reviewer cannot Grep holdout after the holdout run"
 hx 2 "$(hba mm-reviewer "cat eval/cases/holdout/a.jsonl")" "the reviewer cannot cat holdout after the holdout run"
 hx 2 "$(hb "cat eval/cases/holdout/a.jsonl")" "cat on holdout is blocked after the holdout run"
 hx 2 "$(hb "ls eval/cases/holdout")" "ls on holdout is blocked after the holdout run"
 hx 2 "$(hb "grep -r x eval/cases/pool")" "grep on the pool is blocked after the holdout run"
-hx 2 "$(hb "git grep x -- eval/cases/holdout")" "git grep on holdout is blocked after the holdout run"
-hx 2 "$(hb "git checkout HEAD -- eval/cases/holdout")" "git checkout on holdout is blocked after the holdout run"
-hx 2 "$(hb "git add eval/cases/holdout && cat eval/cases/holdout/a.jsonl")" "git add chained to cat is blocked after the holdout run"
-hx 2 "$(hb "git add eval/cases/holdout; cat eval/cases/holdout/a.jsonl")" "git add then cat after a semicolon is blocked"
-hx 2 "$(hb "git show HEAD:eval/cases/holdout/a.jsonl | head")" "git show piped on is blocked after the holdout run"
-hx 2 "$(hb "git show HEAD:eval/cases/holdout/a.jsonl > /tmp/x")" "git show redirected is blocked after the holdout run"
-hx 2 "$(hb "git commit -m \"\$(cat eval/cases/holdout/a.jsonl)\"")" "a command substitution in a commit is blocked after the holdout run"
-hx 2 "$(hb "git -c alias.x=!cat x eval/cases/holdout/a.jsonl")" "git -c is blocked after the holdout run"
-hx 2 "$(hb "GIT_EXTERNAL_DIFF=cat git diff eval/cases/holdout")" "an environment prefix on git is blocked after the holdout run"
-hx 2 "$(hb "git add -f eval/cases/holdout")" "git add -f on holdout is blocked after the holdout run"
-hx 2 "$(hb "git add --force eval/cases/pool")" "git add --force on the pool is blocked after the holdout run"
-hx 2 "$(hb "git add eval/cases/*/a.jsonl")" "a glob right under eval/cases is blocked after the holdout run"
-hx 2 "$(hba mm-implementer "git diff -- eval/cases/holdout")" "the implementer cannot git diff holdout after the holdout run"
-hx 2 "$(hba mm-eval-curator "git show HEAD -- eval/cases/holdout")" "the curator cannot git show holdout after the holdout run"
 hx 2 "$(hb "touch .claude/state/holdout.unlock")" "Claude still cannot create the unlock file after the holdout run"
 
 # commit-msg: the convention and the personal-data check
