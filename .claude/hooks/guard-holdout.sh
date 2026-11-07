@@ -24,6 +24,34 @@ if [[ "$cmd" =~ (--set[[:space:]=]+holdout|eval-holdout) ]]; then
   fi
   block guard-holdout "blocked: the holdout set runs once, after the author creates .claude/state/holdout.unlock. Ask the author with a \"作者:\" issue (/mm-human-queue) and keep tuning on the dev set.$MENTION_HINT"
 fi
+# After the one run, the cases go into git so judges can see what was measured (/mm-endgame step 2,
+# decided by the author on 2026-11-08). Measured means the author's unlock in the main tree and a
+# holdout row in the main tree's eval/RESULTS.md. Then two things pass, and nothing else:
+#   (a) one bare `git add|commit|diff|show|log` line naming the cases, from anyone but the roles that
+#       change rules or prompts (mm-implementer, mm-eval-curator);
+#   (b) mm-reviewer's Read of a case, to review the PR that adds them.
+if [[ "$targets" =~ eval/cases/(holdout|pool) ]]; then
+  main=$(main_tree || echo "$PROJECT_DIR")
+  if [[ -f "$main/.claude/state/holdout.unlock" ]] &&
+    grep -Eq '^\|[^|]*\|[[:space:]]*holdout[[:space:]]*\|' "$main/eval/RESULTS.md" 2>/dev/null &&
+    [[ ! "$targets" =~ cases/[^/[:space:]]*[*?[] ]]; then
+    git_re='^git[[:space:]]+(add|commit|diff|show|log)([[:space:]]|$)'
+    force_re='[[:space:]](-f|--force|-[a-z]*f[a-z]*)([[:space:]]|$)'
+    if [[ "$tool" == "Bash" && ! "$agent" =~ ^(mm-implementer|mm-eval-curator)$ && "$cmd" =~ $git_re ]]; then
+      sub=${BASH_REMATCH[1]}
+      # One command only: no chaining, pipes, redirects, substitutions, or second line.
+      if [[ "$cmd" != *[\;\&\|\<\>\$\`]* && "$cmd" != *$'\n'* &&
+        ! ("$sub" == add && "$cmd" =~ $force_re) ]]; then
+        log_event guard guard-holdout "cases allowed after the holdout run: git $sub by ${agent:-main}"
+        exit 0
+      fi
+    fi
+    if [[ "$tool" == "Read" && "$agent" == "mm-reviewer" && "$targets" != *..* ]]; then
+      log_event guard guard-holdout "cases allowed after the holdout run: Read by mm-reviewer"
+      exit 0
+    fi
+  fi
+fi
 # Nobody reads the holdout, the curator included; checked before the curator's early exit below.
 if [[ "$targets" =~ (cases/holdout|(^|[[:space:]/\"\'])holdout/) ]]; then
   block guard-holdout "blocked: eval/cases/holdout is read once, in the final run. Work with eval/cases/dev.$MENTION_HINT"
