@@ -82,7 +82,7 @@ public struct ResolveConfirmation: Equatable, Sendable {
   }
 }
 
-/// One line on the protected person's screen.
+/// One line on the protected person's screen, for a case she opened herself by consulting.
 ///
 /// While the case is open, it says "家族に伝えました", and after 30 minutes "家族から返事がまだ。急ぐなら
 /// 電話して": never "解決" or a family member's name, so she does not stop calling for help when nobody
@@ -129,8 +129,14 @@ public struct ProtectedNotice: Equatable, Sendable, Identifiable {
       .map(\.element)
   }
 
+  /// Only her own consultations reach the strip. What the app found in a mail, an SMS, a page, or DNS
+  /// goes to the family and she is not shown it again here; when she asks about it, the server gives
+  /// Claude its record (#239, chosen by the author on 2026-11-07). A case without its alert row cannot
+  /// be told to be hers, so it is left out too.
   private static func notice(for item: Case, now: Date) -> ProtectedNotice? {
-    guard item.state == .notified, now.timeIntervalSince(item.notifiedAt) < openShownFor else {
+    guard item.alert?.source == .consult, item.state == .notified,
+      now.timeIntervalSince(item.notifiedAt) < openShownFor
+    else {
       return nil
     }
     let summary = item.alert.map(\.summary).flatMap { $0.isEmpty ? nil : $0 }

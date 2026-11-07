@@ -25,6 +25,7 @@ import {
   PLACEHOLDER_REASON,
   QUIET_WHEN_UNDECIDED,
   requestClaudeJudgment,
+  SOURCE_LABELS,
   type AlertSource,
   type ClaudeJudgment,
   type Level,
@@ -87,15 +88,6 @@ const RETRY_DELAY_SECONDS = 30;
 const MOTHER_TITLE = "開かないで";
 const CHECKING = "確かめ中";
 const FALLBACK_REASON = "家族に確かめるまで待って";
-
-const SOURCE_LABELS: Record<AlertSource, string> = {
-  sms: "SMS",
-  gmail: "メール",
-  dns: "サイト",
-  page: "ページ",
-  call: "電話",
-  consult: "相談",
-};
 
 function cut(text: string, max: number): string {
   const c = [...text];

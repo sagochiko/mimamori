@@ -19,7 +19,8 @@ func caseJSON(
   notifiedAt: String = "2026-11-03T10:00:00.000Z",
   renotifiedAt: String? = nil,
   aiReply: String? = nil,
-  family: FamilyNotified = .at("2026-11-03T10:00:01.000Z")
+  family: FamilyNotified = .at("2026-11-03T10:00:01.000Z"),
+  source: String = "consult"
 ) -> String {
   let resolvedByJSON =
     resolvedBy.map { #"{"memberId":"\#($0.id)","displayName":"\#($0.name)"}"# } ?? "null"
@@ -34,7 +35,7 @@ func caseJSON(
      "resolvedAt":\#(state == "resolved" ? "\"2026-11-03T11:00:00.000Z\"" : "null"),
      "resolvedBy":\#(resolvedByJSON),
      "renotifiedAt":\#(renotifiedAt.map { "\"\($0)\"" } ?? "null"),\#(familyJSON)
-     "alert":{"level":1,"source":"call","summary":"警察を名乗る電話の相談","reasons":["口座の移し替えを求めた"]},
+     "alert":{"level":1,"source":"\#(source)","summary":"警察を名乗る電話の相談","reasons":["口座の移し替えを求めた"]},
      "aiReply":\#(aiReply.map { "\"\($0)\"" } ?? "null")}
     """#
 }
@@ -228,6 +229,41 @@ struct ResolveConfirmationTests {
 
 @Suite("母の画面の知らせ")
 struct ProtectedNoticeTests {
+  // #239: what the app found by itself goes to the family, not to her strip; she asks about it instead.
+  @Test("アプリが見つけた件(メール、SMS、ページ、DNS)は母の帯に出さない", arguments: ["gmail", "sms", "page", "dns"])
+  func foundByTheAppIsNotShown(source: String) throws {
+    let found = try decodeCase(caseJSON(id: "c-2", source: source))
+    #expect(ProtectedNotice.notices(from: [found], now: tenOClock.addingTimeInterval(60)).isEmpty)
+    // Not even after 30 minutes, when it would read "家族から返事がまだ", or while it did not reach the family.
+    let late = try decodeCase(caseJSON(id: "c-3", renotifiedAt: "2026-11-03T10:31:00.000Z", source: source))
+    let untold = try decodeCase(caseJSON(id: "c-4", family: .null, source: source))
+    #expect(ProtectedNotice.notices(from: [late, untold], now: tenOClock.addingTimeInterval(40 * 60)).isEmpty)
+  }
+
+  @Test("母が相談した件だけが並び、アプリが見つけた件に押し出されない")
+  func onlyHerConsultations() throws {
+    let mine = try decodeCase(caseJSON(id: "c-1", notifiedAt: "2026-11-03T09:00:00.000Z"))
+    let found = (2...5).map { i in
+      try! decodeCase(caseJSON(id: "c-\(i)", notifiedAt: "2026-11-03T09:5\(i):00.000Z", source: "gmail"))
+    }
+    let notices = ProtectedNotice.notices(from: found + [mine], now: tenOClock)
+    #expect(notices.map(\.id) == ["c-1"])
+  }
+
+  @Test("知らせの行が無い相談は、相談と分からないので出さない")
+  func noAlertIsNotShown() throws {
+    let bare = try decodeCase(
+      #"{"id":"c-1","alertId":null,"state":"notified","notifiedAt":"2026-11-03T10:00:00.000Z"}"#)
+    #expect(ProtectedNotice.notices(from: [bare], now: tenOClock.addingTimeInterval(60)).isEmpty)
+  }
+
+  @Test("家族のカードはアプリが見つけた件も今までどおり出す")
+  func familyCardsKeepFoundOnes() throws {
+    let found = try decodeCase(caseJSON(source: "gmail"))
+    #expect(FamilyCard(found).status == FamilyCard.notResolved)
+    #expect(FamilyCard(found).actions == [.call, .resolve])
+  }
+
   @Test("家族に知らせた直後は「家族に伝えました」")
   func toldFamily() throws {
     let notices = ProtectedNotice.notices(

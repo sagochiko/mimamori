@@ -106,14 +106,18 @@ function hexToken(): string {
   return [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-async function newAlert(familyId: string, opts: { level?: 1 | 2 | 3; summary?: string } = {}): Promise<string> {
+async function newAlert(
+  familyId: string,
+  opts: { level?: 1 | 2 | 3; summary?: string; source?: "consult" | "sms" | "gmail" | "page" | "dns" } = {},
+): Promise<string> {
   const id = crypto.randomUUID();
   await env.DB.prepare(
-    "INSERT INTO alerts (id, family_id, source, level, reasons, summary, created_at) VALUES (?, ?, 'call', ?, ?, ?, ?)",
+    "INSERT INTO alerts (id, family_id, source, level, reasons, summary, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
   )
     .bind(
       id,
       familyId,
+      opts.source ?? "consult",
       opts.level ?? 1,
       JSON.stringify(["警察を名乗り、口座の移し替えを求めた"]),
       opts.summary ?? "警察を名乗る電話の相談",
@@ -693,7 +697,7 @@ describe("GET /cases", () => {
       resolvedAt: null,
       alert: {
         level: 2,
-        source: "call",
+        source: "consult",
         summary: "SMS 宅配の不在の知らせをかたっている",
         reasons: ["警察を名乗り、口座の移し替えを求めた"],
       },
@@ -777,6 +781,27 @@ describe("the 30-minute watch", () => {
     await tick(Date.now() + 10 * 60_000);
     expect(sent).toHaveLength(0);
   });
+
+  // #239: her strip shows only her own consultations, so a reminder about a case found by the app
+  // would be a "急ぐなら電話して" about nothing on her screen. The family is reminded as before.
+  it.each(["gmail", "sms", "page", "dns"] as const)(
+    "for a case the app found (%s), reminds the family but not the protected person",
+    async (source) => {
+      const f = await family();
+      const caseId = (await open(await newAlert(f.familyId, { source, summary: "メール 未上場株に誘う" })))?.id ?? "";
+      await backdate(caseId, 31);
+      sent = [];
+
+      await tick(Date.now());
+
+      expect(to(f.mother)).toEqual([]);
+      expect(to(f.author)).toEqual([
+        expect.objectContaining({ title: NOT_RESOLVED_YET, body: "メール 未上場株に誘う" }),
+      ]);
+      expect(to(f.sister)).toEqual([expect.objectContaining({ title: NOT_RESOLVED_YET })]);
+      expect((await caseRow(caseId))?.renotified_at).not.toBeNull();
+    },
+  );
 
   it("while nobody has responded, nothing tells the protected person it is solved or being handled", async () => {
     const f = await family();

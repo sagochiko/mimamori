@@ -20,6 +20,16 @@ export type Level = 1 | 2 | 3;
 export type AlertSource = "sms" | "gmail" | "dns" | "page" | "call" | "consult";
 export const ALERT_SOURCES: readonly AlertSource[] = ["sms", "gmail", "dns", "page", "call", "consult"];
 
+/** The route as the family's one line and Claude's record of findings name it ("SMS 銀行を名乗る example.com"). */
+export const SOURCE_LABELS: Record<AlertSource, string> = {
+  sms: "SMS",
+  gmail: "メール",
+  dns: "サイト",
+  page: "ページ",
+  call: "電話",
+  consult: "相談",
+};
+
 /** Exactly what Structured Outputs returns. */
 export interface ClaudeJudgment {
   level: Level;
