@@ -40,7 +40,15 @@ dev の114件の例文で、規則だけの見逃しは60件中6件(10.0%)、規
 
 ## 使った Claude の製品
 
-選ぶのは Claude Code CLI、Claude API、Managed Agents の3つ。作品の中で Claude API と Claude Managed Agents を使い、開発は Claude Code で進めた。モデル ID は2026年11月7日に Claude の公式ドキュメント([Haiku 5.5](https://platform.claude.com/docs/en/models/haiku-5-5/overview)、[Sonnet 5.5](https://platform.claude.com/docs/en/models/sonnet-5-5/overview))で確かめた。
+選ぶのは次の5つ。
+
+- Claude Code。アプリ、拡張機能、裏側、試験のすべてを書いた
+- Claude API。SMS、メール、ページの判定と、母との会話、スクショの読み取り、ウェブ検索に使う
+- Managed Agents。知らせのあとに公式のサイトで注意喚起を探す裏の調べものに使う
+- Claude in Chrome。TestFlight の配布と App Store Connect の画面の操作に使った
+- claude.ai の Artifacts。作者向けのページを作るのに使った
+
+作品の中で Claude API と Claude Managed Agents を使い、開発は Claude Code で進めた。モデル ID は2026年11月7日に Claude の公式ドキュメント([Haiku 5.5](https://platform.claude.com/docs/en/models/haiku-5-5/overview)、[Sonnet 5.5](https://platform.claude.com/docs/en/models/sonnet-5-5/overview))で確かめた。
 
 ### Claude API
 
@@ -110,7 +118,7 @@ SMS、メール、ページで1段階か2段階の知らせが出たあと、急
 
 ### ほかの AI ツールとの比較
 
-比較なし。
+(作者の言葉を入れる。期間より前に使ったことがあるツールとの違い)
 
 ### 1つだけ直せるなら
 
