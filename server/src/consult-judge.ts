@@ -1041,14 +1041,15 @@ export interface ConsultJudgment extends Plan {
 
 /**
  * Judges one consultation as POST /consult does, and as eval/ measures it (#74). `ask` is called only
- * when her words do not tell the script, with the rules on this turn; it returns Claude's answer, or
- * null when there is none (failure, no budget left). A throw from it is not caught here.
+ * when her words do not tell the script, with the rules on this turn and the earlier turns Claude is
+ * shown; it returns Claude's answer, or null when there is none (failure, no budget left). A throw
+ * from it is not caught here.
  * Writes nothing: opening the case and telling the family stay in consult().
  */
 export async function judgeConsult(
   text: string,
   history: readonly ConsultTurn[],
-  ask: (rule: RuleResult) => Promise<ClaudeConsult | null>,
+  ask: (rule: RuleResult, history: readonly ConsultTurn[]) => Promise<ClaudeConsult | null>,
   rules: (input: RuleInput) => RuleResult = judgeByRules,
   /** She shared an image with it (POST /consult `image`). */
   image = false,
@@ -1056,14 +1057,18 @@ export async function judgeConsult(
   const { rule, script } = consultByRules(text, history, rules);
   const said = saidIn(text, history);
   if (script) return { ...policePlan(said, rule), script, rule };
-  const claude = await ask(rule);
-  // Text in her earlier words that tries to keep the family out: the rules judge all she said, as
-  // if she had said it at once, and that is the floor (decidePlan).
-  // Only for words that go on with it: a question that points back, one about a message or a call,
-  // or one the rules see something in. "Wi-Fi がつながらない" after it is answered as on its own
-  // (review of PR #79, second round). Her earlier words only: an "ai" turn is what the device kept
-  // of the server's answers, not hers.
+  // Words that go on with the conversation: a question that points back, one about a message or a
+  // call, or one the rules see something in. Only these are judged with the earlier turns.
   const goesOn = pointsBack(text) || CONTACT.test(normalize(text)) || rule.reasons.length > 0;
+  // Claude is shown the earlier turns only for such words, so it can tell what "それ" is. Other words
+  // ("おはよう", "ありがとう") are judged as on their own: with the script in the turns, Claude answered
+  // a greeting at level 2 and the family got a second police card after resolving the first (#219).
+  // A danger in her words alone still gets Claude's level, as it does with no earlier turns.
+  const claude = await ask(rule, goesOn ? history : []);
+  // Text in her earlier words that tries to keep the family out: the rules judge all she said, as
+  // if she had said it at once, and that is the floor (decidePlan). Only for words that go on with
+  // it: "Wi-Fi がつながらない" after it is answered as on its own (review of PR #79, second round). Her
+  // earlier words only: an "ai" turn is what the device kept of the server's answers, not hers.
   const earlierKeepsOut = goesOn && said.earlier.some((t) => matchSpans(CONSULT_INJECTION, normalize(t)).length > 0);
   const floor = earlierKeepsOut ? rules({ source: "consult", text: allOf(said).join("\n") }) : rule;
   return { ...plan(said, rule, claude, history, floor, image), script, rule };
