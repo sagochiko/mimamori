@@ -10,7 +10,8 @@ export const NPA = {
   url: "https://www.npa.go.jp/bureau/safetylife/sos47/new-topics/260605/01.html",
 } as const;
 
-// eval/RESULTS.md の2026年11月7日の最新の rules と rules+claude の行(dev 114件)
+// eval/RESULTS.md の2026年11月7日の最新の rules と rules+claude の行(dev 114件、PR #255 の後の回)。
+// 中央値(1503.7ミリ秒)は画面に出していない。
 export const DEV_EVAL = {
   date: "2026年11月7日",
   cases: 114,

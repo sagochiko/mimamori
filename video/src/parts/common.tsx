@@ -4,12 +4,32 @@ import {
   Easing,
   getStaticFiles,
   interpolate,
+  Sequence,
   staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { Video } from "@remotion/media";
+import { Audio, Video } from "@remotion/media";
+import { NARRATION } from "../narration";
 import { C, fontFamily } from "./theme";
+
+// その場面のナレーションを、決めた秒から流す
+export const Narration: React.FC<{ scene: string }> = ({ scene }) => {
+  const { fps } = useVideoConfig();
+  return (
+    <>
+      {NARRATION.filter((n) => n.scene === scene).map((n) => {
+        const file = `narration/${n.id}.mp3`;
+        if (!hasStatic(file)) return null;
+        return (
+          <Sequence key={n.id} from={Math.round(n.at * fps)} layout="none">
+            <Audio src={staticFile(file)} />
+          </Sequence>
+        );
+      })}
+    </>
+  );
+};
 
 export const hasStatic = (file: string) =>
   getStaticFiles().some((f) => f.name === file);

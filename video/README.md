@@ -4,7 +4,7 @@ The demo video (under 3 minutes) for Built with Claude Japan 2026, made with [Re
 
 - Timing, footage file names, and captions live in [`src/timeline.ts`](src/timeline.ts); on-screen numbers live in [`src/numbers.ts`](src/numbers.ts).
 - Put footage in `public/footage/` (`01-mother-words.mp4`, `02-call-consult.mp4`, `03-safari.mp4`, `04-sms.mp4`, `05-smile.mp4`). Until a file exists, a placeholder frame says what to film. Footage stays out of git.
-- No narration and no music. Text on screen carries the story.
+- Narration is Amazon Polly (Japanese neural voice Kazuha). The lines live in [`src/narration.ts`](src/narration.ts); the generated mp3 files are committed in `public/narration/`. Regenerate with `AWS_PROFILE=<profile> npm run narration`. Polly output is "Your Content" under section 50.2 of the AWS Service Terms. No music.
 
 ```sh
 cd video

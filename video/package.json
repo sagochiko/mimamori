@@ -29,7 +29,8 @@
     "build": "remotion bundle",
     "upgrade": "remotion upgrade",
     "lint": "eslint src && tsc",
-    "assets": "mkdir -p public/assets && cp ~/mimamori-video/demo-tour-20261107-cut.mp4 public/assets/demo-tour.mp4"
+    "narration": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/narration.mjs",
+    "assets":"mkdir -p public/assets && cp ~/mimamori-video/demo-tour-20261107-cut.mp4 public/assets/demo-tour.mp4"
   },
   "allowScripts": {
     "esbuild": false

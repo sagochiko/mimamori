@@ -1,6 +1,18 @@
 # デモ動画
 
-Built with Claude Japan 2026 に出すデモ動画(3分以内)を [Remotion](https://www.remotion.dev/) で作る。2026年11月7日に下書きを作り、母の場面は2026年11月8日に撮って差し込む。場面の順と秒数は [`docs/design.md`](../docs/design.md) の「デモの流れ(3分)」の表に合わせた。ナレーションと BGM は入れず、画面の文字で伝える。
+Built with Claude Japan 2026 に出すデモ動画(3分以内)を [Remotion](https://www.remotion.dev/) で作る。2026年11月7日に下書きを作り、母の場面は2026年11月8日に撮って差し込む。場面の順と秒数は [`docs/design.md`](../docs/design.md) の「デモの流れ(3分)」の表に合わせた。画面の文字に、Amazon Polly で作ったナレーションを重ねる。BGM は入れない。
+
+## ナレーション
+
+文は [`src/narration.ts`](src/narration.ts) にまとめた。字幕と同じ中身を話し言葉にしてある。母の撮影の場面は撮影の音とぶつからないよう、頭に短く入れるか入れない。母の言葉と母の利用の場面には入れていない。声は Polly の日本語の neural の声 Kazuha で、SSML の prosody で速さを105%にした。生成した mp3 は `public/narration/` に置き、リポジトリに入れる。
+
+文を変えたら、次で作り直す。作り直すと、各 mp3 が場面の枠に収まるかの表が出て、はみ出すと止まる。
+
+```sh
+AWS_PROFILE=<プロファイル> npm run narration
+```
+
+Polly で作った音声は、AWS Service Terms の50.2(AI Services)に「The output that you generate using AI Services is Your Content」とあり、使う側のコンテンツになる(2026年11月7日に確かめた)。
 
 ## 秒数と撮影のファイル
 
@@ -54,4 +66,4 @@ Remotion は [Remotion License](https://github.com/remotion-dev/remotion/blob/ma
 
 文字は Google Fonts の [Noto Sans JP](https://fonts.google.com/noto/specimen/Noto+Sans+JP) を `@remotion/google-fonts` で読み込む。ライセンスは [SIL Open Font License 1.1](https://github.com/google/fonts/blob/main/ofl/notosansjp/OFL.txt)。
 
-音楽と効果音は使っていない。
+ナレーションは Amazon Polly で作った(上の「ナレーション」の節)。音楽と効果音は使っていない。

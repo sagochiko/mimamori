@@ -27,7 +27,18 @@ export const Opening: React.FC = () => (
           {NPA.fakePoliceOku}億円({NPA.share}%)
         </div>
       </Rise>
-      <Rise delay={4.2} style={{ position: "absolute", left: 140, bottom: 90 }}>
+      <Rise delay={4.6} style={{ marginTop: 56 }}>
+        <div
+          style={{
+            fontSize: 60,
+            fontWeight: 900,
+            color: C.blue,
+          }}
+        >
+          離れて住む母の iPhone を家族が代わりに見守る
+        </div>
+      </Rise>
+      <Rise delay={1} style={{ position: "absolute", left: 140, bottom: 90 }}>
         <div style={{ fontSize: 28, color: C.sub }}>
           出典 警察庁 確定値({NPA.published})
         </div>
