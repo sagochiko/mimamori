@@ -486,7 +486,6 @@ describe("consult.ts", () => {
       "構成プロファイルをインストールしてと言われた。どうやるの？",
       "構成プロファイルに関わる相談",
     ],
-    ["deleting data", "写真を全部消したいんだけど、どうすればいい？", "データの削除に関わる相談"],
   ])("does not guide %s: handoff, a case, and the family is told", async (_label, text, reason) => {
     const fam = await setupFamily();
     // Claude tries to walk her through it; that guidance must not reach her.
@@ -500,6 +499,53 @@ describe("consult.ts", () => {
     expect(alert?.level).toBeLessThanOrEqual(2);
     expect(JSON.parse(alert?.reasons ?? "[]")).toContain(reason);
     expect(await casesOf(fam.familyId)).toHaveLength(1);
+    expect(familyPushes(fam)).toHaveLength(2);
+  });
+
+  // #234: the author chose on 2026-11-07 that the AI guides deleting data itself, with one line to
+  // check first, and does not hand it to the family.
+  it.each([
+    ["photos", "写真を全部消したいんだけど、どうすればいい？", "写真のアプリで「選択」を押して、消したい写真を選んでゴミ箱を押して"],
+    ["LINE talks", "LINE のトークを消したい", "トークの一覧で消したいトークを左にずらして「削除」を押して"],
+    ["an app", "使ってないアプリを消したい", "ホーム画面でアプリを長く押して「アプリを削除」を押して"],
+  ])("guides deleting %s with the line to check first, and tells no one", async (_label, text, action) => {
+    const fam = await setupFamily();
+    const deps = fakes(help({ action, topic: "削除の相談" }));
+    const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps);
+    const reply = `消したものは戻せないので、残したいものが無いか先に確かめてね。${action}`;
+    expect(answer).toMatchObject({ reply, handoff: false });
+    expect(answer.reply).not.toContain("家族に伝えました");
+    expect(answer.reply).not.toMatch(/安全/);
+    expect(deps.openCaseCalls).toBe(0);
+    expect(await casesOf(fam.familyId)).toHaveLength(0);
+    expect(familyPushes(fam)).toHaveLength(0);
+  });
+
+  it("puts the line to check first when only Claude's guidance is about deleting", async () => {
+    const fam = await setupFamily();
+    const action = "設定の「一般」から「iPhone ストレージ」を開いて、いらないアプリを削除できます";
+    const answer = await consult(consultEnv, motherOf(fam), "iPhoneの空きが少ないって出た", new ExternalBudget(), fakes(help({ action })));
+    expect(answer).toMatchObject({ reply: `消したものは戻せないので、残したいものが無いか先に確かめてね。${action}`, handoff: false });
+    expect(familyPushes(fam)).toHaveLength(0);
+  });
+
+  it("adds no line to check for guidance that deletes nothing", async () => {
+    const fam = await setupFamily();
+    const action = "設定の「画面表示と明るさ」から「テキストサイズを変更」で大きくできます";
+    const answer = await consult(consultEnv, motherOf(fam), "文字を大きくしたい", new ExternalBudget(), fakes(help({ action })));
+    expect(answer.reply).toBe(action);
+  });
+
+  it("still hands deleting data to the family when it comes with sending money", async () => {
+    const fam = await setupFamily();
+    const answer = await consult(
+      consultEnv,
+      motherOf(fam),
+      "振込の履歴を消したい",
+      new ExternalBudget(),
+      fakes(help({ action: "銀行のアプリで履歴を消して" })),
+    );
+    expect(answer).toMatchObject({ reply: "これは家族と一緒にやろう。家族に伝えました", handoff: true });
     expect(familyPushes(fam)).toHaveLength(2);
   });
 
@@ -574,7 +620,7 @@ describe("consult.ts", () => {
     const answer = await consult(
       consultEnv,
       motherOf(fam),
-      "写真を全部消したいんだけど、どうすればいい？",
+      "構成プロファイルを入れたいんだけど、どうすればいい？",
       new ExternalBudget(),
       fakes(scam({ level: 3, reasons: ["お金の話は出ていない"], basis: "", action: "写真アプリで選んで消して" })),
     );
@@ -1761,7 +1807,7 @@ describe("when the notice does not reach the family", () => {
     const answer = await consult(
       consultEnv,
       motherOf(fam),
-      "写真を全部消したいんだけど、どうすればいい？",
+      "構成プロファイルを入れたいんだけど、どうすればいい？",
       budget,
       fakes(help()),
     );
@@ -1797,7 +1843,7 @@ describe("when the notice does not reach the family", () => {
       const answer = await consult(
         consultEnv,
         motherOf(fam),
-        "写真を全部消したいんだけど、どうすればいい？",
+        "構成プロファイルを入れたいんだけど、どうすればいい？",
         budget,
         fakes(said),
       );
@@ -1821,7 +1867,7 @@ describe("when the notice does not reach the family", () => {
     const handoff = await consult(
       consultEnv,
       motherOf(other),
-      "写真を全部消したいんだけど、どうすればいい？",
+      "構成プロファイルを入れたいんだけど、どうすればいい？",
       new ExternalBudget(),
       fakes(help()),
     );
@@ -2250,21 +2296,23 @@ describe("the conversation so far", () => {
 
   // Review of PR #79, findings 1 and 3: her earlier words decide what is not guided and whether it
   // is about a message only for a question that points back at the last of them.
-  it.each([["それってどうやるの?"], ["どうすればいい?"], ["その消し方を教えて"]])(
-    "still hands %s to the family after she asked to delete her data",
+  // Deleting data left the topics the AI does not guide on 2026-11-07 (#234); sending money keeps
+  // what these tests check.
+  it.each([["それってどうやるの?"], ["どうすればいい?"], ["その送り方を教えて"]])(
+    "still hands %s to the family after she asked to send money",
     async (text) => {
       const fam = await setupFamily();
-      const deps = fakes(help({ action: "設定の「一般」から「リセット」を開いて消します" }));
+      const deps = fakes(help({ action: "銀行のアプリを開いて、相手の口座番号を入れます" }));
       const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps, [
-        turn("protected", "LINE のトーク履歴を消したい"),
+        turn("protected", "振込のやり方を教えて"),
         turn("ai", HANDOFF),
       ]);
-      expect(answer.reply).not.toContain("リセット");
+      expect(answer.reply).not.toContain("口座番号");
       expect(answer.handoff).toBe(true);
     },
   );
 
-  it("answers an unrelated question after one about deleting data as it would without history", async () => {
+  it("answers an unrelated question after one about sending money as it would without history", async () => {
     const wifi = help({ action: "設定の「Wi-Fi」を一度オフにして、もう一度オンにしてみて", topic: "Wi-Fi の相談" });
     const alone = await setupFamily();
     const before = await consult(
@@ -2276,7 +2324,7 @@ describe("the conversation so far", () => {
     );
     const fam = await setupFamily();
     const after = await consult(consultEnv, motherOf(fam), "Wi-Fi がつながらない", new ExternalBudget(), fakes(wifi), [
-      turn("protected", "LINE のトーク履歴を消したい"),
+      turn("protected", "振込のやり方を教えて"),
       turn("ai", HANDOFF),
     ]);
     expect(after).toEqual(before);
@@ -2288,7 +2336,7 @@ describe("the conversation so far", () => {
     const fam = await setupFamily();
     const deps = fakes(help({ action: "横のボタンで音を大きくできます" }));
     const answer = await consult(consultEnv, motherOf(fam), "それってどうやるの?", new ExternalBudget(), deps, [
-      turn("protected", "LINE のトーク履歴を消したい"),
+      turn("protected", "振込のやり方を教えて"),
       turn("ai", HANDOFF),
       turn("protected", "着信の音が小さい"),
     ]);
@@ -2445,17 +2493,18 @@ describe("the conversation so far", () => {
     expect(own).toMatchObject({ toFamily: true, unguided: true });
   });
 
-  it("reads out guidance that mentions deleting as before when nothing earlier was about it", async () => {
+  it("reads out guidance that mentions deleting, after the line to check first (#234)", async () => {
     const fam = await setupFamily();
     const action = "写真のアプリで、いらない写真を選んで削除できます";
     const deps = fakes(help({ action }));
     const answer = await consult(consultEnv, motherOf(fam), "次は何を押すの?", new ExternalBudget(), deps, [
       turn("protected", "ストレージがいっぱいと出た"),
     ]);
-    expect(answer).toEqual({ reply: action, speak: action, handoff: false });
+    const reply = `消したものは戻せないので、残したいものが無いか先に確かめてね。${action}`;
+    expect(answer).toEqual({ reply, speak: reply, handoff: false });
   });
 
-  it("does not take 'このアプリの…' as pointing back at deleting data", async () => {
+  it("does not take 'このアプリの…' as pointing back at sending money", async () => {
     const fam = await setupFamily();
     const action = "設定の「画面表示と明るさ」から「テキストサイズを変更」で大きくできます";
     const answer = await consult(
@@ -2464,7 +2513,7 @@ describe("the conversation so far", () => {
       "このアプリの文字を大きくしたい",
       new ExternalBudget(),
       fakes(help({ action })),
-      [turn("protected", "LINE のトーク履歴を消したい"), turn("ai", HANDOFF)],
+      [turn("protected", "振込のやり方を教えて"), turn("ai", HANDOFF)],
     );
     expect(answer).toMatchObject({ reply: action, handoff: false });
   });
@@ -2473,7 +2522,7 @@ describe("the conversation so far", () => {
     const fam = await setupFamily();
     const deps = fakes(help({ action: "トークの画面で長く押して、出てきた画面で選びます" }));
     const answer = await consult(consultEnv, motherOf(fam), "そのやり方を教えて", new ExternalBudget(), deps, [
-      turn("protected", "LINE のトーク履歴を消したい"),
+      turn("protected", "振込のやり方を教えて"),
     ]);
     expect(answer).toMatchObject({ reply: HANDOFF, handoff: true });
   });
@@ -2634,7 +2683,7 @@ describe("a question with nothing to point at, and a sign after a case without o
     const answer = await consult(
       consultEnv,
       motherOf(fam),
-      "それってどうやって初期化するの",
+      "それってどうやってプロファイルをインストールするの",
       new ExternalBudget(),
       fakes(cannotTell()),
     );
@@ -2690,8 +2739,8 @@ describe("a question with nothing to point at, and a sign after a case without o
     ],
     [
       "it is a topic the AI does not guide",
-      "写真を全部消したいんだけど、どうすればいい？",
-      () => help({ topic: "写真の削除の相談" }),
+      "構成プロファイルを入れたいんだけど、どうすればいい？",
+      () => help({ topic: "プロファイルの相談" }),
     ],
     ["Claude gave nothing", "よく分からない画面が出て困ってる", () => null],
   ])(
@@ -2779,9 +2828,9 @@ describe("a question with nothing to point at, and a sign after a case without o
     await consult(
       consultEnv,
       motherOf(fam),
-      "LINE のトーク履歴を消したい",
+      "構成プロファイルを入れたい",
       new ExternalBudget(),
-      fakes(help({ topic: "トーク履歴の相談" }), T0 + 3 * 60_000),
+      fakes(help({ topic: "プロファイルの相談" }), T0 + 3 * 60_000),
     );
     expect((await alertsOf(fam.familyId))[0]?.summary).toBe("画面の表示の相談");
     expect(familyPushes(fam)).toHaveLength(0);

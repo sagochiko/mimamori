@@ -143,12 +143,16 @@ const SENSITIVE: ReadonlyArray<{ reason: string; pattern: RegExp }> = [
     reason: "構成プロファイルに関わる相談",
     pattern: /構成プロファイル|プロファイル.{0,10}(インストール|入れ|ダウンロード|許可)/,
   },
-  {
-    reason: "データの削除に関わる相談",
-    pattern:
-      /(データ|写真|連絡先|トーク|履歴|アカウント|全部|すべて|ぜんぶ|バックアップ).{0,8}(消|削除)|初期化|リセット|消去/,
-  },
 ];
+
+// Deleting data (photos, talks, apps) is guided by the AI itself, with DELETE_CHECK in front, and is
+// not handed to the family (the author's call on 2026-11-07, #234). Matched on her words and on
+// Claude's guidance, after NFKC and lowercasing. "取り消し", "解消", "打ち消し" delete nothing.
+const DELETION = /(?<!取り|解|打ち)消(し|す|せ|さ|去)|削除|初期化|リセット/;
+/** The line to check first, put in front of guidance on deleting (#234). Never "safe". */
+export const DELETE_CHECK = "消したものは戻せないので、残したいものが無いか先に確かめてね。";
+/** An image came with no words and Claude gave nothing she can use: she is asked what she wants (#234). */
+export const ASK_PICTURE_REPLY = "この画面で何をしたい?";
 
 // A verdict on the whole thing instead of what was seen and what to do. The answer gives evidence
 // and an action and never says "this is a scam" or "this is real" outright (docs/design.md, 検知).
@@ -324,7 +328,7 @@ basis には見えた根拠を一文で、action には勧める行動を書き�
 
 スマホの困りごとの相談(kind は help、level は 3)では、action に操作の案内を短く書きます。例「ストレージがいっぱい」と出たら、設定の「一般」から「iPhone ストレージ」を案内し、広告の掃除アプリは入れなくていいと伝えます。広告から入れるアプリについての相談は、詐欺の手口と一致するところを根拠に答えます。
 
-送金、認証コードや暗証番号を教えること、構成プロファイルを入れること、データを消すことは案内しません。そのときと、答えきれないときは handoff を true にします。本物か確かめられないことは、答えきれない理由にしません。そのときは kind を scam にして危なさを答え、自分で調べた正しい番号にかけ直す、のような確かめ方を action に書きます。あなたから見えないもの(通帳の金額、手元の書類や画面など)を見てほしいと言われたときも、答えきれないとはせず、本人が自分で確かめる方法を案内します。
+送金、認証コードや暗証番号を教えること、構成プロファイルを入れることは案内しません。写真、トーク、アプリなどを消すことは、ほかの困りごとと同じく案内します。そのときと、答えきれないときは handoff を true にします。本物か確かめられないことは、答えきれない理由にしません。そのときは kind を scam にして危なさを答え、自分で調べた正しい番号にかけ直す、のような確かめ方を action に書きます。あなたから見えないもの(通帳の金額、手元の書類や画面など)を見てほしいと言われたときも、答えきれないとはせず、本人が自分で確かめる方法を案内します。
 
 「安全」「問題ない」「心配ない」「大丈夫」「安心」「本物」「詐欺ではない」「気にしなくていい」「開いていい」とは書かないでください。これらが入った文は本人に読み上げず、決まった文に置き換えます。
 
@@ -937,6 +941,27 @@ function decidePlan(
     return { level, reasons, reply: ASK_AGAIN_REPLY, toFamily: false, record: false, sign: false, ...base };
   }
 
+  // An image with no words (#234): what she wants is nowhere but in her head. On the author's iPhone a
+  // screenshot of iPhone Storage sent alone went to the family once and got the level 3 fixed line once.
+  // When Claude cannot answer it, reads a scam at level 3, or gives guidance that cannot be read out,
+  // she is asked what she wants instead. Level 1 and 2, a topic the AI does not guide, and a handoff on
+  // a message, a call, or a link stay as below, so no scam screenshot is missed. A scam reading is
+  // still written down at level 3, with no notice, so the family can look later.
+  if (
+    image &&
+    said.text.trim() === "" &&
+    claude !== null &&
+    sensitive.length === 0 &&
+    level === 3 &&
+    rule.level === null &&
+    (claude.kind === "scam" ||
+      (claude.handoff && !claudeLines.some((l) => CONTACT.test(l))) ||
+      (claude.kind === "help" && !claude.handoff && !usable(claude.action)))
+  ) {
+    const scamRead = claude.kind === "scam";
+    return { level, reasons, reply: ASK_PICTURE_REPLY, toFamily: false, record: scamRead, sign: false, ...base };
+  }
+
   // Claude's words about a scam (its basis and action) are never read to her, at any level, on an image
   // or on her words alone: text on an image, a message she reads out, or earlier turns can steer them to
   // "open the link" or "enter the code", and no net can tell such lines from good ones ("リンクは開かないで")
@@ -999,9 +1024,13 @@ function decidePlan(
     return { level: 2, reasons: why, reply: UNANSWERED_REPLY, toFamily: true, record: true, sign: false, ...base };
   }
   const tap = claude.tap ? { tap: claude.tap } : {};
+  // Deleting, in her words or in Claude's guidance: the line to check first goes in front (#234).
+  const helpLines = [normalize(claude.action), ...claude.reasons.map(normalize), normalize(claude.topic ?? "")];
+  const deletes = told.some((t) => DELETION.test(t)) || helpLines.some((l) => DELETION.test(l));
+  const reply = deletes ? `${DELETE_CHECK}${claude.action}` : claude.action;
   // Guidance on an image is written down (level 3, no notice), so the family can look at it later:
   // the nets above see only Claude's words for what was on it (review 1 of PR #186).
-  return { level, reasons, reply: claude.action, toFamily: false, record: image, sign: false, ...base, ...tap };
+  return { level, reasons, reply, toFamily: false, record: image, sign: false, ...base, ...tap };
 }
 
 /** Her words in this turn and her earlier turns, never the AI's. */

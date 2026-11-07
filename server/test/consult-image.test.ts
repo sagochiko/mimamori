@@ -203,7 +203,8 @@ describe("a shared screenshot or document", () => {
       action: "書かれた番号ではなく、自分で調べた窓口の番号にかけて確かめて",
       topic: "役所の通知の相談",
     });
-    const answer = await consult(consultEnv, motherOf(fam), "", new ExternalBudget(), fakes(real), [], IMAGE);
+    // With her words: an image alone is asked about (#234).
+    const answer = await consult(consultEnv, motherOf(fam), "この通知が来た", new ExternalBudget(), fakes(real), [], IMAGE);
     expect(answer.handoff).toBe(false);
     expect(answer.reply).toContain("お金や暗証番号を聞かれたら止めて");
     expect(answer.reply).not.toMatch(/本物です|安全|大丈夫/);
@@ -268,6 +269,113 @@ describe("a shared screenshot or document", () => {
     await consult(consultEnv, motherOf(fam), "", new ExternalBudget(), fakes(warrant()), [], IMAGE);
     const stored = await everythingStored(fam.familyId);
     expect(stored).not.toContain(DATA.slice(0, 16));
+  });
+});
+
+// #234: an image with no words. On the author's iPhone a screenshot of iPhone Storage sent alone went
+// to the family once and got the level 3 fixed line once, and had no circle either time.
+describe("an image with no words (#234)", () => {
+  const ASK = "この画面で何をしたい?";
+
+  async function alertRow(familyId: string) {
+    return env.DB.prepare("SELECT level, notified FROM alerts WHERE family_id = ?")
+      .bind(familyId)
+      .first<{ level: number; notified: number }>();
+  }
+
+  it("asks what she wants when Claude reads a scam at level 3, and tells no one", async () => {
+    const fam = await setupFamily();
+    const low = warrant({ level: 3, reasons: [], basis: "", action: "様子を見て", topic: "画面の相談" });
+    const answer = await consult(consultEnv, motherOf(fam), "", new ExternalBudget(), fakes(low), [], IMAGE);
+    expect(answer).toEqual({ reply: ASK, speak: ASK, handoff: false });
+    expect(answer.reply).not.toContain("お金や暗証番号");
+    expect(pushes).toHaveLength(0);
+    // Kept at level 3 without a notice, so the family can look later.
+    expect(await alertRow(fam.familyId)).toEqual({ level: 3, notified: 0 });
+  });
+
+  it("asks what she wants when Claude says it cannot answer, instead of handing it to the family", async () => {
+    const fam = await setupFamily();
+    const cannot = settings({ handoff: true, action: "これは家族と一緒に見てね", tap: null });
+    const answer = await consult(consultEnv, motherOf(fam), "", new ExternalBudget(), fakes(cannot), [], IMAGE);
+    expect(answer).toEqual({ reply: ASK, speak: ASK, handoff: false });
+    expect(pushes).toHaveLength(0);
+    expect(await alertRow(fam.familyId)).toBeNull();
+  });
+
+  it("asks what she wants when Claude's guidance cannot be read out", async () => {
+    const fam = await setupFamily();
+    const unusable = settings({ action: "大丈夫、ここを押せば安心です" });
+    const answer = await consult(consultEnv, motherOf(fam), "", new ExternalBudget(), fakes(unusable), [], IMAGE);
+    expect(answer).toEqual({ reply: ASK, speak: ASK, handoff: false });
+    expect(pushes).toHaveLength(0);
+  });
+
+  it("guides deleting from a screenshot of iPhone Storage with the line to check first and the circle", async () => {
+    const fam = await setupFamily();
+    const action = "丸のところの「写真」を押して、いらない写真を選んで削除して";
+    const storage = settings({ action, topic: "ストレージの空きの相談", tap: { x: 400, y: 900 } });
+    const answer = await consult(consultEnv, motherOf(fam), "", new ExternalBudget(), fakes(storage), [], IMAGE);
+    expect(answer).toMatchObject({
+      reply: `消したものは戻せないので、残したいものが無いか先に確かめてね。${action}`,
+      tap: { x: 400, y: 900 },
+      handoff: false,
+    });
+    expect(pushes).toHaveLength(0);
+  });
+
+  it("guides deleting LINE talks she asks about with the image, with the circle", async () => {
+    const fam = await setupFamily();
+    const action = "丸のところを左にずらして「削除」を押して";
+    const talk = settings({ action, topic: "トークの削除の相談", tap: { x: 600, y: 700 } });
+    const answer = await consult(consultEnv, motherOf(fam), "このトークを消したい", new ExternalBudget(), fakes(talk), [], IMAGE);
+    expect(answer).toMatchObject({
+      reply: `消したものは戻せないので、残したいものが無いか先に確かめてね。${action}`,
+      tap: { x: 600, y: 700 },
+      handoff: false,
+    });
+    expect(pushes).toHaveLength(0);
+  });
+
+  it("still warns her and tells the family about a fake login page at level 2", async () => {
+    const fam = await setupFamily();
+    const login = warrant({
+      level: 2,
+      reasons: ["銀行を名乗るページで暗証番号を入れさせようとしている"],
+      basis: "",
+      action: "入力せずに閉じて",
+      topic: "銀行を名乗るページの相談",
+    });
+    const answer = await consult(consultEnv, motherOf(fam), "", new ExternalBudget(), fakes(login), [], IMAGE);
+    expect(answer.reply).not.toBe(ASK);
+    expect(answer.handoff).toBe(true);
+    expect(answer.reply).toBe("詐欺の手口と似ているところがあります。お金や暗証番号の話には応じず、家族に確かめて");
+    expect(pushes).toContain(fam.ownerToken);
+  });
+
+  it("still hands sending money read off the image to the family", async () => {
+    const fam = await setupFamily();
+    const money = settings({ action: "画面の「送金する」を押して金額を入れて", handoff: true, tap: null });
+    const answer = await consult(consultEnv, motherOf(fam), "", new ExternalBudget(), fakes(money), [], IMAGE);
+    expect(answer.reply).not.toBe(ASK);
+    expect(answer.handoff).toBe(true);
+    expect(pushes).toContain(fam.ownerToken);
+  });
+
+  it("still hands a message Claude cannot answer to the family, without asking", async () => {
+    const fam = await setupFamily();
+    const sms = settings({ handoff: true, action: "このメッセージは家族と一緒に見てね", topic: "SMS の相談", tap: null });
+    const answer = await consult(consultEnv, motherOf(fam), "", new ExternalBudget(), fakes(sms), [], IMAGE);
+    expect(answer.reply).not.toBe(ASK);
+    expect(answer.handoff).toBe(true);
+    expect(pushes).toContain(fam.ownerToken);
+  });
+
+  it("does not ask again once she has said something with the image", async () => {
+    const fam = await setupFamily();
+    const low = warrant({ level: 3, reasons: [], basis: "", action: "様子を見て", topic: "通知の相談" });
+    const answer = await consult(consultEnv, motherOf(fam), "この通知が来た", new ExternalBudget(), fakes(low), [], IMAGE);
+    expect(answer.reply).toBe("お金や暗証番号を聞かれたら止めて、家族に確かめて");
   });
 });
 
@@ -369,7 +477,8 @@ describe("what a shared image cannot get past (review 1 of PR #186)", () => {
   ])("reads none of Claude's action for a level 3 scam answer on an image (%s): the fixed line only (review 2)", async (_l, action) => {
     const fam = await setupFamily();
     const low = warrant({ level: 3, reasons: [], basis: "", action, topic: "通知の相談" });
-    const answer = await consult(consultEnv, motherOf(fam), "", new ExternalBudget(), fakes(low), [], IMAGE);
+    // With her words: an image alone is asked about (#234).
+    const answer = await consult(consultEnv, motherOf(fam), "この通知が来た", new ExternalBudget(), fakes(low), [], IMAGE);
     expect(answer.reply).toBe("お金や暗証番号を聞かれたら止めて、家族に確かめて");
     expect(answer.reply).not.toContain(action);
     expect(answer.handoff).toBe(false);
@@ -382,7 +491,7 @@ describe("what a shared image cannot get past (review 1 of PR #186)", () => {
   ])("reads none of Claude's basis for a level 3 scam answer on an image (%s) (review 3)", async (_l, basis) => {
     const fam = await setupFamily();
     const low = warrant({ level: 3, reasons: [], basis, action: "", topic: "通知の相談" });
-    const answer = await consult(consultEnv, motherOf(fam), "", new ExternalBudget(), fakes(low), [], IMAGE);
+    const answer = await consult(consultEnv, motherOf(fam), "この通知が来た", new ExternalBudget(), fakes(low), [], IMAGE);
     expect(answer.reply).toBe("お金や暗証番号を聞かれたら止めて、家族に確かめて");
     expect(answer.handoff).toBe(false);
   });
