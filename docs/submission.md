@@ -4,6 +4,10 @@ Built with Claude Japan 2026 の提出フォームに貼る文の下書き。202
 
 事実は [`README.md`](../README.md)、[`docs/dev-log.md`](dev-log.md)、[`eval/RESULTS.md`](../eval/RESULTS.md)、Issue のコメント、コードから取った。コミットや PR の数は2026年11月7日に、`origin/main` の `a916f02` で数えた。
 
+## チーム名
+
+Sago(2026年11月8日に作者が決めた。フォームのチームメンバーの欄には作者のアカウントが入っている)
+
 ## プロジェクト名
 
 mimamori(みまもり)
@@ -42,7 +46,7 @@ dev の114件の例文で、規則だけの見逃しは60件中6件(10.0%)、規
 
 ## 使った Claude の製品
 
-選ぶのは次の5つ。
+フォームはチェックで選ぶ形で、選択肢は Claude Code CLI、Claude Code IDE 拡張、Claude Code Desktop、Cowork、Claude.ai、Claude API、Managed Agents、Agent SDK、その他。付けるのは Claude Code CLI、Claude.ai、Claude API、Managed Agents、その他の5つで、その他は Claude in Chrome にあたる(2026年11月8日にフォームの画面で確かめた)。
 
 - Claude Code。アプリ、拡張機能、裏側、試験のすべてを書いた
 - Claude API。SMS、メール、ページの判定と、母との会話、スクショの読み取り、ウェブ検索に使う
@@ -94,9 +98,9 @@ SMS、メール、ページで1段階か2段階の知らせが出たあと、急
 
 落ちた方は `permitted()` を `nonisolated` にし、閉包を `@Sendable` にして直し(PR #71)、入れ直して同じ流れを通した。2段階の方は、相談の筋書きの数え方にだけ「警察を名乗る相手からの連絡」を部品として足した(#72)。SMS とページの規則にも足す案は、銀行や警察の本物の注意喚起が「警察を名乗る電話」と「口座が犯罪に使われている」を並べて書くので採らなかった。eval が相談の道を測っていないことは #74 にし、今は相談を本番の道で測っている。直したあと、作者が自分の iPhone で1段階と決まった答えを確かめた(#77)。使ったのは `/mm-device`、`xcrun devicectl`、MobileBuildMCP でのシミュレータの操作、mm-reviewer(SIL に落として実行時のチェックの数を数えた)、mm-implementer。
 
-## 問題が起きた製品、環境、原因
+### 問題が起きた製品、環境、原因
 
-上の場面について書く。
+フォームにこの欄は無いので、詰まった場面の欄の最後に続けて貼る(2026年11月8日に作者が決めた)。
 
 製品は Claude Code。モデルは、実装役の定義どおり Opus で動かしていた。2026年11月4日の時点のモデル ID と Claude Code の版は記録に残していないので不明。開発の Mac は macOS、作者の iPhone は iOS で、どちらもその日の版は不明(2026年11月7日の時点では、Mac が macOS 27.2、作者の iPhone が iOS 27.2)。落ちたのは、許可を一度も聞かれていない状態からマイクを押した1回目で、直したあとは同じ流れで落ちていない。
 
