@@ -12,7 +12,7 @@ These are the demo mode screens on the iOS 26.5 simulator, from the first screen
 
 | | | |
 |---|---|---|
-| <img src="docs/screens/demo-01-role.png" width="200" alt="First screen with 見守られる人, 家族 and 体験"> | <img src="docs/screens/demo-02-followup.png" width="200" alt="さっきの電話、大丈夫だった？ on her screen"> | <img src="docs/screens/demo-03-consult.png" width="200" alt="Her consultation about a police call, the level-1 answer, and the family's card"> |
+| <img src="docs/screens/demo-01-role.png" width="200" alt="First screen with 見守られる人, 家族 and 体験"> | <img src="docs/screens/demo-02-followup.png" width="200" alt="知らない人や勧誘の電話で困ったら教えてね on her screen"> | <img src="docs/screens/demo-03-consult.png" width="200" alt="Her consultation about a police call, the level-1 answer, and the family's card"> |
 | First screen | After a long call | Her words and the family's card |
 | <img src="docs/screens/demo-05-resolved.png" width="200" alt="The card after 解決"> | <img src="docs/screens/demo-06-sms.png" width="200" alt="An SMS judged as junk with the family's card"> | |
 | After 解決 | An SMS judged | |
@@ -26,7 +26,7 @@ The scammer calls and says her bank account was used in a crime. Then they tell 
 
 ## The main scene
 
-1. A call of three minutes or more ends while the app is open. The app asks her: "さっきの電話、大丈夫だった？" (Was that call just now all right?).
+1. A call of three minutes or more ends while the app is open. The app tells her: "知らない人や勧誘の電話で困ったら教えてね" (If a stranger or a sales call troubles you, tell me). It is not a question, and it comes at most once a day.
 2. She says, in her own words, that the police called about her account.
 3. Rules on the server recognize the fake-police script (police, account used in a crime, keep it secret, a video call, moving money). They answer at once with level 1: hang up and check with the family before sending any money.
 4. Every family member's iPhone gets a card with the level, a one-line topic ("警察を名乗る電話の相談", a consultation about a call from someone claiming to be the police), and what the AI told her. The card has two buttons, Call and Resolve.
@@ -47,7 +47,7 @@ On 2026-11-07 he ran it again with build 9, his iPhone as the mother and a simul
 | DNS (bank sites after a warning, remote-control apps) | Planned as a DoH resolver | Not built (#11) |
 | LINE, iMessage, call audio | Not visible to any app | Cannot be done |
 
-What it cannot protect is part of the design. The app never hears the call. In the main scene she still has to answer the question after the call, or start the chat herself. When the app is suspended, it cannot know a call ended (Apple DTS confirms this; see [`docs/design.md`](docs/design.md)), which is why the daily question exists. Other browsers and in-app browsers do not run the Safari extension.
+What it cannot protect is part of the design. The app never hears the call. In the main scene she still has to speak up after the prompt that follows the call, or start the chat herself. When the app is suspended, it cannot know a call ended (Apple DTS confirms this; see [`docs/design.md`](docs/design.md)), which is why the daily question exists. Other browsers and in-app browsers do not run the Safari extension.
 
 ## How a notice travels
 
@@ -141,7 +141,7 @@ The demo mode shows her screen and the card the family would get, on one iPhone,
 
 1. Install the build from TestFlight and open it. Do not join a family.
 2. On the first screen, tap "体験" (try it), the third button under "見守られる人" (the person watched over) and "家族" (family).
-3. Her screen shows "さっきの電話、大丈夫だった？" (Was that call just now all right?). Tap the microphone. It plays her consultation about a call from the police, her answer at level 1, and the card and notification the family would get.
+3. Her screen shows "知らない人や勧誘の電話で困ったら教えてね" (If a stranger or a sales call troubles you, tell me). Tap the microphone. It plays her consultation about a call from the police, her answer at level 1, and the card and notification the family would get.
 4. Tap "解決" (resolve) on the card, then "解決にする" (mark resolved) in the alert that asks, or "30分後" (30 minutes later) to see what both screens show when no one resolves it. The demo card has no Call button.
 5. An SMS field follows, with a fictional fake delivery notice. Edit it if you like and tap "送る" (send). It goes to the server's rules at `/sms/demo`, which tell no family. There are three results. A clear scam (level 1, and the rules are sure) shows "迷惑" (junk, where the iPhone would file it) above the card the family would get. Level 1 without that certainty, or level 2, shows only the card. Anything else shows "カードなし" (no card). "最初から" (from the start) starts over.
 
