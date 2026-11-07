@@ -50,7 +50,12 @@ struct FamilyHomeView: View {
     .onAppear {
       #if DEBUG
         if ScreenshotStubTransport.cameraOpen { camera = true }
-        if ScreenshotStubTransport.inviteOpen, model.protectedJoined { inviting = true }
+      #endif
+    }
+    .onChange(of: model.protectedJoined, initial: true) { _, joined in
+      #if DEBUG
+        // The stub's smiles and cases arrive after the screen appears.
+        if ScreenshotStubTransport.inviteOpen, joined { inviting = true }
       #endif
     }
   }
