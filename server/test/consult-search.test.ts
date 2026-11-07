@@ -17,6 +17,7 @@ import {
   parseClaudeConsult,
   requestSearchAnswer,
   SEARCH_FAILED_REPLY,
+  UNANSWERED_REPLY,
   SEARCH_MIN_MS,
   searchTimeLeft,
   type ClaudeConsult,
@@ -304,7 +305,7 @@ describe("a question for the web with no first answer (#251)", () => {
     const s = searcher({ text: "明日の東京は晴れの予報だよ。", source: null });
     const judged = await judgeConsult(WEATHER, [], async () => noAnswer(), judgeByRules, false, s.search);
     expect(judged.reply).toBe("明日の東京は晴れの予報だよ。");
-    expect(judged).toMatchObject({ toFamily: false, record: false });
+    expect(judged).toMatchObject({ toFamily: false, record: true });
   });
 
   it.each([
@@ -314,13 +315,38 @@ describe("a question for the web with no first answer (#251)", () => {
   ])("says it could not look it up, telling no one, on %s", async (_label, search) => {
     const judged = await judgeConsult(WEATHER, [], async () => noAnswer(), judgeByRules, false, search);
     expect(judged.reply).toBe(SEARCH_FAILED_REPLY);
-    expect(judged).toMatchObject({ toFamily: false, record: false, level: 3 });
+    // Written down at level 3 with no notice, so the family can look later (review 1 of PR #254).
+    expect(judged).toMatchObject({ toFamily: false, record: true, level: 3 });
   });
 
-  it("says it could not look it up when the first answer cannot be read out", async () => {
+  // Review 1 of PR #254: an answer Claude wrote that cannot be read out is one the AI could not give, as
+  // before; only an empty one is left to the search.
+  it("hands a first answer that cannot be read out to the family, as before", async () => {
     const judged = await judgeConsult(WEATHER, [], async () => help({ action: "安心して、明日は晴れ" }), judgeByRules);
-    expect(judged.reply).toBe(SEARCH_FAILED_REPLY);
-    expect(judged.toFamily).toBe(false);
+    expect(judged.reply).toBe(UNANSWERED_REPLY);
+    expect(judged.toFamily).toBe(true);
+  });
+
+  // Review 1 of PR #254: a scam told as a question for the web.
+  describe.each([
+    ["a son's voice that changed and a boss who comes", "息子が風邪で声が変わったって言ってた。今から上司の人が来るらしい"],
+    ["the tax office and a payment due", "国税庁から未払いがあると言われた"],
+  ])("on %s", (_label, text) => {
+    it("hands a reassuring first answer to the family", async () => {
+      const judged = await judgeConsult(text, [], async () => help({ action: "大丈夫だよ" }), judgeByRules, false, searcher(null).search);
+      expect(judged.toFamily).toBe(true);
+    });
+
+    it("writes down an empty first answer when the search gives nothing", async () => {
+      const judged = await judgeConsult(text, [], async () => noAnswer(), judgeByRules, false, searcher(null).search);
+      expect(judged.reply).toBe(SEARCH_FAILED_REPLY);
+      expect(judged.record).toBe(true);
+    });
+
+    it("does not say it could not look it up when Claude hands it over", async () => {
+      const judged = await judgeConsult(text, [], async () => noAnswer({ handoff: true }), judgeByRules, false, searcher(null).search);
+      expect(judged.reply).not.toBe(SEARCH_FAILED_REPLY);
+    });
   });
 
   it("keeps a first answer it can read when the search fails", async () => {
@@ -329,12 +355,14 @@ describe("a question for the web with no first answer (#251)", () => {
   });
 
   it.each([
-    ["a topic the AI does not guide", "振込の手数料を調べて"],
-    ["a message", "届いたメールの会社を調べて"],
-    ["the police", "警察の電話番号を調べて"],
-  ])("still does not answer it so on %s", async (_label, text) => {
+    ["a topic the AI does not guide", "振込の手数料を調べて", true],
+    ["a message", "届いたメールの会社を調べて", false],
+    ["the police", "警察の電話番号を調べて", false],
+  ])("still does not answer it so on %s", async (_label, text, toFamily) => {
     const judged = await judgeConsult(text, [], async () => noAnswer(), judgeByRules, false, searcher(null).search);
     expect(judged.reply).not.toBe(SEARCH_FAILED_REPLY);
+    expect(judged.toFamily).toBe(toFamily);
+    expect(judged.record).toBe(true);
   });
 
   it("writes one log line of names, flags, and numbers, without her words or Claude's", async () => {

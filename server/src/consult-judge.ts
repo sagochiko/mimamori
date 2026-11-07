@@ -1524,11 +1524,18 @@ function decidePlan(
     plainLevel3 &&
     !image &&
     claude.kind === "help" &&
+    // Claude's own handoff, not the first answer's override: a question Claude hands over is not left to
+    // the search (review 1 of PR #254).
+    !claude.handoff &&
     !handoff &&
     (claude.search_query ?? "").trim() !== "" &&
-    !usable(claude.action)
+    // Empty only: an answer Claude wrote that cannot be read out ("大丈夫だよ") is one the AI could not
+    // give, for the family as before (review 1 of PR #254).
+    claude.action.trim() === ""
   ) {
-    return { level, reasons, reply: SEARCH_FAILED_REPLY, toFamily: false, record: false, sign: false, ...base };
+    // Written down at level 3 with no notice, so a scam taken for a question for the web does not go
+    // by with no trace (review 1 of PR #254).
+    return { level, reasons, reply: SEARCH_FAILED_REPLY, toFamily: false, record: true, sign: false, ...base };
   }
   if (firstAnswer) {
     // Claude handed it over and has nothing she can hear: she is asked again rather than the family
