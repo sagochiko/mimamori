@@ -505,7 +505,7 @@ describe("consult.ts", () => {
   // #234: the author chose on 2026-11-07 that the AI guides deleting data itself, with one line to
   // check first, and does not hand it to the family.
   it.each([
-    ["photos", "写真を全部消したいんだけど、どうすればいい？", "写真のアプリで「選択」を押して、消したい写真を選んでゴミ箱を押して"],
+    ["photos", "いらない写真を消したいんだけど、どうすればいい？", "写真のアプリで「選択」を押して、消したい写真を選んでゴミ箱を押して"],
     ["LINE talks", "LINE のトークを消したい", "トークの一覧で消したいトークを左にずらして「削除」を押して"],
     ["an app", "使ってないアプリを消したい", "ホーム画面でアプリを長く押して「アプリを削除」を押して"],
   ])("guides deleting %s with the line to check first, and tells no one", async (_label, text, action) => {
@@ -534,6 +534,22 @@ describe("consult.ts", () => {
     const action = "設定の「画面表示と明るさ」から「テキストサイズを変更」で大きくできます";
     const answer = await consult(consultEnv, motherOf(fam), "文字を大きくしたい", new ExternalBudget(), fakes(help({ action })));
     expect(answer.reply).toBe(action);
+  });
+
+  // Review 1 of PR #237, finding 2: the author chose photos, talks, and apps only. A wipe, a reset, and
+  // deleting mimamori itself still go to the family, and a support scam's "erase everything" is caught.
+  it.each([
+    ["a support scam with AnyDesk", "サポートの人にAnyDeskを入れて写真を全部消してって言われた", "ホーム画面で AnyDesk を開いて、写真を全部選んで消して"],
+    ["a wipe asked on the phone", "サポートの人に電話で言われて、iPhoneを初期化したい", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
+    ["erasing every photo", "写真を全部消したい", "写真のアプリで「選択」を押して全部選んでゴミ箱を押して"],
+    ["deleting mimamori", "みまもりのアプリを消したい", "ホーム画面でアプリを長く押して「アプリを削除」を押して"],
+  ])("still tells the family about %s and reads none of the guidance", async (_label, text, action) => {
+    const fam = await setupFamily();
+    const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), fakes(help({ action })));
+    expect(answer.handoff).toBe(true);
+    expect(answer.reply).not.toContain(action);
+    expect(answer.reply).not.toContain("消したものは戻せない");
+    expect(familyPushes(fam)).toHaveLength(2);
   });
 
   it("still hands deleting data to the family when it comes with sending money", async () => {
