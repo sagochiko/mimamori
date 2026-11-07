@@ -45,6 +45,7 @@
 import { requireMember, type Member } from "./auth";
 import { ExternalBudget } from "./budget";
 import { CaseNoticeDeferred, NOT_REACHED, openCase, recordAiReply, tellFamilyHeavier } from "./cases";
+import { takeClaudeCall } from "./claude-limit";
 import {
   allOf,
   chars,
@@ -303,7 +304,8 @@ export async function consult(
     text,
     history,
     async (rule, turns) => {
-      if (!budget.take()) return null;
+      // Past the family's calls for the day (src/claude-limit.ts) it goes as when Claude gives nothing.
+      if (!(await takeClaudeCall(env, member.familyId, now)) || !budget.take()) return null;
       startedAt = deps.now();
       // A record that cannot be read must not cost her the answer: Claude is asked without it.
       const findings = await recentFindings(env, member.familyId, now).catch(() => []);
@@ -320,7 +322,8 @@ export async function consult(
     image !== undefined,
     async (query) => {
       const left = searchTimeLeft(startedAt, deps.now());
-      if (deps.searchAnswer === undefined || left === null || !budget.take()) return null;
+      if (deps.searchAnswer === undefined || left === null) return null;
+      if (!(await takeClaudeCall(env, member.familyId, deps.now())) || !budget.take()) return null;
       const t0 = Date.now();
       try {
         return await deps.searchAnswer(env, text, query, left);

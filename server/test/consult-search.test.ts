@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ExternalBudget } from "../src/budget";
 import { openCase } from "../src/cases";
 import { CLAUDE_TIMEOUT_MS } from "../src/claude";
+import { CLAUDE_CALLS_PER_FAMILY_DAY } from "../src/claude-limit";
 import { consult, type ConsultDeps } from "../src/consult";
 import {
   buildConsultRequest,
@@ -279,6 +280,18 @@ describe("the second call from POST /consult (#251)", () => {
   it("keeps the first answer when the first call took too long", async () => {
     const { d, asked } = deps(CLAUDE_TIMEOUT_MS - SEARCH_MIN_MS + 1, { text: "明日は晴れ。", source: null });
     const answer = await consult(env, await mother(), WEATHER, new ExternalBudget(), d);
+    expect(asked).toHaveLength(0);
+    expect(answer.reply).toBe(FIRST);
+  });
+
+  it("keeps the first answer when the family's daily Claude cap is reached by the first call", async () => {
+    const { d, asked } = deps(1000, { text: "明日は晴れ。", source: null });
+    const m = await mother();
+    // deps' clock starts at 1,000,000 ms, which is 1970-01-01 in JST.
+    await env.DB.prepare("INSERT INTO claude_daily (family_id, day, claude_calls, research_starts) VALUES (?, ?, ?, 0)")
+      .bind(m.familyId, "1970-01-01", CLAUDE_CALLS_PER_FAMILY_DAY - 1)
+      .run();
+    const answer = await consult(env, m, WEATHER, new ExternalBudget(), d);
     expect(asked).toHaveLength(0);
     expect(answer.reply).toBe(FIRST);
   });

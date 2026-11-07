@@ -8,6 +8,8 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ExternalBudget } from "../src/budget";
 import { openCase, resolveCase, sendFirstNotices } from "../src/cases";
 import { soundsSafe } from "../src/claude";
+import { CLAUDE_CALLS_PER_FAMILY_DAY } from "../src/claude-limit";
+import { jstDate } from "../src/time";
 import {
   buildConsultRequest,
   consult,
@@ -27,6 +29,7 @@ import {
   ASK_SCREEN_REPLY,
   HANDOFF_REPLY,
   pointsBack,
+  UNANSWERED_REPLY,
   readClaudeConsult,
   requestClaudeConsult,
   saysNothing,
@@ -4367,5 +4370,62 @@ describe("why the consultation request gave nothing (review 1 of PR #255)", () =
     const answer = await requestClaudeConsult(env1, "Wi-Fi", rule, [], undefined, undefined, [], (f) => failures.push(f));
     expect(answer).toBeNull();
     expect(failures).toEqual([name]);
+  });
+});
+
+// The public-release audit of 2026-11-07, point 1: past the family's Claude calls for the day, the
+// consultation is answered as when Claude gives no answer, and "家族に伝えました" only when it is true.
+describe("the family's daily Claude cap", () => {
+  async function full(fam: Family) {
+    await env.DB.prepare(
+      "INSERT INTO claude_daily (family_id, day, claude_calls, research_starts) VALUES (?, ?, ?, 0)",
+    )
+      .bind(fam.familyId, jstDate(T0), CLAUDE_CALLS_PER_FAMILY_DAY)
+      .run();
+  }
+
+  it("does not ask Claude past the cap and answers as unanswered, with the family really told", async () => {
+    const fam = await setupFamily();
+    await full(fam);
+    const deps = fakes(help());
+    const answer = await consult(consultEnv, motherOf(fam), "よく分からない画面が出て困ってる", new ExternalBudget(), deps);
+    expect(deps.claudeCalls).toBe(0);
+    expect(answer).toMatchObject({ reply: UNANSWERED_REPLY, handoff: true });
+    const [opened] = await casesOf(fam.familyId);
+    expect(opened?.family_notified_at).not.toBeNull();
+    expect(familyPushes(fam)).toHaveLength(2);
+  });
+
+  it("says 'not reached' past the cap when the family's notice does not go out", async () => {
+    const fam = await setupFamily();
+    await full(fam);
+    await env.DB.prepare("UPDATE members SET apns_token = NULL WHERE family_id = ? AND role = 'family'")
+      .bind(fam.familyId)
+      .run();
+    const answer = await consult(consultEnv, motherOf(fam), "よく分からない画面が出て困ってる", new ExternalBudget(), fakes(help()));
+    expect(answer.reply).toBe("うまく答えられませんでした。家族に届いていません。急ぐなら電話して");
+  });
+
+  it("still answers the fake-police script at once and tells the family past the cap", async () => {
+    const fam = await setupFamily();
+    await full(fam);
+    const deps = fakes(null);
+    const answer = await consult(consultEnv, motherOf(fam), POLICE, new ExternalBudget(), deps);
+    expect(deps.claudeCalls).toBe(0);
+    expect(answer).toMatchObject({ reply: POLICE_REPLY, handoff: true });
+    expect(familyPushes(fam)).toHaveLength(2);
+  });
+
+  it("asks Claude one below the cap", async () => {
+    const fam = await setupFamily();
+    await env.DB.prepare(
+      "INSERT INTO claude_daily (family_id, day, claude_calls, research_starts) VALUES (?, ?, ?, 0)",
+    )
+      .bind(fam.familyId, jstDate(T0), CLAUDE_CALLS_PER_FAMILY_DAY - 1)
+      .run();
+    const deps = fakes(help());
+    const answer = await consult(consultEnv, motherOf(fam), "ストレージがいっぱいって出る", new ExternalBudget(), deps);
+    expect(deps.claudeCalls).toBe(1);
+    expect(answer.reply).toBe(help().action);
   });
 });

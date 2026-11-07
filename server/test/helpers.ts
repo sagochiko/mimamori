@@ -36,7 +36,7 @@ export interface Created {
 }
 
 export async function createFamily(displayName = "作者"): Promise<Created> {
-  const res = await call("POST", "/families", { body: { display_name: displayName } });
+  const res = await call("POST", "/families", { body: { display_name: displayName }, ip: randomIp() });
   if (res.status !== 201) throw new Error(`createFamily: ${res.status}`);
   return (await res.json()) as Created;
 }
