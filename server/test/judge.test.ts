@@ -1473,8 +1473,9 @@ describe("enqueueJudge", () => {
     });
     expect(contents).toHaveLength(1);
     const [outside, inside] = (contents[0] ?? "").split("<untrusted>");
-    expect(outside).toContain("メールの認証(Gmail が付けた結果): DMARC pass、送り元のドメイン partner-mail.example");
-    expect(inside).not.toContain("メールの認証");
+    expect(outside).toContain("メールの認証(Gmail が付けた結果): DMARC pass\n");
+    expect(outside).not.toContain("partner-mail.example");
+    expect(inside).toContain("認証の送り元のドメイン: partner-mail.example");
     expect(inside).toContain("training.example-cloud.example");
   });
 
