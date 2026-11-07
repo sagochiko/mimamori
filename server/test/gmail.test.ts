@@ -1061,6 +1061,16 @@ describe("reading one mail", () => {
     });
   });
 
+  it("keeps the text after a <style> block when letters change length in lower case", () => {
+    // "İ" (U+0130) is two code units in lower case, so positions found in a lower-cased copy point
+    // elsewhere in the mail (review 2 of PR #250).
+    const html = `${"İ".repeat(80)}<style>p{color:red}</style><p>未納の税金があります https://nta-refund.example/pay</p>`;
+    const payload = mailPayload({ mimeType: "text/html", headers: [], body: { data: b64url(html) } });
+    expect(payload.text).toContain("未納の税金があります");
+    expect(payload.text).toContain("https://nta-refund.example/pay");
+    expect(payload.text).not.toContain("color:red");
+  });
+
   it("reads the links of a long HTML mail in time linear to its length", () => {
     // Tags that never close: a pattern that backtracks over them took seconds on far less (review 1
     // of PR #250), and the watch has 10 ms of CPU a tick on the Free plan.

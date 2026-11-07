@@ -662,7 +662,10 @@ function decodeWords(value: string): string {
  * cost no more than one (review 1 of PR #250: the pattern took seconds on 200,000 characters).
  */
 function dropBlocks(html: string): string {
-  const lower = html.toLowerCase();
+  // The closing tag is looked for in the mail itself with a case-blind pattern, not in a lower-cased
+  // copy: a letter such as "İ" grows in lower case, so the copy's positions point elsewhere (review 2
+  // of PR #250).
+  const closers = new Map<string, RegExp>();
   const closed = new Map<string, boolean>();
   let out = "";
   let kept = 0;
@@ -670,7 +673,10 @@ function dropBlocks(html: string): string {
   for (let m = opener.exec(html); m !== null; m = opener.exec(html)) {
     const name = (m[1] ?? "").toLowerCase();
     if (closed.get(name) === false) continue;
-    const end = lower.indexOf(`</${name}>`, m.index + m[0].length);
+    const closer = closers.get(name) ?? new RegExp(`</${name}>`, "gi");
+    closers.set(name, closer);
+    closer.lastIndex = m.index + m[0].length;
+    const end = closer.exec(html)?.index ?? -1;
     if (end === -1) {
       closed.set(name, false);
       continue;
