@@ -545,6 +545,13 @@ describe("what a shared image cannot get past (review 1 of PR #186)", () => {
     ["going on in 「メール」", "容量を空けるため、「メール」に進んで手順どおりにして"],
     ["the previous page, even to delete", "前のページに戻って、丸のところの「最近削除した項目」を空にして"],
     ["a mail's attachments named loosely", "メールの添付ファイルも容量を使っています。丸のところの「写真」から見直して"],
+    ["review 2, pressing 「メッセージ」 then the arrived steps", "容量を空けるため、「メッセージ」を押して、届いた案内の「続ける」を押して"],
+    ["review 2, the top notice", "容量を空けるため、「メッセージ」を押して、いちばん上の知らせの「続ける」を押して"],
+    ["review 2, tapping 「メール」", "容量を空けるため、「メール」をタップして、最新の案内のボタンを押して"],
+    ["review 2, opening in kana", "容量を空けるため、「メッセージ」をひらいて、いちばん上の案内のとおりにして"],
+    ["review 2, starting 「メッセージ」", "容量を空けるため、「メッセージ」を起動して、丸のところの「続ける」を押して"],
+    ["review 2, received in 「メール」", "容量を空けるため、「メール」で受け取った案内のボタンを押して"],
+    ["review 2, arrived from 「メッセージ」", "容量を空けるため、「メッセージ」から届いた案内の「続ける」を押して"],
   ])("still gives the fixed line for storage guidance with %s, and no circle (#243)", async (_l, action) => {
     const fam = await setupFamily();
     const storage = settings({ action, topic: "ストレージの空きの相談", tap: { x: 10, y: 10 } });

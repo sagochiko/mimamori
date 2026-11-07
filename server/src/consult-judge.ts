@@ -293,13 +293,17 @@ const STORAGE_GUIDE = /ストレージ|容量|空き|最近削除した項目|�
 // going on, sending, allowing, or running (「メッセージ」を開いて) keeps the fixed line too. When in doubt the
 // fixed line wins: a miss is heavier than a needless fixed line.
 const STORAGE_NAMES = /「(メッセージ|メール)」(の(添付|書類)?の?(容量|データ))?/g;
-const NAME_THEN_STEP = /「(メッセージ|メール)」(を|に|で|から)?(開|進|送|許可|実行)/;
+const NAME_THEN_STEP = /「(メッセージ|メール)」(を|に|で|から)?(開|ひら|起動|タップ|選|進|送|許可|実行)/;
+// A bracketed name with something that arrived (届いた案内, いちばん上の知らせ) on the same line: led into the
+// app to act on a message (review 2 of PR #245).
+const NAME_AND_ARRIVAL = /届|受け取|受信|知らせ|案内|いちばん上|一番上|最新/;
 
 /** CONTACT on Claude's guidance for an image, with the names a storage screen shows left out (#243). */
 function guidesContact(lines: readonly string[], guide: readonly string[]): boolean {
   if (!guide.some((l) => STORAGE_GUIDE.test(l))) return lines.some((l) => CONTACT.test(l));
   return lines.some((l) => {
     if (NAME_THEN_STEP.test(l)) return true;
+    if (/「(メッセージ|メール)」/.test(l) && NAME_AND_ARRIVAL.test(l)) return true;
     const rest = l.replace(STORAGE_NAMES, "");
     return CONTACT.test(rest) || /ログイン|サインイン/.test(rest);
   });
