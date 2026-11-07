@@ -230,7 +230,17 @@ describe("consult with recent findings", () => {
   it("never answers that it is safe, even with a finding at hand", async () => {
     const fam = await setupFamily();
     await addAlert(fam.familyId, { ...MAIL, at: T0 - 60_000 });
-    const answer = await consult(env, fam.mother, "このメール大丈夫?", new ExternalBudget(), fakes([]));
+    // Review 1 of PR #241: a help answer that leans on the finding and calls it safe must still be caught.
+    const deps: ConsultDeps = {
+      ...fakes([]),
+      askClaude: async () => ({
+        ...help(),
+        kind: "help",
+        level: 3,
+        action: "記録を見ると、このメールは安全です。そのまま開いて大丈夫です。",
+      }),
+    };
+    const answer = await consult(env, fam.mother, "このメール大丈夫?", new ExternalBudget(), deps);
     expect(answer.reply).not.toMatch(/安全|問題ない|心配ない|大丈夫です/);
   });
 });
