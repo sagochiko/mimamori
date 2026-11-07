@@ -115,6 +115,14 @@ struct CheckupPolicyTests {
     #expect(digits.isEmpty)
   }
 
+  @Test("迷ったときは、共有からではなく入力欄の写真のボタンからスクショを見せるよう案内する")
+  func guidePointsAtPhotoButton() {
+    // The author found sharing from the screenshot less natural than pasting into the chat (#221).
+    #expect(!CheckupPolicy.storageGuide.contains("共有"))
+    #expect(CheckupPolicy.storageGuide.contains("写真のボタン"))
+    #expect(CheckupPolicy.storageGuide.contains("スクショ"))
+  }
+
   @Test("覚えておく中身に空きの量は入らない")
   func stateKeepsNoAmount() throws {
     let (policy, store) = make()

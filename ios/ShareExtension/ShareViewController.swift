@@ -7,8 +7,8 @@ import UniformTypeIdentifiers
 /// document, it goes to POST /consult, and the answer shows here, with a circle where to press when
 /// there is one. Not read aloud: the answer is read aloud only when she asked by voice (#115).
 ///
-/// The image is shrunk to the size Claude reads it at (CoordinateMapper), sent, and dropped with this
-/// view; nothing of it is written to disk. Its words are data for Claude, never for this code.
+/// The image is shrunk to the size Claude reads it at (`ConsultPicture`, shared with the chat's photo
+/// button), sent, and dropped with this view; nothing of it is written to disk. Its words are data for Claude, never for this code.
 final class ShareViewController: UIViewController {
   private let model = ShareModel()
 
@@ -56,61 +56,35 @@ final class ShareModel {
   }()
 
   func send(_ provider: NSItemProvider?) async {
-    guard let provider, let base = Self.apiBaseURL, let picked = await Self.loadImage(provider)
+    guard let provider, let base = Self.apiBaseURL, let data = await Self.loadData(provider),
+      let picture = ConsultPicture(data: data)
     else {
       phase = .failed
       return
     }
-    shown = picked
-    let original = PixelSize(
-      width: Int(picked.size.width.rounded()), height: Int(picked.size.height.rounded()))
-    originalSize = original
-    let sent = CoordinateMapper.sentSize(of: original)
-    guard let image = Self.encode(picked, at: sent) else {
+    shown = picture.image
+    originalSize = picture.original
+    guard let image = picture.encoded() else {
       phase = .failed
       return
     }
     let client = APIClient(baseURL: base, store: KeychainDeviceKeyStore())
     do {
       let answer = try await client.consult(image: image)
-      phase = .answered(
-        reply: ShareConsult.reply(for: answer),
-        circle: ShareConsult.circle(for: answer, sent: sent, original: original))
+      phase = .answered(reply: ShareConsult.reply(for: answer), circle: picture.circle(for: answer))
     } catch {
       phase = .failed
     }
   }
 
-  /// The shared image with its orientation applied, at one pixel per point.
-  private static func loadImage(_ provider: NSItemProvider) async -> UIImage? {
+  /// The shared image's bytes. `ConsultPicture` shrinks and encodes them, the same as the chat's
+  /// photo button does.
+  private static func loadData(_ provider: NSItemProvider) async -> Data? {
     await withCheckedContinuation { continuation in
       _ = provider.loadDataRepresentation(for: .image) { data, _ in
-        guard let data, let image = UIImage(data: data) else {
-          continuation.resume(returning: nil)
-          return
-        }
-        continuation.resume(returning: image)
+        continuation.resume(returning: data)
       }
     }
-  }
-
-  /// The image drawn at exactly `size` pixels, as JPEG. A lower quality is tried when the first one
-  /// is over what the server takes (server/src/consult.ts, IMAGE_MAX_BASE64_CHARS).
-  private static func encode(_ image: UIImage, at size: PixelSize) -> ConsultImage? {
-    let format = UIGraphicsImageRendererFormat()
-    format.scale = 1
-    format.opaque = true
-    let target = CGSize(width: size.width, height: size.height)
-    let drawn = UIGraphicsImageRenderer(size: target, format: format).image { _ in
-      image.draw(in: CGRect(origin: .zero, size: target))
-    }
-    for quality in [0.85, 0.6, 0.4] {
-      guard let data = drawn.jpegData(compressionQuality: quality) else { continue }
-      if (data.count + 2) / 3 * 4 <= 3_000_000 {
-        return ConsultImage(mediaType: .jpeg, data: data, size: size)
-      }
-    }
-    return nil
   }
 }
 
@@ -147,37 +121,5 @@ struct ShareView: View {
   private var circle: PixelPoint? {
     if case .answered(_, let circle) = model.phase { return circle }
     return nil
-  }
-}
-
-/// The shared image, fitted, with a ring where to press.
-struct CircledImage: View {
-  let image: UIImage
-  let original: PixelSize
-  let circle: PixelPoint?
-
-  var body: some View {
-    GeometryReader { geo in
-      let scale = min(
-        geo.size.width / CGFloat(original.width), geo.size.height / CGFloat(original.height))
-      let shown = CGSize(
-        width: CGFloat(original.width) * scale, height: CGFloat(original.height) * scale)
-      let origin = CGPoint(
-        x: (geo.size.width - shown.width) / 2, y: (geo.size.height - shown.height) / 2)
-      ZStack(alignment: .topLeading) {
-        Image(uiImage: image)
-          .resizable()
-          .frame(width: shown.width, height: shown.height)
-          .offset(x: origin.x, y: origin.y)
-        if let circle {
-          Circle()
-            .stroke(Color.red, lineWidth: 5)
-            .frame(width: 56, height: 56)
-            .position(x: origin.x + circle.x * scale, y: origin.y + circle.y * scale)
-        }
-      }
-    }
-    .accessibilityElement()
-    .accessibilityLabel(circle == nil ? "見せた画像" : "見せた画像。押す場所に赤い丸")
   }
 }

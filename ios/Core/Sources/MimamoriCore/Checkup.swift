@@ -63,7 +63,7 @@ public final class CheckupPolicy: @unchecked Sendable {
   /// server. The menu names are Apple's: 「設定」「一般」「iPhoneストレージ」
   /// (support.apple.com/ja-jp/108429, read on 2026年11月7日).
   public static let storageGuide =
-    "一緒に空けよう。設定を開いて、一般、iPhoneストレージの順に押してね。おすすめと、大きいアプリの一覧が出るよ。広告の掃除アプリは入れなくていいよ。迷ったら、その画面のスクショをみまもりに共有してね"
+    "一緒に空けよう。設定を開いて、一般、iPhoneストレージの順に押してね。おすすめと、大きいアプリの一覧が出るよ。広告の掃除アプリは入れなくていいよ。迷ったら、その画面のスクショを撮って、下の写真のボタンから見せてね"
 
   /// The prompt, with the amount left in GB (as the Settings app counts, 1 GB = 10^9 bytes).
   public static func storagePrompt(availableBytes: Int64) -> String {

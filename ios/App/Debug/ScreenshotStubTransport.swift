@@ -30,6 +30,8 @@
     static var cameraOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-camera-open") }
     /// With `-mimamori-stub-note-open`, the home screen opens the set words ("ひと言") at once.
     static var gmailButton: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-gmail") }
+    /// With `-mimamori-stub-photo-open`, the home screen opens the photo button's picker at once (#221).
+    static var photoOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-photo-open") }
     static var noteOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-note-open") }
     /// With `-mimamori-stub-wipe-open`, the check before "すべて消す" ("消す" or "やめる") opens at once.
     static var wipeOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-wipe-open") }
@@ -69,6 +71,8 @@
             : (201, Self.joinAnswer(role: Self.role(in: request)))
         case ("PUT", "/members/me/apns"):
           (204, "")
+        case ("POST", "/consult") where Self.body(of: request)["image"] != nil:
+          (200, Self.pictureAnswer(to: Self.body(of: request)))
         case ("POST", "/consult"):
           (200, Self.consultAnswer(to: Self.field("text", in: request) ?? "", hasHistory: Self.hasHistory(request)))
         case ("GET", "/cases"):
@@ -144,6 +148,19 @@
       return json([
         "reply": reply, "speak": reply.replacingOccurrences(of: "「", with: "").replacingOccurrences(of: "」", with: ""),
         "handoff": handoff,
+      ])
+    }
+
+    /// For an image (the share sheet or the chat's photo button): a ring in the middle of what was
+    /// sent, so the circle can be shot on the simulator.
+    private static func pictureAnswer(to body: [String: Any]) -> String {
+      let image = body["image"] as? [String: Any] ?? [:]
+      let width = image["width"] as? Int ?? 0
+      let height = image["height"] as? Int ?? 0
+      let reply = "丸のところを押して"
+      return json([
+        "reply": reply, "speak": reply, "handoff": false,
+        "tap": ["x": Double(width) / 2, "y": Double(height) / 2],
       ])
     }
 

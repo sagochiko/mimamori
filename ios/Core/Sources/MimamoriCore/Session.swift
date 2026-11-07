@@ -86,6 +86,12 @@ public final class Session {
     try await call { try await $0.consult(text: text, history: history) }
   }
 
+  /// A screenshot she picked with the photo button in her chat (#221), with what she wrote if anything.
+  /// No earlier turns go with it, as from the share sheet.
+  public func consult(image: ConsultImage, text: String = "") async throws -> ConsultAnswer {
+    try await call { try await $0.consult(image: image, text: text) }
+  }
+
   public func smiles() async throws -> SmileBoard {
     try await call { try await $0.smiles() }
   }
