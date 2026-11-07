@@ -286,17 +286,20 @@ const CONTACT =
 // message she got (#243, a screenshot of 「写真とビデオ」 with 「これ」 got the fixed level 3 line). Matched on
 // Claude's action and reasons, not its topic alone.
 const STORAGE_GUIDE = /ストレージ|容量|空き|最近削除した項目|写真とビデオ/;
-// The names such a screen shows, taken out before CONTACT is cast over the guidance: the app's name in
-// brackets, its attachments and data, and the page before or after. Nothing else is spared: a message's
-// steps, its link, a call, an SMS, a sign-in, opening a page, or installing an app still get the fixed
-// line, since this net keeps text in a screenshot from leading her through Claude's words.
-const STORAGE_NAMES =
-  /「(メッセージ|メール)」|(メッセージ|メール)(アプリ)?(の|で)?(添付|書類|データ|容量|写真|ビデオ|ファイル)|(前|次|元)の(ページ|画面)/g;
+// The names such a screen shows, taken out before CONTACT is cast over the guidance: only 「メッセージ」 and
+// 「メール」 in brackets, with the storage words right after them (「メッセージ」の添付の容量, 「メール」のデータ).
+// Nothing else is spared, not the page before or after, a message's attachment, or sending by message: a fake
+// 「ストレージがいっぱい」 page leads her on with those (review 1 of PR #245). A name followed by opening,
+// going on, sending, allowing, or running (「メッセージ」を開いて) keeps the fixed line too. When in doubt the
+// fixed line wins: a miss is heavier than a needless fixed line.
+const STORAGE_NAMES = /「(メッセージ|メール)」(の(添付|書類)?の?(容量|データ))?/g;
+const NAME_THEN_STEP = /「(メッセージ|メール)」(を|に|で|から)?(開|進|送|許可|実行)/;
 
 /** CONTACT on Claude's guidance for an image, with the names a storage screen shows left out (#243). */
 function guidesContact(lines: readonly string[], guide: readonly string[]): boolean {
   if (!guide.some((l) => STORAGE_GUIDE.test(l))) return lines.some((l) => CONTACT.test(l));
   return lines.some((l) => {
+    if (NAME_THEN_STEP.test(l)) return true;
     const rest = l.replace(STORAGE_NAMES, "");
     return CONTACT.test(rest) || /ログイン|サインイン/.test(rest);
   });
