@@ -6,9 +6,9 @@ import UIKit
 /// (ios/ShareExtension) or from the photo button in her chat (#221). Shared by both targets
 /// (ios/project.yml), so the image is shrunk, sent, and circled the same way from either.
 ///
-/// Only held in memory: nothing of it is written to a file, to her conversation, or to the server's
-/// storage (docs/design.md, "スクショはその場で処理して残さない"). Its words are data for Claude, never
-/// for this code.
+/// What is sent is only held in memory and never kept on the server (docs/design.md, "スクショはその場で
+/// 処理して残さない"). From the chat, a smaller copy (`kept()`) stays with her conversation on the iPhone
+/// (#243); the share sheet keeps nothing. Its words are data for Claude, never for this code.
 struct ConsultPicture {
   /// The image as she picked it, with its orientation applied, at one pixel per point.
   let image: UIImage
@@ -46,6 +46,25 @@ struct ConsultPicture {
       if ConsultImage.fitsServer(byteCount: data.count) {
         return ConsultImage(mediaType: .jpeg, data: data, size: sent)
       }
+    }
+    return nil
+  }
+
+  /// The copy kept with her conversation (#243): at most `ChatPicture.maxEdge` pixels on its longest
+  /// edge, as JPEG at the first of `ChatPicture.jpegQualities` within `ChatPicture.maxBytes`. Nil when
+  /// none is, and then nothing is kept.
+  func kept() -> Data? {
+    let size = ChatPicture.keptSize(of: original)
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    format.opaque = true
+    let target = CGSize(width: size.width, height: size.height)
+    let drawn = UIGraphicsImageRenderer(size: target, format: format).image { _ in
+      image.draw(in: CGRect(origin: .zero, size: target))
+    }
+    for quality in ChatPicture.jpegQualities {
+      guard let data = drawn.jpegData(compressionQuality: quality) else { continue }
+      if data.count <= ChatPicture.maxBytes { return data }
     }
     return nil
   }

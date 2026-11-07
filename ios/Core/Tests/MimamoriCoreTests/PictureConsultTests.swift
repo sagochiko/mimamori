@@ -4,7 +4,8 @@ import Testing
 @testable import MimamoriCore
 
 /// The photo button in her chat (#221): she picks a screenshot, it goes to POST /consult the same way
-/// as from the share sheet, and her line and the answer join the conversation; the image does not.
+/// as from the share sheet, and her words, the image shrunk, and the answer join the conversation
+/// on the iPhone (#243).
 @MainActor
 @Suite("チャットから見せた画像の相談")
 struct PictureConsultTests {
@@ -63,20 +64,20 @@ struct PictureConsultTests {
 
   // MARK: 画面の流れ
 
-  @Test("写真を選ぶと、母の側の1行を出して画像を送る")
+  @Test("写真だけを送ると、吹き出しに言葉は入れず画像を送る(#243)")
   func pictureSends() {
     var flow = VoiceConsult()
     #expect(flow.pictured("", at: .t0) == [.stopSpeaking, .sendPicture(text: "")])
-    #expect(flow.phase == .thinking(said: VoiceConsult.pictureLine))
+    #expect(flow.phase == .thinking(said: ""))
     #expect(!flow.acceptsText)
   }
 
-  @Test("欄に書いた言葉があれば、1行にも送る言葉にも入れる")
+  @Test("欄に書いた言葉があれば、「画像を見せました」を付けずにそのまま送る(#243)")
   func pictureWithText() {
     var flow = VoiceConsult()
     #expect(
       flow.pictured("  これどこ押すの \n", at: .t0) == [.stopSpeaking, .sendPicture(text: "これどこ押すの")])
-    #expect(flow.phase == .thinking(said: "\(VoiceConsult.pictureLine)。これどこ押すの"))
+    #expect(flow.phase == .thinking(said: "これどこ押すの"))
   }
 
   // MARK: 入力欄に付ける(#234)
@@ -97,17 +98,76 @@ struct PictureConsultTests {
     _ = flow.attachPicture()
     #expect(
       flow.typed(" この写真を消したい ", at: .t0) == [.stopSpeaking, .sendPicture(text: "この写真を消したい")])
-    #expect(flow.phase == .thinking(said: "\(VoiceConsult.pictureLine)。この写真を消したい"))
+    #expect(flow.phase == .thinking(said: "この写真を消したい"))
     #expect(!flow.hasPicture)
   }
 
-  @Test("画像が付いていても、言葉が無ければ送らない(PR #237 の1回目のレビュー)")
-  func attachedAloneDoesNotSend() {
+  // The author changed the form of review 1 of PR #237 on 2026-11-07 (#243): an image alone goes.
+  @Test("画像が付いていれば、言葉が無くても送れる(#243)")
+  func attachedAloneSends() {
     var flow = VoiceConsult()
     _ = flow.attachPicture()
-    #expect(!flow.canSend(draft: "  "))
-    #expect(flow.typed("  ", at: .t0).isEmpty)
-    #expect(flow.phase == .idle)
+    #expect(flow.canSend(draft: "  "))
+    #expect(flow.typed("  ", at: .t0) == [.stopSpeaking, .sendPicture(text: "")])
+    #expect(flow.phase == .thinking(said: ""))
+    #expect(!flow.hasPicture)
+  }
+
+  // The hole review 1 of PR #237 found: her answer to the question went without the image, and Claude
+  // answered without seeing the screen. The image goes back onto the field and goes with her words.
+  @Test("画像だけで送って聞き返されたら、画像を欄に戻し、次の言葉と一緒にもう一度送る(#243)")
+  func askedBackKeepsPicture() {
+    var flow = VoiceConsult()
+    _ = flow.attachPicture()
+    _ = flow.typed("", at: .t0)
+    let ask = ConsultAnswer(
+      reply: ShareConsult.askPicture, speak: ShareConsult.askPicture, tap: nil, handoff: false)
+    #expect(flow.answered(ask, readsAloud: true) == [.keepPicture])
+    #expect(flow.hasPicture)
+    #expect(flow.acceptsText)
+    #expect(flow.typed("容量を空けたい", at: .t0) == [.stopSpeaking, .sendPicture(text: "容量を空けたい")])
+    #expect(!flow.hasPicture)
+  }
+
+  @Test("聞き返されたあと声で答えても、画像が一緒に行く(#243)")
+  func askedBackGoesWithVoice() {
+    var flow = VoiceConsult()
+    _ = flow.attachPicture()
+    _ = flow.typed("", at: .t0)
+    let ask = ConsultAnswer(
+      reply: ShareConsult.askPicture, speak: ShareConsult.askPicture, tap: nil, handoff: false)
+    _ = flow.answered(ask, readsAloud: false)
+    _ = flow.micTapped(at: .t0)
+    _ = flow.listeningStarted(at: .t0)
+    _ = flow.sendTapped(at: .t0)
+    #expect(flow.heard("容量を空けたい", isFinal: true, at: .t0) == [.sendPicture(text: "容量を空けたい")])
+  }
+
+  @Test("画像の答えが聞き返しでなければ、画像は欄に戻らない。言葉だけの相談の同じ文でも戻らない")
+  func otherAnswersDropPicture() {
+    var flow = VoiceConsult()
+    _ = flow.attachPicture()
+    _ = flow.typed("", at: .t0)
+    #expect(flow.answered(Self.circled, readsAloud: true).isEmpty)
+    #expect(!flow.hasPicture)
+
+    var words = VoiceConsult()
+    _ = words.typed("これ", at: .t0)
+    let ask = ConsultAnswer(
+      reply: ShareConsult.askPicture, speak: ShareConsult.askPicture, tap: nil, handoff: false)
+    #expect(words.answered(ask, readsAloud: false).isEmpty)
+    #expect(!words.hasPicture)
+  }
+
+  @Test("画像が付いていても、声で何も聞けなければ何も送らず、画像は欄に残る")
+  func notHeardKeepsPicture() {
+    var flow = VoiceConsult()
+    _ = flow.attachPicture()
+    _ = flow.micTapped(at: .t0)
+    _ = flow.listeningStarted(at: .t0)
+    _ = flow.sendTapped(at: .t0)
+    #expect(flow.heard("", isFinal: true, at: .t0).isEmpty)
+    #expect(flow.phase == .failed(.notHeard))
     #expect(flow.hasPicture)
   }
 
@@ -138,7 +198,7 @@ struct PictureConsultTests {
     #expect(flow.hasPicture)
     #expect(flow.sendTapped(at: .t0) == [.stopListening])
     #expect(flow.heard("これを消したい", isFinal: true, at: .t0) == [.sendPicture(text: "これを消したい")])
-    #expect(flow.phase == .thinking(said: "\(VoiceConsult.pictureLine)。これを消したい"))
+    #expect(flow.phase == .thinking(said: "これを消したい"))
     #expect(!flow.hasPicture)
     #expect(flow.answered(Self.circled, readsAloud: true).isEmpty)
   }
@@ -209,7 +269,7 @@ struct PictureConsultTests {
 
     _ = flow.pictured("", at: .t0)
     #expect(flow.answered(Self.circled, readsAloud: true).isEmpty)
-    #expect(flow.phase == .answered(said: VoiceConsult.pictureLine, answer: Self.circled))
+    #expect(flow.phase == .answered(said: "", answer: Self.circled))
   }
 
   @Test("画像の答えのあとに声で聞けば、今までどおり読み上げる")
@@ -241,7 +301,7 @@ struct PictureConsultTests {
     #expect(thinking.phase == .thinking(said: "Wi-Fi がつながらない"))
   }
 
-  @Test("1行には数字も画像の中身も入らない")
+  @Test("読み上げの1行には数字も画像の中身も入らない")
   func lineIsFixed() {
     let digits = VoiceConsult.pictureLine.unicodeScalars.filter {
       $0.properties.generalCategory == .decimalNumber
@@ -252,21 +312,116 @@ struct PictureConsultTests {
 
   // MARK: 会話の記録
 
-  @Test("会話に残るのは母の側の1行と答えの文だけで、1行は次の相談の前のやり取りに入る")
-  func keepsLineAndAnswerOnly() {
+  @Test("会話には母の言葉と縮めた画像と答えが残り、言葉だけが次の相談の前のやり取りに入る(#243)")
+  func keepsWordsPictureAndAnswer() throws {
     let store = MemoryChatStore()
-    var keeper = ChatKeeper(store: store)
-    keeper.pictured(VoiceConsult.pictureLine, at: .t0)
+    let pictures = MemoryPictureStore()
+    var keeper = ChatKeeper(store: store, pictures: pictures)
+    keeper.pictured("これを消したい", picture: Data([1, 2, 3]), at: .t0)
     keeper.answered(ShareConsult.reply(for: Self.circled), at: .t0)
 
     let messages = keeper.log.messages
     #expect(messages.map(\.role) == [.protected, .ai])
-    #expect(messages.map(\.text) == [VoiceConsult.pictureLine, "丸のところを押して。押せたらもう一度見せて"])
-    #expect(!messages[0].isLocalOnly)
+    #expect(messages.map(\.text) == ["これを消したい", "丸のところを押して。押せたらもう一度見せて"])
+    let name = try #require(messages[0].picture)
+    #expect(messages[1].picture == nil)
+    #expect(pictures.files == [name: Data([1, 2, 3])])
+    #expect(keeper.picture(for: messages[0]) == Data([1, 2, 3]))
     #expect(keeper.log.history(at: .t0.addingTimeInterval(60)).map(\.text) == messages.map(\.text))
 
-    // What the file holds is the same two lines and nothing else.
+    // The file names the picture; the picture itself is in its own file.
     let saved = ChatLog.restored(from: store.data, at: .t0)
-    #expect(saved.messages.map(\.text) == messages.map(\.text))
+    #expect(saved.messages.map(\.picture) == [name, nil])
+    #expect(!(String(data: store.data ?? Data(), encoding: .utf8) ?? "").contains("AQID"))
   }
+
+  @Test("画像だけの吹き出しは、言葉が無いので前のやり取りに入れない(#243)")
+  func pictureAloneNotInHistory() {
+    var keeper = ChatKeeper(store: MemoryChatStore(), pictures: MemoryPictureStore())
+    keeper.pictured("", picture: Data([1]), at: .t0)
+    keeper.answered(ShareConsult.askPicture, at: .t0)
+    #expect(keeper.log.messages.count == 2)
+    #expect(keeper.log.history(at: .t0.addingTimeInterval(60)).map(\.text) == [ShareConsult.askPicture])
+  }
+
+  @Test("50件から外れた吹き出しの画像は一緒に消える(#243)")
+  func trimmedPictureGoes() {
+    let pictures = MemoryPictureStore()
+    var keeper = ChatKeeper(store: MemoryChatStore(), pictures: pictures)
+    keeper.pictured("", picture: Data([1]), at: .t0)
+    #expect(pictures.files.count == 1)
+    for i in 0..<(ChatLog.keep - 1) { keeper.answered("答え\(i)", at: .t0) }
+    #expect(pictures.files.count == 1)
+    keeper.answered("もう1件", at: .t0)
+    #expect(keeper.log.messages.count == ChatLog.keep)
+    #expect(pictures.files.isEmpty)
+  }
+
+  @Test("30日たって読み込みで落ちた吹き出しの画像も消え、残った吹き出しの画像は残る(#243)")
+  func agedPictureGoes() throws {
+    let store = MemoryChatStore()
+    let pictures = MemoryPictureStore()
+    var old = ChatKeeper(store: store, pictures: pictures)
+    old.pictured("", picture: Data([1]), at: .t0)
+    old.pictured("", picture: Data([2]), at: .t0 + ChatLog.keptFor - 10)
+    #expect(pictures.files.count == 2)
+
+    var reopened = ChatKeeper(store: store, pictures: pictures)
+    reopened.load(at: .t0 + ChatLog.keptFor)
+    let kept = try #require(reopened.log.messages.first?.picture)
+    #expect(pictures.files == [kept: Data([2])])
+  }
+
+  @Test("会話を消すと画像も全部消える(#243)")
+  func clearRemovesPictures() {
+    let pictures = MemoryPictureStore()
+    var keeper = ChatKeeper(store: MemoryChatStore(), pictures: pictures)
+    keeper.pictured("", picture: Data([1]), at: .t0)
+    keeper.clear()
+    #expect(pictures.files.isEmpty)
+  }
+
+  @Test("画面のロック中で会話を読めないあいだは、画像も書かない")
+  func lockedWritesNoPicture() {
+    let store = MemoryChatStore()
+    store.locked = true
+    let pictures = MemoryPictureStore()
+    var keeper = ChatKeeper(store: store, pictures: pictures)
+    keeper.pictured("これ", picture: Data([1]), at: .t0)
+    #expect(pictures.files.isEmpty)
+    #expect(keeper.log.messages.first?.picture == nil)
+  }
+
+  @Test("前の形のファイル(画像の欄が無い)もそのまま読める")
+  func oldFileReads() throws {
+    let old = #"{"messages":[{"id":"8D6B1F3E-2C7A-4C1B-9E44-0B6F2D1A7C55","role":"protected","text":"画像を見せました","at":0}]}"#
+    let log = ChatLog.restored(from: Data(old.utf8), at: Date(timeIntervalSinceReferenceDate: 60))
+    #expect(log.messages.map(\.text) == ["画像を見せました"])
+    #expect(log.messages.first?.picture == nil)
+  }
+
+  // MARK: 残す画像の大きさ
+
+  @Test("残す画像は長い辺を1024ピクセルまでに縮め、送る大きさより小さい")
+  func keptSize() {
+    let screenshot = PixelSize(width: 1179, height: 2556)
+    #expect(ChatPicture.keptSize(of: screenshot) == PixelSize(width: 472, height: 1024))
+    #expect(ChatPicture.keptSize(of: PixelSize(width: 4032, height: 3024)) == PixelSize(width: 1024, height: 768))
+    #expect(ChatPicture.keptSize(of: PixelSize(width: 800, height: 600)) == PixelSize(width: 800, height: 600))
+    let sent = CoordinateMapper.sentSize(of: screenshot)
+    #expect(max(sent.width, sent.height) > ChatPicture.maxEdge)
+    // 50 of them at most: 15 MB.
+    #expect(ChatPicture.maxBytes * ChatLog.keep == 15_000_000)
+    #expect(ChatPicture.maxBytes < 2_250_000)
+  }
+}
+
+/// Pictures in memory, by file name.
+final class MemoryPictureStore: ChatPictureStore, @unchecked Sendable {
+  var files: [String: Data] = [:]
+
+  func read(_ name: String) throws -> Data? { files[name] }
+  func write(_ data: Data, name: String) throws { files[name] = data }
+  func remove(_ name: String) throws { files[name] = nil }
+  func names() throws -> [String] { Array(files.keys) }
 }

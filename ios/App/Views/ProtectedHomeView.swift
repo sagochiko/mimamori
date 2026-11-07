@@ -157,7 +157,8 @@ struct ProtectedHomeView: View {
             case .day(let label, _):
               DayRow(label: label)
             case .message(let message, let time):
-              ChatTurn(message: message, time: time).id(message.id)
+              ChatTurn(message: message, time: time) { model.chat.picture(for: message) }
+                .id(message.id)
               if let shown = model.shownPicture, shown.anchor == message.id {
                 ShownPictureView(shown: shown)
               }
@@ -330,12 +331,22 @@ struct ProtectedHomeView: View {
         hint: model.voice.hasVoiceDraft
           ? "聞き取った言葉が入っています。直してから送るボタンを押してください。声で聞いたときと同じに扱います"
           : model.attachedPicture != nil
-            ? "付けたスクショで何をしたいかを書いて、送るボタンを押してください。マイクで話しても一緒に送ります"
+            ? "付けたスクショで何をしたいかを書いて、送るボタンを押してください。マイクで話しても一緒に送ります。書かずに送ると、スクショだけを送ります"
             : "スマホの困りごとや気になる電話のことを書いて、送るボタンを押してください。答えは読み上げません"
       )
       .padding(.vertical, 11)
       Group {
-        if hasDraft { sendButton } else { microphone }
+        if hasDraft {
+          sendButton
+        } else if model.attachedPicture != nil {
+          // An image alone can go (#243); the microphone stays, to say what she wants with it.
+          HStack(spacing: 0) {
+            microphone
+            sendButton
+          }
+        } else {
+          microphone
+        }
       }
       .padding(.trailing, 4)
       .padding(.bottom, 4)
@@ -368,7 +379,7 @@ struct ProtectedHomeView: View {
     .accessibilityHint(
       model.voice.acceptsText
         ? (model.attachedPicture != nil
-          ? "付けたスクショと書いた言葉を一緒に送ります"
+          ? (hasDraft ? "付けたスクショと書いた言葉を一緒に送ります" : "付けたスクショだけを送ります")
           : model.voice.hasVoiceDraft ? "聞き取った言葉を送ります" : "書いた言葉を送ります")
         : "答えを待っています")
   }
@@ -408,7 +419,7 @@ struct ProtectedHomeView: View {
     .accessibilityLabel("スクショを見せる")
     .accessibilityHint(
       model.voice.acceptsText
-        ? "写真の中からスクショを1枚選ぶと、欄に付きます。何をしたいかを書くか話して送ると、みまもりが見て、押す場所に丸を付けて答えます。画像は残しません"
+        ? "写真の中からスクショを1枚選ぶと、欄に付きます。欄を長く押してペーストしても付けられます。何をしたいかを書くか話して送ると、みまもりが見て、押す場所に丸を付けて答えます。送った画像は小さくしてこの iPhone の会話にだけ残します"
         : "答えを待っています")
   }
 
@@ -499,7 +510,7 @@ private struct AttachedPictureView: View {
       .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color(.separator), lineWidth: 0.5))
       .accessibilityElement()
       .accessibilityLabel("付けたスクショ")
-      .accessibilityHint("送るボタンを押すと、書いた言葉と一緒に送ります")
+      .accessibilityHint("送るボタンを押すと、書いた言葉と一緒に送ります。言葉が無ければスクショだけを送ります")
       .overlay(alignment: .topTrailing) {
         Button(action: remove) {
           Image(systemName: "xmark.circle.fill")
@@ -553,7 +564,10 @@ private struct ConversationViewport: Equatable {
 struct ChatTurn: View {
   let message: ChatMessage
   let time: ChatStamp?
+  /// Reads the screenshot kept with her message (#243), once, when the turn appears.
+  var loadPicture: (() -> Data?)? = nil
   @Environment(\.dynamicTypeSize) private var typeSize
+  @State private var picture: UIImage?
 
   var body: some View {
     Group {
@@ -588,10 +602,23 @@ struct ChatTurn: View {
     }
     .accessibilityElement(children: .combine)
     .accessibilityLabel(label)
+    .task(id: message.picture) {
+      guard message.picture != nil, let data = loadPicture?() else { return }
+      picture = UIImage(data: data)
+    }
   }
 
-  private var bubble: some View {
-    Bubble(text: message.text, fill: Color(.secondarySystemBackground), foreground: .primary)
+  /// Her words in a bubble, with the screenshot she showed small above it (#243). An image sent alone
+  /// has no bubble.
+  @ViewBuilder private var bubble: some View {
+    VStack(alignment: .trailing, spacing: 4) {
+      if message.picture != nil {
+        ChatPictureThumbnail(image: picture)
+      }
+      if !message.text.isEmpty {
+        Bubble(text: message.text, fill: Color(.secondarySystemBackground), foreground: .primary)
+      }
+    }
   }
 
   @ViewBuilder private var stamp: some View {
@@ -604,10 +631,38 @@ struct ChatTurn: View {
     }
   }
 
+  /// "画像を見せました" stays here only: the screen shows the image instead (#243).
   private var label: String {
     let who = message.role == .protected ? "あなた" : "答え"
-    guard let time else { return "\(who)、\(message.text)" }
-    return "\(who)、\(message.text)、\(time.spoken)"
+    let said = [message.picture != nil ? VoiceConsult.pictureLine : nil, message.text.isEmpty ? nil : message.text]
+      .compactMap { $0 }
+      .joined(separator: "、")
+    guard let time else { return "\(who)、\(said)" }
+    return "\(who)、\(said)、\(time.spoken)"
+  }
+}
+
+/// The screenshot kept with her message, small, as in the usual chat apps (#243). A soft placeholder
+/// while it is read, or when it could not be kept.
+private struct ChatPictureThumbnail: View {
+  let image: UIImage?
+
+  var body: some View {
+    Group {
+      if let image {
+        Image(uiImage: image)
+          .resizable()
+          .aspectRatio(image.size.width / max(image.size.height, 1), contentMode: .fit)
+      } else {
+        RoundedRectangle(cornerRadius: 12)
+          .fill(Color(.secondarySystemBackground))
+          .aspectRatio(0.5, contentMode: .fit)
+          .overlay(Image(systemName: "photo").foregroundStyle(.tertiary))
+      }
+    }
+    .frame(height: 140)
+    .clipShape(RoundedRectangle(cornerRadius: 12))
+    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color(.separator), lineWidth: 0.5))
   }
 }
 
