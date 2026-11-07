@@ -137,7 +137,9 @@ export const FootageSlot: React.FC<{
   file: string;
   what: string;
   fallback?: React.ReactNode;
-}> = ({ file, what, fallback }) => {
+  // シミュレータで撮れない場面(Safari の拡張)で、仮の動画の代わりに出す札
+  simLabel?: string;
+}> = ({ file, what, fallback, simLabel }) => {
   if (hasStatic(file)) {
     return (
       <AbsoluteFill style={{ backgroundColor: "#000" }}>
@@ -148,9 +150,66 @@ export const FootageSlot: React.FC<{
       </AbsoluteFill>
     );
   }
+  // 本物が無いうちは、footage-sim/ の同じ名前の仮の動画(シミュレータの録画)を流す
+  const sim = file.replace(/^footage\//, "footage-sim/");
+  if (hasStatic(sim)) {
+    return (
+      <AbsoluteFill style={{ backgroundColor: "#2A2C33" }}>
+        <Video
+          src={staticFile(sim)}
+          muted
+          style={{ width: "100%", height: "100%", objectFit: "contain" }}
+        />
+        <SimBadge />
+      </AbsoluteFill>
+    );
+  }
   if (fallback) return <>{fallback}</>;
+  if (simLabel) {
+    return (
+      <AbsoluteFill
+        style={{
+          backgroundColor: "#2A2C33",
+          justifyContent: "center",
+          alignItems: "center",
+          fontFamily,
+        }}
+      >
+        <div
+          style={{
+            border: "4px dashed #8E93A0",
+            borderRadius: 32,
+            padding: "48px 80px",
+            fontSize: 56,
+            fontWeight: 700,
+            color: "#C9CDD6",
+          }}
+        >
+          {simLabel}
+        </div>
+      </AbsoluteFill>
+    );
+  }
   return <Placeholder file={file} what={what} />;
 };
+
+const SimBadge: React.FC = () => (
+  <div
+    style={{
+      position: "absolute",
+      right: 40,
+      top: 36,
+      fontFamily,
+      fontSize: 26,
+      color: "#E5E7EB",
+      backgroundColor: "rgba(0,0,0,0.55)",
+      padding: "8px 18px",
+      borderRadius: 12,
+    }}
+  >
+    シミュレータの画面(撮影で差し替え)
+  </div>
+);
 
 export const Placeholder: React.FC<{ file: string; what: string }> = ({
   file,

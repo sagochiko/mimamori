@@ -44,7 +44,7 @@ export const Demo: React.FC = () => (
     </Sequence>
     <Sequence name="72 Safari" from={startOf(SCENES.safari)} durationInFrames={lengthOf(SCENES.safari)}>
       <Narration scene="safari" />
-      <FootageSlot file={FOOTAGE.safari.file} what={FOOTAGE.safari.what} />
+      <FootageSlot file={FOOTAGE.safari.file} what={FOOTAGE.safari.what} simLabel="Safari の画面(撮影で差し替え)" />
       <Captions cues={SAFARI_CAPTIONS} />
     </Sequence>
     <Sequence name="85 SMS" from={startOf(SCENES.sms)} durationInFrames={lengthOf(SCENES.sms)}>

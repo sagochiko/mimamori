@@ -13,3 +13,5 @@ public/footage/*
 !public/footage/.gitkeep
 public/assets/*
 !public/assets/.gitkeep
+# シミュレータの stub で撮った仮の動画は入れる(試験用の文と描いた顔だけが映る)
+!public/footage-sim/*.mp4
