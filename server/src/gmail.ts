@@ -512,14 +512,7 @@ export function mailPayload(part: MessagePart): JudgePayload {
   const from = header("from");
   const subject = decodeWords(header("subject"));
   const { plain, html } = bodies(part);
-  // Only <a href>, a link she can tap (#249). <link>, <img>, <base>, and CSS url() are what the mail
-  // loads; a font sheet from fonts.googleapis.com once made a genuine mail that named a company look
-  // like it led elsewhere. Quoted attribute values are skipped whole, so a ">" in them does not end the tag.
-  const hrefs = html.flatMap((h) =>
-    [...h.matchAll(/<a\s(?:[^>"']|"[^"]*"|'[^']*')*?(?<=\s)href\s*=\s*["']?(https?:\/\/[^"'\s>]+)/gi)].map(
-      (m) => m[1] ?? "",
-    ),
-  );
+  const hrefs = html.flatMap(anchorHrefs);
   const body = plain.length > 0 ? plain.join("\n") : html.map(htmlToText).join("\n");
   const links = [...new Set(hrefs.filter((l) => l !== "" && !body.includes(l)))].slice(0, LINKS_KEPT);
   const text = cut([subject, body, ...links].filter((s) => s !== "").join("\n"), JUDGE_TEXT_MAX_CHARS);
@@ -532,6 +525,31 @@ export function mailPayload(part: MessagePart): JudgePayload {
   if (url) out.url = url;
   const domain = normalizeDomain({ familyId: "", source: "gmail", payload: out });
   if (domain) out.domain = domain;
+  return out;
+}
+
+/** How far into one <a ...> the href is looked for: up to the next "<", and no more than this. */
+const TAG_MAX_CHARS = 4096;
+
+/**
+ * The first http(s) href of each <a> tag, a link she can tap (#249). <link>, <img>, <base>, and CSS
+ * url() are what the mail loads; a font sheet from fonts.googleapis.com once made a genuine mail that
+ * named a company look like it led elsewhere. Each tag is read on its own, from "<a" followed by a
+ * space or "/" up to the next "<", so the time stays linear in the length of the mail: one pattern over
+ * the whole HTML that skipped quoted values backtracked for seconds on tags that never close (review 1
+ * of PR #250). Quotes are not matched up, so an unquoted value with a "'" in it, or a quote that never
+ * closes, does not hide the href after it; "href" must follow a space, "/", or a quote, so data-href
+ * does not count. Erring this way can count a link a browser would not follow, never miss one it would.
+ */
+function anchorHrefs(html: string): string[] {
+  const out: string[] = [];
+  for (const start of html.matchAll(/<a[\s/]/gi)) {
+    const from = start.index + 2;
+    const next = html.indexOf("<", from);
+    const tag = html.slice(from, Math.min(next === -1 ? html.length : next, from + TAG_MAX_CHARS));
+    const href = /(?<=[\s/"'])href\s*=\s*["']?(https?:\/\/[^"'\s>]+)/i.exec(tag);
+    if (href?.[1]) out.push(href[1]);
+  }
   return out;
 }
 
@@ -616,11 +634,37 @@ function decodeWords(value: string): string {
   });
 }
 
+/**
+ * Drops <style>, <script>, and <head> blocks. A block that never closes is kept, as the pattern this
+ * replaces did; where the closing tag is missing is found once per name, so many unclosed openers
+ * cost no more than one (review 1 of PR #250: the pattern took seconds on 200,000 characters).
+ */
+function dropBlocks(html: string): string {
+  const lower = html.toLowerCase();
+  const closed = new Map<string, boolean>();
+  let out = "";
+  let kept = 0;
+  const opener = /<(style|script|head)/gi;
+  for (let m = opener.exec(html); m !== null; m = opener.exec(html)) {
+    const name = (m[1] ?? "").toLowerCase();
+    if (closed.get(name) === false) continue;
+    const end = lower.indexOf(`</${name}>`, m.index + m[0].length);
+    if (end === -1) {
+      closed.set(name, false);
+      continue;
+    }
+    out += `${html.slice(kept, m.index)} `;
+    kept = end + name.length + 3;
+    opener.lastIndex = kept;
+  }
+  return out + html.slice(kept);
+}
+
 function htmlToText(html: string): string {
-  return html
-    .replace(/<(style|script|head)[\s\S]*?<\/\1>/gi, " ")
+  return dropBlocks(html)
     .replace(/<br\s*\/?>|<\/(p|div|tr|li|h\d)>/gi, "\n")
-    .replace(/<[^>]*>/g, " ")
+    // [^<>], not [^>]: a "<" that never closes is then passed over at once instead of read to the end.
+    .replace(/<[^<>]*>/g, " ")
     .replace(/&nbsp;/gi, " ")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")

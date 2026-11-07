@@ -75,7 +75,10 @@ interface Mailbox {
 
 const b64url = (text: string) => {
   const bytes = new TextEncoder().encode(text);
-  return btoa(String.fromCharCode(...bytes))
+  let binary = "";
+  // In pieces, so a long mail does not overflow the call stack.
+  for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return btoa(binary)
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
@@ -990,12 +993,31 @@ describe("reading one mail", () => {
       ["an <a> with other attributes first", '<a class="btn" target="_blank" href="https://nta-refund.example/pay">お支払い</a>'],
       ["an <a> whose data-href comes first", '<a data-href="https://other.example/x" href="https://nta-refund.example/pay">お支払い</a>'],
       ["an <a> with a > in a quoted title", '<a title="1 > 0" href="https://nta-refund.example/pay">お支払い</a>'],
+      // Forms a browser still reads as a link, which the first <a href> pattern of #249 dropped
+      // (review 1 of PR #250): a slash after the tag name, a lone quote in an unquoted value, and an
+      // earlier attribute whose quote never closes.
+      ["an <a/href>", '<a/href="https://nta-refund.example/pay">お支払い</a>'],
+      ["an <a> with a lone quote in an unquoted value", `<a title=it's href="https://nta-refund.example/pay">お支払い</a>`],
+      ["an <a> with an unclosed quote before href", '<a x=" href="https://nta-refund.example/pay">お支払い</a>'],
       ["an <A HREF> in capitals over lines", '<A\n  HREF=\'https://nta-refund.example/pay\'>お支払い</A>'],
     ])("keeps %s", (_, tag) => {
       const payload = htmlMail(`<html><head><link href="https://fonts.googleapis.com/css2"></head><body>${tag}</body></html>`);
       expect(payload.url).toBe("https://nta-refund.example/pay");
       expect(payload.text).not.toContain("fonts.googleapis.com");
     });
+  });
+
+  it("reads the links of a long HTML mail in time linear to its length", () => {
+    // Tags that never close: a pattern that backtracks over them took seconds on far less (review 1
+    // of PR #250), and the watch has 10 ms of CPU a tick on the Free plan.
+    for (const unit of ["<a '", '<a "', "<a x", "<style ", "<head", "<script "]) {
+      // The link first: with a ">" after them, the unclosed tags would end there and cost nothing.
+      const html = `<a href="https://nta-refund.example/pay">お支払い</a>${unit.repeat(250_000)}`;
+      const started = performance.now();
+      const payload = mailPayload({ mimeType: "text/html", headers: [], body: { data: b64url(html) } });
+      expect(performance.now() - started).toBeLessThan(1000);
+      expect(payload.url).toBe("https://nta-refund.example/pay");
+    }
   });
 
   it("keeps the text within what the queue carries", () => {
