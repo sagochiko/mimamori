@@ -23,6 +23,7 @@
 
 import { requireMember } from "./auth";
 import type { ExternalBudget } from "./budget";
+import { isMailDomain, MAIL_DMARC, type MailAuth } from "./claude";
 import { errorResponse, json } from "./http";
 import { firstLink, worthAsking } from "./inbound";
 import { enqueueJudge, JUDGE_TEXT_MAX_CHARS, normalizeDomain, type JudgePayload } from "./judge";
@@ -493,7 +494,8 @@ async function judgeMessage(env: Env, familyId: string, id: string, auth: Record
   if (labels.includes("SENT") || labels.includes("DRAFT")) return true;
 
   const payload = mailPayload(message.payload);
-  const rule = judgeByRules({ source: "gmail", ...payload });
+  const { mailAuth: _forClaude, ...forRules } = payload;
+  const rule = judgeByRules({ source: "gmail", ...forRules });
   if (!worthAsking(rule)) return true;
   try {
     await enqueueJudge(env, { familyId, source: "gmail", payload });
@@ -512,7 +514,7 @@ export function mailPayload(part: MessagePart): JudgePayload {
   const from = header("from");
   const subject = decodeWords(header("subject"));
   const { plain, html } = bodies(part);
-  const hrefs = html.flatMap((h) => [...h.matchAll(/href\s*=\s*["']?(https?:\/\/[^"'\s>]+)/gi)].map((m) => m[1] ?? ""));
+  const hrefs = html.flatMap(anchorHrefs);
   const body = plain.length > 0 ? plain.join("\n") : html.map(htmlToText).join("\n");
   const links = [...new Set(hrefs.filter((l) => l !== "" && !body.includes(l)))].slice(0, LINKS_KEPT);
   const text = cut([subject, body, ...links].filter((s) => s !== "").join("\n"), JUDGE_TEXT_MAX_CHARS);
@@ -525,6 +527,67 @@ export function mailPayload(part: MessagePart): JudgePayload {
   if (url) out.url = url;
   const domain = normalizeDomain({ familyId: "", source: "gmail", payload: out });
   if (domain) out.domain = domain;
+  out.mailAuth = gmailAuth(part.headers ?? []);
+  return out;
+}
+
+/**
+ * DMARC and header.from from the Authentication-Results Gmail wrote (#249), for Claude only. Gmail
+ * puts its own above the sender's, which a sender can write with the same name: seen on one mail of
+ * the author's inbox, not stated in Google's reference (docs/design.md). So only the first header
+ * whose value starts with "mx.google.com;" is read. Anything else is "unknown".
+ */
+function gmailAuth(headers: Array<{ name?: string; value?: string }>): MailAuth {
+  const value = headers
+    .filter((h) => h.name?.toLowerCase() === "authentication-results")
+    .map((h) => h.value?.trim() ?? "")
+    .find((v) => /^mx\.google\.com\s*;/i.test(v));
+  if (value === undefined) return { dmarc: "unknown" };
+  const clause = value.split(";").find((c) => /^\s*dmarc\s*=/i.test(c));
+  const result = /^\s*dmarc\s*=\s*([A-Za-z]+)(?![A-Za-z])/i.exec(clause ?? "")?.[1]?.toLowerCase();
+  const dmarc = MAIL_DMARC.find((d) => d === result);
+  if (!dmarc) return { dmarc: "unknown" };
+  const from = /\bheader\.from\s*=\s*([^\s;()]+)/i.exec(clause ?? "")?.[1];
+  return from && isMailDomain(from) ? { dmarc, from: from.toLowerCase() } : { dmarc };
+}
+
+/**
+ * The first http(s) href of each <a> tag, a link she can tap (#249). <link>, <img>, <base>, and CSS
+ * url() are what the mail loads; a font sheet from fonts.googleapis.com once made a genuine mail that
+ * named a company look like it led elsewhere.
+ *
+ * Each tag is read on its own, from "<a" followed by a space or "/" up to the first ">" outside
+ * quotes, and never past the next such "<a" (review 2 of PR #250: a "<" in a quoted title used to end
+ * it). As in HTML, a quote opens a value only right after "=". The pieces never overlap, so the time stays linear in the length of the mail; one pattern over
+ * the whole HTML backtracked for seconds on tags that never close (review 1). A quote that does not
+ * close before the next "<a" just runs to it, so an unquoted value with a "'" in it, or a quote that
+ * never closes, does not hide the href after it. "href" must follow a space, "/", or a quote, so
+ * data-href does not count. Erring this way can count a link a browser would not follow, or one of a
+ * later tag of the piece, never miss one it would.
+ */
+function anchorHrefs(html: string): string[] {
+  const starts = [...html.matchAll(/<a[\s/]/gi)].map((m) => m.index);
+  const out: string[] = [];
+  starts.forEach((from, k) => {
+    const limit = starts[k + 1] ?? html.length;
+    let quote = "";
+    let before = "";
+    let end = limit;
+    for (let i = from + 2; i < limit; i++) {
+      const c = html[i] ?? "";
+      if (quote !== "") {
+        if (c === quote) quote = "";
+      } else if ((c === '"' || c === "'") && before === "=") {
+        quote = c;
+      } else if (c === ">") {
+        end = i;
+        break;
+      }
+      if (!/\s/.test(c)) before = c;
+    }
+    const href = /(?<=[\s/"'])href\s*=\s*["']?(https?:\/\/[^"'\s>]+)/i.exec(html.slice(from + 2, end));
+    if (href?.[1]) out.push(href[1]);
+  });
   return out;
 }
 
@@ -609,11 +672,47 @@ function decodeWords(value: string): string {
   });
 }
 
+/**
+ * Drops <style>, <script>, and <head> blocks. A block that never closes is kept, as the pattern this
+ * replaces did; where the closing tag is missing is found once per name, so many unclosed openers
+ * cost no more than one (review 1 of PR #250: the pattern took seconds on 200,000 characters).
+ */
+function dropBlocks(html: string): string {
+  // The closing tag is looked for in the mail itself with a case-blind pattern, not in a lower-cased
+  // copy: a letter such as "İ" grows in lower case, so the copy's positions point elsewhere (review 2
+  // of PR #250).
+  const closers = new Map<string, RegExp>();
+  const closed = new Map<string, boolean>();
+  let out = "";
+  let kept = 0;
+  const opener = /<(style|script|head)/gi;
+  for (let m = opener.exec(html); m !== null; m = opener.exec(html)) {
+    const name = (m[1] ?? "").toLowerCase();
+    if (closed.get(name) === false) continue;
+    const closer = closers.get(name) ?? new RegExp(`</${name}>`, "gi");
+    closers.set(name, closer);
+    closer.lastIndex = m.index + m[0].length;
+    const end = closer.exec(html)?.index ?? -1;
+    if (end === -1) {
+      closed.set(name, false);
+      continue;
+    }
+    out += `${html.slice(kept, m.index)} `;
+    kept = end + name.length + 3;
+    opener.lastIndex = kept;
+  }
+  return out + html.slice(kept);
+}
+
 function htmlToText(html: string): string {
-  return html
-    .replace(/<(style|script|head)[\s\S]*?<\/\1>/gi, " ")
+  return dropBlocks(html)
     .replace(/<br\s*\/?>|<\/(p|div|tr|li|h\d)>/gi, "\n")
-    .replace(/<[^>]*>/g, " ")
+    // No quotes are read: a tag ends at its first ">" (review 3 of PR #250). Reading quotes let one
+    // that a browser does not take as a value (<p =">) remove text she sees. Some of a quoted value
+    // may stay in the text instead, which is the safer way to be wrong; the links in it are taken by
+    // anchorHrefs on its own. [^<>], not [^>]: a "<" that never closes is passed over at once instead
+    // of read to the end, so the time stays linear.
+    .replace(/<[^<>]*>/g, " ")
     .replace(/&nbsp;/gi, " ")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")

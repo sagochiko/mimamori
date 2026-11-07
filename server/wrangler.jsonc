@@ -21,9 +21,11 @@
   "r2_buckets": [{ "binding": "PHOTOS" }],
 
   // Claude judgments run here instead of inside the request (task 6 adds the consumer logic).
+  // max_retries 5: a mail waits for Claude up to its third delivery (#249), and the two after it are
+  // for a notice that did not get through (src/judge.ts, MAIL_CLAUDE_DELIVERIES).
   "queues": {
     "producers": [{ "binding": "JUDGE_QUEUE", "queue": "mimamori-judge" }],
-    "consumers": [{ "queue": "mimamori-judge", "max_batch_size": 10, "max_retries": 3 }]
+    "consumers": [{ "queue": "mimamori-judge", "max_batch_size": 10, "max_retries": 5 }]
   },
 
   // The Free plan allows 5 Cron Triggers per account, so there is one tick every 5 minutes and
