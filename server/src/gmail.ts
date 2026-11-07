@@ -551,9 +551,6 @@ function gmailAuth(headers: Array<{ name?: string; value?: string }>): MailAuth 
   return from && isMailDomain(from) ? { dmarc, from: from.toLowerCase() } : { dmarc };
 }
 
-/** How far into one <a ...> the href is looked for: up to the next "<", and no more than this. */
-const TAG_MAX_CHARS = 4096;
-
 /**
  * The first http(s) href of each <a> tag, a link she can tap (#249). <link>, <img>, <base>, and CSS
  * url() are what the mail loads; a font sheet from fonts.googleapis.com once made a genuine mail that
@@ -569,7 +566,9 @@ function anchorHrefs(html: string): string[] {
   for (const start of html.matchAll(/<a[\s/]/gi)) {
     const from = start.index + 2;
     const next = html.indexOf("<", from);
-    const tag = html.slice(from, Math.min(next === -1 ? html.length : next, from + TAG_MAX_CHARS));
+    // No cap on the length: the pieces never overlap, so all of them together are the mail at most,
+    // and a cap would let padding before href hide the link.
+    const tag = html.slice(from, next === -1 ? html.length : next);
     const href = /(?<=[\s/"'])href\s*=\s*["']?(https?:\/\/[^"'\s>]+)/i.exec(tag);
     if (href?.[1]) out.push(href[1]);
   }

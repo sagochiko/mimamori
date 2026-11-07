@@ -999,6 +999,8 @@ describe("reading one mail", () => {
       ["an <a/href>", '<a/href="https://nta-refund.example/pay">お支払い</a>'],
       ["an <a> with a lone quote in an unquoted value", `<a title=it's href="https://nta-refund.example/pay">お支払い</a>`],
       ["an <a> with an unclosed quote before href", '<a x=" href="https://nta-refund.example/pay">お支払い</a>'],
+      ["an <a> with a long style before href", `<a style="${"color:red;".repeat(600)}" href="https://nta-refund.example/pay">お支払い</a>`],
+      ["an <a> with spaces before href", `<a${" ".repeat(5000)}href="https://nta-refund.example/pay">お支払い</a>`],
       ["an <A HREF> in capitals over lines", '<A\n  HREF=\'https://nta-refund.example/pay\'>お支払い</A>'],
     ])("keeps %s", (_, tag) => {
       const payload = htmlMail(`<html><head><link href="https://fonts.googleapis.com/css2"></head><body>${tag}</body></html>`);
