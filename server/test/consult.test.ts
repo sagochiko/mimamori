@@ -555,6 +555,17 @@ describe("consult.ts", () => {
     ["erasing the iPhone", "iPhoneを消去したい", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
     ["erasing the iPhone remotely", "iPhoneをリモートで消去して", "「探す」でデバイスを選んで「このデバイスを消去」を押して"],
     ["resetting the whole iPhone", "iPhoneをリセットしたい", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
+    // Review 3 of PR #237: other names for the phone, a factory reset, everything in it, and "全部消して"
+    // with no object at the head of a clause, as a support scam puts it.
+    ["resetting the smartphone", "スマホをリセットしたい", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
+    ["erasing the phone in katakana", "アイフォンを消去したい", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
+    ["resetting the phone in hiragana", "あいふぉんをリセットしたい", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
+    ["erasing the smartphone", "スマホを消去して", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
+    ["a factory reset", "工場出荷の状態に戻したい", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
+    ["erasing everything in it", "スマホの中身を全部消したい", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
+    ["erasing the iPhone in plain words", "iPhoneを消してって言われた", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
+    ["everything, told by support", "サポートの人に全部消してって言われた", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
+    ["everything, after AnyDesk", "AnyDeskを入れたあと全部消してと言われた", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
   ])("still tells the family about %s and reads none of the guidance", async (_label, text, action) => {
     const fam = await setupFamily();
     const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), fakes(help({ action })));
@@ -571,6 +582,13 @@ describe("consult.ts", () => {
     ["deleting every LINE talk", "LINEのトークを全部消したい", "トークの一覧で1つずつ左にずらして「削除」を押して", true],
     ["a password reset", "パスワードをリセットしたい", "ログインの画面の「パスワードをお忘れの方」を押して", false],
     ["a network settings reset", "ネットワーク設定をリセットしたい", "設定の「一般」から「転送またはiPhoneをリセット」の「リセット」で「ネットワーク設定をリセット」を押して", false],
+    // Review 3 of PR #237: the phone named in front of a password or network reset is still phone help.
+    ["a password reset on the iPhone", "iPhoneのパスワードをリセットしたい", "設定の一番上の名前を押して「サインインとセキュリティ」から「パスワードを変更」を押して", false],
+    ["a network reset on the smartphone", "スマホのネットワーク設定をリセットしたい", "設定の「一般」から「転送またはiPhoneをリセット」の「リセット」で「ネットワーク設定をリセット」を押して", false],
+    ["deleting an app on the smartphone", "スマホのアプリを消したい", "ホーム画面でアプリを長く押して「アプリを削除」を押して", true],
+    ["erasing one photo on the smartphone", "スマホの写真を1枚消去したい", "写真を開いてゴミ箱を押して", true],
+    ["a password reset called 初期化", "パスワードを初期化したい", "ログインの画面の「パスワードをお忘れの方」を押して", false],
+    ["clearing all notices at once", "通知を一度に全部消したい", "通知の右上の「×」を長く押して「すべての通知を消去」を押して", true],
   ])("guides %s itself and tells no one", async (_label, text, action, deletes) => {
     const fam = await setupFamily();
     const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), fakes(help({ action })));
@@ -2313,6 +2331,28 @@ describe("the conversation so far", () => {
       turn("protected", "振込のやり方を教えて"),
     ]);
     expect(answer.reply).not.toContain("ATM");
+    expect(answer.handoff).toBe(true);
+  });
+
+  // Review 3 of PR #237: after an earlier question the AI does not guide, Claude's guidance is checked,
+  // and the screen name 「転送またはiPhoneをリセット」 alone does not send a network reset to the family.
+  it("reads out a network settings reset after an earlier question about wiping the phone", async () => {
+    const fam = await setupFamily();
+    const action = "設定の「一般」から「転送またはiPhoneをリセット」の「リセット」で「ネットワーク設定をリセット」を押して";
+    const answer = await consult(consultEnv, motherOf(fam), "Wi-Fiがつながらない", new ExternalBudget(), fakes(help({ action })), [
+      turn("protected", "iPhoneを初期化したい"),
+    ]);
+    expect(answer).toMatchObject({ reply: action, handoff: false });
+    expect(familyPushes(fam)).toHaveLength(0);
+  });
+
+  it("does not read out a wipe after an earlier question about wiping the phone, when Claude names only the screen", async () => {
+    const fam = await setupFamily();
+    const action = "設定の「一般」から「転送またはiPhoneをリセット」を押して、「リセット」を押して";
+    const answer = await consult(consultEnv, motherOf(fam), "次は何を押すの?", new ExternalBudget(), fakes(help({ action })), [
+      turn("protected", "iPhoneを初期化したい"),
+    ]);
+    expect(answer.reply).not.toContain(action);
     expect(answer.handoff).toBe(true);
   });
 

@@ -385,6 +385,30 @@ describe("an image with no words (#234)", () => {
     expect(pushes).toContain(fam.ownerToken);
   });
 
+  // Review 3 of PR #237: the right guidance for a network settings reset names the screen
+  // 「転送またはiPhoneをリセット」; it is phone help with a circle, not a wipe.
+  it("guides a network settings reset read off the image, with the circle, and tells no one", async () => {
+    const fam = await setupFamily();
+    const action = "丸のところの「転送またはiPhoneをリセット」を押して、「リセット」から「ネットワーク設定をリセット」を押して";
+    const net = settings({ action, topic: "Wi-Fiの相談", tap: { x: 500, y: 1500 } });
+    const answer = await consult(consultEnv, motherOf(fam), "", new ExternalBudget(), fakes(net), [], IMAGE);
+    expect(answer.reply).toBe(action);
+    expect(answer.tap).toEqual({ x: 500, y: 1500 });
+    expect(answer.handoff).toBe(false);
+    expect(pushes).toHaveLength(0);
+  });
+
+  it("hands guidance that names only the reset screen on the image to the family, with no circle", async () => {
+    const fam = await setupFamily();
+    const action = "丸のところの「転送またはiPhoneをリセット」を押して、「リセット」を押して";
+    const wipe = settings({ action, topic: "設定の操作の相談", tap: { x: 500, y: 1500 } });
+    const answer = await consult(consultEnv, motherOf(fam), "", new ExternalBudget(), fakes(wipe), [], IMAGE);
+    expect(answer.reply).not.toContain(action);
+    expect(answer.tap).toBeUndefined();
+    expect(answer.handoff).toBe(true);
+    expect(pushes).toContain(fam.ownerToken);
+  });
+
   it("does not ask again once she has said something with the image", async () => {
     const fam = await setupFamily();
     const low = warrant({ level: 3, reasons: [], basis: "", action: "様子を見て", topic: "通知の相談" });

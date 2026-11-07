@@ -127,6 +127,12 @@ export const SCRIPT_TOPIC = "詐欺の手口に似た電話の相談";
 /** The family's one line when no topic or reason of its own is left. */
 export const FALLBACK_TOPIC = "スマホの相談";
 
+// The phone, however she names it, after NFKC and lowercasing (review 3 of PR #237).
+const PHONE = "iphone|アイフォン|アイフォーン|あいふぉん|スマホ|スマートフォン|携帯|端末|デバイス";
+
+// What she may erase one by one on the phone, guided by the AI: "スマホの写真を消去" is not a wipe.
+const ONE_THING = "写真|動画|トーク|アプリ|通知|メール|メッセージ|履歴|タブ|line";
+
 // Topics the AI does not guide, whoever asks and however it is put ("スマホ相談と声" in docs/design.md).
 // Matched on her words after NFKC and lowercasing, like the rules.
 const SENSITIVE: ReadonlyArray<{ reason: string; pattern: RegExp }> = [
@@ -148,21 +154,38 @@ const SENSITIVE: ReadonlyArray<{ reason: string; pattern: RegExp }> = [
     // resetting all of it, erasing all photos, data, or contacts, and deleting mimamori itself stay: the
     // author chose only the first three, a support scam asks for a wipe, and mimamori gone is no watching
     // at all (reviews 1 and 2 of PR #237). A password or network settings reset and "通知を全部消したい"
-    // are phone help, the author's call on the same day.
+    // are phone help, the author's call on the same day. Review 3 of PR #237: the phone by other names,
+    // a factory reset, everything in it, and "全部消して" with no object at the head of a clause ("サポートの
+    // 人に全部消してって言われた"); "通知を全部消したい" has its object and stays phone help. A password,
+    // passcode, or network reset after the phone's name, or "パスワードを初期化", is not a wipe.
     reason: "初期化やみまもりの削除に関わる相談",
     pattern: new RegExp(
       [
-        "初期化",
-        "(iphone|すべての設定|すべてのコンテンツ|工場出荷|転送または).{0,8}リセット",
-        "(iphone|端末|デバイス).{0,8}消去",
+        "(?<!(パスワード|パスコード|ネットワーク設定)を?)初期化",
+        "工場出荷",
+        `(${PHONE}|すべての設定|すべてのコンテンツ|転送または)(?:(?!パスワード|パスコード|ネットワーク).){0,8}リセット`,
+        `(${PHONE})(?:(?!${ONE_THING}).){0,8}消去`,
+        `(${PHONE})を(消|削除)`,
         "コンテンツと設定",
-        "(写真|データ|連絡先).{0,6}(すべて|全部|ぜんぶ).{0,4}(消|削除)",
-        "(すべて|全部|ぜんぶ).{0,4}の?(写真|データ|連絡先).{0,6}(消|削除)",
+        "(写真|データ|連絡先|中身).{0,6}(すべて|全部|ぜんぶ).{0,4}(消|削除)",
+        "(すべて|全部|ぜんぶ).{0,4}の?(写真|データ|連絡先|中身).{0,6}(消|削除)",
+        "(^|[、。 ]|(?<!一度|一気)に|で|と|から)(すべて|全部|ぜんぶ)を?(消|削除)",
         "(みまもり|見守り|mimamori).{0,8}(消|削除)",
       ].join("|"),
     ),
   },
 ];
+
+// The screen 「転送またはiPhoneをリセット」 that a wipe and a harmless reset both go through. In Claude's
+// guidance it is left out when the guidance names a harmless reset, so a network settings reset is
+// guided; guidance that names only the screen still goes to the family (review 3 of PR #237).
+const RESET_SCREEN = /転送または ?(iphone|ipad)? ?を? ?リセット/g;
+const HARMLESS_RESET = /(ネットワーク設定|パスワード|パスコード|キーボードの変換学習|ホーム画面のレイアウト|位置情報とプライバシー)を?リセット/;
+/** Claude's line, normalized, with the reset screen's name left out when only a harmless reset is meant. */
+function claudeLine(line: string): string {
+  const t = normalize(line);
+  return HARMLESS_RESET.test(t) ? t.replace(RESET_SCREEN, "") : t;
+}
 
 // Deleting photos, talks, and apps is guided by the AI itself, with DELETE_CHECK in front, and is not
 // handed to the family (the author's call on 2026-11-07, #234). Wiping the iPhone and deleting mimamori
@@ -929,10 +952,10 @@ function decidePlan(
   // the family (review 1 of PR #186).
   const claudeLines =
     image && claude !== null && claude.kind === "help"
-      ? [claude.action, ...claude.reasons, claude.topic ?? ""].map(normalize)
+      ? [claude.action, ...claude.reasons, claude.topic ?? ""].map(claudeLine)
       : [];
   const guidedLines =
-    askedEarlier && claude !== null && claude.kind === "help" ? [normalize(claude.action), ...claudeLines] : claudeLines;
+    askedEarlier && claude !== null && claude.kind === "help" ? [claudeLine(claude.action), ...claudeLines] : claudeLines;
   const guided = SENSITIVE.filter(({ pattern }) => guidedLines.some((l) => pattern.test(l))).map((s) => s.reason);
   const sensitive = [...new Set([...ownSensitive, ...guided])];
   const reasons = [...decision.reasons];
