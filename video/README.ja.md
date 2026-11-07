@@ -32,7 +32,7 @@ Polly で作った音声は、AWS Service Terms の50.2(AI Services)に「The ou
 
 15〜60秒の場面は、[`docs/design.md`](../docs/design.md) の「デモの流れ(3分)」のとおり、Debug のビルドを起動の引数 `-mimamori-followup-min-seconds 10` で起動すると短い電話で撮れる。同じ日に撮り直すときは `-mimamori-followup-reset` も足す。
 
-`footage/` に本物が無いあいだは、`public/footage-sim/` の同じ名前の仮の動画が流れ、右上に「シミュレータの画面(撮影で差し替え)」と出る。仮の動画は2026年11月7日に、母役のシミュレータ「mimamori mother」で Debug のビルドを起動の引数 `-mimamori-stub -mimamori-stub-joined protected -mimamori-stub-cases none` で起動して撮った。裏側に繋がない偽の通信(`ScreenshotStubTransport`)なので、本番の家族には何も届かない。01 は母の画面、02 は警察を名乗る電話の相談(`-mimamori-stub-draft` で入れた文を送り、決まった1段階の答えが出るまで)、05 は笑顔を撮る画面で、描いた顔だけが映る。シミュレータは通話も SMS も受けられず、Safari の拡張も動かないので、02 は電話のあとの声かけを映さず相談の画面から始まる。04 は体験モードの録画、03 は「Safari の画面(撮影で差し替え)」の札だけにした。作り物の警告の画面は置いていない。仮の動画はリポジトリに入れる。
+`footage/` に本物が無いあいだは、`public/footage-sim/` の同じ名前の仮の動画が流れ、右上に「シミュレータの画面(撮影で差し替え)」と出る。仮の動画は2026年11月7日に、母役のシミュレータ「mimamori mother」で Debug のビルドを起動の引数 `-mimamori-stub -mimamori-stub-joined protected -mimamori-stub-cases none` で起動して撮った。裏側に繋がない偽の通信(`ScreenshotStubTransport`)なので、本番の家族には何も届かない。01 は母の画面、02 は警察を名乗る電話の相談(`-mimamori-stub-draft` で入れた文を送り、決まった1段階の答えが出るまで)。シミュレータは通話も SMS も受けられず、Safari の拡張も動かないので、02 は電話のあとの声かけを映さず相談の画面から始まる。04 は体験モードの録画、03 は「Safari の画面(撮影で差し替え)」の札だけにした。05 は図にした。シミュレータの1台では、家族の側に届くところも返す笑顔も映らないため。作り物の警告の画面は置いていない。仮の動画はリポジトリに入れる。
 
 撮影には母の顔と声が映るので、`public/footage/` と `public/assets/` の中身は `.gitignore` でリポジトリに入れない。元の撮影は `~/mimamori-video/` に置く。
 
@@ -41,6 +41,7 @@ Polly で作った音声は、AWS Service Terms の50.2(AI Services)に「The ou
 - 最後に測る組(holdout)の数字。測ったら [`src/numbers.ts`](src/numbers.ts) の `HOLDOUT` を `null` から数字に替える
 - 母の利用から直した1点と、母、妹、作者で試した観察。[`src/scenes/Accuracy.tsx`](src/scenes/Accuracy.tsx) の `Observation` の枠に [`docs/mother-feedback.md`](../docs/mother-feedback.md) から選んで書く
 - 母の言葉の字幕。[`src/timeline.ts`](src/timeline.ts) の `MOTHER_WORDS_CAPTIONS`
+- `04-sms.mp4` を撮れなかったときは、体験モードの録画の SMS に「家族には知らせないで」が無いので、その文に従わないと言う文を外す。ナレーション [`src/narration.ts`](src/narration.ts) の `06-sms` と、[`src/scenes/FamilyScenes.tsx`](src/scenes/FamilyScenes.tsx) の `SmsFallback` の字幕から消し、`npm run narration -- 06-sms` で作り直す
 - 開発の記録の数(`DEV_RECORD`)は2026年11月7日に `a916f02` で数えた値なので、提出の前に [`docs/submission.md`](../docs/submission.md) の数え方で数え直す
 
 ## 書き出し

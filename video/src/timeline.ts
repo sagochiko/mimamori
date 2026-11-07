@@ -81,7 +81,7 @@ export const TOUR = {
 export const CALL_CONSULT_CAPTIONS = [
   { from: 0, to: 12, text: "長い電話のあとにアプリから声をかける" },
   { from: 12, to: 24, text: "母はそのまま話すだけでいい" },
-  { from: 24, to: 37, text: "AI が筋書きを見抜いて「電話を切って」と返す" },
+  { from: 24, to: 37, text: "アプリが筋書きを見抜いて「電話を切って」と返す" },
 ] as const;
 
 export const SAFARI_CAPTIONS = [
