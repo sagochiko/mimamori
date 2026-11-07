@@ -43,6 +43,12 @@ public struct CallFollowUpState: Codable, Equatable, Sendable {
   /// When a call was last asked about (notified, or left on her screen for the night). That day's
   /// daily prompt is skipped. Optional so that state saved before #99 still decodes.
   public var lastAskedAt: Date?
+  /// The waiting prompt was left for the night (no notification) and has not been on her screen
+  /// yet. If it runs out unseen, it does not count as that day's one (#123, review 1 of PR #238).
+  /// Optional so that state saved before still decodes.
+  public var pendingUnseen: Bool?
+  /// `lastAskedAt` before the unseen prompt set it, put back when that prompt runs out unseen.
+  public var askedBeforeUnseen: Date?
 
   public init() {}
 }
@@ -95,25 +101,31 @@ public final class CallFollowUp: @unchecked Sendable {
   ///
   /// The day is the calendar day of the device (`calendar`) the call ended on, compared with the day
   /// of `lastAskedAt`. A prompt left on her screen for the night counts as that night's day, so a call
-  /// at 0:30 and another at 15:00 get one prompt. A skipped call changes nothing that is kept.
+  /// at 0:30 and another at 10:00 get one prompt. But a night prompt that runs out after 12 hours
+  /// without ever being on her screen is not counted: a missed scam call weighs more than a second
+  /// prompt. A skipped call changes nothing that is kept.
   public func callEnded(_ call: EndedCall) -> FollowUpAction {
     lock.withLock {
       var state = store.load()
+      if dropExpired(&state, now: call.endedAt) { store.save(state) }
       guard call.duration >= minimum, !state.handled.contains(call.id) else {
         return .nothing
       }
       if let asked = state.lastAskedAt, calendar.isDate(asked, inSameDayAs: call.endedAt) {
         return .nothing
       }
+      let quiet = isQuiet(call.endedAt)
       state.handled.append(call.id)
       if state.handled.count > Self.remembered {
         state.handled.removeFirst(state.handled.count - Self.remembered)
       }
+      state.pendingUnseen = quiet ? true : nil
+      state.askedBeforeUnseen = quiet ? state.lastAskedAt : nil
       state.pendingCallId = call.id
       state.pendingEndedAt = call.endedAt
       state.lastAskedAt = call.endedAt
       store.save(state)
-      return isQuiet(call.endedAt) ? .askOnNextOpen : .notifyNow
+      return quiet ? .askOnNextOpen : .notifyNow
     }
   }
 
@@ -121,12 +133,16 @@ public final class CallFollowUp: @unchecked Sendable {
   public func promptToShow(at now: Date) -> String? {
     lock.withLock {
       var state = store.load()
-      guard let endedAt = state.pendingEndedAt else { return nil }
-      guard now.timeIntervalSince(endedAt) < Self.promptLifetime else {
-        state.pendingCallId = nil
-        state.pendingEndedAt = nil
+      if dropExpired(&state, now: now) {
         store.save(state)
         return nil
+      }
+      guard state.pendingEndedAt != nil else { return nil }
+      // It is on her screen now, so it counts as that day's one from here on.
+      if state.pendingUnseen != nil {
+        state.pendingUnseen = nil
+        state.askedBeforeUnseen = nil
+        store.save(state)
       }
       return Self.prompt
     }
@@ -134,7 +150,11 @@ public final class CallFollowUp: @unchecked Sendable {
 
   /// When to post the daily prompt: `DailyCheckIn.schedule`, skipping the day a call was asked about.
   public func dailyCheckIns(_ settings: DailyCheckInSettings, now: Date) -> [DateComponents] {
-    let asked = lock.withLock { store.load().lastAskedAt }
+    let asked = lock.withLock {
+      var state = store.load()
+      if dropExpired(&state, now: now) { store.save(state) }
+      return state.lastAskedAt
+    }
     return DailyCheckIn.schedule(settings, now: now, lastCallFollowUpAt: asked, calendar: calendar)
   }
 
@@ -170,8 +190,23 @@ public final class CallFollowUp: @unchecked Sendable {
       var state = store.load()
       state.pendingCallId = nil
       state.pendingEndedAt = nil
+      state.pendingUnseen = nil
+      state.askedBeforeUnseen = nil
       store.save(state)
     }
+  }
+
+  /// Drops a waiting prompt older than `promptLifetime`. One left for the night and never on her
+  /// screen gives that day back. True when something changed.
+  private func dropExpired(_ state: inout CallFollowUpState, now: Date) -> Bool {
+    guard let endedAt = state.pendingEndedAt, now.timeIntervalSince(endedAt) >= Self.promptLifetime
+    else { return false }
+    if state.pendingUnseen == true { state.lastAskedAt = state.askedBeforeUnseen }
+    state.pendingCallId = nil
+    state.pendingEndedAt = nil
+    state.pendingUnseen = nil
+    state.askedBeforeUnseen = nil
+    return true
   }
 
   private func isQuiet(_ date: Date) -> Bool {

@@ -73,11 +73,53 @@ struct CallFollowUpTests {
     #expect(followUp.promptToShow(at: Self.at(16, 1)) == nil)
   }
 
-  @Test("夜に残した声かけもその日の1回に数える")
+  @Test("夜に残した声かけも、画面で待っているあいだはその日の1回に数える")
   func nightPromptCountsForThatDay() {
     let (followUp, _) = make()
     #expect(followUp.callEnded(Self.call("c1", minutes: 5, endedAt: Self.at(0, 30))) == .askOnNextOpen)
+    // 12:00 is before the 12 hours run out, so the prompt still waits for her.
+    #expect(followUp.callEnded(Self.call("c2", minutes: 5, endedAt: Self.at(12))) == .nothing)
+  }
+
+  @Test("夜に残した声かけが見られないまま12時間で消えたら、その日の1回に数えない(見逃しは誤報より重い)")
+  func unseenNightPromptDoesNotCount() {
+    let (followUp, _) = make()
+    #expect(followUp.callEnded(Self.call("c1", minutes: 5, endedAt: Self.at(0, 30))) == .askOnNextOpen)
+    // She does not open the app until after 12:30, so the prompt goes without being seen.
+    #expect(followUp.promptToShow(at: Self.at(12, 31)) == nil)
+    #expect(followUp.callEnded(Self.call("c2", minutes: 5, endedAt: Self.at(15))) == .notifyNow)
+  }
+
+  @Test("夜に残した声かけは、アプリを開かないまま次の通話が来ても、消えたあとなら数えない")
+  func unseenNightPromptDoesNotCountWithoutOpening() {
+    let (followUp, _) = make()
+    #expect(followUp.callEnded(Self.call("c1", minutes: 5, endedAt: Self.at(0, 30))) == .askOnNextOpen)
+    #expect(followUp.callEnded(Self.call("c2", minutes: 5, endedAt: Self.at(15))) == .notifyNow)
+  }
+
+  @Test("見られないまま消えた夜の声かけは、その日の毎日の声かけも外さない")
+  func unseenNightPromptKeepsTheDailyPrompt() {
+    let (followUp, _) = make()
+    _ = followUp.callEnded(Self.call("c1", minutes: 5, endedAt: Self.at(0, 30)))
+    let slots = followUp.dailyCheckIns(.standard, now: Self.at(12, 31))
+    #expect(slots.first == DailyCheckInTests.slot(day: 4, hour: 18))
+  }
+
+  @Test("夜に残した声かけを一度でも画面に出したら、消えてもその日の1回に数える")
+  func seenNightPromptCounts() {
+    let (followUp, _) = make()
+    #expect(followUp.callEnded(Self.call("c1", minutes: 5, endedAt: Self.at(0, 30))) == .askOnNextOpen)
+    #expect(followUp.promptToShow(at: Self.at(8)) == CallFollowUp.prompt)
+    #expect(followUp.promptToShow(at: Self.at(12, 31)) == nil)
     #expect(followUp.callEnded(Self.call("c2", minutes: 5, endedAt: Self.at(15))) == .nothing)
+  }
+
+  @Test("通知で出した声かけは、消えてもその日の1回に数える")
+  func notifiedPromptCountsAfterExpiry() {
+    let (followUp, _) = make()
+    #expect(followUp.callEnded(Self.call("c1", minutes: 5, endedAt: Self.at(7))) == .notifyNow)
+    #expect(followUp.promptToShow(at: Self.at(19, 1)) == nil)
+    #expect(followUp.callEnded(Self.call("c2", minutes: 5, endedAt: Self.at(20))) == .nothing)
   }
 
   @Test("日付が変われば、23時59分のあとの0時1分の通話でもまた声をかける")
@@ -87,7 +129,7 @@ struct CallFollowUpTests {
     // 0:01 is in the quiet hours, so it waits on her screen rather than notifying.
     #expect(
       followUp.callEnded(Self.call("c2", minutes: 5, endedAt: Self.at(0, 1, day: 5))) == .askOnNextOpen)
-    #expect(followUp.callEnded(Self.call("c3", minutes: 5, endedAt: Self.at(15, day: 5))) == .nothing)
+    #expect(followUp.callEnded(Self.call("c3", minutes: 5, endedAt: Self.at(12, day: 5))) == .nothing)
   }
 
   @Test("1日1回の記録だけを消すと、同じ日の次の通話でもまた声をかける(デモを撮り直す Debug の起動の引数)")
