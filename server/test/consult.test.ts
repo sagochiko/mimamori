@@ -512,7 +512,11 @@ describe("consult.ts", () => {
   // #234: the author chose on 2026-11-07 that the AI guides deleting data itself, with one line to
   // check first, and does not hand it to the family.
   it.each([
-    ["photos", "いらない写真を消したいんだけど、どうすればいい？", "写真のアプリで「選択」を押して、消したい写真を選んでゴミ箱を押して"],
+    [
+      "photos",
+      "いらない写真を消したいんだけど、どうすればいい？",
+      "写真のアプリで「選択」を押して、消したい写真を選んでゴミ箱を押して",
+    ],
     ["LINE talks", "LINE のトークを消したい", "トークの一覧で消したいトークを左にずらして「削除」を押して"],
     ["an app", "使ってないアプリを消したい", "ホーム画面でアプリを長く押して「アプリを削除」を押して"],
   ])("guides deleting %s with the line to check first, and tells no one", async (_label, text, action) => {
@@ -531,41 +535,118 @@ describe("consult.ts", () => {
   it("puts the line to check first when only Claude's guidance is about deleting", async () => {
     const fam = await setupFamily();
     const action = "設定の「一般」から「iPhone ストレージ」を開いて、いらないアプリを削除できます";
-    const answer = await consult(consultEnv, motherOf(fam), "iPhoneの空きが少ないって出た", new ExternalBudget(), fakes(help({ action })));
-    expect(answer).toMatchObject({ reply: `消したものは戻せないので、残したいものが無いか先に確かめてね。${action}`, handoff: false });
+    const answer = await consult(
+      consultEnv,
+      motherOf(fam),
+      "iPhoneの空きが少ないって出た",
+      new ExternalBudget(),
+      fakes(help({ action })),
+    );
+    expect(answer).toMatchObject({
+      reply: `消したものは戻せないので、残したいものが無いか先に確かめてね。${action}`,
+      handoff: false,
+    });
     expect(familyPushes(fam)).toHaveLength(0);
   });
 
   it("adds no line to check for guidance that deletes nothing", async () => {
     const fam = await setupFamily();
     const action = "設定の「画面表示と明るさ」から「テキストサイズを変更」で大きくできます";
-    const answer = await consult(consultEnv, motherOf(fam), "文字を大きくしたい", new ExternalBudget(), fakes(help({ action })));
+    const answer = await consult(
+      consultEnv,
+      motherOf(fam),
+      "文字を大きくしたい",
+      new ExternalBudget(),
+      fakes(help({ action })),
+    );
     expect(answer.reply).toBe(action);
   });
 
   // Review 1 of PR #237, finding 2: the author chose photos, talks, and apps only. A wipe, a reset, and
   // deleting mimamori itself still go to the family, and a support scam's "erase everything" is caught.
   it.each([
-    ["a support scam with AnyDesk", "サポートの人にAnyDeskを入れて写真を全部消してって言われた", "ホーム画面で AnyDesk を開いて、写真を全部選んで消して"],
-    ["a wipe asked on the phone", "サポートの人に電話で言われて、iPhoneを初期化したい", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
+    [
+      "a support scam with AnyDesk",
+      "サポートの人にAnyDeskを入れて写真を全部消してって言われた",
+      "ホーム画面で AnyDesk を開いて、写真を全部選んで消して",
+    ],
+    [
+      "a wipe asked on the phone",
+      "サポートの人に電話で言われて、iPhoneを初期化したい",
+      "設定の「一般」から「転送またはiPhoneをリセット」を押して",
+    ],
     ["erasing every photo", "写真を全部消したい", "写真のアプリで「選択」を押して全部選んでゴミ箱を押して"],
     ["deleting mimamori", "みまもりのアプリを消したい", "ホーム画面でアプリを長く押して「アプリを削除」を押して"],
     // Review 2 of PR #237.
-    ["deleting mimamori in kanji", "見守りのアプリを削除したい", "ホーム画面でアプリを長く押して「アプリを削除」を押して"],
+    [
+      "deleting mimamori in kanji",
+      "見守りのアプリを削除したい",
+      "ホーム画面でアプリを長く押して「アプリを削除」を押して",
+    ],
     ["erasing the iPhone", "iPhoneを消去したい", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
-    ["erasing the iPhone remotely", "iPhoneをリモートで消去して", "「探す」でデバイスを選んで「このデバイスを消去」を押して"],
-    ["resetting the whole iPhone", "iPhoneをリセットしたい", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
+    [
+      "erasing the iPhone remotely",
+      "iPhoneをリモートで消去して",
+      "「探す」でデバイスを選んで「このデバイスを消去」を押して",
+    ],
+    [
+      "resetting the whole iPhone",
+      "iPhoneをリセットしたい",
+      "設定の「一般」から「転送またはiPhoneをリセット」を押して",
+    ],
     // Review 3 of PR #237: other names for the phone, a factory reset, everything in it, and "全部消して"
     // with no object at the head of a clause, as a support scam puts it.
     ["resetting the smartphone", "スマホをリセットしたい", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
-    ["erasing the phone in katakana", "アイフォンを消去したい", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
-    ["resetting the phone in hiragana", "あいふぉんをリセットしたい", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
+    [
+      "erasing the phone in katakana",
+      "アイフォンを消去したい",
+      "設定の「一般」から「転送またはiPhoneをリセット」を押して",
+    ],
+    [
+      "resetting the phone in hiragana",
+      "あいふぉんをリセットしたい",
+      "設定の「一般」から「転送またはiPhoneをリセット」を押して",
+    ],
     ["erasing the smartphone", "スマホを消去して", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
     ["a factory reset", "工場出荷の状態に戻したい", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
-    ["erasing everything in it", "スマホの中身を全部消したい", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
-    ["erasing the iPhone in plain words", "iPhoneを消してって言われた", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
-    ["everything, told by support", "サポートの人に全部消してって言われた", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
-    ["everything, after AnyDesk", "AnyDeskを入れたあと全部消してと言われた", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
+    [
+      "erasing everything in it",
+      "スマホの中身を全部消したい",
+      "設定の「一般」から「転送またはiPhoneをリセット」を押して",
+    ],
+    [
+      "erasing the iPhone in plain words",
+      "iPhoneを消してって言われた",
+      "設定の「一般」から「転送またはiPhoneをリセット」を押して",
+    ],
+    [
+      "everything, told by support",
+      "サポートの人に全部消してって言われた",
+      "設定の「一般」から「転送またはiPhoneをリセット」を押して",
+    ],
+    [
+      "everything, after AnyDesk",
+      "AnyDeskを入れたあと全部消してと言われた",
+      "設定の「一般」から「転送またはiPhoneをリセット」を押して",
+    ],
+    // Review 4 of PR #237: "全て" in kanji, and the factory state in plain words.
+    ["every photo with 全て", "写真を全て削除したい", "写真のアプリで「選択」を押して全部選んでゴミ箱を押して"],
+    [
+      "everything in it with 全て",
+      "スマホの中身を全て消して",
+      "設定の「一般」から「転送またはiPhoneをリセット」を押して",
+    ],
+    [
+      "全て with no object",
+      "サポートの人に全て消してって言われた",
+      "設定の「一般」から「転送またはiPhoneをリセット」を押して",
+    ],
+    ["back to the first state", "スマホを初期状態に戻して", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
+    [
+      "back to the state when bought",
+      "スマホを買った時の状態に戻したい",
+      "設定の「一般」から「転送またはiPhoneをリセット」を押して",
+    ],
   ])("still tells the family about %s and reads none of the guidance", async (_label, text, action) => {
     const fam = await setupFamily();
     const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), fakes(help({ action })));
@@ -578,17 +659,57 @@ describe("consult.ts", () => {
   // Review 2 of PR #237: the author chose on 2026-11-07 that these are phone help the AI guides.
   it.each([
     ["clearing all notices", "通知を全部消したい", "通知の上で左にずらして「消去」を押して", true],
-    ["closing every Safari tab", "Safariのタブを全部消したい", "タブのボタンを長く押して「すべてのタブを閉じる」を押して", true],
-    ["deleting every LINE talk", "LINEのトークを全部消したい", "トークの一覧で1つずつ左にずらして「削除」を押して", true],
+    [
+      "closing every Safari tab",
+      "Safariのタブを全部消したい",
+      "タブのボタンを長く押して「すべてのタブを閉じる」を押して",
+      true,
+    ],
+    [
+      "deleting every LINE talk",
+      "LINEのトークを全部消したい",
+      "トークの一覧で1つずつ左にずらして「削除」を押して",
+      true,
+    ],
     ["a password reset", "パスワードをリセットしたい", "ログインの画面の「パスワードをお忘れの方」を押して", false],
-    ["a network settings reset", "ネットワーク設定をリセットしたい", "設定の「一般」から「転送またはiPhoneをリセット」の「リセット」で「ネットワーク設定をリセット」を押して", false],
+    [
+      "a network settings reset",
+      "ネットワーク設定をリセットしたい",
+      "設定の「一般」から「転送またはiPhoneをリセット」の「リセット」で「ネットワーク設定をリセット」を押して",
+      false,
+    ],
     // Review 3 of PR #237: the phone named in front of a password or network reset is still phone help.
-    ["a password reset on the iPhone", "iPhoneのパスワードをリセットしたい", "設定の一番上の名前を押して「サインインとセキュリティ」から「パスワードを変更」を押して", false],
-    ["a network reset on the smartphone", "スマホのネットワーク設定をリセットしたい", "設定の「一般」から「転送またはiPhoneをリセット」の「リセット」で「ネットワーク設定をリセット」を押して", false],
-    ["deleting an app on the smartphone", "スマホのアプリを消したい", "ホーム画面でアプリを長く押して「アプリを削除」を押して", true],
+    [
+      "a password reset on the iPhone",
+      "iPhoneのパスワードをリセットしたい",
+      "設定の一番上の名前を押して「サインインとセキュリティ」から「パスワードを変更」を押して",
+      false,
+    ],
+    [
+      "a network reset on the smartphone",
+      "スマホのネットワーク設定をリセットしたい",
+      "設定の「一般」から「転送またはiPhoneをリセット」の「リセット」で「ネットワーク設定をリセット」を押して",
+      false,
+    ],
+    [
+      "deleting an app on the smartphone",
+      "スマホのアプリを消したい",
+      "ホーム画面でアプリを長く押して「アプリを削除」を押して",
+      true,
+    ],
     ["erasing one photo on the smartphone", "スマホの写真を1枚消去したい", "写真を開いてゴミ箱を押して", true],
-    ["a password reset called 初期化", "パスワードを初期化したい", "ログインの画面の「パスワードをお忘れの方」を押して", false],
-    ["clearing all notices at once", "通知を一度に全部消したい", "通知の右上の「×」を長く押して「すべての通知を消去」を押して", true],
+    [
+      "a password reset called 初期化",
+      "パスワードを初期化したい",
+      "ログインの画面の「パスワードをお忘れの方」を押して",
+      false,
+    ],
+    [
+      "clearing all notices at once",
+      "通知を一度に全部消したい",
+      "通知の右上の「×」を長く押して「すべての通知を消去」を押して",
+      true,
+    ],
   ])("guides %s itself and tells no one", async (_label, text, action, deletes) => {
     const fam = await setupFamily();
     const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), fakes(help({ action })));
@@ -1545,7 +1666,13 @@ describe("the one line the family gets", () => {
     await consult(consultEnv, motherOf(fam), POLICE, new ExternalBudget(), fakes(scam()));
     const said = "孫の運動会の写真をアルバムにまとめて残したい";
     const action = `孫の運動会の写真をアルバムにまとめて残したいときは、写真のアプリで選んで「アルバムに追加」を押して`;
-    const answer = await consult(consultEnv, motherOf(fam), said, new ExternalBudget(), fakes(help({ action }), T0 + 5 * 60_000));
+    const answer = await consult(
+      consultEnv,
+      motherOf(fam),
+      said,
+      new ExternalBudget(),
+      fakes(help({ action }), T0 + 5 * 60_000),
+    );
     expect(answer.reply).toBe(action);
     const card = await cardOf(fam);
     expect(card?.aiReply).toBe(POLICE_REPLY);
@@ -1793,19 +1920,22 @@ describe("a line from Claude that says the family was told", () => {
   // Until #188 Claude's level 3 action was read in front of the fixed line, and these had to get past
   // TOLD_CLAIM there. A level 3 scam answer is now the fixed line only; phone guidance below still
   // checks them.
-  it.each(advice)("reads the fixed line at level 3, with Claude's advice to ask the family or not (#188): %s", async (line) => {
-    const fam = await setupFamily();
-    const said = scam({ level: 3, basis: "", action: line });
-    const answer = await consult(
-      consultEnv,
-      motherOf(fam),
-      "知らない番号から荷物の連絡が来た",
-      new ExternalBudget(),
-      fakes(said),
-    );
-    expect(answer.reply).toBe("お金や暗証番号を聞かれたら止めて、家族に確かめて");
-    expect(familyPushes(fam)).toHaveLength(0);
-  });
+  it.each(advice)(
+    "reads the fixed line at level 3, with Claude's advice to ask the family or not (#188): %s",
+    async (line) => {
+      const fam = await setupFamily();
+      const said = scam({ level: 3, basis: "", action: line });
+      const answer = await consult(
+        consultEnv,
+        motherOf(fam),
+        "知らない番号から荷物の連絡が来た",
+        new ExternalBudget(),
+        fakes(said),
+      );
+      expect(answer.reply).toBe("お金や暗証番号を聞かれたら止めて、家族に確かめて");
+      expect(familyPushes(fam)).toHaveLength(0);
+    },
+  );
 
   it.each(advice)("reads the phone guidance as it is, without telling the family: %s", async (line) => {
     const fam = await setupFamily();
@@ -2338,10 +2468,16 @@ describe("the conversation so far", () => {
   // and the screen name 「転送またはiPhoneをリセット」 alone does not send a network reset to the family.
   it("reads out a network settings reset after an earlier question about wiping the phone", async () => {
     const fam = await setupFamily();
-    const action = "設定の「一般」から「転送またはiPhoneをリセット」の「リセット」で「ネットワーク設定をリセット」を押して";
-    const answer = await consult(consultEnv, motherOf(fam), "Wi-Fiがつながらない", new ExternalBudget(), fakes(help({ action })), [
-      turn("protected", "iPhoneを初期化したい"),
-    ]);
+    const action =
+      "設定の「一般」から「転送またはiPhoneをリセット」の「リセット」で「ネットワーク設定をリセット」を押して";
+    const answer = await consult(
+      consultEnv,
+      motherOf(fam),
+      "Wi-Fiがつながらない",
+      new ExternalBudget(),
+      fakes(help({ action })),
+      [turn("protected", "iPhoneを初期化したい")],
+    );
     expect(answer).toMatchObject({ reply: action, handoff: false });
     expect(familyPushes(fam)).toHaveLength(0);
   });
@@ -2349,9 +2485,14 @@ describe("the conversation so far", () => {
   it("does not read out a wipe after an earlier question about wiping the phone, when Claude names only the screen", async () => {
     const fam = await setupFamily();
     const action = "設定の「一般」から「転送またはiPhoneをリセット」を押して、「リセット」を押して";
-    const answer = await consult(consultEnv, motherOf(fam), "次は何を押すの?", new ExternalBudget(), fakes(help({ action })), [
-      turn("protected", "iPhoneを初期化したい"),
-    ]);
+    const answer = await consult(
+      consultEnv,
+      motherOf(fam),
+      "次は何を押すの?",
+      new ExternalBudget(),
+      fakes(help({ action })),
+      [turn("protected", "iPhoneを初期化したい")],
+    );
     expect(answer.reply).not.toContain(action);
     expect(answer.handoff).toBe(true);
   });
@@ -3463,7 +3604,13 @@ describe("Claude's words in a scam answer on words alone (#188)", () => {
 
   it.each(cases)("reads none of it at level 1 (%s)", async (_l, words, line) => {
     const fam = await setupFamily();
-    const answer = await consult(consultEnv, motherOf(fam), MESSAGE, new ExternalBudget(), fakes(scam({ level: 1, ...words })));
+    const answer = await consult(
+      consultEnv,
+      motherOf(fam),
+      MESSAGE,
+      new ExternalBudget(),
+      fakes(scam({ level: 1, ...words })),
+    );
     expect(answer.reply).toBe(LIKE_SCAM);
     expect(answer.reply).not.toContain(line);
     expect(answer.handoff).toBe(true);
@@ -3473,7 +3620,13 @@ describe("Claude's words in a scam answer on words alone (#188)", () => {
 
   it.each(cases)("reads none of it at level 2 (%s)", async (_l, words, line) => {
     const fam = await setupFamily();
-    const answer = await consult(consultEnv, motherOf(fam), MESSAGE, new ExternalBudget(), fakes(scam({ level: 2, ...words })));
+    const answer = await consult(
+      consultEnv,
+      motherOf(fam),
+      MESSAGE,
+      new ExternalBudget(),
+      fakes(scam({ level: 2, ...words })),
+    );
     expect(answer.reply).toBe(LIKE_SCAM);
     expect(answer.reply).not.toContain(line);
     expect(answer.handoff).toBe(true);
@@ -3509,22 +3662,27 @@ describe("Claude's words in a scam answer on words alone (#188)", () => {
     ["知らない番号から電話があった。警察だって", 1],
     ["警察を名乗る人から電話が来てる", 2],
     ["警察から電話。今話してる", 2],
-  ] as const)("tells her to hang up with the fixed police lines when the police call: %s (level %d)", async (text, level) => {
-    const fam = await setupFamily();
-    const said = scam({ level, basis: "リンクを開いて手続きを進めて。", action: "表示された番号に電話して確認して" });
-    const deps = fakes(said);
-    const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps);
-    expect(deps.claudeCalls).toBe(1);
-    expect(answer.reply).toBe(POLICE_REPLY);
-    expect(answer.handoff).toBe(true);
-    expect((await alertsOf(fam.familyId))[0]?.level).toBe(level);
-    expect(familyPushes(fam).length).toBeGreaterThan(0);
-  });
+  ] as const)(
+    "tells her to hang up with the fixed police lines when the police call: %s (level %d)",
+    async (text, level) => {
+      const fam = await setupFamily();
+      const said = scam({ level, basis: "リンクを開いて手続きを進めて。", action: "表示された番号に電話して確認して" });
+      const deps = fakes(said);
+      const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps);
+      expect(deps.claudeCalls).toBe(1);
+      expect(answer.reply).toBe(POLICE_REPLY);
+      expect(answer.handoff).toBe(true);
+      expect((await alertsOf(fam.familyId))[0]?.level).toBe(level);
+      expect(familyPushes(fam).length).toBeGreaterThan(0);
+    },
+  );
 
   it("tells her to hang up when her question points back at the script told before", async () => {
     const turn = (role: "protected" | "ai", text: string): ConsultTurn => ({ role, text });
     const fam = await setupFamily();
-    const deps = fakes(scam({ level: 1, basis: "リンクを開いて手続きを進めて。", action: "届いた認証コードを入力して" }));
+    const deps = fakes(
+      scam({ level: 1, basis: "リンクを開いて手続きを進めて。", action: "届いた認証コードを入力して" }),
+    );
     const answer = await consult(consultEnv, motherOf(fam), "それってどういうこと?", new ExternalBudget(), deps, [
       turn("protected", POLICE),
       turn("ai", POLICE_REPLY),
@@ -3540,7 +3698,12 @@ describe("Claude's words in a scam answer on words alone (#188)", () => {
     ["a handoff", "警察から電話。今話してる", { handoff: true }],
   ] as const)("tells her to hang up, then that the family was told, for %s", async (_l, text, over) => {
     const fam = await setupFamily();
-    const said = scam({ level: 1, basis: "リンクを開いて手続きを進めて。", action: "届いた認証コードを入力して", ...over });
+    const said = scam({
+      level: 1,
+      basis: "リンクを開いて手続きを進めて。",
+      action: "届いた認証コードを入力して",
+      ...over,
+    });
     const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), fakes(said));
     expect(answer.reply).toBe(`${POLICE_REPLY}。家族に伝えました`);
     expect(answer.handoff).toBe(true);
@@ -3551,7 +3714,11 @@ describe("Claude's words in a scam answer on words alone (#188)", () => {
   // Review 2 of PR #191: her earlier words count only when this one points back, and not for a
   // message, which is no call to hang up. A warning she passes on is no call she got (#81).
   it.each([
-    ["a new topic after the police earlier", "Amazonからこのリンク開いてってSMSが来た", ["さっき警察から電話あったけど本物だった"]],
+    [
+      "a new topic after the police earlier",
+      "Amazonからこのリンク開いてってSMSが来た",
+      ["さっき警察から電話あったけど本物だった"],
+    ],
     ["a message she points at after the police earlier", "それってメールのこと?", ["警察から電話。今話してる"]],
     ["a warning she passes on", "警察を名乗る詐欺に注意ってテレビで見た", []],
   ] as const)("keeps the general fixed warning for %s", async (_l, text, earlier) => {
@@ -3571,8 +3738,17 @@ describe("Claude's words in a scam answer on words alone (#188)", () => {
       { role: "protected", text: "ほかの人には言わないでって言われた" },
       { role: "ai", text: POLICE_REPLY },
     ];
-    const deps = fakes(scam({ level: 1, basis: "リンクを開いて手続きを進めて。", action: "届いた認証コードを入力して" }));
-    const answer = await consult(consultEnv, motherOf(fam), "それってどういうこと?", new ExternalBudget(), deps, history);
+    const deps = fakes(
+      scam({ level: 1, basis: "リンクを開いて手続きを進めて。", action: "届いた認証コードを入力して" }),
+    );
+    const answer = await consult(
+      consultEnv,
+      motherOf(fam),
+      "それってどういうこと?",
+      new ExternalBudget(),
+      deps,
+      history,
+    );
     expect(deps.claudeCalls).toBe(1);
     expect(answer.reply).toBe(POLICE_REPLY);
   });
@@ -3724,31 +3900,40 @@ describe("words that do not go on with the script told before (#219)", () => {
   it.each([
     ["the script", told],
     ["a caller who says he is her son", son],
-  ] as const)("shows Claude the turns before 大丈夫, 大丈夫よね, 大丈夫ですね, and ok after %s", async (_label, before) => {
-    for (const text of ["大丈夫よね", "大丈夫", "大丈夫ですね", "ok"]) {
-      const fam = await setupFamily();
-      pushes = [];
-      const deps = fakes(null);
-      const seen: Array<readonly ConsultTurn[]> = [];
-      deps.askClaude = async (_e, _text, _rule, history = []) => {
-        seen.push(history);
-        return history.length > 0 ? scam({ level: 1 }) : help({ action: GREETING });
-      };
-      const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps, before);
-      expect(seen, text).toEqual([before]);
-      expect(answer.handoff, text).toBe(true);
-      expect(familyPushes(fam).map((p) => p.title), text).toEqual(["1段階", "1段階"]);
-    }
-  });
+  ] as const)(
+    "shows Claude the turns before 大丈夫, 大丈夫よね, 大丈夫ですね, and ok after %s",
+    async (_label, before) => {
+      for (const text of ["大丈夫よね", "大丈夫", "大丈夫ですね", "ok"]) {
+        const fam = await setupFamily();
+        pushes = [];
+        const deps = fakes(null);
+        const seen: Array<readonly ConsultTurn[]> = [];
+        deps.askClaude = async (_e, _text, _rule, history = []) => {
+          seen.push(history);
+          return history.length > 0 ? scam({ level: 1 }) : help({ action: GREETING });
+        };
+        const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps, before);
+        expect(seen, text).toEqual([before]);
+        expect(answer.handoff, text).toBe(true);
+        expect(
+          familyPushes(fam).map((p) => p.title),
+          text,
+        ).toEqual(["1段階", "1段階"]);
+      }
+    },
+  );
 
-  it.each(["おはよう", "ありがとう", "はい", "わかった"])("still judges %s after the script as on its own", async (text) => {
-    const fam = await setupFamily();
-    await afterResolvedScript(fam);
-    const { deps, seen } = readsHistory(() => help({ action: GREETING }));
-    await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps, told);
-    expect(seen).toEqual([[]]);
-    expect(familyPushes(fam)).toEqual([]);
-  });
+  it.each(["おはよう", "ありがとう", "はい", "わかった"])(
+    "still judges %s after the script as on its own",
+    async (text) => {
+      const fam = await setupFamily();
+      await afterResolvedScript(fam);
+      const { deps, seen } = readsHistory(() => help({ action: GREETING }));
+      await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps, told);
+      expect(seen).toEqual([[]]);
+      expect(familyPushes(fam)).toEqual([]);
+    },
+  );
 
   it.each([
     ["おはよう", true],
