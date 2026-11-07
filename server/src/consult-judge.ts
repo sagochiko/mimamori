@@ -132,6 +132,12 @@ const PHONE = "iphone|アイフォン|アイフォーン|あいふぉん|スマ�
 
 // What she may erase one by one on the phone, guided by the AI: "スマホの写真を消去" is not a wipe.
 const ONE_THING = "写真|動画|トーク|アプリ|通知|メール|メッセージ|履歴|タブ|line";
+// One setting put back to its first state, which is phone help and not a wipe (review 6 of PR #237).
+const ONE_SETTING =
+  "パスワード|パスコード|ネットワーク|wi-fi|着信音|文字|壁紙|ホーム画面|キーボード|変換|位置情報|プライバシー|通知|音量|明るさ";
+// The phone's first state, the way a person or a support scam puts a wipe.
+const FIRST_STATE =
+  "(初期状態|初期の状態|買った(時|とき)の状態|購入時の状態|出荷時の状態|新品の状態)(に|へ)?(戻|もど|する|し)";
 
 // Topics the AI does not guide, whoever asks and however it is put ("スマホ相談と声" in docs/design.md).
 // Matched on her words after NFKC and lowercasing, like the rules.
@@ -163,7 +169,8 @@ const SENSITIVE: ReadonlyArray<{ reason: string; pattern: RegExp }> = [
       [
         "(?<!(パスワード|パスコード|ネットワーク設定)を?)初期化",
         "工場出荷",
-        `((${PHONE})を?|^|[、。 ]|に|で)(初期状態|初期の状態|買った(時|とき)の状態|購入時の状態|出荷時の状態|新品の状態)(に|へ)?(戻|もど)`,
+        `(?<!(${ONE_SETTING})[^。]{0,10})${FIRST_STATE}`,
+        `(${PHONE})(?:(?!${ONE_SETTING}).){0,10}${FIRST_STATE}`,
         `(${PHONE}|すべての設定|すべてのコンテンツ|転送または)(?:(?!パスワード|パスコード|ネットワーク).){0,8}リセット`,
         `(${PHONE})(?:(?!${ONE_THING}).){0,8}消去`,
         `(${PHONE})を(消|削除)`,
