@@ -48,7 +48,7 @@ SMS、メール、ページの判定は Claude Haiku 5.5(`claude-haiku-5-5`)に 
 
 母との会話と、母が共有から送ったり、チャットの写真のボタンで選んだりしたスクショや書類の読み取りは Claude Sonnet 5.5(`claude-sonnet-5-5`)にした([`server/src/consult-judge.ts`](../server/src/consult-judge.ts))。写真のボタンはビルド14に入っていて、実機で確かめた記録はまだ無い(#187)。母は画面の前で待っているので、裏側は最大15秒待ち、間に合わなければ規則だけで答える。設定の画面のスクショには、押す場所に丸を付けて返す。
 
-天気やお店の営業時間のような今の情報が要る質問は、ウェブ検索のツールで調べて答える(#251)。構造化出力は出典(citations)と一緒に使うとエラーになり、ウェブ検索は出典が必ず付くので([Structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs)、[Web search tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool))、2回に分けた。1回目はいつもの構造化の判定で、検索する言葉も書かせる。2回目は構造化なしの Sonnet 5.5 にウェブ検索を付けて答えさせる。15秒の締切は2回の合計に当て、残りが6秒を切れば2回目を呼ばず、2回目が失敗したり網に当たったりしたら1回目の答えを返す。答えの終わりには出典のサイト名を1つ付ける。2026年11月7日に本番で天気の質問を送ると、約7秒で「(weathernews.jp より)」の付いた答えが返り、家族には知らせなかった(#251 のコメント)。
+天気やお店の営業時間のような今の情報が要る質問は、ウェブ検索のツールで調べて答える(#251)。構造化出力は出典(citations)と一緒に使うとエラーになり、ウェブ検索は出典が必ず付くので([Structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs)、[Web search tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool))、2回に分けた。1回目はいつもの構造化の判定で、検索する言葉も書かせる。2回目は構造化なしの Sonnet 5.5 にウェブ検索を付けて答えさせる。15秒の締切は2回の合計に当て、残りが6秒を切れば2回目を呼ばず、2回目が失敗したり網に当たったりしたら1回目の答えを返す。答えの終わりには出典を1つ付ける。サイト名を読むのは公的なサイト(`.go.jp` など)とよく知られたサイトだけで、ほかは「(ウェブで調べた結果)」にする。検索の上位に来た偽のサイトを、見に行く先として母に聞かせないためだ。2026年11月7日に本番で天気の質問を送ると、約7秒で「(weathernews.jp より)」の付いた答えが返り、家族には知らせなかった(#251 のコメント)。
 
 ### Claude Managed Agents
 
