@@ -77,6 +77,11 @@ public struct SmileBoard: Codable, Hashable, Sendable {
   /// screens on 2026-11-07 (#223, docs/design.md, "毎朝の笑顔"). The server still takes and lists them.
   public var photos: [Smile] { smiles.filter(\.hasPhoto) }
 
+  /// The row on her screen: the family's photos only (`role` family), not her own nor those of the
+  /// member she was before reinstalling (the server keeps that member, #243), nor those of anyone who
+  /// left. The author chose this on 2026-11-07 (docs/design.md, "毎朝の笑顔").
+  public var familyPhotos: [Smile] { photos.filter { $0.role == .family } }
+
   /// The newest photo the protected member took on the calendar day of `now`.
   public func todaysProtectedSmile(now: Date, calendar: Calendar = .current) -> Smile? {
     smiles.first { $0.role == .protected && $0.hasPhoto && calendar.isDate($0.createdAt, inSameDayAs: now) }
