@@ -21,6 +21,7 @@ import {
   type JudgeJob,
   type JudgeMessageBody,
 } from "../src/judge";
+import { mailPayload } from "../src/gmail";
 import { resetApnsJwtCache } from "../src/push";
 import { judgeByRules, type RuleInput, type RuleResult } from "../src/rules";
 import { createFamily, invite, join } from "./helpers";
@@ -1162,6 +1163,45 @@ describe("judge consumer", () => {
     expect(printed).not.toContain("口座");
     expect(printed).not.toContain("+8190");
     logs.forEach((l) => l.mockRestore());
+  });
+});
+
+describe("a genuine mail that names a company and loads a font (#249)", () => {
+  const b64url = (text: string) =>
+    btoa(String.fromCharCode(...new TextEncoder().encode(text)))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  // The shape of the first false alarm of 2026-11-07: a company's name in the text, and a font sheet
+  // from another domain as the only URL. Made up; no real mail.
+  const payload = mailPayload({
+    mimeType: "text/html",
+    headers: [
+      { name: "From", value: "Amazon <store-news@amazon.co.jp>" },
+      { name: "Subject", value: "Amazon からのお知らせ" },
+    ],
+    body: {
+      data: b64url(
+        '<html><head><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP"></head>' +
+          "<body><p>Amazon をご利用いただきありがとうございます。今月の新着をお届けします。</p></body></html>",
+      ),
+    },
+  });
+
+  it("gives the real rules no other company's domain to count", () => {
+    const rule = judgeByRules({ source: "gmail", ...payload });
+    expect(rule.reasons).not.toContain("名乗る会社と違うドメインへ誘っている");
+    expect(rule.level).toBeNull();
+  });
+
+  it("tells no one when Claude gives nothing, even on the last delivery", async () => {
+    const fam = await setupFamily();
+    const deps = { ...fakes({ claude: null }), judgeByRules };
+    const { result } = await run([{ familyId: fam.familyId, source: "gmail", payload }], deps, 3);
+    expect(pushes).toHaveLength(0);
+    expect(deps.opened).toHaveLength(0);
+    expect(await alertsOf(fam.familyId)).toEqual([]);
+    expect(result.explicitAcks).toHaveLength(1);
   });
 });
 

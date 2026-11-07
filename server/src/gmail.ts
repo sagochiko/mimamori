@@ -512,7 +512,14 @@ export function mailPayload(part: MessagePart): JudgePayload {
   const from = header("from");
   const subject = decodeWords(header("subject"));
   const { plain, html } = bodies(part);
-  const hrefs = html.flatMap((h) => [...h.matchAll(/href\s*=\s*["']?(https?:\/\/[^"'\s>]+)/gi)].map((m) => m[1] ?? ""));
+  // Only <a href>, a link she can tap (#249). <link>, <img>, <base>, and CSS url() are what the mail
+  // loads; a font sheet from fonts.googleapis.com once made a genuine mail that named a company look
+  // like it led elsewhere. Quoted attribute values are skipped whole, so a ">" in them does not end the tag.
+  const hrefs = html.flatMap((h) =>
+    [...h.matchAll(/<a\s(?:[^>"']|"[^"]*"|'[^']*')*?(?<=\s)href\s*=\s*["']?(https?:\/\/[^"'\s>]+)/gi)].map(
+      (m) => m[1] ?? "",
+    ),
+  );
   const body = plain.length > 0 ? plain.join("\n") : html.map(htmlToText).join("\n");
   const links = [...new Set(hrefs.filter((l) => l !== "" && !body.includes(l)))].slice(0, LINKS_KEPT);
   const text = cut([subject, body, ...links].filter((s) => s !== "").join("\n"), JUDGE_TEXT_MAX_CHARS);

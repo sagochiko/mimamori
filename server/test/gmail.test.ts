@@ -957,6 +957,47 @@ describe("reading one mail", () => {
     });
   });
 
+  // Only a link she can tap counts (#249): a font sheet, an image, a base URL, or a CSS url() is
+  // something the mail loads, not somewhere it leads her. A font sheet once made a genuine mail that
+  // named a company a level 2 for the family.
+  describe("counts only <a href> as a link", () => {
+    const htmlMail = (html: string) =>
+      mailPayload({
+        mimeType: "text/html",
+        headers: [
+          { name: "From", value: "Amazon <store-news@amazon.co.jp>" },
+          { name: "Subject", value: "Amazon からのお知らせ" },
+        ],
+        body: { data: b64url(html) },
+      });
+
+    it.each([
+      ["a font sheet in <link>", '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP">'],
+      ["an image", '<img src="https://img.cdn.example/logo.png" href="https://img.cdn.example/logo.png">'],
+      ["a base URL", '<base href="https://tracker.example/">'],
+      ["a CSS url()", '<style>@import url("https://fonts.googleapis.com/css2?family=Noto");</style>'],
+      ["an <area> of an image map", '<map><area href="https://map.example/x"></map>'],
+      ["an <abbr> with an href attribute", '<abbr href="https://abbr.example/x">AWS</abbr>'],
+    ])("leaves out %s", (_, tag) => {
+      const payload = htmlMail(`<html><head>${tag}</head><body><p>Amazon からのお知らせです。</p></body></html>`);
+      expect(payload.url).toBeUndefined();
+      expect(payload.domain).toBeUndefined();
+      expect(payload.text).not.toMatch(/https?:/);
+    });
+
+    it.each([
+      ["a plain <a href>", '<a href="https://nta-refund.example/pay">お支払い</a>'],
+      ["an <a> with other attributes first", '<a class="btn" target="_blank" href="https://nta-refund.example/pay">お支払い</a>'],
+      ["an <a> whose data-href comes first", '<a data-href="https://other.example/x" href="https://nta-refund.example/pay">お支払い</a>'],
+      ["an <a> with a > in a quoted title", '<a title="1 > 0" href="https://nta-refund.example/pay">お支払い</a>'],
+      ["an <A HREF> in capitals over lines", '<A\n  HREF=\'https://nta-refund.example/pay\'>お支払い</A>'],
+    ])("keeps %s", (_, tag) => {
+      const payload = htmlMail(`<html><head><link href="https://fonts.googleapis.com/css2"></head><body>${tag}</body></html>`);
+      expect(payload.url).toBe("https://nta-refund.example/pay");
+      expect(payload.text).not.toContain("fonts.googleapis.com");
+    });
+  });
+
   it("keeps the text within what the queue carries", () => {
     const long = "あ".repeat(6000);
     const payload = mailPayload({ mimeType: "text/plain", headers: [], body: { data: b64url(long) } });
