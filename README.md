@@ -43,7 +43,7 @@ The same day, with no second real iPhone at hand, Claude ran the scene on three 
 | Channel | How | State on 2026-11-07 |
 |---|---|---|
 | SMS from unknown senders | iOS Message Filter extension. Apple sends the message to our server, and rules answer at once. Only clear scams go to the junk folder; everything else is delivered, and Claude's judgment reaches her and the family | Built (#10). On-device check pending (#139) |
-| Gmail | The server reads new mail in her inbox every 5 minutes (read-only scope) | Built (#15). Google Cloud was set up on 2026-11-06 (#144), and she gave consent on 2026-11-07 (#46). Whether it has read her inbox and told the family about a mail is not checked yet |
+| Gmail | The server reads new mail in her inbox every 5 minutes (read-only scope) | Built (#15). Google Cloud was set up on 2026-11-06 and she gave consent on 2026-11-07 (#144, #46). The production records show the server started reading her inbox after her consent. No mail from her inbox has reached the family yet. In a test family wired to the author's inbox, it told the family about 3 mails in production (2 were false alarms, fixed in #249) |
 | Web pages in Safari | A Safari extension sends the page to the server and lays a warning over dangerous pages | Built (#16). Checked on the author's iPhone (#145) |
 | Phone calls | The app sees that a call ended only while it is in the foreground. It also asks once a day at a time she can change in iOS Settings, or in the app's own settings screen (#222) | Built (#99). The call itself is never visible |
 | DNS (bank sites after a warning, remote-control apps) | Planned as a DoH resolver | Not built (#11) |
@@ -127,7 +127,7 @@ On 2026-11-07 the author used build 9 on his own iPhone (iOS 27.2) as the mother
 
 These are merged and covered by tests, but nobody has used them, or the part named, on a real iPhone yet.
 
-- The SMS filter (#139). The Gmail watch has her consent since 2026-11-07 (#46), but no record yet shows it reading her inbox and telling the family (#144).
+- The SMS filter (#139). The Gmail watch has read her inbox since her consent on 2026-11-07, but no mail from her inbox has reached the family yet (#144).
 - The Call button on a family iPhone (#233). Two family devices were checked on simulators only (#48, #31).
 - The photo button in her chat (#221, PR #227). A button with no label at the left of the input field opens the photo picker, and the picked screenshot goes to the same consultation as a shared one, with the circle shown only on screen until the next consultation. On the simulator the picker opened without asking for photo access, but picking a photo could not be driven there, so the step after it was checked with a Debug launch argument that hands in a fixed image.
 - A settings screen inside her app (#222, PR #226), opened from the menu at the end of her smile row, with the daily question, its time, and read-aloud. It reads and writes the same values as iOS Settings. Checked on the simulator.
