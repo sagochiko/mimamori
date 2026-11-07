@@ -1237,13 +1237,13 @@ PR #254 で、検索する言葉があるときは空の答えも受け取り、
 
 測り直すと holdout を2回見ることになるので、経路ごとの数だけを README に書いた。`docs/plan.md` の「相談はあいまいな話し方、本物に近い連絡、書類の画像に分けて出す」は、この作りでは出せない。holdout のあとで規則と指示文は直さない。使ったのは mm-implementer、advisor、`guard-holdout.sh`(holdout の道筋を含む行を止めた)。
 
-## 2026年11月8日 holdout の例文を入れる段がフックに止められた (#21)
+## 2026年11月7日 holdout の例文を入れる段がフックに止められた (#21)
 
 holdout を測ったあとの仕上げとして、`/mm-endgame` の手順2の後半(`.gitignore` から `eval/cases/holdout/*` と `eval/cases/pool/*` の行を外し、例文をコミットする)を進めていた。審査員に何を測ったかを見せるためだ。
 
-skill の手順どおりに、主の会話は最初に `grep -n "eval" .gitignore` と `ls eval/cases/holdout | head` を流し、`.gitignore` の行と例文の数を見ようとした。
+skill は「remove the `eval/cases/holdout/*` and `eval/cases/pool/*` lines from `.gitignore` and commit the cases」と頼んでいる。主の会話はまず、`grep -n "eval" .gitignore` と `ls eval/cases/holdout | head` を1行で流し、`.gitignore` の行と例文の数を見ようとした。
 
-`guard-holdout.sh` が「blocked: eval/cases/holdout is read once, in the final run.」で止めた。作者の鍵はもう置いてあり、測定も2026年11月7日の夜に済んでいた(PR #263)。フックを読むと、鍵があるときに通すのは `make eval-holdout` と `--set holdout` の行だけで、`cases/holdout` を名前に含むほかの行は鍵があっても止める作りだった。
+`guard-holdout.sh` が `ls` の道筋に当たり、行ごと「blocked: eval/cases/holdout is read once, in the final run.」で止めた。作者の鍵はもう置いてあり、測定も同じ夜に済んでいた(PR #263)。フックを読むと、鍵があるときに通すのは `make eval-holdout` と `--set holdout` の行だけで、`cases/holdout` を名前に含むほかの行は鍵があっても止める作りだった。
 
 skill は測定のあとにコミットする段まで書いていたが、フックは測定のあとの段を想定していなかった。`git add` で例文を足す行も同じ理由で止まる。
 
