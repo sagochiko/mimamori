@@ -16,7 +16,7 @@ echo "## 公開のリポジトリで数え直せる数"
 echo
 # Counted at one commit and named by it: the file itself lands in a later commit, and reports and commits
 # keep coming, so commands on HEAD would give other numbers by the time anyone runs them (PR #236).
-at=${MM_USAGE_AT:-$(git rev-parse --short HEAD)} # scripts/test-hooks.sh points this at a fixture commit
+at=${MM_USAGE_AT:-$(git rev-parse --short HEAD)} # set it to count at another commit than HEAD
 echo "下の表の元の記録(\`.claude/logs/\`)は公開していない。次の数はコミット \`$at\` の時点のもので、公開のリポジトリで同じコマンドを流せば同じ数が出る。原文はサブエージェントが報告を返すたびに1件できるので、同じレビュー役に続きを頼んだ回も数に入る。原文を残し始めたのは2026年11月4日で、それより前のレビューは入っていない。"
 echo
 echo "| 数えたもの | 数 | コマンド |"
