@@ -51,16 +51,13 @@ struct ProtectedHomeView: View {
     .onChange(of: pickedPhoto) { _, item in
       guard let item else { return }
       pickedPhoto = nil
-      let text = draft
       Task {
         let data = try? await item.loadTransferable(type: Data.self)
         guard let data else {
           model.pictureUnreadable()
           return
         }
-        if draft == text { draft = "" }
-        writing = false
-        model.sendPicture(data, text: text)
+        picked(data)
       }
     }
     .onAppear {
@@ -72,6 +69,8 @@ struct ProtectedHomeView: View {
         if ScreenshotStubTransport.noticesOpen { noticesOpen = true }
         if ScreenshotStubTransport.cameraOpen { camera = true }
         if ScreenshotStubTransport.photoOpen { choosingPhoto = true }
+        // After the draft, so `-mimamori-stub-draft` sends its words with the image.
+        if ScreenshotStubTransport.photoPick { picked(StubPicture.settingsScreen()) }
       #endif
     }
     .onChange(of: scenePhase) { _, phase in
@@ -285,6 +284,14 @@ struct ProtectedHomeView: View {
     .accessibilityShowsLargeContentViewer { Label("送る", systemImage: "arrow.up") }
     .accessibilityLabel("送る")
     .accessibilityHint(model.voice.acceptsText ? "書いた言葉を送ります" : "答えを待っています")
+  }
+
+  /// The image she picked, with what is in the field. The field is emptied only when it was sent:
+  /// while the picker hands the image over she may have pressed the microphone, and then nothing
+  /// goes and her words stay.
+  private func picked(_ data: Data) {
+    writing = false
+    if model.sendPicture(data, text: draft) { draft = "" }
   }
 
   /// A screenshot into the chat, as in the usual chat apps (the author chose this on 2026-11-07,

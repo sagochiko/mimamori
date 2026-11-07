@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0045C4C82D418EC3D7D26FEE /* DailyCheckInNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3066EF38E05327DBF8B6F57 /* DailyCheckInNotifier.swift */; };
+		03A280B2440103B882C9D172 /* StubPicture.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8ACDE55A0F8E55C95470553 /* StubPicture.swift */; };
 		0BF172D7871C60E0E2839660 /* VoiceListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF3C946C7E291506723FB25A /* VoiceListener.swift */; };
 		0EF3336DAE22D85DA0D64FE7 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95CDB77E0372A19FBBE234F4 /* RootView.swift */; };
 		1161F819AB32E399D288B285 /* DebugLaunch.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE4C837922E7E96E84700660 /* DebugLaunch.swift */; };
@@ -199,6 +200,7 @@
 		EE03DFD3ED761E36F6E29C2B /* SmileCamera.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmileCamera.swift; sourceTree = "<group>"; };
 		EE4C837922E7E96E84700660 /* DebugLaunch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLaunch.swift; sourceTree = "<group>"; };
 		F8469859BF8A09F6E12A30DD /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		F8ACDE55A0F8E55C95470553 /* StubPicture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StubPicture.swift; sourceTree = "<group>"; };
 		F92B2D41F2C7B84131342EF1 /* MessageFilter.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MessageFilter.entitlements; sourceTree = "<group>"; };
 		FD7A8F57CDE97D7412DC8AF8 /* Core */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Core; path = Core; sourceTree = SOURCE_ROOT; };
 		FDACD4CB18AA0B3020A09078 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -284,6 +286,7 @@
 				EE4C837922E7E96E84700660 /* DebugLaunch.swift */,
 				7C21EE2A82C9D0DAFA79176F /* ScreenshotStubTransport.swift */,
 				549C7E4F7E97FDCD15723C10 /* SmilePlaceholder.swift */,
+				F8ACDE55A0F8E55C95470553 /* StubPicture.swift */,
 			);
 			path = Debug;
 			sourceTree = "<group>";
@@ -702,6 +705,7 @@
 				6FEF03D086E951C0928C1667 /* SmileCamera.swift in Sources */,
 				A88C6E7E05120734010F81B5 /* SmilePlaceholder.swift in Sources */,
 				D4FEB6A01CEBEBF3F0492C40 /* SmileViews.swift in Sources */,
+				03A280B2440103B882C9D172 /* StubPicture.swift in Sources */,
 				0BF172D7871C60E0E2839660 /* VoiceListener.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

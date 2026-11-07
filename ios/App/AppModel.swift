@@ -281,17 +281,21 @@ final class AppModel {
 
   /// The photo button in the field (#221): the image she picked, with what she had written. Sent
   /// like a shared screenshot (`ConsultPicture`), never read aloud. Her line and the answer join
-  /// the conversation; the image is shown under the answer until her next consultation.
-  func sendPicture(_ data: Data, text: String) {
-    guard voice.acceptsText else { return }
+  /// the conversation; the image is shown under the answer until her next consultation. False when
+  /// nothing was sent (she started listening while the picker handed the image over, or it could not
+  /// be read), so the caller keeps what she wrote.
+  @discardableResult
+  func sendPicture(_ data: Data, text: String) -> Bool {
+    guard voice.acceptsText else { return false }
     guard let picture = ConsultPicture(data: data), let image = picture.encoded() else {
       voice.pictureUnreadable()
-      return
+      return false
     }
     followUp.consultStarted()
     followUpPrompt = nil
     pendingPicture = (picture, image)
     apply(voice.pictured(text, at: .now))
+    return true
   }
 
   /// The picked image could not be loaded from the picker.
