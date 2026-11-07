@@ -55,7 +55,7 @@ export const NARRATION = [
     id: "08-accuracy",
     scene: "accuracy",
     at: 0.6,
-    ssml: "試験用の例文で測ると、規則だけでは、60件のうち6件を見逃した。<break time=\"300ms\"/><sub alias=\"クロード\">Claude</sub>を組み合わせると、見逃しは1件になった。<break time=\"300ms\"/>最後に、それまで見ていない62件の詐欺で一度だけ測ると、見逃しは4件だった。",
+    ssml: "試験用の例文で測ると、規則だけでは60件中6件を見逃し、<sub alias=\"クロード\">Claude</sub>を組み合わせると1件になった。<break time=\"300ms\"/>最後に、別の62件で一度だけ測ると、見逃しは4件だった。",
   },
   {
     id: "09-dev-record",
