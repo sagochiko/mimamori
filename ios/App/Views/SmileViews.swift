@@ -1,14 +1,12 @@
 import MimamoriCore
 import SwiftUI
 
-/// Everyone's smiles and replies in one row, newest first, on both home screens. A tap opens one
-/// large. With `onCamera` (and `onNote`), the row starts with the buttons that open the smile camera
-/// (and the set words).
+/// Everyone's smiles in one row, newest first, on both home screens. A tap opens one large. With
+/// `onCamera`, the row starts with the button that opens the smile camera. Only photos show: the
+/// author dropped the set words ("ひと言") from both screens on 2026-11-07 (#223).
 struct SmileStrip: View {
   @Environment(AppModel.self) private var model
   var onCamera: (() -> Void)?
-  /// With it, a second button opens the set words.
-  var onNote: (() -> Void)?
   /// With it, the menu with "すべて消す" comes last in the row (her screen, which has no toolbar).
   var showsMenu = false
   @State private var opened: Smile?
@@ -19,10 +17,7 @@ struct SmileStrip: View {
         if let onCamera {
           CameraButton(action: onCamera)
         }
-        if let onNote {
-          NoteButton(action: onNote)
-        }
-        ForEach(model.smileBoard.smiles) { smile in
+        ForEach(model.smileBoard.photos) { smile in
           Button {
             opened = smile
           } label: {
@@ -61,45 +56,15 @@ private struct CameraButton: View {
   }
 }
 
-private struct NoteButton: View {
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      Image(systemName: "text.bubble")
-        .font(.title)
-        .foregroundStyle(Color.accentColor)
-        .frame(width: 72, height: 72)
-        .background(Circle().fill(Color.accentColor.opacity(0.15)))
-    }
-    .buttonStyle(.plain)
-    .accessibilityLabel("ひと言を送る")
-    .accessibilityHint("「おはよう」などの決まった言葉から選んで、家族みんなに送ります")
-  }
-}
-
-/// One smile: the photo, a reply, or both, with the sender's name under it.
+/// One smile: the photo, with the sender's name under it.
 struct SmileTile: View {
   let smile: Smile
 
   var body: some View {
     VStack(spacing: 4) {
-      if smile.hasPhoto {
-        SmilePhoto(smile: smile)
-          .frame(width: 72, height: 72)
-          .clipShape(RoundedRectangle(cornerRadius: 16))
-      }
-      if let note = smile.note {
-        Text(note)
-          .font(.footnote)
-          .lineLimit(smile.hasPhoto ? 1 : 3)
-          .multilineTextAlignment(.leading)
-          .padding(.horizontal, 10)
-          .padding(.vertical, 8)
-          .frame(width: smile.hasPhoto ? 72 : 120, alignment: .leading)
-          .frame(minHeight: smile.hasPhoto ? nil : 72)
-          .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
-      }
+      SmilePhoto(smile: smile)
+        .frame(width: 72, height: 72)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
       Text(smile.displayName)
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -112,11 +77,10 @@ struct SmileTile: View {
 }
 
 extension Smile {
-  /// "(name)の笑顔、(time)" and the reply, for VoiceOver.
+  /// "(name)の笑顔、(time)", for VoiceOver.
   var spokenLabel: String {
     let time = createdAt.formatted(.dateTime.month().day().hour().minute())
-    let what = hasPhoto ? "\(displayName)の笑顔" : "\(displayName)からひと言"
-    return [what, note, time].compactMap(\.self).joined(separator: "、")
+    return "\(displayName)の笑顔、\(time)"
   }
 }
 
@@ -148,14 +112,9 @@ private struct SmileDetail: View {
 
   var body: some View {
     VStack(spacing: 16) {
-      if smile.hasPhoto {
-        SmilePhoto(smile: smile)
-          .aspectRatio(3 / 4, contentMode: .fit)
-          .clipShape(RoundedRectangle(cornerRadius: 24))
-      }
-      if let note = smile.note {
-        Text(note).font(.title3).frame(maxWidth: .infinity, alignment: .leading)
-      }
+      SmilePhoto(smile: smile)
+        .aspectRatio(3 / 4, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 24))
       Text(smile.displayName).font(.headline)
       Spacer(minLength: 0)
       Button("閉じる") { dismiss() }
@@ -237,38 +196,6 @@ struct SmileCaptureView: View {
       _ = await model.sendSmile(jpeg: jpeg, score: score)
       // On failure the alert shows once this screen is gone.
       dismiss()
-    }
-  }
-}
-
-/// "ひと言": one of the set words to the family, without a photo. No free text: the author chose set
-/// words on 2026-11-05 (docs/design.md, "毎朝の笑顔"). A tap sends at once.
-struct NoteSheet: View {
-  @Environment(AppModel.self) private var model
-  @Environment(\.dismiss) private var dismiss
-  @State private var sending: SmileNote?
-
-  var body: some View {
-    ScrollView {
-      VStack(spacing: 12) {
-        ForEach(SmileNote.allCases) { note in
-          Button {
-            guard sending == nil else { return }
-            sending = note
-            Task {
-              if await model.sendNote(note) { dismiss() }
-              sending = nil
-            }
-          } label: {
-            if sending == note { ProgressView() } else { Text(note.text) }
-          }
-          .buttonStyle(BigButtonStyle(prominent: false))
-          .disabled(sending != nil)
-          .accessibilityLabel(note.text)
-          .accessibilityHint("押すと、このひと言を家族みんなに送ります")
-        }
-      }
-      .padding(24)
     }
   }
 }
