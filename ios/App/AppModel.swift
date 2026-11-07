@@ -226,6 +226,12 @@ final class AppModel {
     notePresence()
   }
 
+  /// 「戻る」 on the invite screen: on to her smiles and the cards, the invite button moving to the top.
+  func showJoinedHome() {
+    presence.markJoined()
+    protectedJoined = true
+  }
+
   private func notePresence() {
     protectedJoined = presence.update(smiles: smileBoard.smiles, cases: cases)
   }

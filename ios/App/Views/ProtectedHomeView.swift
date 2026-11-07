@@ -328,7 +328,7 @@ struct ProtectedHomeView: View {
         .padding(.leading, 4)
         .padding(.bottom, 4)
       MessageField(
-        text: $draft, isFocused: $writing, placeholder: "メッセージ", textStyle: .body, maxLines: 6,
+        text: $draft, isFocused: $writing, placeholder: "相談・質問を入力してね", textStyle: .body, maxLines: 6,
         hint: model.voice.hasVoiceDraft
           ? "聞き取った言葉が入っています。直してから送るボタンを押してください。声で聞いたときと同じに扱います"
           : model.attachedPicture != nil

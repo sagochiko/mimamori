@@ -77,4 +77,14 @@ struct ProtectedPresenceTests {
     #expect(ProtectedPresence(store: store).hasJoined == false)
     #expect(presence.update(smiles: [], cases: []) == false)
   }
+
+  @Test("「戻る」を押すと、笑顔も相談もまだ無くても入ったあとの画面になり、起動し直しても覚えている")
+  func markJoinedShowsHome() {
+    let (presence, store) = make()
+    #expect(presence.update(smiles: [], cases: []) == false)
+    presence.markJoined()
+    #expect(presence.hasJoined)
+    #expect(ProtectedPresence(store: store).hasJoined)
+    #expect(presence.update(smiles: [], cases: []))
+  }
 }
