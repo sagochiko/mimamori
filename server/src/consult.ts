@@ -54,13 +54,14 @@ import {
   fitsUnresized,
   judgeConsult,
   type Plan,
+  type RecentFinding,
   requestClaudeConsult,
   saidIn,
   TOLD_FAMILY,
 } from "./consult-judge";
 import { HttpError, json, readJson } from "./http";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
-import { repeats } from "./summary";
+import { carriesContact, repeats } from "./summary";
 
 // What other files and the tests have imported from here before the judgment moved out.
 export {
@@ -84,6 +85,7 @@ export {
   type ConsultRequest,
   type ConsultRules,
   type ConsultTurn,
+  type RecentFinding,
 } from "./consult-judge";
 
 export const CONSULT_TEXT_MAX_CHARS = 1000;
@@ -113,6 +115,7 @@ export interface ConsultDeps {
     rule: RuleResult,
     history?: readonly ConsultTurn[],
     image?: ConsultImage,
+    findings?: readonly RecentFinding[],
   ): Promise<ClaudeConsult | null>;
   openCase(env: Env, alertId: string, budget: ExternalBudget): Promise<unknown>;
   now(): number;
@@ -120,8 +123,8 @@ export interface ConsultDeps {
 
 export const defaultConsultDeps: ConsultDeps = {
   judgeByRules,
-  askClaude: (env, text, rule, history = [], image) =>
-    requestClaudeConsult(env, text, rule, history, undefined, image),
+  askClaude: (env, text, rule, history = [], image, findings = []) =>
+    requestClaudeConsult(env, text, rule, history, undefined, image, findings),
   openCase,
   now: () => Date.now(),
 };
@@ -139,6 +142,48 @@ function answer(reply: string, handoff: boolean, tap?: { x: number; y: number })
 function tapOn(image: ConsultImage | undefined, tap: { x: number; y: number } | undefined) {
   if (!image || !tap) return undefined;
   return tap.x < image.width && tap.y < image.height ? tap : undefined;
+}
+
+/** How far back, and how many, of what the app found are given to Claude with a consultation (#239). */
+export const FINDINGS_WINDOW_MS = 7 * 24 * 3600_000;
+export const FINDINGS_MAX = 3;
+const DAY_MS = 24 * 3600_000;
+const FOUND_SOURCES = new Set<string>(["sms", "gmail", "dns", "page"]);
+
+/**
+ * What the app found for this family lately (a mail, an SMS, a page, DNS at level 1 or 2), newest
+ * first, as Claude's record for when she asks about something she received. Only what the family's
+ * card has: the received text is not in D1. Reasons with a phone number or an address are left out,
+ * so the scam's contact never comes back to her as the AI's words.
+ */
+export async function recentFindings(env: Env, familyId: string, now: number): Promise<RecentFinding[]> {
+  const rows = await env.DB.prepare(
+    `SELECT source, level, summary, reasons, created_at FROM alerts
+      WHERE family_id = ? AND source IN ('sms', 'gmail', 'dns', 'page') AND level <= 2 AND created_at > ?
+      ORDER BY created_at DESC LIMIT ${FINDINGS_MAX}`,
+  )
+    .bind(familyId, now - FINDINGS_WINDOW_MS)
+    .all<{ source: string; level: number; summary: string | null; reasons: string | null; created_at: number }>();
+  return rows.results.flatMap((r) => {
+    if (!FOUND_SOURCES.has(r.source) || (r.level !== 1 && r.level !== 2)) return [];
+    let reasons: unknown;
+    try {
+      reasons = JSON.parse(r.reasons ?? "[]");
+    } catch {
+      reasons = [];
+    }
+    return [
+      {
+        daysAgo: Math.max(0, Math.floor((now - r.created_at) / DAY_MS)),
+        source: r.source as RecentFinding["source"],
+        level: r.level,
+        summary: r.summary ?? "",
+        reasons: (Array.isArray(reasons) ? reasons : []).filter(
+          (x): x is string => typeof x === "string" && x.trim() !== "" && !carriesContact(x),
+        ),
+      },
+    ];
+  });
 }
 
 interface OpenConsultCase {
@@ -235,8 +280,10 @@ export async function consult(
     history,
     async (rule, turns) => {
       if (!budget.take()) return null;
+      // A record that cannot be read must not cost her the answer: Claude is asked without it.
+      const findings = await recentFindings(env, member.familyId, now).catch(() => []);
       try {
-        return await deps.askClaude(env, text, rule, turns, image);
+        return await deps.askClaude(env, text, rule, turns, image, findings);
       } catch {
         return null;
       }
@@ -351,7 +398,5 @@ export async function consultRoute(request: Request, env: Env): Promise<Response
   if ((trimmed === "" && image === undefined) || chars(trimmed) > CONSULT_TEXT_MAX_CHARS) {
     throw new HttpError(400, "consult_text_invalid");
   }
-  return json(
-    await consult(env, me, trimmed, new ExternalBudget(), defaultConsultDeps, parseHistory(history), image),
-  );
+  return json(await consult(env, me, trimmed, new ExternalBudget(), defaultConsultDeps, parseHistory(history), image));
 }
