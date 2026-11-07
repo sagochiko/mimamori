@@ -38,7 +38,7 @@ Polly で作った音声は、AWS Service Terms の50.2(AI Services)に「The ou
 
 撮影と別に、次の枠も明日埋める。
 
-- 母の利用から直した1点と、母、妹、作者で試した観察。[`src/scenes/Accuracy.tsx`](src/scenes/Accuracy.tsx) の `Observation` の枠に [`docs/mother-feedback.md`](../docs/mother-feedback.md) から選んで書く
+- 母、妹、作者で試した観察。[`src/scenes/Accuracy.tsx`](src/scenes/Accuracy.tsx) の `Observation` には、2026年11月7日の [`docs/mother-feedback.md`](../docs/mother-feedback.md) の記録(#251 の直しと、母1人の1回)を入れてある。撮影の日に試した人と回数が増えたら、2つ目の枠を書き換える
 - 母の言葉の字幕。[`src/timeline.ts`](src/timeline.ts) の `MOTHER_WORDS_CAPTIONS`
 - `04-sms.mp4` を撮れなかったときは、体験モードの録画の SMS に「家族には知らせないで」が無いので、その文に従わないと言う文を外す。ナレーション [`src/narration.ts`](src/narration.ts) の `06-sms` と、[`src/scenes/FamilyScenes.tsx`](src/scenes/FamilyScenes.tsx) の `SmsFallback` の字幕から消し、`npm run narration -- 06-sms` で作り直す
 - 開発の記録の数(`DEV_RECORD`)は2026年11月7日に `a916f02` で数えた値なので、提出の前に [`docs/submission.md`](../docs/submission.md) の数え方で数え直す
