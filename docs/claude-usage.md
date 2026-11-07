@@ -8,13 +8,13 @@
 
 | 名前 | 起動 | 再開 |
 |---|---:|---:|
-| `mm-reviewer` | 170 | 21 |
-| `mm-implementer` | 76 | 50 |
-| `resume` | 0 | 77 |
-| `mm-verifier` | 61 | 2 |
+| `mm-reviewer` | 186 | 21 |
+| `mm-implementer` | 85 | 50 |
+| `resume` | 0 | 89 |
+| `mm-verifier` | 69 | 2 |
 | `web-fetch` | 24 | 1 |
 | `general-purpose` | 14 | 1 |
-| `mm-judge` | 6 | 0 |
+| `mm-judge` | 8 | 0 |
 | `claude-code-guide` | 4 | 0 |
 | `mm-auditor` | 3 | 0 |
 | `mm-eval-curator` | 2 | 0 |
@@ -23,11 +23,11 @@
 
 | 名前 | 回数 |
 |---|---:|
-| `mm-handoff` | 11 |
-| `mm-task` | 9 |
+| `mm-handoff` | 13 |
+| `mm-task` | 10 |
+| `mm-release` | 7 |
 | `mm-deploy` | 7 |
-| `mm-release` | 6 |
-| `mm-devlog` | 5 |
+| `mm-devlog` | 6 |
 | `mm-human-queue` | 4 |
 | `mm-device` | 3 |
 | `writing-guide` | 1 |
@@ -47,21 +47,21 @@
 
 | 名前 | 回数 |
 |---|---:|
-| `guard-prod` | 57 |
-| `guard-private` | 42 |
-| `guard-prior-work` | 37 |
-| `guard-secrets` | 25 |
-| `guard-holdout` | 22 |
-| `guard-merge` | 18 |
+| `guard-prod` | 58 |
+| `guard-private` | 48 |
+| `guard-prior-work` | 38 |
+| `guard-secrets` | 27 |
+| `guard-holdout` | 23 |
+| `guard-merge` | 19 |
+| `report-form` | 5 |
 | `guard-mcp` | 4 |
-| `report-form` | 3 |
 
 ## テストの関門(Stop フック)
 
 | 名前 | 回数 |
 |---|---:|
-| `stop-gate` | 26 |
-| `keep-going` | 2 |
+| `stop-gate` | 27 |
+| `keep-going` | 3 |
 
 ## 期間
 
