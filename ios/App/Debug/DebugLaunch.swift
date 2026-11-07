@@ -8,6 +8,11 @@
     /// minutes, so the demo can be filmed with a 15 to 60 second call.
     static var followUpMinimum: TimeInterval? { seconds(after: "-mimamori-followup-min-seconds") }
 
+    /// `-mimamori-followup-reset`: at launch, forget which day the call follow-up was last shown, so
+    /// a second take of the demo the same day gets the prompt again (`CallFollowUp.resetDailyLimit`).
+    /// Her conversation and the device key stay.
+    static var followUpReset: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-followup-reset") }
+
     /// `-mimamori-checkin-after-seconds <n>`: one daily prompt n seconds after the app first comes to
     /// the front (`DailyCheckInNotifier.postSoon`).
     static var checkInAfter: TimeInterval? { seconds(after: "-mimamori-checkin-after-seconds") }

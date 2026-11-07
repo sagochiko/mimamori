@@ -90,6 +90,24 @@ struct CallFollowUpTests {
     #expect(followUp.callEnded(Self.call("c3", minutes: 5, endedAt: Self.at(15, day: 5))) == .nothing)
   }
 
+  @Test("1日1回の記録だけを消すと、同じ日の次の通話でもまた声をかける(デモを撮り直す Debug の起動の引数)")
+  func resetDailyLimitAllowsAnotherToday() {
+    let (followUp, store) = make()
+    #expect(followUp.callEnded(Self.call("c1", minutes: 5, endedAt: Self.at(10))) == .notifyNow)
+    #expect(followUp.callEnded(Self.call("c2", minutes: 5, endedAt: Self.at(11))) == .nothing)
+
+    followUp.resetDailyLimit()
+
+    let state = store.load()
+    #expect(state.lastAskedAt == nil)
+    // Only the day's record goes: the calls already asked about and the waiting prompt stay.
+    #expect(state.handled == ["c1"])
+    #expect(state.pendingCallId == "c1")
+    #expect(followUp.callEnded(Self.call("c1", minutes: 5, endedAt: Self.at(12))) == .nothing)
+    #expect(followUp.callEnded(Self.call("c3", minutes: 5, endedAt: Self.at(12))) == .notifyNow)
+    #expect(followUp.callEnded(Self.call("c4", minutes: 5, endedAt: Self.at(13))) == .nothing)
+  }
+
   @Test("次の日の同じ時刻なら、また通知で声をかける")
   func nextDaySameHour() {
     let (followUp, _) = make()

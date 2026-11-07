@@ -87,6 +87,9 @@ final class AppModel {
       isProtectedDataAvailable: { UIApplication.shared.isProtectedDataAvailable })
     self.session = session
     self.route = session.route
+    #if DEBUG
+      if DebugLaunch.followUpReset { followUp.resetDailyLimit() }
+    #endif
     session.onRouteChange = { [weak self] route in
       self?.route = route
       if route == .chooseRole {

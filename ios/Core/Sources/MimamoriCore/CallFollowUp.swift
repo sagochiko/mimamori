@@ -148,6 +148,17 @@ public final class CallFollowUp: @unchecked Sendable {
     clearPending()
   }
 
+  /// Forgets only which day a call was last asked about, so the next long call today is asked about
+  /// again. For filming the demo more than once a day (a Debug launch argument,
+  /// `-mimamori-followup-reset`); the calls already asked about and a waiting prompt stay.
+  public func resetDailyLimit() {
+    lock.withLock {
+      var state = store.load()
+      state.lastAskedAt = nil
+      store.save(state)
+    }
+  }
+
   /// This iPhone is no longer in a family ("すべて消す", a 401, or leaving): the waiting prompt and
   /// what was asked go with the key.
   public func forget() {
