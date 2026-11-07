@@ -93,6 +93,10 @@ public enum ConsultEffect: Equatable, Sendable {
   case startListening
   case stopListening
   case send(String)
+  /// Put her words into the field, for her to fix and send (the stop button in the recording field, #224).
+  case fillDraft(String)
+  /// Drop everything heard and stop the microphone at once (the trash button, #224). Nothing is sent.
+  case cancelListening
   /// Send the picked image with these words (empty when she wrote none). The image itself stays with
   /// the App's adapter; nothing of it is in here.
   case sendPicture(text: String)
@@ -105,11 +109,23 @@ public struct VoiceConsult: Sendable {
   /// When the recognizer actually started. Nil while the permission sheets are still up.
   private var startedAt: Date?
   private var lastHeardAt: Date?
-  private var stopRequested = false
-  /// She pressed again before listening started: stop as soon as it starts.
-  private var stopPending = false
+  /// How listening was asked to end: nil while it goes on.
+  private var ending: Ending?
+  /// She pressed before listening started: end this way as soon as it starts.
+  private var pendingEnding: Ending?
   /// This consultation came by voice, so its answer is read aloud when 「読み上げ」 is on.
   private var byVoice = false
+  /// The field holds words she said and stopped with the stop button. Sent, they count as asked by
+  /// voice (they came from her voice, she only fixed them); emptying the field ends that (#224).
+  private var voiceDraft = false
+
+  /// What happens to her words once the recognizer hands over the last of them.
+  private enum Ending {
+    /// The send button, a second press of the microphone, silence, and the one-minute limit.
+    case send
+    /// The stop button: into the field.
+    case draft
+  }
 
   /// The server refuses longer text (server/src/consult.ts, CONSULT_TEXT_MAX_CHARS).
   public static let maxCharacters = 1000
@@ -129,19 +145,53 @@ public struct VoiceConsult: Sendable {
       phase = .listening(heard: "")
       startedAt = nil
       lastHeardAt = nil
-      stopRequested = false
-      stopPending = false
+      ending = nil
+      pendingEnding = nil
       byVoice = true
+      voiceDraft = false
       return [.stopSpeaking, .startListening]
     case .listening:
-      guard startedAt != nil else {
-        stopPending = true
-        return []
-      }
-      return requestStop()
+      return requestEnd(.send)
     case .thinking:
       return []
     }
+  }
+
+  /// The send button in the recording field: her words go as they are, as by voice.
+  public mutating func sendTapped(at now: Date) -> [ConsultEffect] {
+    guard case .listening = phase else { return [] }
+    return requestEnd(.send)
+  }
+
+  /// The stop button in the recording field: her words go into the field, and nothing is sent.
+  public mutating func stopTapped(at now: Date) -> [ConsultEffect] {
+    guard case .listening = phase else { return [] }
+    return requestEnd(.draft)
+  }
+
+  /// The trash button in the recording field: listening ends now and nothing heard is kept or sent.
+  /// Words the recognizer hands over later are dropped (`heard` and `listeningFailed` ignore them).
+  public mutating func discardTapped() -> [ConsultEffect] {
+    guard case .listening = phase else { return [] }
+    phase = .idle
+    startedAt = nil
+    lastHeardAt = nil
+    ending = nil
+    pendingEnding = nil
+    byVoice = false
+    return [.cancelListening]
+  }
+
+  /// She emptied the field: what she writes next is typed, not said.
+  public mutating func draftCleared() {
+    voiceDraft = false
+  }
+
+  /// When the recognizer started, while it listens: the recording field's clock counts from here.
+  /// Nil while the permission sheets are still up, and once listening ended.
+  public var listeningSince: Date? {
+    guard case .listening = phase else { return nil }
+    return startedAt
   }
 
   /// Whether written words can be sent now: not while listening or waiting for an answer.
@@ -157,7 +207,8 @@ public struct VoiceConsult: Sendable {
     guard acceptsText else { return [] }
     let said = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.maxCharacters))
     guard !said.isEmpty else { return [] }
-    byVoice = false
+    byVoice = voiceDraft
+    voiceDraft = false
     phase = .thinking(said: said)
     return [.stopSpeaking, .send(said)]
   }
@@ -172,6 +223,7 @@ public struct VoiceConsult: Sendable {
     guard acceptsText else { return [] }
     let words = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.maxCharacters))
     byVoice = false
+    voiceDraft = false
     phase = .thinking(said: words.isEmpty ? Self.pictureLine : "\(Self.pictureLine)。\(words)")
     return [.stopSpeaking, .sendPicture(text: words)]
   }
@@ -187,7 +239,7 @@ public struct VoiceConsult: Sendable {
   public mutating func listeningStarted(at now: Date) -> [ConsultEffect] {
     guard case .listening = phase, startedAt == nil else { return [] }
     startedAt = now
-    return stopPending ? requestStop() : []
+    return pendingEnding.map { requestEnd($0) } ?? []
   }
 
   /// What the recognizer has so far. The final result sends it.
@@ -203,17 +255,18 @@ public struct VoiceConsult: Sendable {
 
   /// Called about every half second while listening, to stop on silence or after a minute.
   public mutating func tick(at now: Date) -> [ConsultEffect] {
-    guard case .listening = phase, !stopRequested, let startedAt else { return [] }
-    if now.timeIntervalSince(startedAt) >= Self.longest { return requestStop() }
+    guard case .listening = phase, ending == nil, let startedAt else { return [] }
+    if now.timeIntervalSince(startedAt) >= Self.longest { return requestEnd(.send) }
     if let lastHeardAt {
-      if now.timeIntervalSince(lastHeardAt) >= Self.silenceAfterWords { return requestStop() }
+      if now.timeIntervalSince(lastHeardAt) >= Self.silenceAfterWords { return requestEnd(.send) }
     } else if now.timeIntervalSince(startedAt) >= Self.silenceBeforeWords {
-      return requestStop()
+      return requestEnd(.send)
     }
     return []
   }
 
-  /// Listening could not start or broke off. What was already heard is still sent.
+  /// Listening could not start or broke off. What was already heard is still sent (or, after the
+  /// stop button, put into the field).
   public mutating func listeningFailed(_ failure: ConsultFailure) -> [ConsultEffect] {
     guard case .listening(let heard) = phase else { return [] }
     if !heard.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return finish(with: heard) }
@@ -236,9 +289,15 @@ public struct VoiceConsult: Sendable {
     phase = .failed(.offline)
   }
 
-  private mutating func requestStop() -> [ConsultEffect] {
-    guard !stopRequested else { return [] }
-    stopRequested = true
+  /// Before the recognizer starts there is nothing to stop yet, so the press waits for it (the latest
+  /// press wins). After, the first way asked is kept.
+  private mutating func requestEnd(_ way: Ending) -> [ConsultEffect] {
+    guard startedAt != nil else {
+      pendingEnding = way
+      return []
+    }
+    guard ending == nil else { return [] }
+    ending = way
     return [.stopListening]
   }
 
@@ -248,6 +307,11 @@ public struct VoiceConsult: Sendable {
     guard !said.isEmpty else {
       phase = .failed(.notHeard)
       return []
+    }
+    if ending == .draft {
+      phase = .idle
+      voiceDraft = true
+      return [.fillDraft(said)]
     }
     phase = .thinking(said: said)
     return [.send(said)]
@@ -264,7 +328,7 @@ public struct VoiceConsult: Sendable {
 
   public var micHint: String {
     switch phase {
-    case .listening: "話し終わると自動で止まります。もう一度押しても止まります"
+    case .listening: "話し終わると自動で送ります"
     case .thinking: "答えを待っています"
     default: "押して話すと、スマホの困りごとや気になる電話について答えます"
     }
