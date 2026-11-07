@@ -71,6 +71,10 @@ private struct WaitingSection: View {
       if let invite = model.invite {
         InviteCodeView(invite: invite)
         NewCodeButton()
+        Button("戻る") { model.showJoinedHome() }
+          .font(.body)
+          .accessibilityInputLabels(["戻る", "家族の画面へ"])
+          .accessibilityHint("見守られる人の笑顔と知らせが並ぶ家族の画面に移ります。招待は右上からまた出せます")
       } else {
         Button {
           Task { await model.createInvite() }

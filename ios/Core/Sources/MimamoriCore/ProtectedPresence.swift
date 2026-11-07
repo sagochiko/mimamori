@@ -45,6 +45,15 @@ public final class ProtectedPresence: @unchecked Sendable {
     }
   }
 
+  /// The family member pressed 「戻る」 after sending the code: show the screen with her smiles and the
+  /// cards even before a smile or a case arrives (2026-11-07, the author on build 13).
+  public func markJoined() {
+    lock.withLock {
+      joined = true
+      store.save(true)
+    }
+  }
+
   /// This iPhone left the family, or everything was deleted.
   public func forget() {
     lock.withLock {
