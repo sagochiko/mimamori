@@ -31,6 +31,9 @@ final class AppModel {
   /// The screenshot she showed last with the photo button (#221), in memory only, with the ring once
   /// the answer comes. Gone with her next consultation and when the app quits; never in `chat`.
   private(set) var shownPicture: ShownPicture?
+  /// The screenshot she picked with the photo button, waiting on the field to go with her words
+  /// (#234). In memory only, like `shownPicture`.
+  private(set) var attachedPicture: ConsultPicture?
   /// "さっきの電話、大丈夫だった？" while a long call waits for an answer.
   private(set) var followUpPrompt: String?
   /// "iPhoneの空きが残り0.8GB。一緒に空けよう" while free space is low (#19). The amount is read on
@@ -55,8 +58,8 @@ final class AppModel {
     /// `-mimamori-stub-listening`: the made-up voice levels while the stub "listens".
     @ObservationIgnored private var stubLevels: Task<Void, Never>?
   #endif
-  /// The picked image between the press and the send effect.
-  @ObservationIgnored private var pendingPicture: (ConsultPicture, ConsultImage)?
+  /// What goes to the server for `attachedPicture`, made when she picked it.
+  @ObservationIgnored private var attachedImage: ConsultImage?
   @ObservationIgnored private let followUp = CallFollowUp(
     store: UserDefaultsCallFollowUpStore(), minimumDuration: AppModel.followUpMinimum)
   @ObservationIgnored private let checkup = CheckupPolicy(store: UserDefaultsCheckupStore())
@@ -93,6 +96,7 @@ final class AppModel {
         self?.gmail = nil
         self?.photoCache = [:]
         self?.shownPicture = nil
+        self?.removePicture()
         // The key is gone (a 401, or this iPhone left the family): her conversation goes with it.
         // Not before the first unlock, when the Keychain only reads as empty.
         if UIApplication.shared.isProtectedDataAvailable { self?.chat.clear() }
@@ -288,23 +292,27 @@ final class AppModel {
     apply(voice.typed(text, at: .now))
   }
 
-  /// The photo button in the field (#221): the image she picked, with what she had written. Sent
-  /// like a shared screenshot (`ConsultPicture`), never read aloud. Her line and the answer join
-  /// the conversation; the image is shown under the answer until her next consultation. False when
-  /// nothing was sent (she started listening while the picker handed the image over, or it could not
-  /// be read), so the caller keeps what she wrote.
-  @discardableResult
-  func sendPicture(_ data: Data, text: String) -> Bool {
-    guard voice.acceptsText else { return false }
+  /// The photo button in the field (#221): the image she picked waits on the field, and goes with
+  /// her words when she presses send, typed or said (#234). Sent like a shared screenshot
+  /// (`ConsultPicture`), never read aloud. Her line and the answer join the conversation; the image is
+  /// shown under the answer until her next consultation. Nothing is attached while she is listening or
+  /// waiting for an answer, or when it could not be read.
+  func attachPicture(_ data: Data) {
+    guard voice.acceptsText else { return }
     guard let picture = ConsultPicture(data: data), let image = picture.encoded() else {
       voice.pictureUnreadable()
-      return false
+      return
     }
-    followUp.consultStarted()
-    followUpPrompt = nil
-    pendingPicture = (picture, image)
-    apply(voice.pictured(text, at: .now))
-    return true
+    guard voice.attachPicture() else { return }
+    attachedPicture = picture
+    attachedImage = image
+  }
+
+  /// The remove button on the attached image.
+  func removePicture() {
+    voice.removePicture()
+    attachedPicture = nil
+    attachedImage = nil
   }
 
   /// The picked image could not be loaded from the picker.
@@ -402,11 +410,14 @@ final class AppModel {
         let history = chat.send(text, at: .now)
         Task { await send(text, history: history) }
       case .sendPicture(let text):
-        guard let (picture, image) = pendingPicture, case .thinking(let line) = voice.phase else {
+        let attached = (attachedPicture, attachedImage)
+        attachedPicture = nil
+        attachedImage = nil
+        guard let picture = attached.0, let image = attached.1, case .thinking(let line) = voice.phase else {
           voice.sendFailed()
           continue
         }
-        pendingPicture = nil
+        silenceWatch?.cancel()
         // Her line only; no earlier turns go with an image, as from the share sheet.
         chat.pictured(line, at: .now)
         shownPicture = ShownPicture(picture: picture, anchor: chat.log.messages.last?.id)
