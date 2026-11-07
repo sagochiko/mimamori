@@ -281,6 +281,27 @@ const UNANSWERED_REASON = "AI が答えきれなかった相談";
 const CONTACT =
   /メッセージ|メール|sms|ショートメール|電話|リンク|url|サイト|ページ|アプリ.{0,3}(入れ|インストール|ダウンロード)/;
 
+// Claude's guidance on an image about the iPhone's storage screens (iPhone Storage, 「写真とビデオ」),
+// where the apps are listed by name: 「メッセージ」 and 「メール」 there are names on the screen, not a
+// message she got (#243, a screenshot of 「写真とビデオ」 with 「これ」 got the fixed level 3 line). Matched on
+// Claude's action and reasons, not its topic alone.
+const STORAGE_GUIDE = /ストレージ|容量|空き|最近削除した項目|写真とビデオ/;
+// The names such a screen shows, taken out before CONTACT is cast over the guidance: the app's name in
+// brackets, its attachments and data, and the page before or after. Nothing else is spared: a message's
+// steps, its link, a call, an SMS, a sign-in, opening a page, or installing an app still get the fixed
+// line, since this net keeps text in a screenshot from leading her through Claude's words.
+const STORAGE_NAMES =
+  /「(メッセージ|メール)」|(メッセージ|メール)(アプリ)?(の|で)?(添付|書類|データ|容量|写真|ビデオ|ファイル)|(前|次|元)の(ページ|画面)/g;
+
+/** CONTACT on Claude's guidance for an image, with the names a storage screen shows left out (#243). */
+function guidesContact(lines: readonly string[], guide: readonly string[]): boolean {
+  if (!guide.some((l) => STORAGE_GUIDE.test(l))) return lines.some((l) => CONTACT.test(l));
+  return lines.some((l) => {
+    const rest = l.replace(STORAGE_NAMES, "");
+    return CONTACT.test(rest) || /ログイン|サインイン/.test(rest);
+  });
+}
+
 const KEYS = ["kind", "level", "reasons", "basis", "action", "handoff", "injection_suspected", "topic"] as const;
 /** Only with an image: the press point. */
 const IMAGE_KEYS = [...KEYS, "tap"] as const;
@@ -1139,7 +1160,9 @@ function decidePlan(
   if (
     claude !== null &&
     claude.kind === "help" &&
-    (told.some((t) => CONTACT.test(t)) || claudeLines.some((l) => CONTACT.test(l)) || rule.reasons.length > 0)
+    (told.some((t) => CONTACT.test(t)) ||
+      guidesContact(claudeLines, claudeLines.slice(0, 1 + claude.reasons.length)) ||
+      rule.reasons.length > 0)
   ) {
     // About a message, a call, or a link, or the rules saw something: not Claude's free guidance.
     return { level: 3, reasons, reply: LOW_CONCERN_ACTION, toFamily: false, record: true, sign: false, ...base };
