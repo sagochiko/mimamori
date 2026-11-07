@@ -23,15 +23,43 @@ public struct ChatMessage: Codable, Equatable, Identifiable, Sendable {
   /// like any other, never sent in `history`. Apple does not let free space, or anything judged from
   /// it, leave the device (reason 85F4.1). Absent in records from before #19, which read as false.
   let localOnly: Bool?
+  /// The file of the screenshot she showed with it, shrunk (`ChatPicture`), in the App's picture store
+  /// on this iPhone only (#243). Never sent. Absent in records from before #243 and on other messages.
+  public let picture: String?
 
   public var isLocalOnly: Bool { localOnly ?? false }
 
-  public init(id: UUID, role: ChatRole, text: String, at: Date?, localOnly: Bool = false) {
+  public init(
+    id: UUID, role: ChatRole, text: String, at: Date?, localOnly: Bool = false, picture: String? = nil
+  ) {
     self.id = id
     self.role = role
     self.text = text
     self.at = at
     self.localOnly = localOnly ? true : nil
+    self.picture = picture
+  }
+}
+
+/// How a screenshot she showed is kept with her conversation (#243): smaller than what is sent
+/// (`CoordinateMapper.sentSize`, up to 2,576 pixels and 2.25 MB), since it is only looked at again in
+/// the chat. The App's adapter draws and encodes it.
+public enum ChatPicture {
+  /// The longest edge kept, in pixels.
+  public static let maxEdge = 1024
+  /// No kept picture is larger; with `ChatLog.keep` messages, 15 MB at most.
+  public static let maxBytes = 300_000
+  /// The JPEG qualities tried, best first, until one is within `maxBytes`.
+  public static let jpegQualities: [Double] = [0.6, 0.45, 0.3]
+
+  /// `size` with its longest edge at most `maxEdge`, the shape kept.
+  public static func keptSize(of size: PixelSize) -> PixelSize {
+    let long = max(size.width, size.height)
+    guard long > maxEdge, size.width > 0, size.height > 0 else { return size }
+    let scale = Double(maxEdge) / Double(long)
+    return PixelSize(
+      width: max(1, Int((Double(size.width) * scale).rounded())),
+      height: max(1, Int((Double(size.height) * scale).rounded())))
   }
 }
 
@@ -152,10 +180,11 @@ public struct ChatLog: Codable, Equatable, Sendable {
     return rows
   }
 
-  /// What the app wrote on the iPhone itself never goes (`ChatMessage.isLocalOnly`).
+  /// What the app wrote on the iPhone itself never goes (`ChatMessage.isLocalOnly`), nor an image she
+  /// showed with no words: the image is not sent again, and the server takes no empty turn (#243).
   private func turns(_ kept: [ChatMessage]) -> [ConsultTurn] {
     kept
-      .filter { !$0.isLocalOnly }
+      .filter { !$0.isLocalOnly && !$0.text.isEmpty }
       .suffix(Self.historyTurns)
       .map { message in
         let cut = String(
@@ -259,15 +288,29 @@ public protocol ChatLogStore: Sendable {
   func remove() throws
 }
 
+/// Where the screenshots she showed are kept, one file each, by name (#243). The App's adapter keeps
+/// them like the conversation's file (NSFileProtectionComplete, out of backups).
+public protocol ChatPictureStore: Sendable {
+  func read(_ name: String) throws -> Data?
+  func write(_ data: Data, name: String) throws
+  /// No file is not an error.
+  func remove(_ name: String) throws
+  /// Every file kept.
+  func names() throws -> [String]
+}
+
 /// The conversation and its file. Nothing is written until the file has been read, so a launch
-/// while the iPhone is locked cannot replace her history with an empty one.
+/// while the iPhone is locked cannot replace her history with an empty one. Her pictures go with
+/// the messages that name them: a picture no kept message names is deleted (#243).
 public struct ChatKeeper: Sendable {
   private let store: any ChatLogStore
+  private let pictures: (any ChatPictureStore)?
   public private(set) var log = ChatLog()
   public private(set) var isLoaded = false
 
-  public init(store: any ChatLogStore) {
+  public init(store: any ChatLogStore, pictures: (any ChatPictureStore)? = nil) {
     self.store = store
+    self.pictures = pictures
   }
 
   /// Reads the file once it can be read. Messages added before that (kept in memory only) come
@@ -284,6 +327,7 @@ public struct ChatKeeper: Sendable {
     log = ChatLog.restored(from: data, at: now)
     for message in pending { log.append(message) }
     isLoaded = true
+    prunePictures()
   }
 
   /// Her words go out: returns the earlier turns to send with them (`ChatLog.history(for:at:)`), then
@@ -296,12 +340,26 @@ public struct ChatKeeper: Sendable {
     return history
   }
 
-  /// Her line for a screenshot she showed (`VoiceConsult.pictureLine`). Nothing of the image is
-  /// kept, and no earlier turns go with an image (as from the share sheet), so none are returned.
-  public mutating func pictured(_ line: String, at now: Date) {
+  /// A screenshot she showed, with her words (empty when she wrote or said none). `picture` is the
+  /// image as `ChatPicture` shrinks it, kept in its own file (#243); while the conversation cannot be
+  /// read (locked), it is not written either. No earlier turns go with an image (as from the share
+  /// sheet), so none are returned.
+  public mutating func pictured(_ words: String, picture: Data?, at now: Date) {
     load(at: now)
-    log.append(.protected, line, at: now)
+    let id = UUID()
+    var name: String?
+    if isLoaded, let picture, let pictures {
+      let file = "\(id.uuidString).jpg"
+      if (try? pictures.write(picture, name: file)) != nil { name = file }
+    }
+    log.append(ChatMessage(id: id, role: .protected, text: words, at: now, picture: name))
     save()
+  }
+
+  /// The kept picture of `message`, if it has one and it can be read.
+  public func picture(for message: ChatMessage) -> Data? {
+    guard let name = message.picture else { return nil }
+    return try? pictures?.read(name)
   }
 
   public mutating func answered(_ reply: String, at now: Date) {
@@ -324,6 +382,7 @@ public struct ChatKeeper: Sendable {
     log = ChatLog()
     try? store.remove()
     isLoaded = true
+    prunePictures()
   }
 
   /// After data can be read again: when the app is back at role selection (the key went, say by a
@@ -339,5 +398,14 @@ public struct ChatKeeper: Sendable {
   private func save() {
     guard isLoaded, let data = try? log.encoded() else { return }
     try? store.write(data)
+    prunePictures()
+  }
+
+  /// Deletes every picture no kept message names: those of messages past the newest `ChatLog.keep`,
+  /// 30 days old, or cleared, and any left by a write that did not finish.
+  private func prunePictures() {
+    guard isLoaded, let pictures, let names = try? pictures.names() else { return }
+    let named = Set(log.messages.compactMap(\.picture))
+    for name in names where !named.contains(name) { try? pictures.remove(name) }
   }
 }

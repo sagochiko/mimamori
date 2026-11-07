@@ -60,6 +60,9 @@ final class AppModel {
   #endif
   /// What goes to the server for `attachedPicture`, made when she picked it.
   @ObservationIgnored private var attachedImage: ConsultImage?
+  /// The image last sent, until her next consultation: back onto the field when the server asks what
+  /// she wants with it (`ConsultEffect.keepPicture`, #243).
+  @ObservationIgnored private var sentPicture: (picture: ConsultPicture, image: ConsultImage)?
   @ObservationIgnored private let followUp = CallFollowUp(
     store: UserDefaultsCallFollowUpStore(), minimumDuration: AppModel.followUpMinimum)
   @ObservationIgnored private let checkup = CheckupPolicy(store: UserDefaultsCheckupStore())
@@ -79,9 +82,10 @@ final class AppModel {
     transport: any HTTPTransport = URLSessionTransport(),
     baseURL: URL = AppConfig.apiBaseURL,
     marker: any InstallMarkerStore = AppModel.installMarker,
-    chatStore: any ChatLogStore = FileChatLogStore.standard
+    chatStore: any ChatLogStore = FileChatLogStore.standard,
+    pictureStore: any ChatPictureStore = FilePictureStore.standard
   ) {
-    self.chat = ChatKeeper(store: chatStore)
+    self.chat = ChatKeeper(store: chatStore, pictures: pictureStore)
     let session = Session(
       baseURL: baseURL, transport: transport, store: store, marker: marker,
       isProtectedDataAvailable: { UIApplication.shared.isProtectedDataAvailable })
@@ -99,6 +103,7 @@ final class AppModel {
         self?.gmail = nil
         self?.photoCache = [:]
         self?.shownPicture = nil
+        self?.sentPicture = nil
         self?.removePicture()
         // The key is gone (a 401, or this iPhone left the family): her conversation goes with it.
         // Not before the first unlock, when the Keychain only reads as empty.
@@ -146,7 +151,8 @@ final class AppModel {
           store: InMemoryDeviceKeyStore(ScreenshotStubTransport.joinedAs),
           transport: ScreenshotStubTransport(),
           marker: ScreenshotStubTransport.marker,
-          chatStore: ScreenshotStubTransport.chatStore)
+          chatStore: ScreenshotStubTransport.chatStore,
+          pictureStore: ScreenshotStubTransport.pictureStore)
       }
     #endif
     return AppModel()
@@ -295,9 +301,10 @@ final class AppModel {
     apply(voice.typed(text, at: .now))
   }
 
-  /// The photo button in the field (#221): the image she picked waits on the field, and goes with
-  /// her words when she presses send, typed or said (#234). Sent like a shared screenshot
-  /// (`ConsultPicture`), never read aloud. Her line and the answer join the conversation; the image is
+  /// The photo button in the field (#221), or a paste into it (#243): the image waits on the field,
+  /// and goes with her words when she presses send, typed or said (#234), or alone (#243). Sent like
+  /// a shared screenshot (`ConsultPicture`), never read aloud. Her words, a smaller copy of the image
+  /// (`ConsultPicture.kept`), and the answer join the conversation; the full image with the ring is
   /// shown under the answer until her next consultation. Nothing is attached while she is listening or
   /// waiting for an answer, or when it could not be read.
   func attachPicture(_ data: Data) {
@@ -421,10 +428,20 @@ final class AppModel {
           continue
         }
         silenceWatch?.cancel()
-        // Her line only; no earlier turns go with an image, as from the share sheet.
-        chat.pictured(line, at: .now)
+        sentPicture = (picture, image)
+        // Her words and the image, smaller, on this iPhone only; no earlier turns go with an image,
+        // as from the share sheet.
+        chat.pictured(line, picture: picture.kept(), at: .now)
         shownPicture = ShownPicture(picture: picture, anchor: chat.log.messages.last?.id)
         Task { await send(image, text: text, picture: picture) }
+      case .keepPicture:
+        // The server asked what she wants with the image: it waits on the field for her answer.
+        guard let sent = sentPicture else {
+          voice.removePicture()
+          continue
+        }
+        attachedPicture = sent.picture
+        attachedImage = sent.image
       case .speak(let text):
         speaker.speak([text])
       }

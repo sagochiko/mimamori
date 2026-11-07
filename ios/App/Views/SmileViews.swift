@@ -1,32 +1,37 @@
 import MimamoriCore
 import SwiftUI
 
-/// Everyone's smiles in one row, newest first, on both home screens. A tap opens one large. With
-/// `onCamera`, the row starts with the button that opens the smile camera. Only photos show: the
-/// author dropped the set words ("ひと言") from both screens on 2026-11-07 (#223).
+/// Smiles in one row, newest first. A tap opens one large. With `onCamera`, the row starts with the
+/// button that opens the smile camera. Only photos show: the author dropped the set words ("ひと言")
+/// from both screens on 2026-11-07 (#223). The family's screen shows everyone's, large with names;
+/// her screen (`compact`) shows only the family's, as thin as the notice strip, names in VoiceOver
+/// only (the author chose this on 2026-11-07, #243).
 struct SmileStrip: View {
   @Environment(AppModel.self) private var model
   var onCamera: (() -> Void)?
   /// With it, the menu with "すべて消す" comes last in the row (her screen, which has no toolbar).
   var showsMenu = false
+  /// Her screen: the family's smiles only (`SmileBoard.familyPhotos`), small.
+  var compact = false
   @State private var opened: Smile?
 
   var body: some View {
+    let size: CGFloat = compact ? 40 : 72
     ScrollView(.horizontal, showsIndicators: false) {
-      HStack(alignment: .top, spacing: 12) {
+      HStack(alignment: compact ? .center : .top, spacing: compact ? 8 : 12) {
         if let onCamera {
-          CameraButton(action: onCamera)
+          CameraButton(size: size, action: onCamera)
         }
-        ForEach(model.smileBoard.photos) { smile in
+        ForEach(compact ? model.smileBoard.familyPhotos : model.smileBoard.photos) { smile in
           Button {
             opened = smile
           } label: {
-            SmileTile(smile: smile)
+            SmileTile(smile: smile, size: size, showsName: !compact)
           }
           .buttonStyle(.plain)
         }
         if showsMenu {
-          WipeMenu().frame(height: 72)
+          WipeMenu().frame(height: max(size, 44))
         }
       }
       .padding(.horizontal, 2)
@@ -40,15 +45,21 @@ struct SmileStrip: View {
 }
 
 private struct CameraButton: View {
+  var size: CGFloat = 72
   let action: () -> Void
 
   var body: some View {
     Button(action: action) {
       Image(systemName: "face.smiling")
-        .font(.title)
+        .font(size < 72 ? .title3 : .title)
+        // Her small button keeps its glyph inside the circle; the family's is as before.
+        .dynamicTypeSize(...(size < 72 ? DynamicTypeSize.xxxLarge : .accessibility5))
         .foregroundStyle(.white)
-        .frame(width: 72, height: 72)
+        .frame(width: size, height: size)
         .background(Circle().fill(Color.accentColor))
+        // At least 44 points to press.
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Circle())
     }
     .buttonStyle(.plain)
     .accessibilityLabel("笑顔を撮る")
@@ -56,19 +67,25 @@ private struct CameraButton: View {
   }
 }
 
-/// One smile: the photo, with the sender's name under it.
+/// One smile: the photo, with the sender's name under it unless `showsName` is false (her screen,
+/// where VoiceOver still reads it).
 struct SmileTile: View {
   let smile: Smile
+  var size: CGFloat = 72
+  var showsName = true
 
   var body: some View {
     VStack(spacing: 4) {
       SmilePhoto(smile: smile)
-        .frame(width: 72, height: 72)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-      Text(smile.displayName)
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .lineLimit(1)
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: size < 72 ? 10 : 16))
+        .frame(minWidth: 44, minHeight: 44)
+      if showsName {
+        Text(smile.displayName)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+      }
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(smile.spokenLabel)
