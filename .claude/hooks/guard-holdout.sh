@@ -24,6 +24,32 @@ if [[ "$cmd" =~ (--set[[:space:]=]+holdout|eval-holdout) ]]; then
   fi
   block guard-holdout "blocked: the holdout set runs once, after the author creates .claude/state/holdout.unlock. Ask the author with a \"作者:\" issue (/mm-human-queue) and keep tuning on the dev set.$MENTION_HINT"
 fi
+# After the one run, the cases go into git so judges can see what was measured (/mm-endgame step 2,
+# decided by the author on 2026-11-08). Measured means the author's unlock in the main tree and a
+# holdout row in the main tree's eval/RESULTS.md. Then two things pass, and nothing else:
+#   (a) `git add` followed only by bare case paths, from anyone but the roles that change rules or
+#       prompts (mm-implementer, mm-eval-curator). An allow list, not a list of forbidden forms: quotes
+#       and backslashes split words past any such list (PR #269 review), so the whole line must match.
+#       The commit needs no exception: a commit line that names no case path never reaches this guard.
+#   (b) mm-reviewer's Read of a case, to review the PR that adds them.
+if [[ "$targets" =~ eval/cases/(holdout|pool) ]]; then
+  main=$(main_tree || echo "$PROJECT_DIR")
+  if [[ -f "$main/.claude/state/holdout.unlock" ]] &&
+    grep -Eq '^\|[^|]*\|[[:space:]]*holdout[[:space:]]*\|' "$main/eval/RESULTS.md" 2>/dev/null &&
+    [[ ! "$targets" =~ cases/[^/[:space:]]*[*?[] && "$targets" != *..* ]]; then
+    # Paths only go to the log, never what the files hold.
+    paths=$(grep -oE "eval/cases/(holdout|pool)[^[:space:]\"']*" <<<"$targets" | tr '\n' ' ')
+    add_re='^git add( eval/cases/(holdout|pool)(/[A-Za-z0-9._-]+)*/?)+$'
+    if [[ "$tool" == "Bash" && ! "$agent" =~ ^(mm-implementer|mm-eval-curator)$ && "$cmd" =~ $add_re ]]; then
+      log_event guard guard-holdout "cases allowed after the holdout run: git add by ${agent:-main}: ${paths% }"
+      exit 0
+    fi
+    if [[ "$tool" == "Read" && "$agent" == "mm-reviewer" && "$targets" =~ ^[^[:space:]]*eval/cases/(holdout|pool)/[^[:space:]]+$ ]]; then
+      log_event guard guard-holdout "cases allowed after the holdout run: Read by mm-reviewer: ${paths% }"
+      exit 0
+    fi
+  fi
+fi
 # Nobody reads the holdout, the curator included; checked before the curator's early exit below.
 if [[ "$targets" =~ (cases/holdout|(^|[[:space:]/\"\'])holdout/) ]]; then
   block guard-holdout "blocked: eval/cases/holdout is read once, in the final run. Work with eval/cases/dev.$MENTION_HINT"
