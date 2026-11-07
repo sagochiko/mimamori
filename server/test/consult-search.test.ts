@@ -4,7 +4,7 @@
 
 import { env } from "cloudflare:workers";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ExternalBudget } from "../src/budget";
 import { openCase } from "../src/cases";
 import { CLAUDE_TIMEOUT_MS } from "../src/claude";
@@ -16,6 +16,8 @@ import {
   judgeConsult,
   parseClaudeConsult,
   requestSearchAnswer,
+  SEARCH_FAILED_REPLY,
+  UNANSWERED_REPLY,
   SEARCH_MIN_MS,
   searchTimeLeft,
   type ClaudeConsult,
@@ -286,5 +288,116 @@ describe("the second call from POST /consult (#251)", () => {
     const answer = await consult(env, await mother(), WEATHER, new ExternalBudget(1), d);
     expect(asked).toHaveLength(0);
     expect(answer.reply).toBe(FIRST);
+  });
+});
+
+// On the author's production check (2026-11-07), "明日の東京の天気は?" got UNANSWERED_REPLY and a notice to
+// the family: Claude wrote a search query and no answer of its own. A question for the web is the AI's.
+describe("a question for the web with no first answer (#251)", () => {
+  const noAnswer = (over: Partial<ClaudeConsult> = {}) => help({ action: "", ...over });
+
+  it("takes an empty action when there is a search query, and not without one", () => {
+    expect(parseClaudeConsult(noAnswer())?.action).toBe("");
+    expect(parseClaudeConsult(noAnswer({ search_query: "" }))).toBeNull();
+  });
+
+  it("answers with the second call and tells no one", async () => {
+    const s = searcher({ text: "明日の東京は晴れの予報だよ。", source: null });
+    const judged = await judgeConsult(WEATHER, [], async () => noAnswer(), judgeByRules, false, s.search);
+    expect(judged.reply).toBe("明日の東京は晴れの予報だよ。");
+    expect(judged).toMatchObject({ toFamily: false, record: true });
+  });
+
+  it.each([
+    ["no second call", undefined],
+    ["no answer from it", searcher(null).search],
+    ["an answer the nets stop", searcher({ text: "大丈夫、晴れだよ", source: null }).search],
+  ])("says it could not look it up, telling no one, on %s", async (_label, search) => {
+    const judged = await judgeConsult(WEATHER, [], async () => noAnswer(), judgeByRules, false, search);
+    expect(judged.reply).toBe(SEARCH_FAILED_REPLY);
+    // Written down at level 3 with no notice, so the family can look later (review 1 of PR #254).
+    expect(judged).toMatchObject({ toFamily: false, record: true, level: 3 });
+  });
+
+  // Review 1 of PR #254: an answer Claude wrote that cannot be read out is one the AI could not give, as
+  // before; only an empty one is left to the search.
+  it("hands a first answer that cannot be read out to the family, as before", async () => {
+    const judged = await judgeConsult(WEATHER, [], async () => help({ action: "安心して、明日は晴れ" }), judgeByRules);
+    expect(judged.reply).toBe(UNANSWERED_REPLY);
+    expect(judged.toFamily).toBe(true);
+  });
+
+  // Review 1 of PR #254: a scam told as a question for the web.
+  describe.each([
+    ["a son's voice that changed and a boss who comes", "息子が風邪で声が変わったって言ってた。今から上司の人が来るらしい"],
+    ["the tax office and a payment due", "国税庁から未払いがあると言われた"],
+  ])("on %s", (_label, text) => {
+    it("hands a reassuring first answer to the family", async () => {
+      const judged = await judgeConsult(text, [], async () => help({ action: "大丈夫だよ" }), judgeByRules, false, searcher(null).search);
+      expect(judged.toFamily).toBe(true);
+    });
+
+    it("writes down an empty first answer when the search gives nothing", async () => {
+      const judged = await judgeConsult(text, [], async () => noAnswer(), judgeByRules, false, searcher(null).search);
+      expect(judged.reply).toBe(SEARCH_FAILED_REPLY);
+      expect(judged.record).toBe(true);
+    });
+
+    it("does not say it could not look it up when Claude hands it over", async () => {
+      const judged = await judgeConsult(text, [], async () => noAnswer({ handoff: true }), judgeByRules, false, searcher(null).search);
+      expect(judged.reply).not.toBe(SEARCH_FAILED_REPLY);
+    });
+  });
+
+  it("keeps a first answer it can read when the search fails", async () => {
+    const judged = await judgeConsult(WEATHER, [], async () => help(), judgeByRules, false, searcher(null).search);
+    expect(judged.reply).toBe(FIRST);
+  });
+
+  it.each([
+    ["a topic the AI does not guide", "振込の手数料を調べて", true],
+    ["a message", "届いたメールの会社を調べて", false],
+    ["the police", "警察の電話番号を調べて", false],
+  ])("still does not answer it so on %s", async (_label, text, toFamily) => {
+    const judged = await judgeConsult(text, [], async () => noAnswer(), judgeByRules, false, searcher(null).search);
+    expect(judged.reply).not.toBe(SEARCH_FAILED_REPLY);
+    expect(judged.toFamily).toBe(toFamily);
+    expect(judged.record).toBe(true);
+  });
+
+  it("writes one log line of names, flags, and numbers, without her words or Claude's", async () => {
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+      lines.push(args.map(String).join(" "));
+    });
+    try {
+      const d: ConsultDeps = {
+        judgeByRules,
+        askClaude: async () => noAnswer(),
+        openCase,
+        now: () => 1_000_000,
+        searchAnswer: async () => ({ text: "明日の東京は晴れの予報だよ。", source: "www.jma.go.jp" }),
+      };
+      const owner = await createFamily("作者");
+      const { code } = await invite(owner.deviceKey);
+      const m = (await (await join(code, "protected", "母")).json()) as { memberId: string };
+      const member = { id: m.memberId, familyId: owner.familyId, role: "protected" as const, displayName: "母" };
+      await consult(env, member, WEATHER, new ExternalBudget(), d);
+    } finally {
+      spy.mockRestore();
+    }
+    const line = lines.find((l) => l.includes("consult_trace"));
+    expect(line).toBeDefined();
+    const trace = JSON.parse(line!) as Record<string, unknown>;
+    expect(trace).toMatchObject({
+      event: "consult_trace",
+      claude_null: false,
+      query: true,
+      search_called: true,
+      search_used: true,
+      reply: "search",
+      to_family: false,
+    });
+    for (const secret of ["東京", "天気", "晴れ", "jma", "東京 明日 天気"]) expect(line).not.toContain(secret);
   });
 });

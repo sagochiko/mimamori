@@ -132,9 +132,9 @@ export function fitsUnresized(width: number, height: number): boolean {
 // Fixed lines. The fake-police answer is the one docs/design.md gives word for word.
 export const MATCH_BASIS = "詐欺で使われる説明と一致しています。";
 export const POLICE_ACTION = "送金せず、いったん電話を切って家族に確かめて";
-const LIKE_SCAM_BASIS = "詐欺の手口と似ているところがあります。";
+export const LIKE_SCAM_BASIS = "詐欺の手口と似ているところがあります。";
 const SCAM_ACTION = "お金や暗証番号の話には応じず、家族に確かめて";
-const LOW_CONCERN_ACTION = "お金や暗証番号を聞かれたら止めて、家族に確かめて";
+export const LOW_CONCERN_ACTION = "お金や暗証番号を聞かれたら止めて、家族に確かめて";
 export const TOLD_FAMILY = "家族に伝えました";
 export const HANDOFF_REPLY = `これは家族と一緒にやろう。${TOLD_FAMILY}`;
 export const UNANSWERED_REPLY = "うまく答えられませんでした。家族に伝えました";
@@ -235,6 +235,11 @@ export const ASK_PICTURE_REPLY = "この画面で何をしたい?"; // server/te
  * same way each time, instead of the family taking it or Claude making up the names of its buttons.
  */
 export const ASK_SCREEN_REPLY = "その画面を写真で見せてね";
+/**
+ * A question for the web Claude did not answer by itself, and the second call gave nothing she can hear
+ * (#251): she is told so, and the family is not, since a weather question is no trouble for them.
+ */
+export const SEARCH_FAILED_REPLY = "今は調べられなかったよ。少したってから、もう一度聞いてね";
 
 // A verdict on the whole thing instead of what was seen and what to do. The answer gives evidence
 // and an action and never says "this is a scam" or "this is real" outright (docs/design.md, 検知).
@@ -661,7 +666,10 @@ export function parseClaudeConsult(value: unknown): ClaudeConsult | null {
     if (typeof r !== "string" || r.trim() === "" || chars(r) > REASON_MAX_CHARS) return null;
   }
   if (typeof basis !== "string" || chars(basis) > BASIS_MAX_CHARS) return null;
-  if (typeof action !== "string" || action.trim() === "" || chars(action) > ACTION_MAX_CHARS) return null;
+  if (typeof action !== "string" || chars(action) > ACTION_MAX_CHARS) return null;
+  // An empty action only with a search query: Claude leaves the answer to the second call (#251, the
+  // production check of 2026-11-07, where such an answer was dropped and the family told).
+  if (action.trim() === "" && (typeof searchQuery !== "string" || searchQuery.trim() === "")) return null;
   return {
     kind,
     level,
@@ -1510,6 +1518,25 @@ function decidePlan(
     // About a message, a call, or a link, or the rules saw something: not Claude's free guidance.
     return { level: 3, reasons, reply: LOW_CONCERN_ACTION, toFamily: false, record: true, sign: false, ...base };
   }
+  // A question for the web with no answer of Claude's own she can hear (#251): not one the AI could not
+  // answer, for the family. judgeConsult makes the second call and keeps this line when it gives nothing.
+  if (
+    plainLevel3 &&
+    !image &&
+    claude.kind === "help" &&
+    // Claude's own handoff, not the first answer's override: a question Claude hands over is not left to
+    // the search (review 1 of PR #254).
+    !claude.handoff &&
+    !handoff &&
+    (claude.search_query ?? "").trim() !== "" &&
+    // Empty only: an answer Claude wrote that cannot be read out ("大丈夫だよ") is one the AI could not
+    // give, for the family as before (review 1 of PR #254).
+    claude.action.trim() === ""
+  ) {
+    // Written down at level 3 with no notice, so a scam taken for a question for the web does not go
+    // by with no trace (review 1 of PR #254).
+    return { level, reasons, reply: SEARCH_FAILED_REPLY, toFamily: false, record: true, sign: false, ...base };
+  }
   if (firstAnswer) {
     // Claude handed it over and has nothing she can hear: she is asked again rather than the family
     // taking it, written down at level 3 with no notice so the family can look later.
@@ -1582,6 +1609,8 @@ export interface ConsultJudgment extends Plan {
   script: boolean;
   /** The rules on this turn. */
   rule: RuleResult;
+  /** Flags for the log line of POST /consult (#251): never her words or Claude's. */
+  trace?: { claudeNull: boolean; query: boolean; searchCalled: boolean; searchUsed: boolean };
 }
 
 /**
@@ -1629,6 +1658,7 @@ export async function judgeConsult(
   // Only Claude's own answer to a question that is not about the phone or a message, read out as it is:
   // not a scam, a handoff, a topic the AI does not guide, a fixed line, or an image.
   const query = claude?.search_query?.trim() ?? "";
+  const trace = { claudeNull: claude === null, query: query !== "", searchCalled: false, searchUsed: false };
   if (
     search === undefined ||
     claude === null ||
@@ -1639,11 +1669,13 @@ export async function judgeConsult(
     judged.level !== 3 ||
     judged.toFamily ||
     judged.unguided ||
-    judged.reply !== claude.action
+    (judged.reply !== claude.action && judged.reply !== SEARCH_FAILED_REPLY)
   ) {
-    return judged;
+    return { ...judged, trace };
   }
+  trace.searchCalled = true;
   const found = await search(query).catch(() => null);
   const reply = found ? searchReply(found) : null;
-  return reply === null ? judged : { ...judged, reply };
+  trace.searchUsed = reply !== null;
+  return reply === null ? { ...judged, trace } : { ...judged, reply, trace };
 }
