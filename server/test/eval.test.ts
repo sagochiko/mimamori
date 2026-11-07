@@ -514,8 +514,9 @@ describe("judgeCases", () => {
         handoff: true,
         injection_suspected: false,
       });
-      // Claude said 3 and the handoff took it to the family at 2: the record shows both.
-      expect(scored?.level).toBe(2);
+      // Claude handed it over, and since #251 the first answer is the AI's, so it stays at level 3 with
+      // no notice: the record shows Claude's handoff apart from what was decided.
+      expect(scored?.level).toBe(3);
     });
 
     it("keeps nothing of Claude when it gave nothing", async () => {
