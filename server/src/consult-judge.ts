@@ -22,6 +22,7 @@ import {
   PLACEHOLDER_REASON,
   SOURCE_LABELS,
   soundsSafe,
+  talksJudgment,
   type AlertSource,
   type Level,
 } from "./claude";
@@ -360,11 +361,11 @@ const CONSULT_SCHEMA = {
     },
     basis: {
       type: "string",
-      description: `見えた根拠を一文で、${BASIS_MAX_CHARS}字以内。help のときは空。本人に読み上げないが、印のような判定の言葉は使わない`,
+      description: `見えた根拠を一文で、${BASIS_MAX_CHARS}字以内。help のときは空。scam で level 3 のときだけ、どこが気になるかとして本人に読み上げる。印のような判定の言葉は使わない`,
     },
     action: {
       type: "string",
-      description: `勧める行動か、操作の案内か、スマホ以外の質問への答え。${ACTION_MAX_CHARS}字以内。本人に読み上げるのは help の操作の案内だけで、scam のときは読み上げない。印のような判定の言葉は使わない`,
+      description: `勧める行動か、操作の案内か、スマホ以外の質問への答え。${ACTION_MAX_CHARS}字以内。本人に読み上げるのは help の答えと、scam で level 3 のときだけの何を確かめればよいかで、scam の2と1のときは読み上げない。印のような判定の言葉は使わない`,
     },
     handoff: {
       type: "boolean",
@@ -443,7 +444,7 @@ const SYSTEM_PROMPT = `あなたは、離れて住む家族が見守っている
 basis には見えた根拠を一文で、action には勧める行動を書き、二つを分けます。例 basis「詐欺で使われる説明と一致しています。」action「送金せず、いったん電話を切って家族に確かめて」。「これは詐欺です」「本物です」「偽物です」のような言い切りはしません。
 2か1にするときは、reasons に見えた印を書きます。「確かめられない」は印ではないので、2や1の理由にしません。
 
-本人に読み上げるのは、スマホの困りごとの相談(kind は help)の action だけです。詐欺かもしれない相談(kind は scam)の basis と action は、本人に読み上げず、家族のカードにも出しません。本人には、段階ごとの決まった文を読み上げます。help の action も、メッセージ、電話、リンクの相談や、詐欺の心配が見えたとき、案内しない話題、答えきれないときは、決まった文に置き換えます。basis と action は、どちらも「手口の印」「印」「規則の判定」のような、ここで段階を決めるために使っている言葉は使わず、本人に分かるふだんの言葉で書きます。reasons は家族に見せるもので、今までどおり見えた印を書きます。
+本人に読み上げるのは、スマホの困りごとの相談(kind は help)の action と、詐欺かもしれない相談(kind は scam)で level が3のときだけの basis と action です。level が3のときは、basis にどこが気になるかを、action に何を確かめればよいかを、本人に話す自分の言葉で書きます。そのあとに決まった文「お金や暗証番号を聞かれたら止めて、家族に確かめて」が必ず続くので、同じことは書きません。リンクや画面を開く、押す、タップする、入力する、ログインする、電話する、かけ直す、アプリを入れる、払う、のように本人に何かをさせる文と、番号、コード、URL、サイトに触れる文は読み上げず、決まった文だけにします。level が2と1のときの basis と action は、本人に読み上げず、家族のカードにも出しません。本人には、段階ごとの決まった文を読み上げます。help の action も、メッセージ、電話、リンクの相談や、詐欺の心配が見えたとき、案内しない話題、答えきれないときは、決まった文に置き換えます。basis と action は、どちらも「手口の印」「印」「規則の判定」のような、ここで段階を決めるために使っている言葉は使わず、本人に分かるふだんの言葉で書きます。reasons は家族に見せるもので、今までどおり見えた印を書きます。
 
 スマホの困りごとの相談(kind は help、level は 3)では、action に操作の案内を短く書きます。例「ストレージがいっぱい」と出たら、設定の「一般」から「iPhone ストレージ」を案内し、広告の掃除アプリは入れなくていいと伝えます。広告から入れるアプリについての相談は、詐欺の手口と一致するところを根拠に答えます。
 
@@ -904,6 +905,22 @@ function policeInHerWords(said: Said): boolean {
   });
 }
 
+// Words that lead her to act on what she got, or to money (#251): a line of Claude's at level 3 with one
+// of them is not read out, and the fixed line stands alone. The list is of words, not of the form that
+// urges her: "リンクは開かないで" falls too, and that is the side to err on. A level 3 answer tells the
+// family nothing, so a line steered by the message she read out would reach her with no one to catch it
+// (reviews 2 and 3 of PR #186, #188); this net and the fixed line after it are what is left between them.
+const LEADS_TO_ACT =
+  /開|ひら|押|おし|タップ|クリック|入力|ログイン|サインイン|かけ直|掛け直|電話|でんわ|番号|コード|インストール|入れ|ダウンロード|url|http|www|リンク|サイト|ページ|qr|支払|払|振り?込|送金|お金|返信|登録|手続|アクセス|許可|進|口座|カード|暗証|パスワード/;
+
+/** Claude's basis and action at level 3 that may be read to her: each alone, each through every net. */
+function lowConcernWords(claude: ClaudeConsult): string[] {
+  return [claude.basis, claude.action]
+    .map((l) => l.trim())
+    .filter((l) => l !== "" && usable(l) && !talksJudgment(l) && !LEADS_TO_ACT.test(normalize(l)))
+    .map((l) => (/[。!?！？]$/.test(l) ? l : `${l}。`));
+}
+
 /** A line from Claude that tells no one it is fine, nor that the family was told. */
 function usable(line: string): boolean {
   return (
@@ -994,11 +1011,11 @@ function plan(
   floor: RuleResult = rule,
   image = false,
 ): Plan {
-  const p = decidePlan(said, rule, claude, floor, image, history.some((t) => t.role === "ai"));
   // Text aimed at the AI or at keeping the family out, in this turn or in any earlier one (an "ai"
   // turn too: it came from her device, and Claude read it).
   const earlierSteers = history.some((t) => matchSpans(CONSULT_INJECTION, normalize(t.text)).length > 0);
   const steered = rule.reasons.includes(INJECTION.reason) || earlierSteers || (claude?.injection_suspected ?? false);
+  const p = decidePlan(said, rule, claude, floor, image, history.some((t) => t.role === "ai"), steered);
   // The floor's reasons are the rules' own wording too, so they count as fixed lines.
   const fixedRule = floor === rule ? rule : { ...rule, reasons: [...new Set([...rule.reasons, ...floor.reasons])] };
   const reasons = cardReasons(said, fixedRule, p.reasons, steered);
@@ -1084,6 +1101,8 @@ function decidePlan(
    * never a sign of a scam or a topic the AI does not guide.
    */
   aiAnswered = false,
+  /** Text aimed at the AI or at keeping the family out came in this conversation (plan). */
+  steered = false,
 ): Omit<Plan, "summary"> {
   // Her words carry text that tries to switch the warning off or keep the family out: the rules'
   // level is the floor, whatever Claude answers and whether or not it flags it. `floor` is the rules
@@ -1216,12 +1235,15 @@ function decidePlan(
     return { level, reasons, reply: ASK_SCREEN_REPLY, toFamily: false, record: true, sign: false, ...base };
   }
 
-  // Claude's words about a scam (its basis and action) are never read to her, at any level, on an image
-  // or on her words alone: text on an image, a message she reads out, or earlier turns can steer them to
+  // Claude's words about a scam (its basis and action) are never read to her at level 1 and 2, nor on an
+  // image at any level: text on an image, a message she reads out, or earlier turns can steer them to
   // "open the link" or "enter the code", and no net can tell such lines from good ones ("リンクは開かないで")
-  // (reviews 2 and 3 of PR #186, #188). At level 3 the family is not told, so a steered line there would
-  // reach her with no one to catch it. She hears the fixed lines instead; the level and who is told are
-  // Claude's and the rules' as before.
+  // (reviews 2 and 3 of PR #186, #188). She hears the fixed lines instead; the level and who is told are
+  // Claude's and the rules' as before. On her words alone at level 3, since #251 (the author found the
+  // fixed line alone too cautious), Claude's own words are read when each line gets past every net and
+  // LEADS_TO_ACT, a word list that drops even good lines, with the fixed line always after them. An image
+  // keeps the fixed line only: there Claude reads the whole message, and none of it was her words for the
+  // nets to see, while on her words alone the message is what she chose to read out.
 
   // A topic the AI does not guide, or one Claude cannot answer: the family takes it, at any level, and
   // Claude's action is not read out (it may be the very guidance that is not given). At level 2 or
@@ -1262,8 +1284,19 @@ function decidePlan(
     return { level, reasons, reply, toFamily: true, record: true, sign: true, ...base };
   }
   if (claude !== null && claude.kind === "scam") {
-    // Level 3: little concern, and still never "safe". The fixed line only (see above).
-    return { level, reasons, reply: LOW_CONCERN_ACTION, toFamily: false, record: true, sign: false, ...base };
+    // Level 3: little concern, and still never "safe". On her words alone, Claude's own words on what
+    // looks off and what to check come first, and the fixed line always after them (#251). On an image,
+    // the fixed line only (see above).
+    const own = image || steered ? [] : lowConcernWords(claude);
+    return {
+      level,
+      reasons,
+      reply: `${own.join("")}${LOW_CONCERN_ACTION}`,
+      toFamily: false,
+      record: true,
+      sign: false,
+      ...base,
+    };
   }
   if (
     claude !== null &&
