@@ -4043,6 +4043,8 @@ describe("a screen the AI has not seen (#251)", () => {
   it.each([
     ["a topic the AI does not guide", "このアプリで振込のやり方を教えて", unseen()],
     ["a sign of a scam", "このアプリを入れろって警察から電話があった", unseen({ kind: "scam", level: 2, handoff: false })],
+    // The #114 guard: the police in her words, with Claude at level 3 and no rule.
+    ["the police in her words", "これ、警察から", unseen()],
   ])("still goes to the family on %s", async (_label, text, said) => {
     const judged = await judgeConsult(text, [], async () => said);
     expect(judged.reply).not.toBe(ASK_SCREEN_REPLY);

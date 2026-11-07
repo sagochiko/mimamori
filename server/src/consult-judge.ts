@@ -234,7 +234,7 @@ export const ASK_PICTURE_REPLY = "この画面で何をしたい?"; // server/te
  * Claude would have to guess at a screen it has not seen (#251): she is asked for a picture of it, the
  * same way each time, instead of the family taking it or Claude making up the names of its buttons.
  */
-export const ASK_SCREEN_REPLY = "その画面を写真で見せてね。下の写真のボタンから送れるよ";
+export const ASK_SCREEN_REPLY = "その画面を写真で見せてね";
 
 // A verdict on the whole thing instead of what was seen and what to do. The answer gives evidence
 // and an action and never says "this is a scam" or "this is real" outright (docs/design.md, 検知).
@@ -1320,6 +1320,16 @@ function decidePlan(
   // answer before it is not followed. After the AI's guidance, her saying she could not do it hands it to
   // the family, whatever Claude answers. Everything else is as before: the nets below still send a
   // dangerous consultation and one about sending money, a code, a profile, or a wipe to the family at once.
+  // The police, a part of the script, or moving money anywhere in her words (namesSomething): Claude's
+  // handoff on "これ、警察から" stays the family's (#114), and a screen Claude has not seen there is no
+  // reason to ask for a picture instead.
+  const namesScript = allOf(said).some((t) => {
+    const n = normalize(t);
+    return (
+      POLICE_WORD.test(n) ||
+      [...POLICE_SCRIPT, ...CONSULT_MORE_PARTS, CONSULT_MONEY_MOVE].some((r) => matchSpans(r, n).length > 0)
+    );
+  });
   const plainLevel3 =
     claude !== null &&
     sensitive.length === 0 &&
@@ -1328,15 +1338,7 @@ function decidePlan(
     !told.some((t) => CONTACT.test(t)) &&
     !CONTACT.test(claudeLine(claude.action)) &&
     !claudeLines.some((l) => CONTACT.test(l)) &&
-    // The police, a part of the script, or moving money anywhere in her words (namesSomething): Claude's
-    // handoff on "これ、警察から" stays the family's (#114).
-    !allOf(said).some((t) => {
-      const n = normalize(t);
-      return (
-        POLICE_WORD.test(n) ||
-        [...POLICE_SCRIPT, ...CONSULT_MORE_PARTS, CONSULT_MONEY_MOVE].some((r) => matchSpans(r, n).length > 0)
-      );
-    });
+    !namesScript;
   const stuck = plainLevel3 && aiAnswered && saysStuck(said.text);
   // Not on an image: Claude saw the screen, and its handoff on it is followed as before (review 1 of PR #186).
   const firstAnswer = plainLevel3 && !aiAnswered && !image && (claude?.handoff ?? false);
@@ -1394,6 +1396,7 @@ function decidePlan(
     claude !== null &&
     (claude.needs_screen ?? false) &&
     !stuck &&
+    !namesScript &&
     !image &&
     sensitive.length === 0 &&
     level === 3 &&
