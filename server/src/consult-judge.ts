@@ -651,41 +651,81 @@ export function chars(text: string): number {
  * costing her the answer.
  */
 export function parseClaudeConsult(value: unknown): ClaudeConsult | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const read = readClaudeConsult(value);
+  return "answer" in read ? read.answer : null;
+}
+
+/**
+ * Why an answer was dropped, by name only, for eval/out (make eval after #251, where 12 dev consultations
+ * lost Claude's answer and nothing said why). Never any of Claude's text.
+ */
+export type ParseFailure =
+  | "schema"
+  | "too_many_reasons"
+  | "reason_too_long"
+  | "empty_action"
+  | "action_too_long"
+  | "http"
+  | "stop_reason"
+  | "no_text"
+  | "json"
+  | "network";
+
+/**
+ * parseClaudeConsult with the reason it dropped an answer. Since the eval after #251 it keeps what is safe
+ * to keep: on a scam answer a reason over the limit is dropped alone (reasons only go to the family's card), a basis over the limit becomes empty (it is only read at level 3, and an empty one is not), and
+ * a scam answer may have an empty action (it is never read at 1 and 2; at level 3 lowConcernWords leaves
+ * it out and the fixed line stands). Phone help with an empty action still needs a search query, and an
+ * action over the limit still drops the answer: that is what she would hear.
+ */
+export function readClaudeConsult(value: unknown): { answer: ClaudeConsult } | { failure: ParseFailure } {
+  const schema = { failure: "schema" } as const;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return schema;
   const obj = value as Record<string, unknown>;
-  if (!Object.keys(obj).every((k) => (IMAGE_KEYS as readonly string[]).includes(k))) return null;
+  if (!Object.keys(obj).every((k) => (IMAGE_KEYS as readonly string[]).includes(k))) return schema;
   const { kind, level, reasons, basis, action, handoff, injection_suspected: injection, topic, tap } = obj;
   const { needs_screen: needsScreen, search_query: searchQuery } = obj;
-  if (needsScreen !== undefined && typeof needsScreen !== "boolean") return null;
-  if (searchQuery !== undefined && typeof searchQuery !== "string") return null;
-  if (kind !== "scam" && kind !== "help") return null;
-  if (level !== 1 && level !== 2 && level !== 3) return null;
-  if (typeof handoff !== "boolean" || typeof injection !== "boolean") return null;
-  if (!Array.isArray(reasons) || reasons.length > MAX_REASONS) return null;
-  for (const r of reasons) {
-    if (typeof r !== "string" || r.trim() === "" || chars(r) > REASON_MAX_CHARS) return null;
+  if (needsScreen !== undefined && typeof needsScreen !== "boolean") return schema;
+  if (searchQuery !== undefined && typeof searchQuery !== "string") return schema;
+  if (kind !== "scam" && kind !== "help") return schema;
+  if (level !== 1 && level !== 2 && level !== 3) return schema;
+  if (typeof handoff !== "boolean" || typeof injection !== "boolean") return schema;
+  // A blank reason drops the answer as before; only one over the limit is dropped alone.
+  if (!Array.isArray(reasons) || reasons.some((r) => typeof r !== "string" || r.trim() === "")) return schema;
+  if (reasons.length > MAX_REASONS) return { failure: "too_many_reasons" };
+  if (typeof basis !== "string" || typeof action !== "string") return schema;
+  if (chars(action) > ACTION_MAX_CHARS) return { failure: "action_too_long" };
+  // On phone help a reason over the limit drops the answer as before: the nets on an image read Claude's
+  // reasons (claudeLines, guidedLines, guidesContact), and a reason dropped here would be one they never
+  // see (review 1 of PR #255). Only a scam answer, whose reasons only go to the family's card, loses it alone.
+  if (kind === "help" && (reasons as string[]).some((r) => chars(r) > REASON_MAX_CHARS)) {
+    return { failure: "reason_too_long" };
   }
-  if (typeof basis !== "string" || chars(basis) > BASIS_MAX_CHARS) return null;
-  if (typeof action !== "string" || chars(action) > ACTION_MAX_CHARS) return null;
-  // An empty action only with a search query: Claude leaves the answer to the second call (#251, the
-  // production check of 2026-11-07, where such an answer was dropped and the family told).
-  if (action.trim() === "" && (typeof searchQuery !== "string" || searchQuery.trim() === "")) return null;
+  // An empty action on phone help only with a search query: Claude leaves the answer to the second call
+  // (#251, the production check of 2026-11-07, where such an answer was dropped and the family told).
+  if (kind === "help" && action.trim() === "" && (typeof searchQuery !== "string" || searchQuery.trim() === "")) {
+    return { failure: "empty_action" };
+  }
   return {
-    kind,
-    level,
-    reasons: [...(reasons as string[])],
-    basis,
-    action,
-    handoff,
-    injection_suspected: injection,
-    topic:
-      typeof topic === "string" && topic.trim() !== "" && chars(topic.trim()) <= TOPIC_MAX_CHARS ? topic.trim() : null,
-    ...(tap === undefined ? {} : { tap: parseTap(tap) }),
-    ...(needsScreen === undefined ? {} : { needs_screen: needsScreen }),
-    // A query too long to be one is no query: the answer stays, and no search is made.
-    ...(searchQuery === undefined
-      ? {}
-      : { search_query: chars(searchQuery.trim()) <= SEARCH_QUERY_MAX_CHARS ? searchQuery.trim() : "" }),
+    answer: {
+      kind,
+      level,
+      reasons: (reasons as string[]).filter((r) => chars(r) <= REASON_MAX_CHARS),
+      basis: chars(basis) <= BASIS_MAX_CHARS ? basis : "",
+      action,
+      handoff,
+      injection_suspected: injection,
+      topic:
+        typeof topic === "string" && topic.trim() !== "" && chars(topic.trim()) <= TOPIC_MAX_CHARS
+          ? topic.trim()
+          : null,
+      ...(tap === undefined ? {} : { tap: parseTap(tap) }),
+      ...(needsScreen === undefined ? {} : { needs_screen: needsScreen }),
+      // A query too long to be one is no query: the answer stays, and no search is made.
+      ...(searchQuery === undefined
+        ? {}
+        : { search_query: chars(searchQuery.trim()) <= SEARCH_QUERY_MAX_CHARS ? searchQuery.trim() : "" }),
+    },
   };
 }
 
@@ -711,7 +751,14 @@ export async function requestClaudeConsult(
   timeoutMs = CLAUDE_TIMEOUT_MS,
   image?: ConsultImage,
   findings: readonly RecentFinding[] = [],
+  /** Told why, by name, when the answer is null (eval/out, after #251). */
+  onFailure?: (failure: ParseFailure) => void,
 ): Promise<ClaudeConsult | null> {
+  const fail = (failure: ParseFailure) => {
+    onFailure?.(failure);
+    return null;
+  };
+  let body: MessagesResponse;
   try {
     const res = await fetch(MESSAGES_URL, {
       method: "POST",
@@ -723,15 +770,26 @@ export async function requestClaudeConsult(
       body: JSON.stringify(buildConsultRequest(text, rule, history, image, findings)),
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) return null;
-    const body = (await res.json()) as MessagesResponse;
-    if (body.stop_reason !== "end_turn") return null;
-    const answer = body.content?.find((block) => block.type === "text")?.text;
-    if (typeof answer !== "string") return null;
-    return parseClaudeConsult(JSON.parse(answer));
+    if (!res.ok) return fail("http");
+    body = (await res.json()) as MessagesResponse;
   } catch {
-    return null;
+    return fail("network");
   }
+  // A body that is not an object, or content that is not a list, is no answer: never a throw (review 1
+  // of PR #255).
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return fail("no_text");
+  if (body.stop_reason !== "end_turn") return fail("stop_reason");
+  if (!Array.isArray(body.content)) return fail("no_text");
+  const answer = body.content.find((block) => typeof block === "object" && block !== null && block.type === "text")?.text;
+  if (typeof answer !== "string") return fail("no_text");
+  let value: unknown;
+  try {
+    value = JSON.parse(answer);
+  } catch {
+    return fail("json");
+  }
+  const read = readClaudeConsult(value);
+  return "answer" in read ? read.answer : fail(read.failure);
 }
 
 // The second call for a question that needs the web now (#251). Checked 2026-11-07 with the claude-docs

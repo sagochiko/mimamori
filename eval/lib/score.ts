@@ -31,6 +31,8 @@ export interface ScoredCase {
   reasons?: string[];
   /** rules+claude only: false when Claude gave nothing usable and the rules stood alone. Absent when Claude was not asked. */
   claude_answered?: boolean;
+  /** rules+claude only: why Claude's answer was dropped, by name, never its text (after #251). */
+  claude_parse_failure?: string;
   /** Consultations only: the fake-police script decided it from the rules alone. */
   consult_script?: boolean;
   /**
@@ -186,9 +188,12 @@ export async function judgeCases(
         continue;
       }
       let answered: boolean | undefined;
+      let failure: string | undefined;
       let seen: ScoredCase["claude"];
       const judged = await judgeConsult(text, [], async (rule) => {
-        const answer = await claude.consult(text, rule);
+        const answer = await claude.consult(text, rule, (f) => {
+          failure = f;
+        });
         answered = answer !== null;
         if (answer !== null) {
           const { kind, level, reasons, handoff, injection_suspected } = answer;
@@ -206,6 +211,7 @@ export async function judgeCases(
         reasons: judged.reasons,
         consult_script: judged.script,
         ...(answered === undefined ? {} : { claude_answered: answered }),
+        ...(answered === false && failure !== undefined ? { claude_parse_failure: failure } : {}),
         ...(judged.script ? {} : { unguided_topic: judged.unguided }),
         ...(seen === undefined ? {} : { claude: seen }),
       });
@@ -229,6 +235,7 @@ export async function judgeCases(
       confident: rule.confident,
       reasons: rule.reasons,
       ...(combined === null ? {} : { claude_answered: combined.checking !== true }),
+      ...(combined?.failure === undefined ? {} : { claude_parse_failure: combined.failure }),
       ...(combined?.claude === undefined ? {} : { claude: combined.claude }),
     });
   }

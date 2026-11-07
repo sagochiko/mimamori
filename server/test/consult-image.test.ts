@@ -15,6 +15,7 @@ import {
   type ConsultDeps,
   type ConsultImage,
 } from "../src/consult";
+import { judgeConsult, readClaudeConsult } from "../src/consult-judge";
 import { resetApnsJwtCache } from "../src/push";
 import { judgeByRules } from "../src/rules";
 import askPictureFixture from "./fixtures/ask-picture.json";
@@ -690,5 +691,34 @@ describe("POST /consult with an image", () => {
     const fam = await setupFamily();
     const res = await call("POST", "/consult", { deviceKey: fam.owner.deviceKey, body: { image: IMAGE }, env: consultEnv });
     expect(res.status).toBe(403);
+  });
+});
+
+// Review 1 of PR #255: a reason over the limit on phone help drops the answer as before, so the nets on
+// an image still see every reason Claude wrote.
+describe("a long reason on an image's phone help (review 1 of PR #255)", () => {
+  it("still goes to the family when a reason over 40 characters names a PIN and a link", async () => {
+    const reason = "画面のメッセージは銀行を名乗り、リンクから暗証番号の入力を求めている内容になっています";
+    expect([...reason].length).toBeGreaterThan(40);
+    const judged = await judgeConsult(
+      "",
+      [],
+      async () =>
+        parseClaudeConsult({
+          kind: "help",
+          level: 3,
+          reasons: [reason],
+          basis: "",
+          action: "設定の「一般」から「情報」を開いてね",
+          handoff: false,
+          injection_suspected: false,
+          topic: "画面の操作の相談",
+          tap: [],
+        }),
+      judgeByRules,
+      true,
+    );
+    expect(judged.toFamily).toBe(true);
+    expect(readClaudeConsult({ kind: "help", level: 3, reasons: [reason], basis: "", action: "a", handoff: false, injection_suspected: false, topic: "t" })).toEqual({ failure: "reason_too_long" });
   });
 });
