@@ -3,6 +3,7 @@ import Foundation
 // The daily "今日、知らない人から電話や連絡はあった？" (#99). The app learns of a call only while it is
 // in front (#25), so once a day the app asks on its own, and a tap opens her chat. Decided by the
 // author on 2026年11月5日, together with the switch and the hour in iOS Settings (Settings.bundle).
+// On 2026年11月7日 the author added the same three to a settings screen inside the app (#222).
 
 /// What she (or the family, on her iPhone) chose in Settings > みまもり.
 public struct DailyCheckInSettings: Equatable, Sendable {
@@ -19,6 +20,14 @@ public struct DailyCheckInSettings: Equatable, Sendable {
   /// The keys in ios/App/Settings.bundle/Root.plist.
   public static let enabledKey = "dailyCheckInEnabled"
   public static let hourKey = "dailyCheckInHour"
+
+  /// The names on the switch and the hour, in Settings > みまもり and on the app's own settings
+  /// screen (#222), so both read the same.
+  public static let title = "毎日の声かけ"
+  public static let hourTitle = "時刻"
+
+  /// "18時": what the hour choices show, in Settings and in the app.
+  public static func label(for hour: Int) -> String { "\(hour)時" }
 
   public init(isOn: Bool, hour: Int) {
     self.isOn = isOn
@@ -43,6 +52,12 @@ public struct DailyCheckInSettings: Equatable, Sendable {
       }
     self.isOn = on ?? Self.standard.isOn
     self.hour = hour.flatMap { Self.hours.contains($0) ? $0 : nil } ?? Self.defaultHour
+  }
+
+  /// What the app's settings screen writes (#222): the same keys and types Settings writes (a Bool,
+  /// and the hour as one of the plist's integer Values), so either screen shows the other's change.
+  public var stored: [String: Any] {
+    [Self.enabledKey: isOn, Self.hourKey: hour]
   }
 }
 

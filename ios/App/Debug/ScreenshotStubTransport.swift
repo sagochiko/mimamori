@@ -28,11 +28,9 @@
     static var noticesOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-notices-open") }
     /// With `-mimamori-stub-camera-open`, the home screen opens the smile camera at once.
     static var cameraOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-camera-open") }
-    /// With `-mimamori-stub-note-open`, the home screen opens the set words ("ひと言") at once.
     static var gmailButton: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-gmail") }
     /// With `-mimamori-stub-photo-open`, the home screen opens the photo button's picker at once (#221).
     static var photoOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-photo-open") }
-    static var noteOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-note-open") }
     /// With `-mimamori-stub-wipe-open`, the check before "すべて消す" ("消す" or "やめる") opens at once.
     static var wipeOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-wipe-open") }
     /// With `-mimamori-stub-wipe-fail`, "すべて消す" answers 502 `cleanup_failed`, as when Google or
@@ -41,6 +39,8 @@
     /// With `-mimamori-stub-camera-hold`, the stand-in camera never "sees" the smile, so the camera
     /// screen itself can be shot.
     static var cameraHold: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-camera-hold") }
+    /// `-mimamori-stub-settings-open`: her settings screen (#222) is open at launch.
+    static var settingsOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-settings-open") }
     /// The stub keeps the key in memory, so the real marker file is left alone.
     static let marker = FileInstallMarker(url: URL.temporaryDirectory.appending(path: "mimamori-stub-installed"))
     /// The conversation stays in memory too, so her real one is left alone. With
@@ -195,11 +195,14 @@
       let sinceMidnight = now.timeIntervalSince(Calendar.current.startOfDay(for: now)) / 60
       let hers = min(45, max(1, sinceMidnight - 1))
       smiles = [
-        Self.row("s-owner", "m-owner", "作者", "family", photo: false, note: "いい笑顔", at: at(hers * 0.3)),
+        Self.row("s-owner", "m-owner", "作者", "family", photo: true, note: nil, at: at(hers * 0.3)),
         Self.row("s-sister", "m-sister", "妹", "family", photo: true, note: nil, at: at(hers * 0.6)),
         Self.row("s-mother", "m-mother", "母", "protected", photo: true, note: nil, at: at(hers)),
       ]
-      photos = ["s-sister": SmilePlaceholder.jpeg(variant: 1), "s-mother": SmilePlaceholder.jpeg(variant: 2)]
+      photos = [
+        "s-owner": SmilePlaceholder.jpeg(variant: 3), "s-sister": SmilePlaceholder.jpeg(variant: 1),
+        "s-mother": SmilePlaceholder.jpeg(variant: 2),
+      ]
     }
 
     private static func row(

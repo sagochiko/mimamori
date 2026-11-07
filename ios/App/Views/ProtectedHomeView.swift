@@ -27,7 +27,6 @@ struct ProtectedHomeView: View {
   @State private var stripBottom: CGFloat = 0
   @State private var screenHeight: CGFloat = 0
   @State private var camera = false
-  @State private var choosingNote = false
   /// The photo button's picker (#221). PhotosPicker runs outside the app and hands over only the
   /// picked image, so no photo library permission is asked.
   @State private var choosingPhoto = false
@@ -64,13 +63,6 @@ struct ProtectedHomeView: View {
         model.sendPicture(data, text: text)
       }
     }
-    .sheet(isPresented: $choosingNote) {
-      // Full height, and a swipe scrolls the words before it moves the sheet: at the medium height the
-      // fifth word was cut off, and at the largest text size a swipe could not reach it.
-      NoteSheet()
-        .presentationDetents([.large])
-        .presentationContentInteraction(.scrolls)
-    }
     .onAppear {
       model.loadChat()
       model.refreshFollowUp()
@@ -79,7 +71,6 @@ struct ProtectedHomeView: View {
         if draft.isEmpty, let text = ScreenshotStubTransport.draftText { draft = text }
         if ScreenshotStubTransport.noticesOpen { noticesOpen = true }
         if ScreenshotStubTransport.cameraOpen { camera = true }
-        if ScreenshotStubTransport.noteOpen { choosingNote = true }
         if ScreenshotStubTransport.photoOpen { choosingPhoto = true }
       #endif
     }
@@ -112,10 +103,10 @@ struct ProtectedHomeView: View {
               stripBottom = $0
             }
         }
-        // The family's smiles and replies, and her own (#14). The menu with "すべて消す" (#190) is the
+        // The family's smiles and her own (#14, set words dropped in #223). The menu with "すべて消す" (#190) is the
         // row's last item, so her screen gets no navigation bar and no extra line, and the row still
         // runs to the edge of the screen.
-        SmileStrip(onCamera: { camera = true }, onNote: { choosingNote = true }, showsMenu: true)
+        SmileStrip(onCamera: { camera = true }, showsMenu: true)
         // Only with no grant or one about to run out (Google ends it after 7 days); the family guides her.
         if model.offersGmail {
           Button("Gmail") { Task { await model.connectGmail() } }

@@ -69,6 +69,7 @@
 		F54F2613513BFFC99DF087AC /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = D732C4C84CB27B1B71752ACA /* Settings.bundle */; };
 		F7662858D9EEFCBA1B6DCD99 /* CallDirectory.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FE2AA537BD66CC913767D2DC /* CallDirectory.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		F9E44D49723556A48889D8FD /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 140B8B5CC2F4AD322861B1DA /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		FA0BD1F0E790D897E653B22C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DC8582A641CEE20A7EB84B5 /* SettingsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -142,6 +143,7 @@
 		37FA4151507E2DD9222D61D8 /* icon-48.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-48.png"; sourceTree = "<group>"; };
 		3A6A9A0EF7199C388B1E5887 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		3D71E050B6AB7E4A2CC31D69 /* JoinView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JoinView.swift; sourceTree = "<group>"; };
+		3DC8582A641CEE20A7EB84B5 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		3E0EF675CA21B27398D564F4 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
 		3EB3212F121AF5A1BC7F588E /* FamilyStartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FamilyStartView.swift; sourceTree = "<group>"; };
 		40AB4308C8B210487E08269B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -270,6 +272,7 @@
 				BC84E1DC90613B9EB0164B49 /* ProtectedHomeView.swift */,
 				06074B0D983CF3372440534D /* RoleSelectionView.swift */,
 				95CDB77E0372A19FBBE234F4 /* RootView.swift */,
+				3DC8582A641CEE20A7EB84B5 /* SettingsView.swift */,
 				64D0F00724549A000A3A3B32 /* SmileViews.swift */,
 			);
 			path = Views;
@@ -695,6 +698,7 @@
 				4B33968B0F409367195FDDED /* RoleSelectionView.swift in Sources */,
 				0EF3336DAE22D85DA0D64FE7 /* RootView.swift in Sources */,
 				506A9F65B0840324B1E52A9E /* ScreenshotStubTransport.swift in Sources */,
+				FA0BD1F0E790D897E653B22C /* SettingsView.swift in Sources */,
 				6FEF03D086E951C0928C1667 /* SmileCamera.swift in Sources */,
 				A88C6E7E05120734010F81B5 /* SmilePlaceholder.swift in Sources */,
 				D4FEB6A01CEBEBF3F0492C40 /* SmileViews.swift in Sources */,

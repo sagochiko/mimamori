@@ -221,11 +221,6 @@ final class AppModel {
     await sendSmileBody { try await $0.postSmile(photoJPEG: jpeg, score: score) }
   }
 
-  /// One of the set words, without a photo.
-  func sendNote(_ note: SmileNote) async -> Bool {
-    await sendSmileBody { try await $0.postSmile(note: note) }
-  }
-
   private func sendSmileBody(_ body: (Session) async throws -> Smile) async -> Bool {
     var sent = false
     await run(joining: false) { [weak self] session in
@@ -430,6 +425,13 @@ final class AppModel {
     if route == .protectedHome { callWatcher.start() } else { callWatcher.stop() }
     scheduleDailyCheckIns()
     Task { await runCheckups() }
+  }
+
+  /// The app's settings screen (`SettingsView`, #222) wrote a new value. The daily prompts are
+  /// rebuilt now, through the same path as coming to the front; 「読み上げ」 needs nothing, since it is
+  /// read for each answer.
+  func settingsChanged() {
+    scheduleDailyCheckIns()
   }
 
   // MARK: Checkups (task 17, #19)

@@ -8,7 +8,8 @@ import UserNotifications
 ///
 /// A change in Settings > みまもり is read when the app next comes to the front
 /// (`AppModel.cameToFront`), so the requests already pending keep firing until she opens the app
-/// (tapping one of them is enough).
+/// (tapping one of them is enough). A change on the app's own settings screen (`SettingsView`, #222)
+/// is put in at once (`AppModel.settingsChanged`).
 enum DailyCheckInNotifier {
   private static let prefix = "daily-check-in-"
 

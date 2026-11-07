@@ -28,12 +28,12 @@ struct FamilyHomeView: View {
   }
 }
 
-/// Today's smile of the protected member, large, the two ways to answer, everyone's smiles, and the
-/// hour by which her smile is expected (after it, with no smile that day, the family is told quietly).
+/// Today's smile of the protected member, large, the button to answer with a smile, everyone's smiles,
+/// and the hour by which her smile is expected (after it, with no smile that day, the family is told
+/// quietly).
 private struct SmileSection: View {
   @Environment(AppModel.self) private var model
   @State private var camera = false
-  @State private var writing = false
 
   var body: some View {
     VStack(spacing: 16) {
@@ -48,33 +48,19 @@ private struct SmileSection: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("今日の\(today.spokenLabel)")
       }
-      HStack(spacing: 12) {
-        Button("笑顔") { camera = true }
-          .buttonStyle(BigButtonStyle())
-          .accessibilityLabel("笑顔で返す")
-          .accessibilityHint("前のカメラに向かって笑うと、その場で撮って家族みんなに送ります")
-        Button("ひと言") { writing = true }
-          .buttonStyle(BigButtonStyle(prominent: false))
-          .accessibilityLabel("ひと言で返す")
-          .accessibilityHint("写真なしで、「おはよう」などの決まった言葉から選んで家族みんなに送ります")
-      }
-      if !model.smileBoard.smiles.isEmpty {
+      Button("笑顔") { camera = true }
+        .buttonStyle(BigButtonStyle())
+        .accessibilityLabel("笑顔で返す")
+        .accessibilityHint("前のカメラに向かって笑うと、その場で撮って家族みんなに送ります")
+      if !model.smileBoard.photos.isEmpty {
         SmileStrip()
       }
       DeadlineMenu()
     }
     .fullScreenCover(isPresented: $camera) { SmileCaptureView() }
-    .sheet(isPresented: $writing) {
-      // Full height, and a swipe scrolls the words before it moves the sheet: at the medium height the
-      // fifth word was cut off, and at the largest text size a swipe could not reach it.
-      NoteSheet()
-        .presentationDetents([.large])
-        .presentationContentInteraction(.scrolls)
-    }
     .onAppear {
       #if DEBUG
         if ScreenshotStubTransport.cameraOpen { camera = true }
-        if ScreenshotStubTransport.noteOpen { writing = true }
       #endif
     }
   }
