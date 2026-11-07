@@ -80,6 +80,18 @@ struct CallFollowUpTests {
     #expect(followUp.callEnded(Self.call("c2", minutes: 5, endedAt: Self.at(15))) == .nothing)
   }
 
+  @Test("アプリと同じ順(通話の終わりのすぐあとに画面へ出す)で、夜の声かけは消えたあともその日の1回に数える")
+  func nightPromptShownAtOnceCountsForThatDay() {
+    let (followUp, _) = make()
+    let ended = Self.at(0, 30)
+    // AppModel.callEnded calls refreshFollowUp right after: the end of a call is only heard while
+    // the app is in front, so the prompt is on her screen at that moment.
+    #expect(followUp.callEnded(Self.call("c1", minutes: 5, endedAt: ended)) == .askOnNextOpen)
+    #expect(followUp.promptToShow(at: ended) == CallFollowUp.prompt)
+    #expect(followUp.promptToShow(at: Self.at(12, 31)) == nil)
+    #expect(followUp.callEnded(Self.call("c2", minutes: 5, endedAt: Self.at(15))) == .nothing)
+  }
+
   @Test("日付が変われば、23時59分のあとの0時1分の通話でもまた声をかける")
   func newDayAtMidnight() {
     let (followUp, _) = make()
