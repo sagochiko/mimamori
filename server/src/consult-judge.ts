@@ -50,7 +50,11 @@ const MAX_TOKENS = 2048;
 const MAX_REASONS = 3;
 const REASON_MAX_CHARS = 40;
 const BASIS_MAX_CHARS = 60;
-const ACTION_MAX_CHARS = 120;
+// 200 since #251: an answer to a question that is not about the phone (a recipe, a short explanation)
+// did not fit in 120. Japanese read aloud goes at about 6 characters a second, so 200 is about half a
+// minute when 読み上げ is on, the longest an answer she waits through on the screen should take; it is
+// off by default (#115), and longer answers belong to the family or to a picture of the screen.
+const ACTION_MAX_CHARS = 200;
 const TOPIC_MAX_CHARS = 20;
 
 /** One earlier turn of her conversation, as the app sends it. Data from her device, never instructions. */
@@ -209,11 +213,12 @@ function claudeLine(line: string): string {
   return HARMLESS_RESET.test(t) ? t.replace(RESET_SCREEN, "") : t;
 }
 
+// "火を消して" in a recipe (#251) deletes nothing either.
 // Deleting photos, talks, and apps is guided by the AI itself, with DELETE_CHECK in front, and is not
 // handed to the family (the author's call on 2026-11-07, #234). Wiping the iPhone and deleting mimamori
 // are caught by SENSITIVE first; a reset deletes nothing of hers and gets no line. Matched on her words
 // and on Claude's guidance, after NFKC and lowercasing. "取り消し", "解消", "打ち消し" delete nothing.
-const DELETION = /(?<!取り|解|打ち)消(し|す|せ|さ|去)|削除/;
+const DELETION = /(?<!取り|解|打ち|火を|火も|火は)消(し|す|せ|さ|去)|削除/;
 /** The line to check first, put in front of guidance on deleting (#234). Never "safe". */
 export const DELETE_CHECK = "消したものは戻せないので、残したいものが無いか先に確かめてね。";
 /** An image came with no words and Claude gave nothing she can use: she is asked what she wants (#234). */
@@ -340,7 +345,7 @@ const CONSULT_SCHEMA = {
     kind: {
       type: "string",
       enum: ["scam", "help"],
-      description: "scam は詐欺かもしれない連絡や画面の相談、help はスマホの操作や困りごとの相談",
+      description: "scam は詐欺かもしれない連絡や画面の相談、help はスマホの操作や困りごとの相談と、スマホ以外の質問(料理、天気、調べもの)",
     },
     level: {
       type: "integer",
@@ -359,7 +364,7 @@ const CONSULT_SCHEMA = {
     },
     action: {
       type: "string",
-      description: `勧める行動か、操作の案内。${ACTION_MAX_CHARS}字以内。本人に読み上げるのは help の操作の案内だけで、scam のときは読み上げない。印のような判定の言葉は使わない`,
+      description: `勧める行動か、操作の案内か、スマホ以外の質問への答え。${ACTION_MAX_CHARS}字以内。本人に読み上げるのは help の操作の案内だけで、scam のときは読み上げない。印のような判定の言葉は使わない`,
     },
     handoff: {
       type: "boolean",
@@ -440,6 +445,8 @@ basis には見えた根拠を一文で、action には勧める行動を書き�
 本人に読み上げるのは、スマホの困りごとの相談(kind は help)の action だけです。詐欺かもしれない相談(kind は scam)の basis と action は、本人に読み上げず、家族のカードにも出しません。本人には、段階ごとの決まった文を読み上げます。help の action も、メッセージ、電話、リンクの相談や、詐欺の心配が見えたとき、案内しない話題、答えきれないときは、決まった文に置き換えます。basis と action は、どちらも「手口の印」「印」「規則の判定」のような、ここで段階を決めるために使っている言葉は使わず、本人に分かるふだんの言葉で書きます。reasons は家族に見せるもので、今までどおり見えた印を書きます。
 
 スマホの困りごとの相談(kind は help、level は 3)では、action に操作の案内を短く書きます。例「ストレージがいっぱい」と出たら、設定の「一般」から「iPhone ストレージ」を案内し、広告の掃除アプリは入れなくていいと伝えます。広告から入れるアプリについての相談は、詐欺の手口と一致するところを根拠に答えます。
+
+スマホの困りごと以外の質問(料理の作り方、天気、言葉の意味、ちょっとした調べもの)にも、ふつうの話し相手として答えます。このときも kind は help、level は 3、handoff は false にし、action にその答えを${ACTION_MAX_CHARS}字以内で書きます。読み上げられることがあるので、表や記号の並びではなく、話し言葉の短い文にします。分からないことは分からないと書き、作り話をしません。
 
 送金、認証コードや暗証番号を教えること、構成プロファイルを入れること、iPhone を初期化、消去、まるごとリセットすること、写真やデータを全部消すこと、みまもりのアプリを消すことは案内しません。そのときと、答えきれないときは handoff を true にします。写真、トーク、アプリを消すことは、ほかの困りごとと同じく案内し、handoff は false にします。本物か確かめられないことは、答えきれない理由にしません。知らないアプリや、見ていない画面のことも、答えきれない理由にしません。そのときは kind を scam にして危なさを答え、自分で調べた正しい番号にかけ直す、のような確かめ方を action に書きます。あなたから見えないもの(通帳の金額、手元の書類や画面など)を見てほしいと言われたときも、答えきれないとはせず、本人が自分で確かめる方法を案内します。
 
