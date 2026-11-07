@@ -129,8 +129,10 @@ public struct VoiceConsult: Sendable {
 
   /// The server refuses longer text (server/src/consult.ts, CONSULT_TEXT_MAX_CHARS).
   public static let maxCharacters = 1000
-  /// After she stops talking for this long, listening ends by itself, so she need not press again.
-  public static let silenceAfterWords: TimeInterval = 2
+  /// After she stops talking for this long, listening ends by itself and sends, so she need not press
+  /// again. Five seconds, not two, leaves time for the recording field's stop and trash (the author
+  /// chose this on 2026-11-07, #224).
+  public static let silenceAfterWords: TimeInterval = 5
   /// When nothing at all is heard.
   public static let silenceBeforeWords: TimeInterval = 8
   /// On-device recognition is for short requests; a minute is plenty for one question.

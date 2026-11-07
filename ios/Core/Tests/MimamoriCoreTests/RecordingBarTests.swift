@@ -169,8 +169,9 @@ struct RecordingBarTests {
   @Test("話し終えて黙ったら、今までどおり自分で止めて送る")
   func silenceStillSends() {
     var flow = Self.listening(heard: "ストレージがいっぱい")
-    #expect(flow.tick(at: .t0 + 3) == [.stopListening])
-    #expect(flow.heard("ストレージがいっぱい", isFinal: true, at: .t0 + 3.1) == [.send("ストレージがいっぱい")])
+    #expect(flow.tick(at: .t0 + 5.9).isEmpty)
+    #expect(flow.tick(at: .t0 + 6) == [.stopListening])
+    #expect(flow.heard("ストレージがいっぱい", isFinal: true, at: .t0 + 6.1) == [.send("ストレージがいっぱい")])
   }
 
   // MARK: 経過時間

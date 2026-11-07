@@ -100,7 +100,7 @@ struct VoiceConsultTests {
     #expect(flow.phase == .failed(.notHeard))
   }
 
-  @Test("話し終えて2秒黙ったら自分で止める。まだ何も話していなければ8秒待つ")
+  @Test("話し終えて5秒黙ったら自分で止める。まだ何も話していなければ8秒待つ")
   func silenceStops() {
     var flow = VoiceConsult()
     _ = flow.micTapped(at: .t0)
@@ -112,12 +112,14 @@ struct VoiceConsultTests {
     _ = talking.micTapped(at: .t0)
     _ = talking.listeningStarted(at: .t0)
     _ = talking.heard("ストレージが", isFinal: false, at: .t0 + 1)
-    #expect(talking.tick(at: .t0 + 2.9).isEmpty)
+    #expect(talking.tick(at: .t0 + 2.4).isEmpty)
     _ = talking.heard("ストレージがいっぱい", isFinal: false, at: .t0 + 2.5)
-    #expect(talking.tick(at: .t0 + 4.4).isEmpty)
-    #expect(talking.tick(at: .t0 + 4.5) == [.stopListening])
+    // Two seconds of silence no longer stop it (#224): there is time for stop and trash.
+    #expect(talking.tick(at: .t0 + 4.5).isEmpty)
+    #expect(talking.tick(at: .t0 + 7.4).isEmpty)
+    #expect(talking.tick(at: .t0 + 7.5) == [.stopListening])
     // Asked to stop once; the recognizer's final result comes next.
-    #expect(talking.tick(at: .t0 + 5).isEmpty)
+    #expect(talking.tick(at: .t0 + 8).isEmpty)
   }
 
   @Test("許可の画面で聞き始めが遅れても、始まるまでは黙っているとみなさない")
