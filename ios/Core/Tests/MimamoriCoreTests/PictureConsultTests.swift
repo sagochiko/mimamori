@@ -79,6 +79,101 @@ struct PictureConsultTests {
     #expect(flow.phase == .thinking(said: "\(VoiceConsult.pictureLine)。これどこ押すの"))
   }
 
+  // MARK: 入力欄に付ける(#234)
+
+  @Test("写真を選んでもすぐには送らず、入力欄に付くだけ")
+  func attachDoesNotSend() {
+    var flow = VoiceConsult()
+    let attached = flow.attachPicture()
+    #expect(attached)
+    #expect(flow.hasPicture)
+    #expect(flow.phase == .idle)
+    #expect(flow.acceptsText)
+  }
+
+  @Test("画像が付いていれば、書いた言葉と一緒に1回で送る")
+  func attachedGoesWithTyped() {
+    var flow = VoiceConsult()
+    _ = flow.attachPicture()
+    #expect(
+      flow.typed(" この写真を消したい ", at: .t0) == [.stopSpeaking, .sendPicture(text: "この写真を消したい")])
+    #expect(flow.phase == .thinking(said: "\(VoiceConsult.pictureLine)。この写真を消したい"))
+    #expect(!flow.hasPicture)
+  }
+
+  @Test("画像だけでも送れる")
+  func attachedAlone() {
+    var flow = VoiceConsult()
+    _ = flow.attachPicture()
+    #expect(flow.canSend(draft: "  "))
+    #expect(flow.typed("  ", at: .t0) == [.stopSpeaking, .sendPicture(text: "")])
+    #expect(flow.phase == .thinking(said: VoiceConsult.pictureLine))
+  }
+
+  @Test("画像も言葉も無ければ送れない")
+  func nothingToSend() {
+    var flow = VoiceConsult()
+    #expect(!flow.canSend(draft: " \n"))
+    #expect(flow.typed(" ", at: .t0).isEmpty)
+    #expect(flow.canSend(draft: "Wi-Fi"))
+  }
+
+  @Test("外した画像は送らない")
+  func removedPictureStays() {
+    var flow = VoiceConsult()
+    _ = flow.attachPicture()
+    flow.removePicture()
+    #expect(!flow.hasPicture)
+    #expect(!flow.canSend(draft: ""))
+    #expect(flow.typed("Wi-Fi がつながらない", at: .t0) == [.stopSpeaking, .send("Wi-Fi がつながらない")])
+  }
+
+  @Test("声で話して送ると、付いた画像も一緒に行き、答えは読み上げない")
+  func attachedGoesWithVoice() {
+    var flow = VoiceConsult()
+    _ = flow.attachPicture()
+    _ = flow.micTapped(at: .t0)
+    _ = flow.listeningStarted(at: .t0)
+    #expect(flow.hasPicture)
+    #expect(flow.sendTapped(at: .t0) == [.stopListening])
+    #expect(flow.heard("これを消したい", isFinal: true, at: .t0) == [.sendPicture(text: "これを消したい")])
+    #expect(flow.phase == .thinking(said: "\(VoiceConsult.pictureLine)。これを消したい"))
+    #expect(!flow.hasPicture)
+    #expect(flow.answered(Self.circled, readsAloud: true).isEmpty)
+  }
+
+  @Test("声を止めて欄に入れたときと捨てたときは、画像は付いたまま")
+  func attachedStaysWithDraftAndTrash() {
+    var stopped = VoiceConsult()
+    _ = stopped.attachPicture()
+    _ = stopped.micTapped(at: .t0)
+    _ = stopped.listeningStarted(at: .t0)
+    _ = stopped.stopTapped(at: .t0)
+    #expect(stopped.heard("これを消したい", isFinal: true, at: .t0) == [.fillDraft("これを消したい")])
+    #expect(stopped.hasPicture)
+
+    var trashed = VoiceConsult()
+    _ = trashed.attachPicture()
+    _ = trashed.micTapped(at: .t0)
+    _ = trashed.discardTapped()
+    #expect(trashed.hasPicture)
+  }
+
+  @Test("聞いているあいだと答えを待つあいだは、画像を付けない")
+  func attachIgnoredWhileBusy() {
+    var listening = VoiceConsult()
+    _ = listening.micTapped(at: .t0)
+    let whileListening = listening.attachPicture()
+    #expect(!whileListening)
+    #expect(!listening.hasPicture)
+
+    var thinking = VoiceConsult()
+    _ = thinking.typed("Wi-Fi がつながらない", at: .t0)
+    let whileThinking = thinking.attachPicture()
+    #expect(!whileThinking)
+    #expect(!thinking.canSend(draft: "もう一度"))
+  }
+
   @Test("書いた言葉は1000字で切る")
   func pictureTextCut() {
     var flow = VoiceConsult()

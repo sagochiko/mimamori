@@ -69,8 +69,10 @@ struct ProtectedHomeView: View {
         if ScreenshotStubTransport.noticesOpen { noticesOpen = true }
         if ScreenshotStubTransport.cameraOpen { camera = true }
         if ScreenshotStubTransport.photoOpen { choosingPhoto = true }
-        // After the draft, so `-mimamori-stub-draft` sends its words with the image.
+        // After the draft, so `-mimamori-stub-photo-send` sends the words of `-mimamori-stub-draft`
+        // with the image.
         if ScreenshotStubTransport.photoPick { picked(StubPicture.settingsScreen()) }
+        if ScreenshotStubTransport.photoPick, ScreenshotStubTransport.photoSend { send() }
         if ScreenshotStubTransport.listening, !listening { model.micTapped() }
       #endif
     }
@@ -233,7 +235,7 @@ struct ProtectedHomeView: View {
     !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
-  private var canSend: Bool { model.voice.acceptsText && hasDraft }
+  private var canSend: Bool { model.voice.canSend(draft: draft) }
 
   private var listening: Bool {
     if case .listening = model.voice.phase { return true }
@@ -244,16 +246,24 @@ struct ProtectedHomeView: View {
   /// button once she has written something, as in the AI chat apps. While listening the whole field is
   /// the recording field instead (#224).
   private var inputBar: some View {
-    Group {
-      if listening { recordingBar } else { writingBar }
+    VStack(alignment: .leading, spacing: 6) {
+      if let picture = model.attachedPicture {
+        AttachedPictureView(picture: picture) { model.removePicture() }
+          .padding(.leading, 8)
+          .transition(.opacity)
+      }
+      Group {
+        if listening { recordingBar } else { writingBar }
+      }
+      .background(Capsule().fill(Color(.secondarySystemBackground)))
+      .overlay(Capsule().strokeBorder(Color(.separator), lineWidth: 0.5))
     }
-    .background(Capsule().fill(Color(.secondarySystemBackground)))
-    .overlay(Capsule().strokeBorder(Color(.separator), lineWidth: 0.5))
     .padding(.horizontal, 12)
     .padding(.vertical, 8)
     .background(Color(.systemBackground))
     .animation(.snappy, value: hasDraft)
     .animation(.snappy, value: listening)
+    .animation(.snappy, value: model.attachedPicture != nil)
   }
 
   /// As in the usual chat apps' recording field (the author sent one as the model on 2026-11-07,
@@ -314,7 +324,9 @@ struct ProtectedHomeView: View {
         text: $draft, isFocused: $writing, placeholder: "メッセージ", textStyle: .body, maxLines: 6,
         hint: model.voice.hasVoiceDraft
           ? "聞き取った言葉が入っています。直してから送るボタンを押してください。声で聞いたときと同じに扱います"
-          : "スマホの困りごとや気になる電話のことを書いて、送るボタンを押してください。答えは読み上げません"
+          : model.attachedPicture != nil
+            ? "付けたスクショで何をしたいかを書いて、送るボタンを押してください。マイクで話しても一緒に送ります"
+            : "スマホの困りごとや気になる電話のことを書いて、送るボタンを押してください。答えは読み上げません"
       )
       .padding(.vertical, 11)
       Group {
@@ -332,10 +344,7 @@ struct ProtectedHomeView: View {
 
   private var sendButton: some View {
     Button {
-      guard canSend else { return }
-      let text = draft
-      draft = ""
-      model.sendTyped(text)
+      send()
     } label: {
       Image(systemName: "arrow.up")
         .font(.body.weight(.bold))
@@ -353,15 +362,24 @@ struct ProtectedHomeView: View {
     .accessibilityLabel("送る")
     .accessibilityHint(
       model.voice.acceptsText
-        ? (model.voice.hasVoiceDraft ? "聞き取った言葉を送ります" : "書いた言葉を送ります") : "答えを待っています")
+        ? (model.attachedPicture != nil
+          ? "付けたスクショと書いた言葉を一緒に送ります"
+          : model.voice.hasVoiceDraft ? "聞き取った言葉を送ります" : "書いた言葉を送ります")
+        : "答えを待っています")
   }
 
-  /// The image she picked, with what is in the field. The field is emptied only when it was sent:
-  /// while the picker hands the image over she may have pressed the microphone, and then nothing
-  /// goes and her words stay.
+  /// The send button: her words, with the image on the field if there is one (#234).
+  private func send() {
+    guard canSend else { return }
+    let text = draft
+    draft = ""
+    model.sendTyped(text)
+  }
+
+  /// The image she picked goes onto the field and waits for her words (#234). While the picker hands
+  /// it over she may have pressed the microphone; then it is not attached.
   private func picked(_ data: Data) {
-    writing = false
-    if model.sendPicture(data, text: draft) { draft = "" }
+    model.attachPicture(data)
   }
 
   /// A screenshot into the chat, as in the usual chat apps (the author chose this on 2026-11-07,
@@ -385,7 +403,7 @@ struct ProtectedHomeView: View {
     .accessibilityLabel("スクショを見せる")
     .accessibilityHint(
       model.voice.acceptsText
-        ? "写真の中からスクショを1枚選ぶと、みまもりが見て、押す場所に丸を付けて答えます。欄に書いた言葉も一緒に送ります。画像は残しません"
+        ? "写真の中からスクショを1枚選ぶと、欄に付きます。何をしたいかを書くか話して送ると、みまもりが見て、押す場所に丸を付けて答えます。画像は残しません"
         : "答えを待っています")
   }
 
@@ -460,6 +478,42 @@ private struct VoiceLevelDots: View {
 
 /// The screenshot she showed, under her line and then under the answer, with the ring where to press.
 /// At most 420 points tall, so on an iPhone the answer above it and the field below stay in view.
+/// The screenshot waiting on the field (#234): small, with a remove button on its corner. No words;
+/// VoiceOver has them.
+private struct AttachedPictureView: View {
+  let picture: ConsultPicture
+  let remove: () -> Void
+
+  var body: some View {
+    let size = picture.original
+    Image(uiImage: picture.image)
+      .resizable()
+      .aspectRatio(CGFloat(size.width) / CGFloat(size.height), contentMode: .fit)
+      .frame(height: 72)
+      .clipShape(RoundedRectangle(cornerRadius: 8))
+      .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color(.separator), lineWidth: 0.5))
+      .accessibilityElement()
+      .accessibilityLabel("付けたスクショ")
+      .accessibilityHint("送るボタンを押すと、書いた言葉と一緒に送ります")
+      .overlay(alignment: .topTrailing) {
+        Button(action: remove) {
+          Image(systemName: "xmark.circle.fill")
+            .font(.title3)
+            .symbolRenderingMode(.palette)
+            .foregroundStyle(.white, Color.black.opacity(0.6))
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .offset(x: 16, y: -16)
+        .accessibilityLabel("スクショを外す")
+        .accessibilityHint("付けたスクショを送らずに外します")
+      }
+      .padding(.top, 12)
+      .padding(.trailing, 16)
+  }
+}
+
 private struct ShownPictureView: View {
   let shown: ShownPicture
 

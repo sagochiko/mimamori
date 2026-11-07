@@ -118,6 +118,9 @@ public struct VoiceConsult: Sendable {
   /// The field holds words she said and stopped with the stop button. Sent, they count as asked by
   /// voice (they came from her voice, she only fixed them); emptying the field ends that (#224).
   private var voiceDraft = false
+  /// An image she picked with the photo button waits on the field, to go with her words (#234). The
+  /// image itself stays with the App's adapter.
+  public private(set) var hasPicture = false
 
   /// What happens to her words once the recognizer hands over the last of them.
   private enum Ending {
@@ -207,9 +210,31 @@ public struct VoiceConsult: Sendable {
     }
   }
 
+  /// Whether the send button sends now: an image on the field, or words in it (#234).
+  public func canSend(draft: String) -> Bool {
+    acceptsText && (hasPicture || !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+  }
+
+  /// She picked an image with the photo button: it waits on the field instead of going at once, so she
+  /// can say what she wants first (the author chose this on 2026-11-07, #234). False while listening
+  /// or waiting for an answer.
+  @discardableResult
+  public mutating func attachPicture() -> Bool {
+    guard acceptsText else { return false }
+    hasPicture = true
+    return true
+  }
+
+  /// The image's remove button. Her words stay.
+  public mutating func removePicture() {
+    hasPicture = false
+  }
+
   /// She typed and pressed send. Sent as it is (trimmed, at most `maxCharacters`); never read aloud.
+  /// With an image on the field, the image goes with the words, which may be none.
   public mutating func typed(_ text: String, at now: Date) -> [ConsultEffect] {
     guard acceptsText else { return [] }
+    if hasPicture { return pictured(text, at: now) }
     let said = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.maxCharacters))
     guard !said.isEmpty else { return [] }
     byVoice = voiceDraft
@@ -229,6 +254,7 @@ public struct VoiceConsult: Sendable {
     let words = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.maxCharacters))
     byVoice = false
     voiceDraft = false
+    hasPicture = false
     phase = .thinking(said: words.isEmpty ? Self.pictureLine : "\(Self.pictureLine)。\(words)")
     return [.stopSpeaking, .sendPicture(text: words)]
   }
@@ -317,6 +343,13 @@ public struct VoiceConsult: Sendable {
       phase = .idle
       voiceDraft = true
       return [.fillDraft(said)]
+    }
+    if hasPicture {
+      // Her voice about the image on the field: both go, and like any image answer it is not read aloud.
+      hasPicture = false
+      byVoice = false
+      phase = .thinking(said: "\(Self.pictureLine)。\(said)")
+      return [.sendPicture(text: said)]
     }
     phase = .thinking(said: said)
     return [.send(said)]

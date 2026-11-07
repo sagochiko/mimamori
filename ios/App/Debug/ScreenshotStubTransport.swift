@@ -31,10 +31,13 @@
     static var gmailButton: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-gmail") }
     /// With `-mimamori-stub-photo-open`, the home screen opens the photo button's picker at once (#221).
     static var photoOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-photo-open") }
-    /// With `-mimamori-stub-photo-pick`, the home screen sends `StubPicture` at once, as if she had picked
-    /// it with the photo button: the picker runs outside the app and a test cannot reach into it.
-    /// With `-mimamori-stub-draft`, its words go with the image.
+    /// With `-mimamori-stub-photo-pick`, the home screen puts `StubPicture` on the field at once, as if
+    /// she had picked it with the photo button (the picker runs outside the app and a test cannot reach
+    /// into it). Nothing is sent yet (#234).
     static var photoPick: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-photo-pick") }
+    /// With `-mimamori-stub-photo-send` as well, the send button is pressed right after: the image goes
+    /// with the words of `-mimamori-stub-draft` (#234).
+    static var photoSend: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-photo-send") }
     /// With `-mimamori-stub-wipe-open`, the check before "すべて消す" ("消す" or "やめる") opens at once.
     static var wipeOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-wipe-open") }
     /// With `-mimamori-stub-wipe-fail`, "すべて消す" answers 502 `cleanup_failed`, as when Google or
