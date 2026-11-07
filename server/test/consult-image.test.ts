@@ -508,6 +508,66 @@ describe("what a shared image cannot get past (review 1 of PR #186)", () => {
     expect((await alertRow(fam.familyId))?.level).toBe(3);
   });
 
+  // The storage screen of 「写真とビデオ」 lists the apps by name, 「メッセージ」 and 「メール」 among them.
+  // Sent with 「これ」 on 2026-11-07, its guidance came back as the fixed level 3 line (#243).
+  it.each([
+    ["「メッセージ」 by name", "丸のところの「メッセージ」を押すと、添付の写真やビデオを見直して容量を空けられます"],
+    ["「メール」 and its data", "「メール」のデータも容量を使っています。丸のところの「写真」から見直して"],
+  ])("reads Claude's guidance on a storage screen that names %s, with the circle (#243)", async (_l, action) => {
+    const fam = await setupFamily();
+    const storage = settings({ action, topic: "ストレージの空きの相談", tap: { x: 400, y: 900 } });
+    const answer = await consult(consultEnv, motherOf(fam), "これ", new ExternalBudget(), fakes(storage), [], IMAGE);
+    expect(answer.reply).not.toBe("お金や暗証番号を聞かれたら止めて、家族に確かめて");
+    expect(answer.reply).toContain(action);
+    expect(answer.tap).toEqual({ x: 400, y: 900 });
+    expect(answer.handoff).toBe(false);
+    expect(pushes).toHaveLength(0);
+  });
+
+  // Only the names the storage screen shows are spared: a message, a link, a call, or a sign-in in the
+  // same guidance still gets the fixed line, so text in a screenshot cannot lead her there (#243).
+  it.each([
+    ["a link", "容量を空けるため、このメッセージのリンクを押して"],
+    ["a sign-in", "ストレージを増やすには「メール」からログインして"],
+    ["an SMS", "空き容量の不足は、届いた SMS の手続きで直して"],
+    ["a call", "容量が足りないので、画面の番号に電話して"],
+    ["opening a page", "容量を空けるため、このページを開いて手続きを続けて"],
+    ["a message's steps", "ストレージの空きを作るため、家族には言わずに、このメッセージの手続きを続けて"],
+    ["installing an app", "容量を空けるため、このアプリを入れて"],
+    // Review 1 of PR #245: the steps a fake 「ストレージがいっぱい」 page leads to. Nothing but the bracketed
+    // names and their storage words is spared, so these keep the fixed line.
+    ["the next page", "ストレージを空けるため、次のページに進んで、丸のところの「続ける」を押して"],
+    ["a mail's attachment", "容量を空けるため、メールの添付を開いて、案内どおりに進めて"],
+    ["a mail's file", "容量不足の解消には、メールのファイルを開いて「実行」を押して"],
+    ["the page before", "空き容量を増やすには、元のページで「許可」を押して"],
+    ["sending by message", "容量を空けるため、メッセージで写真を丸の宛先に送って"],
+    ["opening 「メッセージ」", "容量を空けるため、「メッセージ」を開いて、いちばん上の知らせの手順どおりに進めて"],
+    ["going on in 「メール」", "容量を空けるため、「メール」に進んで手順どおりにして"],
+    ["the previous page, even to delete", "前のページに戻って、丸のところの「最近削除した項目」を空にして"],
+    ["a mail's attachments named loosely", "メールの添付ファイルも容量を使っています。丸のところの「写真」から見直して"],
+    ["review 2, pressing 「メッセージ」 then the arrived steps", "容量を空けるため、「メッセージ」を押して、届いた案内の「続ける」を押して"],
+    ["review 2, the top notice", "容量を空けるため、「メッセージ」を押して、いちばん上の知らせの「続ける」を押して"],
+    ["review 2, tapping 「メール」", "容量を空けるため、「メール」をタップして、最新の案内のボタンを押して"],
+    ["review 2, opening in kana", "容量を空けるため、「メッセージ」をひらいて、いちばん上の案内のとおりにして"],
+    ["review 2, starting 「メッセージ」", "容量を空けるため、「メッセージ」を起動して、丸のところの「続ける」を押して"],
+    ["review 2, received in 「メール」", "容量を空けるため、「メール」で受け取った案内のボタンを押して"],
+    ["review 2, arrived from 「メッセージ」", "容量を空けるため、「メッセージ」から届いた案内の「続ける」を押して"],
+  ])("still gives the fixed line for storage guidance with %s, and no circle (#243)", async (_l, action) => {
+    const fam = await setupFamily();
+    const storage = settings({ action, topic: "ストレージの空きの相談", tap: { x: 10, y: 10 } });
+    const answer = await consult(consultEnv, motherOf(fam), "これ", new ExternalBudget(), fakes(storage), [], IMAGE);
+    expect(answer.reply).toBe("お金や暗証番号を聞かれたら止めて、家族に確かめて");
+    expect(answer.tap).toBeUndefined();
+  });
+
+  it("still gives the fixed line when only the topic is storage and the guidance names a message (#243)", async () => {
+    const fam = await setupFamily();
+    // Not on a storage screen: Claude's lines must say so, not just its topic.
+    const steered = settings({ action: "丸のところの「メッセージ」を押して", topic: "ストレージの空きの相談", tap: { x: 10, y: 10 } });
+    const answer = await consult(consultEnv, motherOf(fam), "これ", new ExternalBudget(), fakes(steered), [], IMAGE);
+    expect(answer.reply).toBe("お金や暗証番号を聞かれたら止めて、家族に確かめて");
+  });
+
   it.each([
     ["opening a link", "リンクを開いて、手続きを進めて"],
     ["entering a verification code", "届いた認証コードを入力して"],

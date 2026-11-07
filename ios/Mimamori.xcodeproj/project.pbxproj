@@ -67,6 +67,7 @@
 		D6D36C1F5814E263377C9774 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 86C975201DC4D87FB98BBD52 /* InfoPlist.strings */; };
 		D9FE1BC560296394E1FBC071 /* icon-256.png in Resources */ = {isa = PBXBuildFile; fileRef = 0013C3033E612105301426FF /* icon-256.png */; };
 		E893A89072E374D5DD8B953C /* MimamoriCore in Frameworks */ = {isa = PBXBuildFile; productRef = 8E40F75D8E10E200B96B0C39 /* MimamoriCore */; };
+		EEF874E133FC58A9B88A309D /* FilePictureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29AB5AA650426F42329CD5E8 /* FilePictureStore.swift */; };
 		F54F2613513BFFC99DF087AC /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = D732C4C84CB27B1B71752ACA /* Settings.bundle */; };
 		F7662858D9EEFCBA1B6DCD99 /* CallDirectory.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FE2AA537BD66CC913767D2DC /* CallDirectory.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		F9E44D49723556A48889D8FD /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 140B8B5CC2F4AD322861B1DA /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -139,6 +140,7 @@
 		1BDA3D10727E119E0680CB3C /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		1F9B0F681A88B43BA14AE240 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = manifest.json; sourceTree = "<group>"; };
 		269A9FC1AFAA472457732ED0 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		29AB5AA650426F42329CD5E8 /* FilePictureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePictureStore.swift; sourceTree = "<group>"; };
 		2A5992A9AA59868FE51BFDE1 /* KeychainDeviceKeyStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainDeviceKeyStoreTests.swift; sourceTree = "<group>"; };
 		358E9B4A2B3429F153B655CB /* icon-96.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-96.png"; sourceTree = "<group>"; };
 		37FA4151507E2DD9222D61D8 /* icon-48.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-48.png"; sourceTree = "<group>"; };
@@ -362,6 +364,7 @@
 				BE04C0A605888D83870E0B4F /* ConsultPicture.swift */,
 				D3066EF38E05327DBF8B6F57 /* DailyCheckInNotifier.swift */,
 				419E10C36BDE538278F82BD1 /* FileChatLogStore.swift */,
+				29AB5AA650426F42329CD5E8 /* FilePictureStore.swift */,
 				B899B5927C255CF8923BD8B2 /* GmailSignIn.swift */,
 				B4E2407A22C382C75C4FAAA0 /* Info.plist */,
 				B78E521DD07930F33B780261 /* KeychainDeviceKeyStore.swift */,
@@ -691,6 +694,7 @@
 				38A272F7AE944C9DF6A7E596 /* FamilyHomeView.swift in Sources */,
 				B30588DA403943E16C24E603 /* FamilyStartView.swift in Sources */,
 				7C3ACF594C1E220440463051 /* FileChatLogStore.swift in Sources */,
+				EEF874E133FC58A9B88A309D /* FilePictureStore.swift in Sources */,
 				CFB485FADD66B88324489BDF /* GmailSignIn.swift in Sources */,
 				3108313EAA90F72D86124356 /* JoinView.swift in Sources */,
 				A6C56C492741A879A53F09EC /* KeychainDeviceKeyStore.swift in Sources */,

@@ -281,6 +281,34 @@ const UNANSWERED_REASON = "AI が答えきれなかった相談";
 const CONTACT =
   /メッセージ|メール|sms|ショートメール|電話|リンク|url|サイト|ページ|アプリ.{0,3}(入れ|インストール|ダウンロード)/;
 
+// Claude's guidance on an image about the iPhone's storage screens (iPhone Storage, 「写真とビデオ」),
+// where the apps are listed by name: 「メッセージ」 and 「メール」 there are names on the screen, not a
+// message she got (#243, a screenshot of 「写真とビデオ」 with 「これ」 got the fixed level 3 line). Matched on
+// Claude's action and reasons, not its topic alone.
+const STORAGE_GUIDE = /ストレージ|容量|空き|最近削除した項目|写真とビデオ/;
+// The names such a screen shows, taken out before CONTACT is cast over the guidance: only 「メッセージ」 and
+// 「メール」 in brackets, with the storage words right after them (「メッセージ」の添付の容量, 「メール」のデータ).
+// Nothing else is spared, not the page before or after, a message's attachment, or sending by message: a fake
+// 「ストレージがいっぱい」 page leads her on with those (review 1 of PR #245). A name followed by opening,
+// going on, sending, allowing, or running (「メッセージ」を開いて) keeps the fixed line too. When in doubt the
+// fixed line wins: a miss is heavier than a needless fixed line.
+const STORAGE_NAMES = /「(メッセージ|メール)」(の(添付|書類)?の?(容量|データ))?/g;
+const NAME_THEN_STEP = /「(メッセージ|メール)」(を|に|で|から)?(開|ひら|起動|タップ|選|進|送|許可|実行)/;
+// A bracketed name with something that arrived (届いた案内, いちばん上の知らせ) on the same line: led into the
+// app to act on a message (review 2 of PR #245).
+const NAME_AND_ARRIVAL = /届|受け取|受信|知らせ|案内|いちばん上|一番上|最新/;
+
+/** CONTACT on Claude's guidance for an image, with the names a storage screen shows left out (#243). */
+function guidesContact(lines: readonly string[], guide: readonly string[]): boolean {
+  if (!guide.some((l) => STORAGE_GUIDE.test(l))) return lines.some((l) => CONTACT.test(l));
+  return lines.some((l) => {
+    if (NAME_THEN_STEP.test(l)) return true;
+    if (/「(メッセージ|メール)」/.test(l) && NAME_AND_ARRIVAL.test(l)) return true;
+    const rest = l.replace(STORAGE_NAMES, "");
+    return CONTACT.test(rest) || /ログイン|サインイン/.test(rest);
+  });
+}
+
 const KEYS = ["kind", "level", "reasons", "basis", "action", "handoff", "injection_suspected", "topic"] as const;
 /** Only with an image: the press point. */
 const IMAGE_KEYS = [...KEYS, "tap"] as const;
@@ -1139,7 +1167,9 @@ function decidePlan(
   if (
     claude !== null &&
     claude.kind === "help" &&
-    (told.some((t) => CONTACT.test(t)) || claudeLines.some((l) => CONTACT.test(l)) || rule.reasons.length > 0)
+    (told.some((t) => CONTACT.test(t)) ||
+      guidesContact(claudeLines, claudeLines.slice(0, 1 + claude.reasons.length)) ||
+      rule.reasons.length > 0)
   ) {
     // About a message, a call, or a link, or the rules saw something: not Claude's free guidance.
     return { level: 3, reasons, reply: LOW_CONCERN_ACTION, toFamily: false, record: true, sign: false, ...base };

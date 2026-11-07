@@ -60,6 +60,11 @@
     /// The conversation stays in memory too, so her real one is left alone. With
     /// `-mimamori-stub-chat police` it starts with the fake-police question asked a few minutes ago.
     static let chatStore = StubChatStore(seed: value(after: "-mimamori-stub-chat"))
+    /// Her kept pictures (#243), in memory too.
+    static let pictureStore = StubPictureStore()
+    /// `-mimamori-stub-photo-ask`: an image sent with no words gets the server's question
+    /// (`ShareConsult.askPicture`), so the image going back onto the field can be shot (#243).
+    static var photoAsk: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-photo-ask") }
 
     private static func value(after flag: String) -> String? {
       let args = ProcessInfo.processInfo.arguments
@@ -171,6 +176,9 @@
       let image = body["image"] as? [String: Any] ?? [:]
       let width = image["width"] as? Int ?? 0
       let height = image["height"] as? Int ?? 0
+      if photoAsk, (body["text"] as? String ?? "").isEmpty {
+        return json(["reply": ShareConsult.askPicture, "speak": ShareConsult.askPicture, "handoff": false])
+      }
       let reply = "丸のところを押して"
       return json([
         "reply": reply, "speak": reply, "handoff": false,
@@ -294,6 +302,17 @@
     func read() throws -> Data? { lock.withLock { data } }
     func write(_ data: Data) throws { lock.withLock { self.data = data } }
     func remove() throws { lock.withLock { data = nil } }
+  }
+
+  /// Her kept pictures for the screenshots, in memory only (#243).
+  final class StubPictureStore: ChatPictureStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var files: [String: Data] = [:]
+
+    func read(_ name: String) throws -> Data? { lock.withLock { files[name] } }
+    func write(_ data: Data, name: String) throws { lock.withLock { files[name] = data } }
+    func remove(_ name: String) throws { lock.withLock { files[name] = nil } }
+    func names() throws -> [String] { lock.withLock { Array(files.keys) } }
   }
 
   /// Made-up cases for the screenshots: one just sent to the family, one that did not reach any family

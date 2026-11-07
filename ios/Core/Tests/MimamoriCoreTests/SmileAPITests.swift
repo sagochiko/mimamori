@@ -150,4 +150,26 @@ struct SmileAPITests {
     #expect(board.photos.map(\.id) == ["photo", "photo-and-note"])
     #expect(SmileBoard(smiles: [smile("note-only", photo: false, note: "またね")]).photos.isEmpty)
   }
+
+  // On build 12 her row showed 「見守られる人」 twice: her own smiles, and those of the member she was
+  // before reinstalling, which the server keeps (#243). Her screen shows only the family's.
+  @Test("母の画面に並べるのは家族の役の写真だけで、見守られる人の笑顔と抜けた人の笑顔は出さない(#243)")
+  func familyPhotosOnly() {
+    func smile(_ id: String, _ member: String, _ role: Role?, photo: Bool = true) -> Smile {
+      Smile(
+        id: id, memberId: member, displayName: role == .protected ? "見守られる人" : "家族", role: role,
+        score: nil, note: nil, hasPhoto: photo, createdAt: Date(timeIntervalSince1970: 0))
+    }
+    let board = SmileBoard(smiles: [
+      smile("sister", "m-sister", .family),
+      smile("her", "m-her", .protected),
+      smile("her-before-reinstall", "m-her-old", .protected),
+      smile("owner", "m-owner", .family),
+      smile("owner-note", "m-owner", .family, photo: false),
+      smile("left", "m-left", nil),
+    ])
+    #expect(board.familyPhotos.map(\.id) == ["sister", "owner"])
+    // The family's screen still shows everyone's.
+    #expect(board.photos.map(\.id) == ["sister", "her", "her-before-reinstall", "owner", "left"])
+  }
 }

@@ -100,6 +100,9 @@ public enum ConsultEffect: Equatable, Sendable {
   /// Send the picked image with these words (empty when she wrote none). The image itself stays with
   /// the App's adapter; nothing of it is in here.
   case sendPicture(text: String)
+  /// Put the image just sent back onto the field: the server asked what she wants with it
+  /// (`ShareConsult.askPicture`), and her answer must go with the image (#243).
+  case keepPicture
   case speak(String)
   case stopSpeaking
 }
@@ -121,6 +124,8 @@ public struct VoiceConsult: Sendable {
   /// An image she picked with the photo button waits on the field, to go with her words (#234). The
   /// image itself stays with the App's adapter.
   public private(set) var hasPicture = false
+  /// The consultation under way, or just answered, went with an image.
+  private var sentPicture = false
 
   /// What happens to her words once the recognizer hands over the last of them.
   private enum Ending {
@@ -154,6 +159,7 @@ public struct VoiceConsult: Sendable {
       pendingEnding = nil
       byVoice = true
       voiceDraft = false
+      sentPicture = false
       return [.stopSpeaking, .startListening]
     case .listening:
       return requestEnd(.send)
@@ -210,11 +216,11 @@ public struct VoiceConsult: Sendable {
     }
   }
 
-  /// Whether the send button sends now: words in the field, with or without an image (#234). An image
-  /// alone does not go from the app: the server would ask what she wants, and her answer would come
-  /// without the image (review 1 of PR #237).
+  /// Whether the send button sends now: words in the field, an image on it, or both. An image alone
+  /// goes since 2026-11-07 (#243, the author changed review 1 of PR #237): when the server asks what
+  /// she wants, the image goes back onto the field (`keepPicture`) to go with her answer.
   public func canSend(draft: String) -> Bool {
-    acceptsText && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    acceptsText && (hasPicture || !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
   }
 
   /// She picked an image with the photo button: it waits on the field instead of going at once, so she
@@ -233,7 +239,8 @@ public struct VoiceConsult: Sendable {
   }
 
   /// She typed and pressed send. Sent as it is (trimmed, at most `maxCharacters`); never read aloud.
-  /// With an image on the field, the image goes with the words. Nothing goes without words.
+  /// With an image on the field, the image goes with the words, or alone. Without one, nothing goes
+  /// without words.
   public mutating func typed(_ text: String, at now: Date) -> [ConsultEffect] {
     guard canSend(draft: text) else { return [] }
     if hasPicture { return pictured(text, at: now) }
@@ -241,23 +248,25 @@ public struct VoiceConsult: Sendable {
     guard !said.isEmpty else { return [] }
     byVoice = voiceDraft
     voiceDraft = false
+    sentPicture = false
     phase = .thinking(said: said)
     return [.stopSpeaking, .send(said)]
   }
 
-  /// Her line in the conversation for a screenshot she showed with the photo button (#221). The image
-  /// is never kept, so this and the answer are all the conversation holds of it.
+  /// What VoiceOver reads for her bubble with a screenshot she showed (#221). The screen shows the
+  /// image and her words only: the author dropped this line from the bubble on 2026-11-07 (#243).
   public static let pictureLine = "画像を見せました"
 
-  /// She picked an image with the photo button, with whatever is in the field. Her line is
-  /// `pictureLine`, followed by her words when there are any. Never read aloud, like typed words.
+  /// She sends the image on the field, with whatever is in the field (empty for the image alone,
+  /// #243). Her bubble holds her words only. Never read aloud, like typed words.
   public mutating func pictured(_ text: String, at now: Date) -> [ConsultEffect] {
     guard acceptsText else { return [] }
     let words = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.maxCharacters))
     byVoice = false
     voiceDraft = false
     hasPicture = false
-    phase = .thinking(said: words.isEmpty ? Self.pictureLine : "\(Self.pictureLine)。\(words)")
+    sentPicture = true
+    phase = .thinking(said: words)
     return [.stopSpeaking, .sendPicture(text: words)]
   }
 
@@ -314,6 +323,11 @@ public struct VoiceConsult: Sendable {
   {
     guard case .thinking(let said) = phase else { return [] }
     phase = .answered(said: said, answer: answer)
+    if sentPicture, answer.reply == ShareConsult.askPicture {
+      // The server asked what she wants with the image: it waits on the field again (#243).
+      hasPicture = true
+      return [.keepPicture]
+    }
     return readsAloud && byVoice ? [.speak(answer.speak)] : []
   }
 
@@ -350,9 +364,11 @@ public struct VoiceConsult: Sendable {
       // Her voice about the image on the field: both go, and like any image answer it is not read aloud.
       hasPicture = false
       byVoice = false
-      phase = .thinking(said: "\(Self.pictureLine)。\(said)")
+      sentPicture = true
+      phase = .thinking(said: said)
       return [.sendPicture(text: said)]
     }
+    sentPicture = false
     phase = .thinking(said: said)
     return [.send(said)]
   }
