@@ -87,9 +87,10 @@ const RETRY_DELAY_SECONDS = 30;
 /**
  * A mail that only the rules decided waits for Claude on the queue's retries (#249): it is asked again
  * on each delivery before this one, and from this one on it is told about on the rules alone, as
- * before. The queue has max_retries 3 and no dead letter queue, so a message past the limit is gone;
- * the third delivery comes before that on either reading of how many deliveries max_retries 3 allows,
- * and leaves one for a notice that did not get through (docs/design.md, the Gmail paragraphs).
+ * before. The queue has no dead letter queue, so a message past the limit is gone. max_retries is 5
+ * (wrangler.jsonc), so on either reading of how many deliveries that allows (5 or 6), two or more are
+ * left after the third for a notice that did not get through: too few outside calls in the batch, or
+ * the mother's push failing (review 1 of PR #250; docs/design.md, the Gmail paragraphs).
  */
 export const MAIL_CLAUDE_DELIVERIES = 3;
 /** Between those deliveries: about four minutes in all, close to the 5-minute watch of the inbox. */

@@ -17,11 +17,13 @@ import {
   enqueueJudge,
   handleJudgeBatch,
   JUDGE_TEXT_MAX_CHARS,
+  MAIL_CLAUDE_DELIVERIES,
   type JudgeDeps,
   type JudgeJob,
   type JudgeMessageBody,
 } from "../src/judge";
 import { mailPayload } from "../src/gmail";
+import wranglerConfig from "../wrangler.jsonc?raw";
 import { resetApnsJwtCache } from "../src/push";
 import { judgeByRules, type RuleInput, type RuleResult } from "../src/rules";
 import { createFamily, invite, join } from "./helpers";
@@ -1239,6 +1241,45 @@ describe("a mail Claude gives nothing for, which the rules alone would tell abou
     expect(await alertsOf(fam.familyId)).toMatchObject([{ level: 1, rule_level: 1, claude_level: null }]);
     expect(pushesTo([fam.tokens.mother])[0]?.body).toContain("確かめ中");
     expect(result.explicitAcks).toHaveLength(1);
+  });
+
+  it("leaves two deliveries after the third before the queue drops the message", () => {
+    // On the stricter reading of the Pull consumers page ("When this reaches the value of max_retries,
+    // the message will not be re-delivered"), the last delivery is attempts == max_retries.
+    const config = JSON.parse(wranglerConfig.replace(/^\s*\/\/.*$/gm, "")) as {
+      queues: { consumers: Array<{ queue: string; max_retries?: number; dead_letter_queue?: string }> };
+    };
+    const judge = config.queues.consumers.find((c) => c.queue === "mimamori-judge");
+    expect(judge?.dead_letter_queue).toBeUndefined();
+    expect(judge?.max_retries).toBeGreaterThanOrEqual(MAIL_CLAUDE_DELIVERIES + 2);
+  });
+
+  it("sends a mail back again when the third delivery runs out of outside calls, and tells on the fourth", async () => {
+    // max_retries is 5 (wrangler.jsonc), so the third delivery is not the last (review 1 of PR #250).
+    // Each job needs one Claude call and three pushes; 40 tickets cover 10 of the 12 jobs.
+    const fam = await setupFamily();
+    const deps = fakes({ rule: notSure, claude: null });
+    const bodies = Array.from({ length: 12 }, (_, i) =>
+      queued({
+        familyId: fam.familyId,
+        source: "gmail",
+        payload: { sender: `info${i}@shop${i}.example`, text: "ご注文の確認", url: `https://shop${i}.example/` },
+      }),
+    );
+    const third = await runMessages(bodies.map((b) => messageOf(b, 3)), deps);
+    expect(third.result.explicitAcks).toHaveLength(10);
+    expect(third.result.retryMessages).toHaveLength(2);
+    expect(await alertsOf(fam.familyId)).toHaveLength(10);
+
+    const left = bodies.slice(10);
+    const fourth = await runMessages(left.map((b) => messageOf(b, 4)), deps);
+    expect(fourth.result.explicitAcks).toHaveLength(2);
+    const rows = await alertsOf(fam.familyId);
+    expect(rows).toHaveLength(12);
+    expect(rows.filter((r) => left.some((b) => b.alertId === r.id))).toMatchObject([
+      { level: 2, claude_level: null },
+      { level: 2, claude_level: null },
+    ]);
   });
 
   it("decides on any delivery past the third too, however the earlier ones ended", async () => {
