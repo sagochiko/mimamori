@@ -4261,3 +4261,51 @@ describe("Claude's own words at level 3 on a mail or a site (#251)", () => {
     expect(system).toMatch(/3のときだけ/);
   });
 });
+
+// Review 1 of PR #252: the holes in the nets of the level 3 words, the picture question, and the first answer.
+describe("the nets after review 1 of PR #252 (#251)", () => {
+  const LOW_CONCERN = "お金や暗証番号を聞かれたら止めて、家族に確かめて";
+  const MAIL = "このメール、どうかな。荷物のお知らせって書いてある";
+
+  // None of these has a word of the first list; each leads her to act on what she got.
+  it.each([
+    "このメールには返事をして確かめてね。",
+    "書いてある窓口に問い合わせて確かめてね。",
+    "amaz0n-help.jp で確かめてね。",
+    "0120-111-222 に連絡して確かめてね。",
+    "LINEで友だち追加して確かめてね。",
+    "差出人に住所と名前を送って確かめてね。",
+    "届いたメールの指示どおりにしてね。",
+  ])("keeps the fixed line alone for %s", async (line) => {
+    for (const words of [
+      { basis: "", action: line },
+      { basis: line, action: "" },
+    ]) {
+      const judged = await judgeConsult(MAIL, [], async () =>
+        scam({ level: 3, reasons: [], ...words, action: words.action || "ゆっくりでいいよ" }),
+      );
+      expect(judged.reply).not.toContain(line);
+      expect(judged.reply.endsWith(LOW_CONCERN)).toBe(true);
+    }
+    const judged = await judgeConsult(MAIL, [], async () => scam({ level: 3, reasons: [], basis: "", action: line }));
+    expect(judged.reply).toBe(LOW_CONCERN);
+  });
+
+  it("keeps the fixed line for a message she got, not the picture question", async () => {
+    const text = "知らない番号からSMSで、このアプリを入れてと来た。どうやるの";
+    const judged = await judgeConsult(text, [], async () =>
+      help({ action: "そのアプリの画面が分からないよ", needs_screen: true, topic: "アプリの相談" }),
+    );
+    expect(judged.reply).not.toBe(ASK_SCREEN_REPLY);
+    expect(judged.reply).toBe(LOW_CONCERN);
+  });
+
+  it("hands a scam consultation to the family when Claude says so, even as the first answer", async () => {
+    const text = "知らない人が家に来て、点検だと言われた";
+    const judged = await judgeConsult(text, [], async () =>
+      scam({ level: 3, reasons: [], basis: "", action: "様子を見てね", handoff: true, topic: "訪問の相談" }),
+    );
+    expect(judged.reply).toBe(HANDOFF_REPLY);
+    expect(judged.toFamily).toBe(true);
+  });
+});

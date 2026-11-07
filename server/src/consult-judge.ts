@@ -830,7 +830,11 @@ export async function requestSearchAnswer(
     if (!res.ok) return null;
     const body = (await res.json()) as SearchResponse;
     if (body.stop_reason !== "end_turn") return null;
-    const blocks = (body.content ?? []).filter((b) => b.type === "text" && typeof b.text === "string");
+    // Only the text after the last search result: before it is a preamble ("調べてみますね", the docs'
+    // "I'll search for ..."), not the answer (review 1 of PR #252).
+    const content = body.content ?? [];
+    const lastResult = content.findLastIndex((b) => b.type === "web_search_tool_result");
+    const blocks = content.slice(lastResult + 1).filter((b) => b.type === "text" && typeof b.text === "string");
     const answer = blocks
       .map((b) => b.text)
       .join("")
@@ -851,6 +855,23 @@ export async function requestSearchAnswer(
 
 // A host name as a URL gives it, and nothing else: the site named after the answer.
 const HOST = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+// The sites named to her by name (review 1 of PR #252): a fake site high in the results would otherwise
+// be read to her as where to look. Public domains by their ending, and a few well-known sites with their
+// subdomains. Any other host, and one with a digit or more than one hyphen, is "ウェブで調べた結果".
+const PUBLIC_ENDINGS = [".go.jp", ".lg.jp", ".ac.jp", ".or.jp", ".ed.jp"];
+const KNOWN_SITES = ["wikipedia.org", "tenki.jp", "weathernews.jp", "apple.com", "cookpad.com", "kurashiru.com", "nhk.or.jp"];
+export const WEB_SOURCE = "(ウェブで調べた結果)";
+
+function namedSite(host: string): boolean {
+  if (!HOST.test(host) || /\d/.test(host) || (host.match(/-/g) ?? []).length > 1) return false;
+  return (
+    PUBLIC_ENDINGS.some((e) => host.endsWith(e)) || KNOWN_SITES.some((k) => host === k || host.endsWith(`.${k}`))
+  );
+}
+
+// Opening hours, which the search is for: "開" and "営業" there lead her nowhere (review 1 of PR #252). Left
+// out before LEADS_TO_ACT in the search answer only; Claude's level 3 lines keep the whole net.
+const OPENING_HOURS = /開店|開館|開園|開いて(い)?ます|営業/g;
 
 /**
  * The second call's answer as she hears it, or null when the first answer should stand: the nets of
@@ -867,14 +888,15 @@ function searchReply(found: SearchAnswer): string | null {
     !usable(t) ||
     talksJudgment(t) ||
     CONTACT.test(line) ||
-    LEADS_TO_ACT.test(line) ||
+    LEADS_TO_ACT.test(line.replace(OPENING_HOURS, "")) ||
     DELETION.test(line) ||
     SENSITIVE.some(({ pattern }) => pattern.test(line))
   ) {
     return null;
   }
-  const host = found.source?.toLowerCase().replace(/^www\./, "") ?? "";
-  return HOST.test(host) ? `${t}(${host} より)` : t;
+  if (found.source === null) return t;
+  const host = found.source.toLowerCase().replace(/^www\./, "");
+  return namedSite(host) ? `${t}(${host} より)` : `${t}${WEB_SOURCE}`;
 }
 
 function normalize(text: string): string {
@@ -1074,18 +1096,25 @@ function policeInHerWords(said: Said): boolean {
 }
 
 // Words that lead her to act on what she got, or to money (#251): a line of Claude's at level 3 with one
-// of them is not read out, and the fixed line stands alone. The list is of words, not of the form that
+// of them is not read out, and the fixed line stands alone. Since review 1 of PR #252 it also has the
+// words of answering or reaching the sender (返事, 問い合わせ, 連絡, 送, 友だち追加, LINE), doing what the
+// message says (指示, 書いてある), three digits or more in a row (a phone number), and a domain's form;
+// CONTACT and SENSITIVE are cast over the same lines too. The list is of words, not of the form that
 // urges her: "リンクは開かないで" falls too, and that is the side to err on. A level 3 answer tells the
 // family nothing, so a line steered by the message she read out would reach her with no one to catch it
 // (reviews 2 and 3 of PR #186, #188); this net and the fixed line after it are what is left between them.
 const LEADS_TO_ACT =
-  /開|ひら|押|おし|タップ|クリック|入力|ログイン|サインイン|かけ直|掛け直|電話|でんわ|番号|コード|インストール|入れ|ダウンロード|url|http|www|リンク|サイト|ページ|qr|支払|払|振り?込|送金|お金|返信|登録|手続|アクセス|許可|進|口座|カード|暗証|パスワード/;
+  /開|ひら|押|おし|タップ|クリック|入力|ログイン|サインイン|かけ直|掛け直|電話|でんわ|番号|コード|インストール|入れ|ダウンロード|url|http|www|リンク|サイト|ページ|qr|支払|払|振り?込|送金|お金|返信|登録|手続|アクセス|許可|進|口座|カード|暗証|パスワード|連絡|問い?合わ?せ|問合せ|返事|送|追加|友だち|友達|指示|書いてある|記載|line|\d{3,}|[a-z0-9-]+\.[a-z]{2,}/;
 
 /** Claude's basis and action at level 3 that may be read to her: each alone, each through every net. */
 function lowConcernWords(claude: ClaudeConsult): string[] {
   return [claude.basis, claude.action]
     .map((l) => l.trim())
-    .filter((l) => l !== "" && usable(l) && !talksJudgment(l) && !LEADS_TO_ACT.test(normalize(l)))
+    .filter((l) => {
+      if (l === "" || !usable(l) || talksJudgment(l)) return false;
+      const n = claudeLine(l);
+      return !LEADS_TO_ACT.test(n) && !CONTACT.test(n) && !SENSITIVE.some(({ pattern }) => pattern.test(n));
+    })
     .map((l) => (/[。!?！？]$/.test(l) ? l : `${l}。`));
 }
 
@@ -1330,18 +1359,18 @@ function decidePlan(
       [...POLICE_SCRIPT, ...CONSULT_MORE_PARTS, CONSULT_MONEY_MOVE].some((r) => matchSpans(r, n).length > 0)
     );
   });
+  // A message, a call, or a link in her words or in Claude's guidance.
+  const aboutContact =
+    told.some((t) => CONTACT.test(t)) ||
+    (claude !== null && CONTACT.test(claudeLine(claude.action))) ||
+    claudeLines.some((l) => CONTACT.test(l));
   const plainLevel3 =
-    claude !== null &&
-    sensitive.length === 0 &&
-    level === 3 &&
-    rule.level === null &&
-    !told.some((t) => CONTACT.test(t)) &&
-    !CONTACT.test(claudeLine(claude.action)) &&
-    !claudeLines.some((l) => CONTACT.test(l)) &&
-    !namesScript;
+    claude !== null && sensitive.length === 0 && level === 3 && rule.level === null && !aboutContact && !namesScript;
   const stuck = plainLevel3 && aiAnswered && saysStuck(said.text);
   // Not on an image: Claude saw the screen, and its handoff on it is followed as before (review 1 of PR #186).
-  const firstAnswer = plainLevel3 && !aiAnswered && !image && (claude?.handoff ?? false);
+  // Phone help only: a scam consultation Claude hands over goes to the family as before (review 1 of PR #252).
+  const firstAnswer =
+    plainLevel3 && !aiAnswered && !image && claude?.kind === "help" && (claude?.handoff ?? false);
   const handoff = stuck || ((claude?.handoff ?? false) && !firstAnswer);
 
   // "それってどういうこと" with nothing of hers in the conversation to point at (#114): Claude cannot tell
@@ -1397,6 +1426,8 @@ function decidePlan(
     (claude.needs_screen ?? false) &&
     !stuck &&
     !namesScript &&
+    // About a message or a call: the fixed level 3 line below, as before (review 1 of PR #252).
+    !aboutContact &&
     !image &&
     sensitive.length === 0 &&
     level === 3 &&

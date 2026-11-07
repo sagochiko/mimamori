@@ -92,10 +92,42 @@ describe("an answer from the web (#251)", () => {
     expect(judged.reply).toBe(FIRST);
   });
 
-  it("leaves out a source that is not a plain host name", async () => {
-    const s = searcher({ text: "明日は晴れの予報だよ。", source: "安全なサイト" });
+  // Review 1 of PR #252: a host a fake site could have is not read to her as where to look.
+  it.each([
+    ["not a host name", "安全なサイト"],
+    ["a host not on the list", "iphone-support-jp.top"],
+    ["a host with a number", "0120help.or.jp"],
+    ["a host with many hyphens", "jp-apple-support-help.or.jp"],
+    ["a host that only ends like one on the list", "faketenki.jp"],
+  ])("names no site for %s", async (_label, source) => {
+    const s = searcher({ text: "明日は晴れの予報だよ。", source });
+    const judged = await judgeConsult(WEATHER, [], async () => help(), judgeByRules, false, s.search);
+    expect(judged.reply).toBe("明日は晴れの予報だよ。(ウェブで調べた結果)");
+  });
+
+  it.each([
+    ["www.jma.go.jp", "jma.go.jp"],
+    ["www.city.example.lg.jp", "city.example.lg.jp"],
+    ["ja.wikipedia.org", "ja.wikipedia.org"],
+    ["tenki.jp", "tenki.jp"],
+    ["support.apple.com", "support.apple.com"],
+  ])("names a public or well-known site: %s", async (source, shown) => {
+    const s = searcher({ text: "明日は晴れの予報だよ。", source });
+    const judged = await judgeConsult(WEATHER, [], async () => help(), judgeByRules, false, s.search);
+    expect(judged.reply).toBe(`明日は晴れの予報だよ。(${shown} より)`);
+  });
+
+  it("adds nothing when the answer has no citation", async () => {
+    const s = searcher({ text: "明日は晴れの予報だよ。", source: null });
     const judged = await judgeConsult(WEATHER, [], async () => help(), judgeByRules, false, s.search);
     expect(judged.reply).toBe("明日は晴れの予報だよ。");
+  });
+
+  // Review 1 of PR #252: opening hours are what the search is for; "開" there leads her nowhere.
+  it("answers with a shop's opening hours", async () => {
+    const s = searcher({ text: "本日10時に開店します。", source: null });
+    const judged = await judgeConsult("近くのスーパーは何時から?", [], async () => help(), judgeByRules, false, s.search);
+    expect(judged.reply).toBe("本日10時に開店します。");
   });
 
   it.each([
@@ -161,6 +193,8 @@ describe("the second call (#251)", () => {
         HttpResponse.json({
           stop_reason: "end_turn",
           content: [
+            // The preamble before the search, as in the docs' example ("I'll search for ..."): not the answer.
+            { type: "text", text: "調べてみますね。" },
             { type: "server_tool_use", id: "s1", name: "web_search", input: { query: "東京 明日 天気" } },
             { type: "web_search_tool_result", tool_use_id: "s1", content: [] },
             { type: "text", text: "明日の東京は" },
