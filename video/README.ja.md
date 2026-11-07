@@ -38,7 +38,6 @@ Polly で作った音声は、AWS Service Terms の50.2(AI Services)に「The ou
 
 撮影と別に、次の枠も明日埋める。
 
-- 最後に測る組(holdout)の数字。測ったら [`src/numbers.ts`](src/numbers.ts) の `HOLDOUT` を `null` から数字に替える
 - 母の利用から直した1点と、母、妹、作者で試した観察。[`src/scenes/Accuracy.tsx`](src/scenes/Accuracy.tsx) の `Observation` の枠に [`docs/mother-feedback.md`](../docs/mother-feedback.md) から選んで書く
 - 母の言葉の字幕。[`src/timeline.ts`](src/timeline.ts) の `MOTHER_WORDS_CAPTIONS`
 - `04-sms.mp4` を撮れなかったときは、体験モードの録画の SMS に「家族には知らせないで」が無いので、その文に従わないと言う文を外す。ナレーション [`src/narration.ts`](src/narration.ts) の `06-sms` と、[`src/scenes/FamilyScenes.tsx`](src/scenes/FamilyScenes.tsx) の `SmsFallback` の字幕から消し、`npm run narration -- 06-sms` で作り直す
