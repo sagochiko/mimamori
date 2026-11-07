@@ -151,7 +151,8 @@ final class AppModel {
           store: InMemoryDeviceKeyStore(ScreenshotStubTransport.joinedAs),
           transport: ScreenshotStubTransport(),
           marker: ScreenshotStubTransport.marker,
-          chatStore: ScreenshotStubTransport.chatStore)
+          chatStore: ScreenshotStubTransport.chatStore,
+          pictureStore: ScreenshotStubTransport.pictureStore)
       }
     #endif
     return AppModel()
