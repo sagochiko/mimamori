@@ -14,6 +14,7 @@ import {
   type ClaudeJudgment,
 } from "../src/claude";
 import type { RuleResult } from "../src/rules";
+import { INJECTION } from "../src/rules/phrases";
 import { network } from "./network";
 
 const MESSAGES_URL = "https://api.anthropic.com/v1/messages";
@@ -191,6 +192,16 @@ describe("decide", () => {
   it("lets Claude lower a rule result that was not confident", () => {
     const rule: RuleResult = { level: 1, reasons: ["短縮URLがある"], confident: false };
     expect(decide(rule, { ...valid, level: 3 }).level).toBe(3);
+  });
+
+  it("never goes lighter than the rules when they saw an injection, even if Claude did not (review 1 of PR #250)", () => {
+    // The injected text may be what talked Claude down; the rules' sign is not Claude's to undo.
+    const rule: RuleResult = { level: 1, reasons: [INJECTION.reason], confident: false };
+    const decision = decide(rule, { ...valid, level: 3, injection_suspected: false });
+    expect(decision.level).toBe(1);
+    expect(decision.claudeLevel).toBe(3);
+    const withOthers: RuleResult = { level: 2, reasons: ["急がせる言い回しがある", INJECTION.reason], confident: false };
+    expect(decide(withOthers, { ...valid, level: 3, injection_suspected: false }).level).toBe(2);
   });
 
   it("never goes lighter than a confident rule result", () => {

@@ -1234,6 +1234,23 @@ describe("a mail Claude gives nothing for, which the rules alone would tell abou
     expect(result.explicitAcks).toHaveLength(1);
   });
 
+  it("keeps the rules' level 1 for an injected mail that Claude, answering late, puts at level 3", async () => {
+    // Waiting gives the injected text a second chance at Claude (review 1 of PR #250); the rules'
+    // injection sign is the floor, so it still reaches everyone.
+    const fam = await setupFamily();
+    let answers = 0;
+    const deps = fakes({
+      rule: { level: 1, reasons: ["警告を止めさせようとする文がある"], confident: false },
+      claude: async () => (++answers === 1 ? null : claudeSays({ level: 3, injection_suspected: false })),
+    });
+    const body = queued(mailJob(fam.familyId));
+    await runMessages([messageOf(body, 1)], deps);
+    expect(pushes).toHaveLength(0);
+    await runMessages([messageOf(body, 2)], deps);
+    expect(await alertsOf(fam.familyId)).toMatchObject([{ level: 1, rule_level: 1, claude_level: 3 }]);
+    expect(pushesTo(fam.tokens.family)).toHaveLength(2);
+  });
+
   it("does not wait on a confident level 1", async () => {
     const fam = await setupFamily();
     const deps = fakes({ rule: { level: 1, reasons: ["警察を名乗る"], confident: true }, claude: null });

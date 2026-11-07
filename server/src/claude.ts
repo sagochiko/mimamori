@@ -13,6 +13,7 @@
 // - /docs/en/build-with-claude/effort: output_config.effort, default "medium" on Haiku 5.5.
 
 import { FOREIGN_SENDER_REASON, type RuleInput, type RuleResult, type RuleSource } from "./rules/index";
+import { INJECTION } from "./rules/phrases";
 
 export type Level = 1 | 2 | 3;
 
@@ -204,7 +205,8 @@ function heavier(a: Level, b: Level): Level {
  * - Claude may make the rule result lighter, but never lighter than a confident rule result.
  * - injection_suspected makes the result one step heavier. Before the step, any rule level is the
  *   floor, confident or not, so a message that tries to steer the judge always ends up heavier than
- *   both the rules and Claude would have said.
+ *   both the rules and Claude would have said. The rules' own injection sign makes their level the
+ *   floor as well, without the step.
  * - Without a usable judgment, the rule result stands; when the rules did not decide either, level 2.
  * - Reasons that would call the message safe are dropped; the rule reasons or a fixed reason stand
  *   in when none is left. The level is never changed by the wording.
@@ -220,7 +222,10 @@ export function decide(rule: RuleResult, claude: ClaudeJudgment | null): Decisio
     };
   }
   let level: Level = claude.level;
-  if (rule.level !== null && (rule.confident || claude.injection_suspected)) level = heavier(level, rule.level);
+  // The rules' injection sign is a floor too, whether Claude saw it or not: the injected text may be
+  // what talked Claude down (review 1 of PR #250, where a mail waiting for Claude gave it another try).
+  const injected = claude.injection_suspected || rule.reasons.includes(INJECTION.reason);
+  if (rule.level !== null && (rule.confident || injected)) level = heavier(level, rule.level);
   if (claude.injection_suspected) level = Math.max(1, level - 1) as Level;
   const kept = claude.reasons.filter((r) => !soundsSafe(r));
   const reasons = kept.length > 0 ? kept : rule.reasons.length > 0 ? rule.reasons : [PLACEHOLDER_REASON];
