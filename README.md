@@ -45,7 +45,7 @@ The same day, with no second real iPhone at hand, Claude ran the scene on three 
 | SMS from unknown senders | iOS Message Filter extension. Apple sends the message to our server, and rules answer at once. Only clear scams go to the junk folder; everything else is delivered, and Claude's judgment reaches her and the family | Built (#10). On-device check pending (#139) |
 | Gmail | The server reads new mail in her inbox every 5 minutes (read-only scope) | Built (#15). Waiting for the Google Cloud setup and her consent (#144) |
 | Web pages in Safari | A Safari extension sends the page to the server and lays a warning over dangerous pages | Built (#16). Checked on the author's iPhone (#145) |
-| Phone calls | The app sees that a call ended only while it is in the foreground. It also asks once a day at a time she can change in iOS Settings, or in the app's own settings screen from build 10 | Built (#99). The call itself is never visible |
+| Phone calls | The app sees that a call ended only while it is in the foreground. It also asks once a day at a time she can change in iOS Settings, or in the app's own settings screen (#222) | Built (#99). The call itself is never visible |
 | DNS (bank sites after a warning, remote-control apps) | Planned as a DoH resolver | Not built (#11) |
 | LINE, iMessage, call audio | Not visible to any app | Cannot be done |
 
@@ -70,10 +70,15 @@ Text inside SMS, mail, pages, and her messages is treated as data. A message tha
 | Instant answer | Rules, no model | Answers in under a millisecond on the dev set, and still works when Claude is down |
 | Judging SMS, mail, pages | Claude Haiku 5.5 (`claude-haiku-5-5`), Structured Outputs | Fast and cheap for every message. The reply is a fixed shape (level, reason, one line for her), so nothing in it can change who is told |
 | Her chat | Claude Sonnet 5.5 (`claude-sonnet-5-5`) | She waits on screen, so the server waits up to 15 seconds and then answers by rules alone. It remembers the last few turns, so "それってどういうこと？" (what does that mean?) works. A bare greeting, thanks, or short acknowledgement is sent without them (#219) |
+| Questions that need today's information | Claude Sonnet 5.5 with the web search tool, in a second call | Weather, news, or opening hours. The second call shares her 15 seconds with the first, and its answer ends with the source site's name (#251) |
 | Reading a screenshot or a document she shows | Claude Sonnet 5.5, with the image | She shares the image from the share sheet, or picks it with the photo button in her chat, and waits for the answer, as in her chat. For a settings screen, the answer comes with a circle on where to tap |
 | Research after a warning | Claude Managed Agents | No one is waiting for it, so it can take minutes. The instant answer and her chat must not wait on it. Only the research for SMS, mail, and pages is built (#12) |
 
-When Claude judges her consultation, typed, spoken, or an image, to be about a scam, at any level, she hears a fixed sentence, not Claude's own wording (#188, #186). Reviews found that Claude's advice could contain "open the link" or "enter the code you received", and a word filter cannot tell "open the link" from "don't open the link". The fake-police answer and the answers to ordinary phone questions are unchanged.
+When Claude judges her consultation to be a scam at level 1 or 2, typed, spoken, or an image, she hears a fixed sentence, not Claude's own wording (#188, #186). Reviews found that Claude's advice could contain "open the link" or "enter the code you received", and a word filter cannot tell "open the link" from "don't open the link". When she asks "これどう？" (what about this?) about a mail or a site and Claude finds little concern (level 3), Claude tells her in its own words what looks off and what to check, and the fixed line "お金や暗証番号を聞かれたら止めて、家族に確かめて" (stop if asked for money or a PIN, and check with the family) always follows (#251). The author chose this on 2026-11-07, finding the fixed line alone too cautious. Any sentence that would move her to act (open, tap, enter, call, pay, contact) is dropped and only the fixed line is left. A level-3 answer about an image stays the fixed line, because Claude reads the whole message in the image and its words would not pass through the same check.
+
+Her phone questions changed the same day, after she first used the app without anyone guiding her (#251). The first consultation on a topic is always answered by the AI. If the AI has not seen the screen she means, such as an app it does not know, it asks her to show a photo of it instead of passing her to the family; it does not ask this for talk about the police. Questions that are not about the phone, like a recipe, get an answer too. Only when she says on the same topic that she still cannot do it, or does not understand, after the AI's guidance, does the family get a card. Consultations about money, codes or PINs, configuration profiles, or erasing the phone still go to the family at once, as do scams at level 1 or 2.
+
+A question that needs today's information is answered in two calls. Structured outputs and citations return an error when used together, and the web search tool always returns citations ([Structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs), [Web search tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool)). So the first call is the usual structured judgment, which may also write a search query, and the second call is Sonnet 5.5 with web search and no structured output. The 15-second limit covers both calls. If less than 6 seconds is left, the second call is skipped; if it fails or its answer hits the same word checks, she gets the first call's answer. The second call cannot change the level, who is told, or what is recorded. The site name at the end is spoken only for public domains (such as `.go.jp`) and a short list of well-known sites; otherwise the answer ends with "(ウェブで調べた結果)" (from a web search), so a fake site at the top of the results is never named as a place to go. On 2026-11-07, a weather question sent to the production server from a mother-role simulator came back in about 7 seconds (2,908 ms for the first call and 3,862 ms for the search), ending with "(weathernews.jp より)", and the family was not told (#251). The first try had gone to the family; see the dev log entry of that day. One trade-off is left: if Claude mistakes a scam for a lookup and leaves its answer empty, the case is recorded at level 3 without a push to the family (PR #254). The family can still see it in the record.
 
 The research agent's text never reaches the family or D1. The server takes only the official URLs it reports, keeps only the site's origin, and writes its own line. Four reviews of PR #183 each found a reassuring sentence that slipped past a filter on the agent's words, so the filter was dropped.
 
@@ -85,12 +90,12 @@ Measured on the dev set, 114 examples across SMS, mail, pages, and spoken consul
 
 | Method | Missed scams | Genuine messages flagged | Unneeded family notices | Median time | Measured |
 |---|---:|---:|---:|---:|---|
-| Rules only | 10.0% (6/60) | 0.0% (0/54) | 0 | 0.05 ms | 2026-11-07 |
-| Rules + Claude | 1.7% (1/60) | 7.4% (4/54) | 4 | 1622 ms | 2026-11-07 |
+| Rules only | 10.0% (6/60) | 0.0% (0/54) | 0 | 0.11 ms | 2026-11-07 |
+| Rules + Claude | 1.7% (1/60) | 7.4% (4/54) | 4 | 1504 ms | 2026-11-07 |
 
 Before #21 the rules alone missed 17 of 60 scams, 15 of them in spoken consultations. PR #206 added the fake-police phrasings those consultations used, for consultations only, and brought the misses to 6. A new phrasing alone does not make the fixed level-1 script, because a real police officer calling a victim or a witness uses the same words, so those go to Claude at level 2.
 
-The rules + Claude line is the author's run on 2026-11-07, after #137 put SMS, mail, and pages through the same gate as production (the `rules+claude` line of that day in [`eval/RESULTS.md`](eval/RESULTS.md), #181). Of the 6 scams the rules alone missed (4 spoken consultations, 2 pages), Claude caught 5, and spoken consultations went to 0 of 32 missed. The one left is page p-sc-12, which the current gate does not send to Claude. In exchange, 4 of 31 genuine consultations went to the family. All 4 are about sending money (one also about sharing a code), topics the AI does not guide her through, and Claude itself answered level 3 for each. Such a consultation goes to the family whatever Claude answers, and she hears "これは家族と一緒にやろう。家族に伝えました" (let's do this with the family; I told them), not a scam warning (`false_alarms_unguided` in [`eval/README.md`](eval/README.md)). For 3 examples Claude returned no usable answer, and those were counted by the rules alone. The slowest tenth (p90) took 2565 ms. The earlier run on 2026-11-05 (0 of 60 missed) also sent Claude unflagged examples that production does not, so its miss rate was lower than production would be. The first rules + Claude run flagged 36 of 54 genuine messages. The prompt itself defined level 2 as "suspicious or undecided", and Claude followed it. After the fix, 4 of 54 were flagged (#109).
+Both lines are the author's last run on 2026-11-07, after #251 and PR #255 (the last `rules` and `rules+claude` lines in [`eval/RESULTS.md`](eval/RESULTS.md)). SMS, mail, and pages go through the same gate as production since #137 (#181). Of the 6 scams the rules alone missed (4 spoken consultations, 2 pages), Claude caught 5, and spoken consultations went to 0 of 32 missed. The one left is page p-sc-12, which the current gate does not send to Claude. In exchange, 4 of 31 genuine consultations went to the family. All 4 are about topics the AI does not guide her through, such as sending money (`false_alarms_unguided` is 4). Such a consultation goes to the family whatever Claude answers, and she hears "これは家族と一緒にやろう。家族に伝えました" (let's do this with the family; I told them), not a scam warning (`false_alarms_unguided` in [`eval/README.md`](eval/README.md)). In this run Claude gave a usable answer for all 114 examples. The run just before it, after #251, threw away 17 of Claude's answers in the server's parsing, and PR #255 fixed that and made the eval record why an answer is thrown away. The slowest tenth (p90) took 2368 ms. The earlier run on 2026-11-05 (0 of 60 missed) also sent Claude unflagged examples that production does not, so its miss rate was lower than production would be. The first rules + Claude run flagged 36 of 54 genuine messages. The prompt itself defined level 2 as "suspicious or undecided", and Claude followed it. After the fix, 4 of 54 were flagged (#109).
 
 The 10.0% for rules only was reached by fixing the rules while reading each dev miss one by one, so the rules may be fitted to the dev set. The holdout set, measured once before submission (the third step of #21), will check this.
 
@@ -109,13 +114,14 @@ The 10.0% for rules only was reached by fixing the rules while reading each dev 
 
 ## Tried on the author's iPhone
 
-On 2026-11-07 the author used build 9 on his own iPhone (iOS 27.2) as the mother, with a simulator as the family. There is no record yet of the mother herself using it.
+On 2026-11-07 the author used build 9 on his own iPhone (iOS 27.2) as the mother, with a simulator as the family. The mother's own first use is in "What her use changed" below.
 
 - The main scene up to Resolve, as described above (#48).
 - The Safari extension laid its warning over a dangerous page (#145). This was an earlier check with build 7, on the author's iPhone in the family role, not as the mother. Only the warning over the page was checked, not the notice to the family.
 - Sharing a screenshot from Photos to the app (#13). The answer came back with a circle on the iPhone Storage screen (#187).
 - The low-storage prompt (#19, PR #199). Her screen showed the free space with "あとで" (later) and "空ける" (free it up). "空ける" started the guide, and following it through Settings > General > iPhone Storage reached the list of large apps, with the same words as the guide (#200).
 - Read-aloud is off by default. Her spoken consultation was not read out until it was turned on in iOS Settings (#48, #187).
+- The Managed Agents research, once, in production (#187). On 2026-11-07 the author opened a test page (made-up numbers, not indexed) in Safari on his iPhone with build 11. The extension showed "家族に確かめるまで待って" (wait until you check with the family). A few minutes later, the two page alerts sent to the family had evidence in the production D1: warnings from the National Police Agency, the National Consumer Affairs Center of Japan, and the Information-technology Promotion Agency. This was read from D1; the line on a family card was not looked at.
 
 ## Built, not yet tried on a real iPhone
 
@@ -125,11 +131,10 @@ These are merged and covered by tests, but nobody has used them, or the part nam
 - The Call button on a family iPhone (#233). Two family devices were checked on simulators only (#48, #31).
 - The photo button in her chat (#221, PR #227). A button with no label at the left of the input field opens the photo picker, and the picked screenshot goes to the same consultation as a shared one, with the circle shown only on screen until the next consultation. On the simulator the picker opened without asking for photo access, but picking a photo could not be driven there, so the step after it was checked with a Debug launch argument that hands in a fixed image.
 - A settings screen inside her app (#222, PR #226), opened from the menu at the end of her smile row, with the daily question, its time, and read-aloud. It reads and writes the same values as iOS Settings. Checked on the simulator.
-- The two items above are not in build 9 (`ios/project.yml` on `origin/main` still says 9 on 2026-11-07). They go out in build 10.
+- The two items above are in build 14 (`ios/project.yml` on `origin/main` says 14), which reached both TestFlight groups on 2026-11-07 (#187, #2). No check of them on a real iPhone is recorded yet (#187).
 - Sharing an image received in LINE, and how often the circle lands on the right spot on 10 Settings screenshots (#187).
 - The demo mode (#100) was checked on the simulator. Whether it shows on the TestFlight build is in #187.
 - The watch's self-check (#19, PR #199). The free-space value never leaves the phone. Her phone reports to the server when it refreshes in the background or opens. If that stops for 48 hours, the family gets one quiet "(name)の見守りが止まっています" (the watch has stopped). Turning notifications off sends "(name)のiPhoneで、みまもりの通知が切られています", and turning background refresh off sends "(name)のiPhoneで、みまもりの「アプリのバックグラウンド更新」が切られています", once each time it is turned off. These notices, Low Power Mode, and a day without opening the app are still to be checked (#200).
-- Managed Agents research. On 2026-11-07 the production D1 had no alert with a research session yet, so no evidence line has been written by the real API.
 
 ## Not built yet
 
@@ -137,7 +142,7 @@ DNS (#11), the weekly review (#18), the morning alarm that stops when she smiles
 
 ## How judges can try it
 
-TestFlight: <https://testflight.apple.com/join/EZhN4k78> (build 9, up to 100 testers through the link)
+TestFlight: <https://testflight.apple.com/join/EZhN4k78> (build 14, up to 100 testers through the link)
 
 The demo mode shows her screen and the card the family would get, on one iPhone, without joining a family. Nothing reaches any family.
 
@@ -151,8 +156,9 @@ The consultation in the demo is played on the phone from the server's fixed fake
 
 ## What her use changed
 
-<!-- From docs/mother-feedback.md, once she has used it. -->
-<!-- What the mother, the sister, and the author saw when trying the same consultation goes here. These observations come from one family, and the app makes no claim about older people in general. -->
+On 2026-11-07 the mother installed build 12, joined the family with the invite code, and used the app without anyone guiding her ([`docs/mother-feedback.md`](docs/mother-feedback.md), #46). She sent a screenshot of the iPhone Storage screen herself and followed the circled guide, and she gave Gmail access herself. She also asked twice how to use an app. She told the author she thought she could use it like ChatGPT. The first time, the AI did not know the app and passed her to the family, so she got "これは家族と一緒にやろう。家族に伝えました" and the "family has not answered yet" band stayed on her screen. The second time, after she added more words, the AI gave steps for a screen it had probably never seen, and may have guessed the names of buttons (not checked).
+
+That is why #251 changed the answers the same day: an unknown screen gets a request for a photo instead of the family, questions beyond the phone get answered, and the family is called in only if she is still stuck after the AI's guidance. This is one person on one day. Whether the new answers work for her has not been seen yet; the author asked for it in #187. The test fake-police call with her is planned for the filming on 2026-11-08 (#46).
 
 ## Built during the hackathon
 
