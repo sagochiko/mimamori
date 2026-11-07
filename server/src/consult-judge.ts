@@ -144,23 +144,35 @@ const SENSITIVE: ReadonlyArray<{ reason: string; pattern: RegExp }> = [
     pattern: /構成プロファイル|プロファイル.{0,10}(インストール|入れ|ダウンロード|許可)/,
   },
   {
-    // Deleting photos, talks, and apps left this list on 2026-11-07 (#234). Wiping the iPhone, a reset,
-    // erasing everything, and deleting mimamori itself stay: the author chose only the first three, and
-    // a support scam asks for a wipe, and mimamori gone is no watching at all (review 1 of PR #237).
+    // Deleting photos, talks, and apps left this list on 2026-11-07 (#234). Wiping or erasing the iPhone,
+    // resetting all of it, erasing all photos, data, or contacts, and deleting mimamori itself stay: the
+    // author chose only the first three, a support scam asks for a wipe, and mimamori gone is no watching
+    // at all (reviews 1 and 2 of PR #237). A password or network settings reset and "通知を全部消したい"
+    // are phone help, the author's call on the same day.
     reason: "初期化やみまもりの削除に関わる相談",
-    pattern: /初期化|リセット|(すべて|全部|ぜんぶ).{0,8}(消去|消し|消す|消せ|削除)|コンテンツと設定|(みまもり|mimamori).{0,8}(消|削除)/,
+    pattern: new RegExp(
+      [
+        "初期化",
+        "(iphone|すべての設定|すべてのコンテンツ|工場出荷|転送または).{0,8}リセット",
+        "(iphone|端末|デバイス).{0,8}消去",
+        "コンテンツと設定",
+        "(写真|データ|連絡先).{0,6}(すべて|全部|ぜんぶ).{0,4}(消|削除)",
+        "(すべて|全部|ぜんぶ).{0,4}の?(写真|データ|連絡先).{0,6}(消|削除)",
+        "(みまもり|見守り|mimamori).{0,8}(消|削除)",
+      ].join("|"),
+    ),
   },
 ];
 
 // Deleting photos, talks, and apps is guided by the AI itself, with DELETE_CHECK in front, and is not
 // handed to the family (the author's call on 2026-11-07, #234). Wiping the iPhone and deleting mimamori
-// are caught by SENSITIVE first. Matched on her words and on
-// Claude's guidance, after NFKC and lowercasing. "取り消し", "解消", "打ち消し" delete nothing.
-const DELETION = /(?<!取り|解|打ち)消(し|す|せ|さ|去)|削除|初期化|リセット/;
+// are caught by SENSITIVE first; a reset deletes nothing of hers and gets no line. Matched on her words
+// and on Claude's guidance, after NFKC and lowercasing. "取り消し", "解消", "打ち消し" delete nothing.
+const DELETION = /(?<!取り|解|打ち)消(し|す|せ|さ|去)|削除/;
 /** The line to check first, put in front of guidance on deleting (#234). Never "safe". */
 export const DELETE_CHECK = "消したものは戻せないので、残したいものが無いか先に確かめてね。";
 /** An image came with no words and Claude gave nothing she can use: she is asked what she wants (#234). */
-export const ASK_PICTURE_REPLY = "この画面で何をしたい?";
+export const ASK_PICTURE_REPLY = "この画面で何をしたい?"; // server/test/fixtures/ask-picture.json
 
 // A verdict on the whole thing instead of what was seen and what to do. The answer gives evidence
 // and an action and never says "this is a scam" or "this is real" outright (docs/design.md, 検知).
@@ -336,7 +348,7 @@ basis には見えた根拠を一文で、action には勧める行動を書き�
 
 スマホの困りごとの相談(kind は help、level は 3)では、action に操作の案内を短く書きます。例「ストレージがいっぱい」と出たら、設定の「一般」から「iPhone ストレージ」を案内し、広告の掃除アプリは入れなくていいと伝えます。広告から入れるアプリについての相談は、詐欺の手口と一致するところを根拠に答えます。
 
-送金、認証コードや暗証番号を教えること、構成プロファイルを入れること、iPhone を初期化やリセットすること、写真やデータを全部消すこと、みまもりのアプリを消すことは案内しません。そのときと、答えきれないときは handoff を true にします。写真、トーク、アプリを消すことは、ほかの困りごとと同じく案内し、handoff は false にします。本物か確かめられないことは、答えきれない理由にしません。そのときは kind を scam にして危なさを答え、自分で調べた正しい番号にかけ直す、のような確かめ方を action に書きます。あなたから見えないもの(通帳の金額、手元の書類や画面など)を見てほしいと言われたときも、答えきれないとはせず、本人が自分で確かめる方法を案内します。
+送金、認証コードや暗証番号を教えること、構成プロファイルを入れること、iPhone を初期化、消去、まるごとリセットすること、写真やデータを全部消すこと、みまもりのアプリを消すことは案内しません。そのときと、答えきれないときは handoff を true にします。写真、トーク、アプリを消すことは、ほかの困りごとと同じく案内し、handoff は false にします。本物か確かめられないことは、答えきれない理由にしません。そのときは kind を scam にして危なさを答え、自分で調べた正しい番号にかけ直す、のような確かめ方を action に書きます。あなたから見えないもの(通帳の金額、手元の書類や画面など)を見てほしいと言われたときも、答えきれないとはせず、本人が自分で確かめる方法を案内します。
 
 「安全」「問題ない」「心配ない」「大丈夫」「安心」「本物」「詐欺ではない」「気にしなくていい」「開いていい」とは書かないでください。これらが入った文は本人に読み上げず、決まった文に置き換えます。
 

@@ -43,6 +43,18 @@ struct ShareConsultTests {
     #expect(ShareConsult.reply(for: ask) == "この画面で何をしたい?")
   }
 
+  @Test("聞き返しの1行は、裏側の試験と同じ fixture の文と同じ(PR #237 の2回目のレビュー)")
+  func askPictureMatchesServer() throws {
+    struct Fixture: Decodable { let askPicture: String }
+    // ios/Core/Tests/MimamoriCoreTests/ から server/test/fixtures/ask-picture.json へ。
+    let url = URL(filePath: #filePath)
+      .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+      .deletingLastPathComponent().deletingLastPathComponent()
+      .appending(path: "server/test/fixtures/ask-picture.json")
+    let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
+    #expect(ShareConsult.askPicture == fixture.askPicture)
+  }
+
   @Test("拡張でも、聞き返し以外の答えは今までどおり")
   func extensionKeepsOthers() {
     let circled = ConsultAnswer(reply: "丸のところを押して", speak: "丸のところを押して", tap: .init(x: 1, y: 2), handoff: false)

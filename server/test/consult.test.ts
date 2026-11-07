@@ -21,10 +21,11 @@ import {
   type ConsultDeps,
   type ConsultTurn,
 } from "../src/consult";
-import { pointsBack, saysNothing } from "../src/consult-judge";
+import { ASK_PICTURE_REPLY, pointsBack, saysNothing } from "../src/consult-judge";
 import { resetApnsJwtCache } from "../src/push";
 import { judgeByRules, type RuleInput, type RuleResult } from "../src/rules";
 import { MONEY_MOVE, POLICE_SCRIPT } from "../src/rules/phrases";
+import askPictureFixture from "./fixtures/ask-picture.json";
 import pointsBackCases from "./fixtures/points-back.json";
 import { call, createFamily, invite, join } from "./helpers";
 import { network } from "./network";
@@ -474,6 +475,12 @@ describe("fake police consultation", () => {
   });
 });
 
+describe("the question for an image with no words", () => {
+  it("is the line in the fixture the app reads too (review 2 of PR #237)", () => {
+    expect(ASK_PICTURE_REPLY).toBe(askPictureFixture.askPicture);
+  });
+});
+
 describe("consult.ts", () => {
   it.each([
     ["sending money", "振込のやり方を教えて。今日中に振り込まないといけない", "送金に関わる相談"],
@@ -543,6 +550,11 @@ describe("consult.ts", () => {
     ["a wipe asked on the phone", "サポートの人に電話で言われて、iPhoneを初期化したい", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
     ["erasing every photo", "写真を全部消したい", "写真のアプリで「選択」を押して全部選んでゴミ箱を押して"],
     ["deleting mimamori", "みまもりのアプリを消したい", "ホーム画面でアプリを長く押して「アプリを削除」を押して"],
+    // Review 2 of PR #237.
+    ["deleting mimamori in kanji", "見守りのアプリを削除したい", "ホーム画面でアプリを長く押して「アプリを削除」を押して"],
+    ["erasing the iPhone", "iPhoneを消去したい", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
+    ["erasing the iPhone remotely", "iPhoneをリモートで消去して", "「探す」でデバイスを選んで「このデバイスを消去」を押して"],
+    ["resetting the whole iPhone", "iPhoneをリセットしたい", "設定の「一般」から「転送またはiPhoneをリセット」を押して"],
   ])("still tells the family about %s and reads none of the guidance", async (_label, text, action) => {
     const fam = await setupFamily();
     const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), fakes(help({ action })));
@@ -550,6 +562,21 @@ describe("consult.ts", () => {
     expect(answer.reply).not.toContain(action);
     expect(answer.reply).not.toContain("消したものは戻せない");
     expect(familyPushes(fam)).toHaveLength(2);
+  });
+
+  // Review 2 of PR #237: the author chose on 2026-11-07 that these are phone help the AI guides.
+  it.each([
+    ["clearing all notices", "通知を全部消したい", "通知の上で左にずらして「消去」を押して", true],
+    ["closing every Safari tab", "Safariのタブを全部消したい", "タブのボタンを長く押して「すべてのタブを閉じる」を押して", true],
+    ["deleting every LINE talk", "LINEのトークを全部消したい", "トークの一覧で1つずつ左にずらして「削除」を押して", true],
+    ["a password reset", "パスワードをリセットしたい", "ログインの画面の「パスワードをお忘れの方」を押して", false],
+    ["a network settings reset", "ネットワーク設定をリセットしたい", "設定の「一般」から「転送またはiPhoneをリセット」の「リセット」で「ネットワーク設定をリセット」を押して", false],
+  ])("guides %s itself and tells no one", async (_label, text, action, deletes) => {
+    const fam = await setupFamily();
+    const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), fakes(help({ action })));
+    const check = "消したものは戻せないので、残したいものが無いか先に確かめてね。";
+    expect(answer).toMatchObject({ reply: deletes ? `${check}${action}` : action, handoff: false });
+    expect(familyPushes(fam)).toHaveLength(0);
   });
 
   it("still hands deleting data to the family when it comes with sending money", async () => {

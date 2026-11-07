@@ -17,6 +17,7 @@ import {
 } from "../src/consult";
 import { resetApnsJwtCache } from "../src/push";
 import { judgeByRules } from "../src/rules";
+import askPictureFixture from "./fixtures/ask-picture.json";
 import { call, createFamily, invite, join } from "./helpers";
 import { network } from "./network";
 
@@ -275,7 +276,7 @@ describe("a shared screenshot or document", () => {
 // #234: an image with no words. On the author's iPhone a screenshot of iPhone Storage sent alone went
 // to the family once and got the level 3 fixed line once, and had no circle either time.
 describe("an image with no words (#234)", () => {
-  const ASK = "この画面で何をしたい?";
+  const ASK = askPictureFixture.askPicture;
 
   async function alertRow(familyId: string) {
     return env.DB.prepare("SELECT level, notified FROM alerts WHERE family_id = ?")
