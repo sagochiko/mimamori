@@ -73,8 +73,8 @@ private struct WaitingSection: View {
         NewCodeButton()
         Button("戻る") { model.showJoinedHome() }
           .font(.body)
-          .accessibilityLabel("家族の画面へ")
-          .accessibilityHint("見守られる人の笑顔と知らせが並ぶ画面に移ります。招待は右上からまた出せます")
+          .accessibilityInputLabels(["戻る", "家族の画面へ"])
+          .accessibilityHint("見守られる人の笑顔と知らせが並ぶ家族の画面に移ります。招待は右上からまた出せます")
       } else {
         Button {
           Task { await model.createInvite() }
