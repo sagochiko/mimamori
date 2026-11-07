@@ -67,7 +67,7 @@ Text inside SMS, mail, pages, and her messages is treated as data. A message tha
 |---|---|---|
 | Instant answer | Rules, no model | Answers in under a millisecond on the dev set, and still works when Claude is down |
 | Judging SMS, mail, pages | Claude Haiku 5.5 (`claude-haiku-5-5`), Structured Outputs | Fast and cheap for every message. The reply is a fixed shape (level, reason, one line for her), so nothing in it can change who is told |
-| Her chat | Claude Sonnet 5.5 (`claude-sonnet-5-5`) | She waits on screen, so the server waits up to 15 seconds and then answers by rules alone. It remembers the last few turns, so "それってどういうこと？" (what does that mean?) works. A bare greeting or thanks is sent without them (#219) |
+| Her chat | Claude Sonnet 5.5 (`claude-sonnet-5-5`) | She waits on screen, so the server waits up to 15 seconds and then answers by rules alone. It remembers the last few turns, so "それってどういうこと？" (what does that mean?) works. A bare greeting, thanks, or short acknowledgement is sent without them (#219) |
 | Reading a screenshot or a document she shows | Claude Sonnet 5.5, with the image | She shares the image from the share sheet, or picks it with the photo button in her chat, and waits for the answer, as in her chat. For a settings screen, the answer comes with a circle on where to tap |
 | Research after a warning | Claude Managed Agents | No one is waiting for it, so it can take minutes. The instant answer and her chat must not wait on it. Only the research for SMS, mail, and pages is built (#12) |
 
@@ -107,10 +107,10 @@ The 10.0% for rules only was reached by fixing the rules while reading each dev 
 
 ## Tried on the author's iPhone
 
-The author used his own iPhone (iOS 27.2) as the mother, with a simulator as the family. The items below are from build 9 on 2026-11-07, except the Safari extension, which he checked earlier with build 7. No real family member has used the app yet.
+On 2026-11-07 the author used build 9 on his own iPhone (iOS 27.2) as the mother, with a simulator as the family. There is no record yet of the mother herself using it.
 
 - The main scene up to Resolve, as described above (#48).
-- The Safari extension laid its warning over a dangerous page (#145).
+- The Safari extension laid its warning over a dangerous page (#145). This was an earlier check with build 7, on the author's iPhone in the family role, not as the mother. Only the warning over the page was checked, not the notice to the family.
 - Sharing a screenshot from Photos to the app (#13). The answer came back with a circle on the iPhone Storage screen (#187).
 - The low-storage prompt (#19, PR #199). Her screen showed the free space with "あとで" (later) and "空ける" (free it up). "空ける" started the guide, and following it through Settings > General > iPhone Storage reached the list of large apps, with the same words as the guide (#200).
 - Read-aloud is off by default. Her spoken consultation was not read out until it was turned on in iOS Settings (#48, #187).
@@ -154,7 +154,19 @@ The consultation in the demo is played on the phone from the server's fixed fake
 
 ## Built during the hackathon
 
-Every line of code here was written in this repository after the kickoff on 2026-11-02. The first commit is dated 2026-11-03. On 2026-11-07, at commit `a916f02` of `origin/main`, there were 922 commits (711 without merges, 674 of them co-authored by Claude), 119 merged pull requests, and 105 issues (74 closed). The tests were 1,785 server tests (Vitest, 20 files), 333 `ios/Core` tests (`swift test`, 52 suites), and 19 tests for the eval scripts. The server has 9 D1 migrations. Counted with `git rev-list --count` (with `--no-merges`, and `--grep='^Co-Authored-By: Claude'`), `gh pr list --state merged`, `gh issue list --state all` and `--state closed`, `ls server/migrations`, and the test counts that `make verify` writes to `.verify.log`. The pre-hackathon design was copied in on 2026-11-03; [`docs/design.md`](docs/design.md) says what changed and why.
+Every line of code here was written in this repository after the kickoff on 2026-11-02. The first commit is dated 2026-11-03. On 2026-11-07, at commit `a916f02` of `origin/main`, there were 922 commits (711 without merges, 674 of them co-authored by Claude), 119 merged pull requests, and 105 issues (74 closed). The tests were 1,785 server tests (Vitest, 20 files), 333 `ios/Core` tests (`swift test`, 52 suites), and 19 tests for the eval scripts. The server has 9 D1 migrations. The pre-hackathon design was copied in on 2026-11-03; [`docs/design.md`](docs/design.md) says what changed and why.
+
+The counts came from the commands below, run on 2026-11-07. The git lines can be rerun at `a916f02` later. The pull request and issue counts are as of that day, since `gh` cannot go back to a past point. The test counts are the ones `make verify` wrote to `.verify.log`.
+
+```sh
+git rev-list --count a916f02
+git rev-list --count --no-merges a916f02
+git rev-list --count --no-merges --grep='^Co-Authored-By: Claude' a916f02
+gh pr list --state merged --limit 500 --json number --jq length
+gh issue list --state all --limit 500 --json number --jq length
+gh issue list --state closed --limit 500 --json number --jq length
+git ls-tree --name-only a916f02 server/migrations/ | wc -l
+```
 
 ## From the development log
 
