@@ -67,10 +67,13 @@ export const Accuracy: React.FC = () => (
               fontWeight: 700,
             }}
           >
-            最後に測る組(holdout {HOLDOUT.cases}件、{HOLDOUT.date}) 規則だけ 見逃し{" "}
-            {HOLDOUT.rules.miss}%({HOLDOUT.rules.missN}) 規則と Claude 見逃し{" "}
-            {HOLDOUT.claude.miss}%({HOLDOUT.claude.missN}) 誤報 {HOLDOUT.claude.fp}%(
-            {HOLDOUT.claude.fpN})
+            最後に1回だけ測った組(holdout {HOLDOUT.cases}件、{HOLDOUT.date})
+            <br />
+            規則だけ 見逃し {HOLDOUT.rules.miss}%({HOLDOUT.rules.missN}) 誤報{" "}
+            {HOLDOUT.rules.fp}%({HOLDOUT.rules.fpN})
+            <br />
+            規則と Claude 見逃し {HOLDOUT.claude.miss}%({HOLDOUT.claude.missN}) 誤報{" "}
+            {HOLDOUT.claude.fp}%({HOLDOUT.claude.fpN})
           </div>
         ) : (
           <div

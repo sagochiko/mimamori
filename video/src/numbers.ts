@@ -19,13 +19,19 @@ export const DEV_EVAL = {
   claude: { miss: "1.7", missN: "1/60", fp: "7.4", fpN: "4/54" },
 } as const;
 
-// 最後に測る組(holdout)は2026年11月8日に1回だけ測る。測ったら null を数字に替える。
+// eval/RESULTS.md の holdout の2行(126件、2026年11月7日の夜に作者が1回だけ測った回、8e219db)。
+// 中央値(規則と Claude 1697ミリ秒)は画面に出していない。
 export const HOLDOUT: null | {
   date: string;
   cases: number;
   rules: { miss: string; missN: string; fp: string; fpN: string };
   claude: { miss: string; missN: string; fp: string; fpN: string };
-} = null;
+} = {
+  date: "2026年11月7日",
+  cases: 126,
+  rules: { miss: "25.8", missN: "16/62", fp: "4.7", fpN: "3/64" },
+  claude: { miss: "6.5", missN: "4/62", fp: "9.4", fpN: "6/64" },
+};
 
 // docs/submission.md の「Claude Code」の節。2026年11月7日に origin/main の a916f02 で数えた値。
 // 提出の前に数え直す(数え方は docs/submission.md)。
