@@ -97,9 +97,14 @@ Before #21 the rules alone missed 17 of 60 scams, 15 of them in spoken consultat
 
 Both lines are the author's last run on 2026-11-07, after #251 and PR #255 (the last `rules` and `rules+claude` lines in [`eval/RESULTS.md`](eval/RESULTS.md)). SMS, mail, and pages go through the same gate as production since #137 (#181). Of the 6 scams the rules alone missed (4 spoken consultations, 2 pages), Claude caught 5, and spoken consultations went to 0 of 32 missed. The one left is page p-sc-12, which the current gate does not send to Claude. In exchange, 4 of 31 genuine consultations went to the family. All 4 are about topics the AI does not guide her through, such as sending money (`false_alarms_unguided` is 4). Such a consultation goes to the family whatever Claude answers, and she hears "これは家族と一緒にやろう。家族に伝えました" (let's do this with the family; I told them), not a scam warning (`false_alarms_unguided` in [`eval/README.md`](eval/README.md)). In this run Claude gave a usable answer for all 114 examples. The run just before it, after #251, threw away 17 of Claude's answers in the server's parsing, and PR #255 fixed that and made the eval record why an answer is thrown away. The slowest tenth (p90) took 2368 ms. The earlier run on 2026-11-05 (0 of 60 missed) also sent Claude unflagged examples that production does not, so its miss rate was lower than production would be. The first rules + Claude run flagged 36 of 54 genuine messages. The prompt itself defined level 2 as "suspicious or undecided", and Claude followed it. After the fix, 4 of 54 were flagged (#109).
 
-The 10.0% for rules only was reached by fixing the rules while reading each dev miss one by one, so the rules may be fitted to the dev set. The holdout set, measured once before submission (the third step of #21), will check this.
+The 10.0% for rules only was reached by fixing the rules while reading each dev miss one by one, so the rules may be fitted to the dev set. To check this, the author measured the holdout set once, on the night of 2026-11-07 (`8e219db`, the third step of #21). It holds 126 examples, split from the same pool by whole scam pattern and not looked at after the split ([`eval/README.md`](eval/README.md)).
 
-<!-- Holdout result (measured once before submission) goes here, rules only vs rules + Claude. -->
+| Method (holdout) | Missed scams | Genuine messages flagged | Unneeded family notices | Median time | Measured |
+|---|---:|---:|---:|---:|---|
+| Rules only | 25.8% (16/62) | 4.7% (3/64) | 3 | 0.11 ms | 2026-11-07 |
+| Rules + Claude | 6.5% (4/62) | 9.4% (6/64) | 6 | 1697 ms | 2026-11-07 |
+
+The rules alone missed far more than on dev (25.8% against 10.0%), so they were fitted to the dev set. With Claude on top, misses fell to 4 of 62 (3 spoken consultations, 1 page), also higher than the 1.7% on dev. Flagged genuine messages rose from 7.4% to 9.4%: 5 consultations and 1 SMS. Only 1 of the 6 was a topic the AI does not guide; unlike dev, the other 5 were decided by the rules or Claude's answer. Per-example results are not kept for the holdout set, so the counts above come from the per-route totals in the last two lines of [`eval/RESULTS.md`](eval/RESULTS.md). The rules and prompts are not changed after this measurement, so these numbers stay the honest ones.
 
 ## Her data
 
