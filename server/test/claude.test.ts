@@ -9,6 +9,7 @@ import {
   decide,
   decideFor,
   parseClaudeJudgment,
+  readClaudeJudgment,
   requestClaudeJudgment,
   talksJudgment,
   type ClaudeJudgment,
@@ -39,7 +40,7 @@ describe("parseClaudeJudgment", () => {
     ["level as text", { ...valid, level: "1" }],
     ["level not whole", { ...valid, level: 1.5 }],
     ["four reasons", { ...valid, reasons: ["a", "b", "c", "d"] }],
-    ["a reason over 40 characters", { ...valid, reasons: ["あ".repeat(41)] }],
+    // A reason over 40 characters is dropped alone since the eval after #251 (below).
     ["an empty reason", { ...valid, reasons: [" "] }],
     ["a reason that is not text", { ...valid, reasons: [1] }],
     ["no injection flag", { level: 1, reasons: ["x"], message_to_protected: "x" }],
@@ -624,5 +625,23 @@ describe("requestClaudeJudgment", () => {
   ])("returns null on %s", async (_label, respond) => {
     network.use(http.post(MESSAGES_URL, respond));
     expect(await requestClaudeJudgment(keyEnv, input, undecided)).toBeNull();
+  });
+});
+
+// make eval after #251: the judge's answer was dropped for 5 dev cases (mail, page, SMS). A reason too
+// long is dropped alone, and the failure is named for eval/out.
+describe("what the judge's parser keeps and why it drops (#251)", () => {
+  const ok = { level: 2, reasons: ["口止めされた"], message_to_protected: "", injection_suspected: false };
+
+  it("drops only a reason that is too long", () => {
+    expect(parseClaudeJudgment({ ...ok, reasons: ["あ".repeat(41), "口止めされた"] })?.reasons).toEqual(["口止めされた"]);
+  });
+
+  it.each([
+    ["too_many_reasons", { ...ok, reasons: ["a", "b", "c", "d"] }],
+    ["schema", { ...ok, level: 0 }],
+    ["schema", null],
+  ])("names the failure %s", (name, value) => {
+    expect(readClaudeJudgment(value)).toEqual({ failure: name });
   });
 });

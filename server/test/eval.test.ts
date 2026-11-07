@@ -415,6 +415,35 @@ describe("judgeCases", () => {
     expect(scored).toMatchObject({ level: 2, claude_answered: false });
   });
 
+  // make eval after #251: 17 dev cases lost Claude's answer and nothing said why. The reason goes to
+  // eval/out by name only.
+  it("keeps why the consultation Claude gave nothing, by name only", async () => {
+    const [scored] = await judgeCases([evalCase({ text: NOTHING })], "rules+claude", {
+      judge: refuse,
+      consult: async (_text, _rule, onFailure) => {
+        onFailure?.("empty_action");
+        return null;
+      },
+    });
+    expect(scored).toMatchObject({ claude_answered: false, claude_parse_failure: "empty_action" });
+  });
+
+  it("keeps why the judge queue's Claude gave nothing, by name only", async () => {
+    const judge = claudeJudge(async (_input, _rule, onFailure) => {
+      onFailure?.("too_many_reasons");
+      return null;
+    });
+    const [scored] = await judgeCases([evalCase({ source: "sms", text: SCRIPT })], "rules+claude", {
+      judge,
+      consult: refuseConsult,
+    });
+    expect(scored).toMatchObject({ claude_answered: false, claude_parse_failure: "too_many_reasons" });
+    expect(await judge({ source: "sms", text: "x" }, { level: null, reasons: [], confident: false })).toMatchObject({
+      checking: true,
+      failure: "too_many_reasons",
+    });
+  });
+
   it("keeps the judge queue's Claude for SMS, mail, and pages in rules+claude", async () => {
     const seen: string[] = [];
     const judge: Judge = async (input) => {

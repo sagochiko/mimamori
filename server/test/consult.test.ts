@@ -27,6 +27,7 @@ import {
   ASK_SCREEN_REPLY,
   HANDOFF_REPLY,
   pointsBack,
+  readClaudeConsult,
   saysNothing,
 } from "../src/consult-judge";
 import { resetApnsJwtCache } from "../src/push";
@@ -1460,10 +1461,10 @@ describe("parseClaudeConsult", () => {
     ["an unknown kind", { ...scam(), kind: "chat" }],
     ["level 0", { ...scam(), level: 0 }],
     ["four reasons", { ...scam(), reasons: ["a", "b", "c", "d"] }],
-    ["a reason over 40 characters", { ...scam(), reasons: ["あ".repeat(41)] }],
-    ["no action", { ...scam(), action: "" }],
+    // A reason over 40 characters, a basis over 60, and a scam answer with no action are kept since the
+    // eval after #251 ("what the parser keeps and why it drops"); phone help with no action is not.
+    ["no action on phone help", { ...help(), action: "" }],
     ["an action over 200 characters", { ...scam(), action: "あ".repeat(201) }],
-    ["a basis over 60 characters", { ...scam(), basis: "あ".repeat(61) }],
     ["handoff as text", { ...scam(), handoff: "true" }],
     ["an extra key", { ...scam(), notify_family: false }],
     ["null", null],
@@ -4307,5 +4308,44 @@ describe("the nets after review 1 of PR #252 (#251)", () => {
     );
     expect(judged.reply).toBe(HANDOFF_REPLY);
     expect(judged.toFamily).toBe(true);
+  });
+});
+
+// make eval after #251: Claude's answer was dropped for 12 of the dev consultations. The parser now keeps
+// what is safe to keep and says by name why it dropped the rest (eval/out keeps the name, never the text).
+describe("what the parser keeps and why it drops (#251)", () => {
+  it("keeps a scam answer with an empty action: it is never read at 1 and 2, and level 3 gets the fixed line", async () => {
+    const answer = parseClaudeConsult(scam({ level: 2, action: "" }));
+    expect(answer?.action).toBe("");
+    expect(answer?.level).toBe(2);
+    const low = await judgeConsult("知らない人からメッセージが来た", [], async () =>
+      parseClaudeConsult(scam({ level: 3, reasons: [], basis: "", action: "" })),
+    );
+    expect(low.reply).toBe("お金や暗証番号を聞かれたら止めて、家族に確かめて");
+  });
+
+  it("still drops a help answer with an empty action and no search query", () => {
+    expect(parseClaudeConsult(help({ action: "" }))).toBeNull();
+    expect(readClaudeConsult(help({ action: "" }))).toEqual({ failure: "empty_action" });
+  });
+
+  it("empties a basis that is too long and keeps the rest", () => {
+    const answer = parseClaudeConsult(scam({ basis: "あ".repeat(61) }));
+    expect(answer?.basis).toBe("");
+    expect(answer?.level).toBe(1);
+  });
+
+  it("drops only a reason that is too long", () => {
+    const answer = parseClaudeConsult(scam({ reasons: ["あ".repeat(41), "口止めされた"] }));
+    expect(answer?.reasons).toEqual(["口止めされた"]);
+  });
+
+  it.each([
+    ["action_too_long", help({ action: "あ".repeat(201) })],
+    ["too_many_reasons", scam({ reasons: ["a", "b", "c", "d"] })],
+    ["schema", { ...scam(), kind: "chat" }],
+    ["schema", null],
+  ])("names the failure %s", (name, value) => {
+    expect(readClaudeConsult(value)).toEqual({ failure: name });
   });
 });

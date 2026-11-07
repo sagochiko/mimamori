@@ -151,17 +151,30 @@ function chars(text: string): number {
  * the rest is kept. The wording of the reasons is not checked here; decide() replaces it.
  */
 export function parseClaudeJudgment(value: unknown): ClaudeJudgment | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const read = readClaudeJudgment(value);
+  return "answer" in read ? read.answer : null;
+}
+
+/** Why a judgment was dropped, by name only, for eval/out (make eval after #251). Never Claude's text. */
+export type JudgmentParseFailure = "schema" | "too_many_reasons" | "http" | "stop_reason" | "no_text" | "json" | "network";
+
+/**
+ * parseClaudeJudgment with the reason it dropped an answer. Since the eval after #251 a reason over the
+ * limit is dropped alone instead of the whole judgment: the reasons only go to the family's card, and
+ * decide() replaces their wording anyway.
+ */
+export function readClaudeJudgment(value: unknown): { answer: ClaudeJudgment } | { failure: JudgmentParseFailure } {
+  const schema = { failure: "schema" } as const;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return schema;
   const obj = value as Record<string, unknown>;
-  if (!Object.keys(obj).every((k) => (KEYS as readonly string[]).includes(k))) return null;
+  if (!Object.keys(obj).every((k) => (KEYS as readonly string[]).includes(k))) return schema;
 
   const { level, reasons, message_to_protected: message, injection_suspected: injection } = obj;
-  if (level !== 1 && level !== 2 && level !== 3) return null;
-  if (typeof injection !== "boolean") return null;
-  if (!Array.isArray(reasons) || reasons.length > MAX_REASONS) return null;
-  for (const r of reasons) {
-    if (typeof r !== "string" || r.trim() === "" || chars(r) > REASON_MAX_CHARS) return null;
-  }
+  if (level !== 1 && level !== 2 && level !== 3) return schema;
+  if (typeof injection !== "boolean") return schema;
+  // A blank reason drops the answer as before; only one over the limit is dropped alone.
+  if (!Array.isArray(reasons) || reasons.some((r) => typeof r !== "string" || r.trim() === "")) return schema;
+  if (reasons.length > MAX_REASONS) return { failure: "too_many_reasons" };
   const usableMessage =
     typeof message === "string" &&
     chars(message) <= MESSAGE_MAX_CHARS &&
@@ -171,10 +184,12 @@ export function parseClaudeJudgment(value: unknown): ClaudeJudgment | null {
       : "";
 
   return {
-    level,
-    reasons: [...(reasons as string[])],
-    message_to_protected: usableMessage,
-    injection_suspected: injection,
+    answer: {
+      level,
+      reasons: (reasons as string[]).filter((r) => chars(r) <= REASON_MAX_CHARS),
+      message_to_protected: usableMessage,
+      injection_suspected: injection,
+    },
   };
 }
 
@@ -393,7 +408,14 @@ export async function requestClaudeJudgment(
   input: ClaudeInput,
   rule: RuleResult,
   timeoutMs = CLAUDE_TIMEOUT_MS,
+  /** Told why, by name, when the answer is null (eval/out, after #251). */
+  onFailure?: (failure: JudgmentParseFailure) => void,
 ): Promise<ClaudeJudgment | null> {
+  const fail = (failure: JudgmentParseFailure) => {
+    onFailure?.(failure);
+    return null;
+  };
+  let body: MessagesResponse;
   try {
     const res = await fetch(MESSAGES_URL, {
       method: "POST",
@@ -405,13 +427,20 @@ export async function requestClaudeJudgment(
       body: JSON.stringify(buildClaudeRequest(input, rule)),
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) return null;
-    const body = (await res.json()) as MessagesResponse;
-    if (body.stop_reason !== "end_turn") return null;
-    const text = body.content?.find((block) => block.type === "text")?.text;
-    if (typeof text !== "string") return null;
-    return parseClaudeJudgment(JSON.parse(text));
+    if (!res.ok) return fail("http");
+    body = (await res.json()) as MessagesResponse;
   } catch {
-    return null;
+    return fail("network");
   }
+  if (body.stop_reason !== "end_turn") return fail("stop_reason");
+  const text = body.content?.find((block) => block.type === "text")?.text;
+  if (typeof text !== "string") return fail("no_text");
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return fail("json");
+  }
+  const read = readClaudeJudgment(value);
+  return "answer" in read ? read.answer : fail(read.failure);
 }
