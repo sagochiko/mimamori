@@ -45,7 +45,7 @@ const SideBySide: React.FC<{
 export const FamilyCard: React.FC = () => (
   <SideBySide
     trimBeforeSec={TOUR.familyCardFrom}
-    playbackRate={0.5}
+    playbackRate={0.4}
     title={
       <>
         家族全員の iPhone に

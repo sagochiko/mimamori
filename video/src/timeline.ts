@@ -58,7 +58,7 @@ export const FOOTAGE = {
   },
   sms: {
     file: "footage/04-sms.mp4",
-    what: "試験用の詐欺の SMS が母の iPhone に届き、家族の iPhone にカードが出るまで(無ければ体験モードの録画を使う)",
+    what: "本文に「家族には知らせないで」を入れた試験用の詐欺の SMS が母の iPhone に届き、家族の iPhone にカードが出るまで(無ければ体験モードの録画を使う)",
   },
   smile: {
     file: "footage/05-smile.mp4",
