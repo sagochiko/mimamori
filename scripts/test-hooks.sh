@@ -1322,6 +1322,24 @@ mkdir -p "$R/.claude/logs" "$T/wt/scripts" && cp scripts/usage-report.sh "$T/wt/
 "$T/wt/scripts/usage-report.sh" 2>/dev/null | grep -q '`mm-main-tree-only` | 1 |' ||
   { echo "usage test failed: usage-report.sh in a worktree reads the main tree's log"; fail=1; }
 rm -rf "$R/.claude/logs" "$T/wt/scripts"
+# The counts a reader can redo name the commit they were taken at, and a saved name with -2 or noid still
+# counts for its role, the same number its grep command gives (PR #236).
+U="$T/ur" && mkdir -p "$U/scripts" "$U/docs/audits/raw" && cp scripts/usage-report.sh "$U/scripts/" &&
+  for f in 20261107-1216-mm-reviewer-aa8ccd8d 20261107-1216-mm-reviewer-aa8ccd8d-2 20261107-1300-mm-reviewer-noid \
+    20261107-1301-mm-eval-curator-0123abcd 20261104-0815-winners-list; do echo x >"$U/docs/audits/raw/$f.md"; done &&
+  git -C "$U" init -q && git -C "$U" -c user.name=t -c user.email=t@t add -A &&
+  git -C "$U" -c user.name=t -c user.email=t@t commit -q -m $'a\n\nCo-Authored-By: Claude <noreply@anthropic.com>' &&
+  git -C "$U" -c user.name=t -c user.email=t@t commit -q --allow-empty -m b
+uat=$(git -C "$U" rev-parse --short HEAD)
+out=$(MM_USAGE_LOG=/dev/null "$U/scripts/usage-report.sh" 2>/dev/null)
+grep -q "コミット \`$uat\` の時点" <<<"$out" && grep -q '| `docs/audits/raw/` の `mm-reviewer` の原文 | 3 |' <<<"$out" &&
+  grep -q '| `docs/audits/raw/` の `mm-eval-curator` の原文 | 1 |' <<<"$out" && ! grep -q 'winners\|20261107' <<<"$out" &&
+  grep -q "| マージを除くコミット | 2 | \`git rev-list --no-merges --count $uat\` |" <<<"$out" &&
+  grep -q '| そのうち `Co-Authored-By: Claude` の付いたもの | 1 |' <<<"$out" &&
+  [[ $(cd "$U" && git ls-tree --name-only "$uat" docs/audits/raw/ | grep -c -- '-mm-reviewer-') == 3 ]] &&
+  ! grep -qE '[0-9]{1,2}:[0-9]{2}' <<<"$out" ||
+  { echo "usage test failed: the public counts name their commit and read every saved name"; fail=1; }
+rm -rf "$U"
 printf '%s\n' 'x' 'Kitsunezaka' >"$T/wt/note.md" && git -C "$T/wt" add note.md
 (cd "$T/wt" && env -u MM_PRIVATE_TERMS_FILE -u MM_PRIOR_WORK_FILE .githooks/pre-commit >/dev/null 2>&1) &&
   { echo "pre-commit test failed: in a worktree the main tree's term list is not found"; fail=1; }

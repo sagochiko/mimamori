@@ -127,6 +127,18 @@ export const SCRIPT_TOPIC = "詐欺の手口に似た電話の相談";
 /** The family's one line when no topic or reason of its own is left. */
 export const FALLBACK_TOPIC = "スマホの相談";
 
+// The phone, however she names it, after NFKC and lowercasing (review 3 of PR #237).
+const PHONE = "iphone|アイフォン|アイフォーン|あいふぉん|スマホ|スマートフォン|携帯|端末|デバイス";
+
+// What she may erase one by one on the phone, guided by the AI: "スマホの写真を消去" is not a wipe.
+const ONE_THING = "写真|動画|トーク|アプリ|通知|メール|メッセージ|履歴|タブ|line";
+// One setting put back to its first state, which is phone help and not a wipe (review 6 of PR #237).
+const ONE_SETTING =
+  "パスワード|パスコード|ネットワーク|wi-fi|着信音|文字|壁紙|ホーム画面|キーボード|変換|位置情報|プライバシー|通知|音量|明るさ";
+// The phone's first state, the way a person or a support scam puts a wipe.
+const FIRST_STATE =
+  "(初期状態|初期の状態|買った(時|とき)の状態|購入時の状態|出荷時の状態|新品の状態)(に|へ)?(戻|もど|する|し)";
+
 // Topics the AI does not guide, whoever asks and however it is put ("スマホ相談と声" in docs/design.md).
 // Matched on her words after NFKC and lowercasing, like the rules.
 const SENSITIVE: ReadonlyArray<{ reason: string; pattern: RegExp }> = [
@@ -143,16 +155,55 @@ const SENSITIVE: ReadonlyArray<{ reason: string; pattern: RegExp }> = [
     reason: "構成プロファイルに関わる相談",
     pattern: /構成プロファイル|プロファイル.{0,10}(インストール|入れ|ダウンロード|許可)/,
   },
+  {
+    // Deleting photos, talks, and apps left this list on 2026-11-07 (#234). Wiping or erasing the iPhone,
+    // resetting all of it, erasing all photos, data, or contacts, and deleting mimamori itself stay: the
+    // author chose only the first three, a support scam asks for a wipe, and mimamori gone is no watching
+    // at all (reviews 1 and 2 of PR #237). A password or network settings reset and "通知を全部消したい"
+    // are phone help, the author's call on the same day. Review 3 of PR #237: the phone by other names,
+    // a factory reset, everything in it, and "全部消して" with no object at the head of a clause ("サポートの
+    // 人に全部消してって言われた"); "通知を全部消したい" has its object and stays phone help. A password,
+    // passcode, or network reset after the phone's name, or "パスワードを初期化", is not a wipe.
+    reason: "初期化やみまもりの削除に関わる相談",
+    pattern: new RegExp(
+      [
+        "(?<!(パスワード|パスコード|ネットワーク設定)を?)初期化",
+        "工場出荷",
+        `(?<!(${ONE_SETTING})[^。、をがはもでて]{0,8}(を|が|は|も))${FIRST_STATE}`,
+        `(${PHONE})(?:(?!${ONE_SETTING}).){0,10}${FIRST_STATE}`,
+        `(${PHONE}|すべての設定|すべてのコンテンツ|転送または)(?:(?!パスワード|パスコード|ネットワーク).){0,8}リセット`,
+        `(${PHONE})(?:(?!${ONE_THING}).){0,8}消去`,
+        `(${PHONE})を(消|削除)`,
+        "コンテンツと設定",
+        "(写真|データ|連絡先|中身).{0,6}(すべて|全て|全部|ぜんぶ).{0,4}(消|削除)",
+        "(すべて|全て|全部|ぜんぶ).{0,4}の?(写真|データ|連絡先|中身).{0,6}(消|削除)",
+        "(^|[、。 ]|(?<!一度|一気)に|で|と|から)(すべて|全て|全部|ぜんぶ)を?(消|削除)",
+        "(みまもり|見守り|mimamori).{0,8}(消|削除)",
+      ].join("|"),
+    ),
+  },
 ];
 
-// Deleting data (photos, talks, apps) is guided by the AI itself, with DELETE_CHECK in front, and is
-// not handed to the family (the author's call on 2026-11-07, #234). Matched on her words and on
-// Claude's guidance, after NFKC and lowercasing. "取り消し", "解消", "打ち消し" delete nothing.
-const DELETION = /(?<!取り|解|打ち)消(し|す|せ|さ|去)|削除|初期化|リセット/;
+// The screen 「転送またはiPhoneをリセット」 that a wipe and a harmless reset both go through. In Claude's
+// guidance it is left out when the guidance names a harmless reset, so a network settings reset is
+// guided; guidance that names only the screen still goes to the family (review 3 of PR #237).
+const RESET_SCREEN = /転送または ?(iphone|ipad)? ?を? ?リセット/g;
+const HARMLESS_RESET = /(ネットワーク設定|パスワード|パスコード|キーボードの変換学習|ホーム画面のレイアウト|位置情報とプライバシー)を?リセット/;
+/** Claude's line, normalized, with the reset screen's name left out when only a harmless reset is meant. */
+function claudeLine(line: string): string {
+  const t = normalize(line);
+  return HARMLESS_RESET.test(t) ? t.replace(RESET_SCREEN, "") : t;
+}
+
+// Deleting photos, talks, and apps is guided by the AI itself, with DELETE_CHECK in front, and is not
+// handed to the family (the author's call on 2026-11-07, #234). Wiping the iPhone and deleting mimamori
+// are caught by SENSITIVE first; a reset deletes nothing of hers and gets no line. Matched on her words
+// and on Claude's guidance, after NFKC and lowercasing. "取り消し", "解消", "打ち消し" delete nothing.
+const DELETION = /(?<!取り|解|打ち)消(し|す|せ|さ|去)|削除/;
 /** The line to check first, put in front of guidance on deleting (#234). Never "safe". */
 export const DELETE_CHECK = "消したものは戻せないので、残したいものが無いか先に確かめてね。";
 /** An image came with no words and Claude gave nothing she can use: she is asked what she wants (#234). */
-export const ASK_PICTURE_REPLY = "この画面で何をしたい?";
+export const ASK_PICTURE_REPLY = "この画面で何をしたい?"; // server/test/fixtures/ask-picture.json
 
 // A verdict on the whole thing instead of what was seen and what to do. The answer gives evidence
 // and an action and never says "this is a scam" or "this is real" outright (docs/design.md, 検知).
@@ -328,7 +379,7 @@ basis には見えた根拠を一文で、action には勧める行動を書き�
 
 スマホの困りごとの相談(kind は help、level は 3)では、action に操作の案内を短く書きます。例「ストレージがいっぱい」と出たら、設定の「一般」から「iPhone ストレージ」を案内し、広告の掃除アプリは入れなくていいと伝えます。広告から入れるアプリについての相談は、詐欺の手口と一致するところを根拠に答えます。
 
-送金、認証コードや暗証番号を教えること、構成プロファイルを入れることは案内しません。写真、トーク、アプリなどを消すことは、ほかの困りごとと同じく案内します。そのときと、答えきれないときは handoff を true にします。本物か確かめられないことは、答えきれない理由にしません。そのときは kind を scam にして危なさを答え、自分で調べた正しい番号にかけ直す、のような確かめ方を action に書きます。あなたから見えないもの(通帳の金額、手元の書類や画面など)を見てほしいと言われたときも、答えきれないとはせず、本人が自分で確かめる方法を案内します。
+送金、認証コードや暗証番号を教えること、構成プロファイルを入れること、iPhone を初期化、消去、まるごとリセットすること、写真やデータを全部消すこと、みまもりのアプリを消すことは案内しません。そのときと、答えきれないときは handoff を true にします。写真、トーク、アプリを消すことは、ほかの困りごとと同じく案内し、handoff は false にします。本物か確かめられないことは、答えきれない理由にしません。そのときは kind を scam にして危なさを答え、自分で調べた正しい番号にかけ直す、のような確かめ方を action に書きます。あなたから見えないもの(通帳の金額、手元の書類や画面など)を見てほしいと言われたときも、答えきれないとはせず、本人が自分で確かめる方法を案内します。
 
 「安全」「問題ない」「心配ない」「大丈夫」「安心」「本物」「詐欺ではない」「気にしなくていい」「開いていい」とは書かないでください。これらが入った文は本人に読み上げず、決まった文に置き換えます。
 
@@ -909,10 +960,10 @@ function decidePlan(
   // the family (review 1 of PR #186).
   const claudeLines =
     image && claude !== null && claude.kind === "help"
-      ? [claude.action, ...claude.reasons, claude.topic ?? ""].map(normalize)
+      ? [claude.action, ...claude.reasons, claude.topic ?? ""].map(claudeLine)
       : [];
   const guidedLines =
-    askedEarlier && claude !== null && claude.kind === "help" ? [normalize(claude.action), ...claudeLines] : claudeLines;
+    askedEarlier && claude !== null && claude.kind === "help" ? [claudeLine(claude.action), ...claudeLines] : claudeLines;
   const guided = SENSITIVE.filter(({ pattern }) => guidedLines.some((l) => pattern.test(l))).map((s) => s.reason);
   const sensitive = [...new Set([...ownSensitive, ...guided])];
   const reasons = [...decision.reasons];
@@ -945,8 +996,8 @@ function decidePlan(
   // screenshot of iPhone Storage sent alone went to the family once and got the level 3 fixed line once.
   // When Claude cannot answer it, reads a scam at level 3, or gives guidance that cannot be read out,
   // she is asked what she wants instead. Level 1 and 2, a topic the AI does not guide, and a handoff on
-  // a message, a call, or a link stay as below, so no scam screenshot is missed. A scam reading is
-  // still written down at level 3, with no notice, so the family can look later.
+  // a message, a call, or a link stay as below, so no scam screenshot is missed. The consultation is
+  // written down at level 3, with no notice, so the family can look later.
   if (
     image &&
     said.text.trim() === "" &&
@@ -958,8 +1009,8 @@ function decidePlan(
       (claude.handoff && !claudeLines.some((l) => CONTACT.test(l))) ||
       (claude.kind === "help" && !claude.handoff && !usable(claude.action)))
   ) {
-    const scamRead = claude.kind === "scam";
-    return { level, reasons, reply: ASK_PICTURE_REPLY, toFamily: false, record: scamRead, sign: false, ...base };
+    // Written down at level 3 with no notice either way, so the family can look later (review 1 of PR #237).
+    return { level, reasons, reply: ASK_PICTURE_REPLY, toFamily: false, record: true, sign: false, ...base };
   }
 
   // Claude's words about a scam (its basis and action) are never read to her, at any level, on an image

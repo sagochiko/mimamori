@@ -223,6 +223,11 @@ struct ProtectedHomeView: View {
     switch phase {
     case .idle:
       return
+    case .thinking where model.shownPicture != nil:
+      // Her line with the image under it can be taller than the screen; lined up at the bottom it
+      // pushed her own bubble up out of view. Her line goes at the top instead (review 1 of PR #237).
+      guard let anchor = model.shownPicture?.anchor else { return }
+      withAnimation { proxy.scrollTo(anchor, anchor: .top) }
     case .listening, .thinking, .failed:
       withAnimation { proxy.scrollTo(Self.liveID, anchor: .bottom) }
     case .answered:

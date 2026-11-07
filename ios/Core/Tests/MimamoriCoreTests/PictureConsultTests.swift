@@ -101,13 +101,14 @@ struct PictureConsultTests {
     #expect(!flow.hasPicture)
   }
 
-  @Test("画像だけでも送れる")
-  func attachedAlone() {
+  @Test("画像が付いていても、言葉が無ければ送らない(PR #237 の1回目のレビュー)")
+  func attachedAloneDoesNotSend() {
     var flow = VoiceConsult()
     _ = flow.attachPicture()
-    #expect(flow.canSend(draft: "  "))
-    #expect(flow.typed("  ", at: .t0) == [.stopSpeaking, .sendPicture(text: "")])
-    #expect(flow.phase == .thinking(said: VoiceConsult.pictureLine))
+    #expect(!flow.canSend(draft: "  "))
+    #expect(flow.typed("  ", at: .t0).isEmpty)
+    #expect(flow.phase == .idle)
+    #expect(flow.hasPicture)
   }
 
   @Test("画像も言葉も無ければ送れない")
