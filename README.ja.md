@@ -20,7 +20,7 @@ iOS 26.5 のシミュレータで撮った体験モードの画面。最初の�
 
 ## ニセ警察詐欺を主役にした理由
 
-2025年の特殊詐欺の被害額は1,423.1億円で、警察庁の広報資料の推移の表にある過去10年で最も多かった。そのうちニセ警察詐欺が1,005.0億円で、約70.6%にあたる。警察庁が出しているのは2つの金額で、70.6%はこちらで割り算した値だ。警察庁自身は、総認知件数に占める割合を39.6%としている。出典は警察庁の[令和7年の確定値](https://www.npa.go.jp/bureau/safetylife/sos47/new-topics/260605/01.html)と、2026年5月22日付の[広報資料(PDF)](https://www.npa.go.jp/bureau/criminal/souni/tokusyusagi/hurikomesagi_toukei2025.pdf)。[訂正(PDF)](https://www.npa.go.jp/bureau/criminal/souni/tokusyusagi/teisei_sagi2025.pdf)が出ているが、直したのは啓発資料14ページのグラフ「バナー等広告の主な当初接触ツールの推移」で、この2つの金額は変わっていない。
+2025年の特殊詐欺の被害額は1,423.1億円で、警察庁の広報資料の推移の表にある過去10年で最も多かった。そのうちニセ警察詐欺が1,005.0億円で、約70.6%にあたる。70.6%は警察庁の[資料2(PDF)](https://www.npa.go.jp/bureau/safetylife/sos47/assets/img/new-topics/detail/260605/01/02.pdf)の8ページにも被害額の割合として出ている。件数で見た割合は39.6%だ。出典は警察庁の[令和7年の確定値](https://www.npa.go.jp/bureau/safetylife/sos47/new-topics/260605/01.html)と、2026年5月22日付の[広報資料(PDF)](https://www.npa.go.jp/bureau/criminal/souni/tokusyusagi/hurikomesagi_toukei2025.pdf)。[訂正(PDF)](https://www.npa.go.jp/bureau/criminal/souni/tokusyusagi/teisei_sagi2025.pdf)が出ているが、直したのは啓発資料14ページのグラフ「バナー等広告の主な当初接触ツールの推移」で、この2つの金額は変わっていない。
 
 犯人は電話で「口座が犯罪に使われている」と告げ、誰にも言うなと口止めし、潔白を証明するためにお金を移させる。iPhone のアプリは電話の中身も LINE も見られない。しかも母は口止めされている。なので、電話が終わったあとにアプリのほうから聞きに行く。
 
