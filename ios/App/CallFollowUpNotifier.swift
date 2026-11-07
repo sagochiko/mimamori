@@ -2,8 +2,8 @@ import Foundation
 import MimamoriCore
 import UserNotifications
 
-/// The local notification "さっきの電話、大丈夫だった？". `CallFollowUp` in Core decides whether and
-/// when; this only posts it. The end of a call comes from `CallEndWatcher`, which hears it only while
+/// The local notification `CallFollowUp.prompt` ("知らない人や勧誘の電話で困ったら教えてね"), at most
+/// once a day. `CallFollowUp` in Core decides whether and when; this only posts it. The end of a call comes from `CallEndWatcher`, which hears it only while
 /// the app is in front (#25); the daily prompt (`DailyCheckInNotifier`) covers the rest.
 enum CallFollowUpNotifier {
   static func post() async {

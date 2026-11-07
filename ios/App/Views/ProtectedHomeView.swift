@@ -102,7 +102,7 @@ struct ProtectedHomeView: View {
     ScrollView {
       VStack(spacing: 8) {
         if let prompt = model.followUpPrompt {
-          FollowUpView(prompt: prompt) { model.followUpFine() }
+          FollowUpView(prompt: prompt) { model.followUpAcknowledged() }
         }
         if let prompt = model.checkupPrompt {
           CheckupView(prompt: prompt, onLater: { model.checkupLater() }, onStart: { model.startStorageGuide() })
@@ -681,11 +681,12 @@ private struct LiveView: View {
   }
 }
 
-/// "さっきの電話、大丈夫だった？" with one button. Talking or writing to the AI is the other answer.
+/// `CallFollowUp.prompt` with one button that closes it. It asks nothing (#123), so the button is
+/// not an answer; talking or writing to the AI is what the prompt invites.
 struct FollowUpView: View {
   let prompt: String
-  /// "大丈夫". Her screen closes the prompt; the judges' tour does the same in its own state.
-  let onFine: () -> Void
+  /// "わかった". Her screen closes the prompt; the judges' tour does the same in its own state.
+  let onClose: () -> Void
 
   var body: some View {
     HStack(spacing: 12) {
@@ -693,8 +694,8 @@ struct FollowUpView: View {
         .font(.subheadline.weight(.semibold))
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityHint("さっきの長い電話で気になることがあれば、マイクを押して話すか、下の欄に書いてください")
-      Button("大丈夫") { onFine() }
+        .accessibilityHint("電話で困ったことがあれば、マイクを押して話すか、下の欄に書いてください")
+      Button("わかった") { onClose() }
         .font(.subheadline.weight(.semibold))
         .buttonStyle(.bordered)
         .accessibilityHint("押すと、この声かけを閉じます。家族には何も知らせません")
