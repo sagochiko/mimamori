@@ -10,6 +10,22 @@ echo
 # stop a time of day).
 echo "フックが記録した回数を数えたもの。最後に数えたのは $(date '+%Y年%-m月%-d日')。記録の仕組みは [\`docs/harness.md\`](harness.md) にある。"
 echo
+# The hooks' log (.claude/logs/) is .gitignored, so a reader of the public repository cannot recount the
+# tables below. These counts come from tracked files and commits only, each with the command that gives it.
+echo "## 公開のリポジトリで数え直せる数"
+echo
+echo "下の表の元の記録(\`.claude/logs/\`)は公開していない。次の数は、公開のリポジトリだけで同じコマンドを流せば数え直せる。"
+echo
+echo "| 数えたもの | 数 | コマンド |"
+echo "|---|---:|---|"
+# Only the roles whose reports the hook saves (save-report.sh), named from the files themselves.
+find docs/audits/raw -maxdepth 1 -name '*-mm-*-*.md' 2>/dev/null | sed -E 's#.*-(mm-[a-z-]+)-[0-9a-f]{8}\.md$#\1#' |
+  sort | uniq -c | sort -rn | while read -r n role; do
+    echo "| \`docs/audits/raw/\` の \`$role\` の原文 | $n | \`ls docs/audits/raw/*-$role-*.md \\| wc -l\` |"
+  done
+echo "| マージを除くコミット | $(git rev-list --no-merges --count HEAD) | \`git rev-list --no-merges --count HEAD\` |"
+echo "| そのうち \`Co-Authored-By: Claude\` の付いたもの | $(git rev-list --no-merges --count --grep='Co-Authored-By: Claude' HEAD) | \`git rev-list --no-merges --count --grep='Co-Authored-By: Claude' HEAD\` |"
+echo
 if [[ ! -s $log ]]; then echo "まだ記録が無い。"; exit 0; fi
 section() { # <title> <jq filter for kind>
   echo "## $1"
