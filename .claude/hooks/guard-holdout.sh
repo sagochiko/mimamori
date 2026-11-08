@@ -1,7 +1,9 @@
 #!/bin/bash
 # PreToolUse: the holdout set is measured once, at the end, and nobody tunes on it.
-# Nobody who changes rules or prompts reads eval/cases/holdout or the unsplit pool. Both are also
-# in .gitignore until the final run, so recursive grep and the Grep tool skip them.
+# Nobody who changes rules or prompts reads eval/cases/holdout or the unsplit pool. Both stayed in
+# .gitignore until the final run (2026-11-07), so recursive grep and the Grep tool skipped them.
+# Since the cases were published (PR #273) they are tracked, and a grep that does not name their
+# path finds them; after the run, the rule "no rule or prompt changes after the holdout" holds.
 # The final run (`make eval-holdout`) goes through only after the author creates the unlock file.
 source "$(dirname "$0")/lib.sh"
 in=$(cat)
