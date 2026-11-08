@@ -69,7 +69,7 @@ private let start = Date(timeIntervalSince1970: 1_793_000_000)
     let card = FamilyCard(item)
     #expect(card.status == FamilyCard.notResolved)
     #expect(card.actions == [.call, .resolve])
-    #expect(tour.familyPush == DemoPush(title: "1段階", body: DemoTour.topic))
+    #expect(tour.familyPush == DemoPush(title: "危ない", body: DemoTour.topic))
     #expect(tour.protectedNotices(now: start).map(\.status) == [ProtectedNotice.toldFamily])
     #expect(tour.canChoose)
   }
