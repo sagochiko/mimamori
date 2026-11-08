@@ -3,7 +3,6 @@ import { AbsoluteFill, Sequence } from "remotion";
 import {
   CALL_CONSULT_CAPTIONS,
   FOOTAGE,
-  MOTHER_WORDS_CAPTIONS,
   SAFARI_CAPTIONS,
   SCENES,
   lengthOf,
@@ -12,6 +11,7 @@ import {
 import { Captions, FootageSlot, Narration } from "./parts/common";
 import { C } from "./parts/theme";
 import { Opening } from "./scenes/Opening";
+import { MotherWords } from "./scenes/MotherWords";
 import { FamilyCard, FamilyResolve, SmsFallback } from "./scenes/FamilyScenes";
 import { SmileDiagram } from "./scenes/Smile";
 import { Accuracy, Observation } from "./scenes/Accuracy";
@@ -26,8 +26,7 @@ export const Demo: React.FC = () => (
     </Sequence>
     <Sequence name="0 母の言葉" from={startOf(SCENES.motherWords)} durationInFrames={lengthOf(SCENES.motherWords)}>
       <Narration scene="motherWords" />
-      <FootageSlot file={FOOTAGE.motherWords.file} what={FOOTAGE.motherWords.what} />
-      <Captions cues={MOTHER_WORDS_CAPTIONS} />
+      <MotherWords />
     </Sequence>
     <Sequence name="15 電話のあとの相談" from={startOf(SCENES.callConsult)} durationInFrames={lengthOf(SCENES.callConsult)}>
       <Narration scene="callConsult" />

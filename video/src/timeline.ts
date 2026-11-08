@@ -79,15 +79,13 @@ export const TOUR = {
 
 // 撮影の上に重ねる字幕。秒は場面の始まりからの秒。
 export const CALL_CONSULT_CAPTIONS = [
-  { from: 0, to: 12, text: "長い電話のあとにアプリから声をかける" },
-  { from: 12, to: 24, text: "母はそのまま話すだけでいい" },
-  { from: 24, to: 37, text: "アプリが筋書きを見抜いて「電話を切って」と返す" },
+  { from: 0, to: 13, text: "母は電話で言われたことをそのまま話す" },
+  { from: 13, to: 24, text: "お金の話に応じず家族に確かめてと返す" },
+  { from: 24, to: 37, text: "家族の iPhone に知らせとカードが届く" },
 ] as const;
 
 export const SAFARI_CAPTIONS = [
-  { from: 0, to: 13, text: "偽のページには赤い「開かないで」を重ねる" },
+  { from: 0, to: 4, text: "迷惑メールのリンクから偽のページを開く" },
+  { from: 4, to: 13, text: "偽のページには赤い「開かないで」を重ねる" },
 ] as const;
 
-export const MOTHER_WORDS_CAPTIONS = [
-  { from: 0, to: 5, text: "(母の言葉を字幕にして入れる)" },
-] as const;

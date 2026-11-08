@@ -32,6 +32,8 @@ Polly で作った音声は、AWS Service Terms の50.2(AI Services)に「The ou
 
 15〜60秒の場面は、[`docs/design.md`](../docs/design.md) の「デモの流れ(3分)」のとおり、Debug のビルドを起動の引数 `-mimamori-followup-min-seconds 10` で起動すると短い電話で撮れる。同じ日に撮り直すときは `-mimamori-followup-reset` も足す。
 
+2026年11月8日に、03(Safari)と 02(母と家族の画面収録をつないだもの。撮影の音は消した)を撮影で差し替えた。01 は撮影の代わりに母から家族に届いていた相談を文字で出し(`src/scenes/MotherWords.tsx`)、04 と 05 は撮れなかったので体験モードの録画と図のまま。04 が無いので、SMS のナレーションと字幕から「家族には知らせないで」の文を外した。無音の所にナレーションを6文足した。
+
 `footage/` に本物が無いあいだは、`public/footage-sim/` の同じ名前の仮の動画が流れ、右上に「シミュレータの画面(撮影で差し替え)」と出る。仮の動画は2026年11月7日に、母役のシミュレータ「mimamori mother」で Debug のビルドを起動の引数 `-mimamori-stub -mimamori-stub-joined protected -mimamori-stub-cases none` で起動して撮った。裏側に繋がない偽の通信(`ScreenshotStubTransport`)なので、本番の家族には何も届かない。01 は母の画面、02 は警察を名乗る電話の相談(`-mimamori-stub-draft` で入れた文を送り、決まった1段階の答えが出るまで)。シミュレータは通話も SMS も受けられず、Safari の拡張も動かないので、02 は電話のあとの声かけを映さず相談の画面から始まる。04 は体験モードの録画、03 は「Safari の画面(撮影で差し替え)」の札だけにした。05 は図にした。シミュレータの1台では、家族の側に届くところも返す笑顔も映らないため。作り物の警告の画面は置いていない。仮の動画はリポジトリに入れる。
 
 撮影には母の顔と声が映るので、`public/footage/` と `public/assets/` の中身は `.gitignore` でリポジトリに入れない。元の撮影は `~/mimamori-video/` に置く。

@@ -10,7 +10,7 @@
 | | ハッカソン後も誰がどんな場面で使い続けるかを言えるか | 母の利用の記録は2026年11月7日の1日分([`docs/mother-feedback.md`](mother-feedback.md))で、使い続けたと言えるだけの日数はまだ無い |
 | デモ(25%) | 「誰の、どんな課題を、どう解決するか」が冒頭で明確か | [`docs/design.md`](design.md) の「デモの流れ(3分)」、[`README.md`](../README.md) の冒頭と「The main scene」 |
 | | 前提知識のない人でも、操作の流れで価値が分かるか | 体験モード。審査員のビルドの最初の画面の「体験」から、通話のあとの声かけ、ニセ警察の相談、家族に届くカード、「解決」と「30分後」、SMS の判定を1台で試せる。手順は [`README.md`](../README.md) の「How judges can try it」(日本語は [`README.ja.md`](../README.ja.md) の「審査員の試し方」)、作りは [`ios/App/Views/DemoView.swift`](../ios/App/Views/DemoView.swift) と [`ios/Core/Sources/MimamoriCore/DemoTour.swift`](../ios/Core/Sources/MimamoriCore/DemoTour.swift)(#100)。TestFlight の版で出るかは #187。本物の流れは、2026年11月7日に作者の iPhone(母の役、ビルド9)と家族の役のシミュレータで、相談、家族への通知とカード、「解決」まで通した(#48 のコメント、[`README.md`](../README.md) の「The main scene」)。2台目の家族の iPhone と「電話する」はまだ |
-| | 最後まで見たくなる動画か | 動画(未) |
+| | 最後まで見たくなる動画か | 動画 <https://youtu.be/INrydyJ4HYM> |
 | Claude の活用(25%) | 基本を超えた創造的な使い方を見せているか | 作品の中の Claude の使い分け([`README.md`](../README.md) の「Claude inside the app」、[`docs/design.md`](design.md))、ハーネス([`docs/harness.md`](harness.md)) |
 | | Claude Code を開発の中心に据え、何が可能になったかを示せているか | [`README.md`](../README.md) の「Built during the hackathon」と「How Claude Code built it」の数、[`docs/dev-log.md`](dev-log.md)、[`docs/claude-usage.md`](claude-usage.md)、コミットの Co-Authored-By、PR のレビュー記録と [`docs/audits/raw/`](audits/raw/) |
 | | モデルや機能(Skills、サブエージェント、MCP、フック)を目的に応じて使い分けているか | `.claude/`、`CLAUDE.md` のモデルの表、`docs/harness.md` |

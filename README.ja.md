@@ -16,7 +16,7 @@ iOS 26.5 のシミュレータで撮った体験モードの画面。最初の�
 | 最初の画面 | 長い電話のあと | 母の言葉と家族のカード |
 | <img src="docs/screens/demo-05-resolved.png" width="200" alt="解決を押したあとのカード"> | <img src="docs/screens/demo-06-sms.png" width="200" alt="迷惑と判定された SMS と家族のカード"> | |
 | 「解決」のあと | SMS の判定 | |
-<!-- デモ動画のリンクをここに置く。 -->
+デモ動画(3分): <https://youtu.be/INrydyJ4HYM>
 
 ## ニセ警察詐欺を主役にした理由
 
