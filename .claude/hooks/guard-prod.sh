@@ -23,7 +23,16 @@ cwd=${cwd:-$PWD}
 [[ -n "$cmd" ]] || exit 0
 # The first reason to ask is kept and answered at the end, so a block later in the command still wins.
 asked=""
-ask() { [[ -n "$asked" ]] || asked=$1; }
+# Since 2026-11-08 the author is no longer asked about most of these (main pushes, remote D1 DROP or
+# DELETE, secret deletes, gh api DELETE): they pass and go to the log. Only gh api calls that may
+# merge, publish the repository, or move main (or that this hook cannot read well enough to rule
+# those out) still ask, until the repository is public and submitted.
+keep_ask=0
+ask() {
+  [[ -n "$asked" ]] || asked=$1
+  [[ "$1" == "gh api"* && "$1" =~ (merge|visibility|main|cannot read|cannot check|moves a ref) ]] && keep_ask=1
+  return 0
+}
 
 shell_words "$cmd"
 m=${#WORDS[@]}
@@ -367,7 +376,11 @@ if [[ "$text" =~ wrangler[[:space:]]+d1[[:space:]]+migrations[[:space:]]+apply &
 fi
 
 if [[ -n "$asked" ]]; then
-  log_event guard guard-prod "asked: $asked"
-  jq -nc --arg r "$asked" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
+  if ((keep_ask)); then
+    log_event guard guard-prod "asked: $asked"
+    jq -nc --arg r "$asked" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
+  else
+    log_event guard guard-prod "passed: $asked"
+  fi
 fi
 exit 0
