@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0021D80AC6076CB3F264A45F /* FamilySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75EAC999B66171196D92D3AC /* FamilySettingsView.swift */; };
 		0045C4C82D418EC3D7D26FEE /* DailyCheckInNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3066EF38E05327DBF8B6F57 /* DailyCheckInNotifier.swift */; };
 		03A280B2440103B882C9D172 /* StubPicture.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8ACDE55A0F8E55C95470553 /* StubPicture.swift */; };
 		0BF172D7871C60E0E2839660 /* VoiceListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF3C946C7E291506723FB25A /* VoiceListener.swift */; };
@@ -167,6 +168,7 @@
 		6DA060794DBBAA1CFCB3847D /* icon-128.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-128.png"; sourceTree = "<group>"; };
 		6EAB06D5C7D50051E2A0E31C /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = background.js; sourceTree = "<group>"; };
 		712562C323E2A51682DDF23D /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		75EAC999B66171196D92D3AC /* FamilySettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FamilySettingsView.swift; sourceTree = "<group>"; };
 		79E4F0C8DB0FF28D72C1F912 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		7C21EE2A82C9D0DAFA79176F /* ScreenshotStubTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotStubTransport.swift; sourceTree = "<group>"; };
 		82D66AF2F38B7CBCD40033EE /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -272,6 +274,7 @@
 				A9CA9B42DD3FC3299CFAB648 /* CaseCardView.swift */,
 				D8113C2A221541928C94BD56 /* DemoView.swift */,
 				516788DAB13E4B039651659A /* FamilyHomeView.swift */,
+				75EAC999B66171196D92D3AC /* FamilySettingsView.swift */,
 				3EB3212F121AF5A1BC7F588E /* FamilyStartView.swift */,
 				3D71E050B6AB7E4A2CC31D69 /* JoinView.swift */,
 				D3927374A99C57B608C75AEA /* MessageField.swift */,
@@ -695,6 +698,7 @@
 				1161F819AB32E399D288B285 /* DebugLaunch.swift in Sources */,
 				5639708EC776DDF5EF3E8180 /* DemoView.swift in Sources */,
 				38A272F7AE944C9DF6A7E596 /* FamilyHomeView.swift in Sources */,
+				0021D80AC6076CB3F264A45F /* FamilySettingsView.swift in Sources */,
 				B30588DA403943E16C24E603 /* FamilyStartView.swift in Sources */,
 				7C3ACF594C1E220440463051 /* FileChatLogStore.swift in Sources */,
 				EEF874E133FC58A9B88A309D /* FilePictureStore.swift in Sources */,

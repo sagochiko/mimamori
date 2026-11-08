@@ -115,6 +115,10 @@
           Self.wipeFails ? (502, #"{"error":"cleanup_failed","pending":["gmail"]}"#) : (204, "")
         case ("PUT", "/families/me/smile-deadline"):
           StubSmiles.shared.setHour(Self.body(of: request)["hour"] as? Int)
+        case ("GET", "/members/me/settings"):
+          (200, StubSmiles.shared.settings())
+        case ("PUT", "/members/me/settings"):
+          StubSmiles.shared.setSettings(Self.body(of: request))
         default:
           (404, "{}")
         }
@@ -211,6 +215,8 @@
     private var smiles: [[String: Any]] = []
     private var photos: [String: Data] = [:]
     private var hour = SmileBoard.defaultDeadlineHour
+    /// The stub member's two smile notices (#282), both on at first as on the server.
+    private var notify = ["smileNotify": true, "smileMissedNotify": true]
 
     private init() {
       let args = ProcessInfo.processInfo.arguments
@@ -263,6 +269,18 @@
         smiles.insert(row, at: 0)
         if let photo { photos[id] = photo }
         return (201, ScreenshotStubTransport.json(row))
+      }
+    }
+
+    func settings() -> String { lock.withLock { ScreenshotStubTransport.json(notify) } }
+
+    /// Booleans only, at least one, as on the server.
+    func setSettings(_ body: [String: Any]) -> (Int, String) {
+      let given = notify.keys.compactMap { key in (body[key] as? Bool).map { (key, $0) } }
+      guard !given.isEmpty else { return (400, #"{"error":"settings_invalid"}"#) }
+      return lock.withLock {
+        for (key, value) in given { notify[key] = value }
+        return (200, ScreenshotStubTransport.json(notify))
       }
     }
 

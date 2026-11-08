@@ -5,7 +5,8 @@
 /// on her screen: it signs every family iPhone out (401, back to role selection), so the family
 /// notices. The author chose this in the review of PR #281.
 public enum HomeMenuItem: Hashable, Sendable {
-  /// Her settings (`SettingsView`, #222). The family's iPhone has no daily prompt or reading aloud.
+  /// The settings of whoever holds the iPhone: hers (`SettingsView`, #222), the daily prompt and
+  /// reading aloud; the family's (`FamilySettingsView`, #282), the two smile notices and the hour.
   case settings
   /// `DELETE /members/me`: only this iPhone leaves.
   case leaveDevice
@@ -16,7 +17,7 @@ public enum HomeMenuItem: Hashable, Sendable {
     switch route {
     case .chooseRole: []
     case .protectedHome: [.settings, .deleteFamily]
-    case .familyHome: [.leaveDevice, .deleteFamily]
+    case .familyHome: [.settings, .leaveDevice, .deleteFamily]
     }
   }
 }

@@ -51,6 +51,48 @@ public struct Smile: Codable, Hashable, Sendable, Identifiable {
   }
 }
 
+/// `GET` and `PUT /members/me/settings` (#282): whether this family member gets the two smile
+/// notices. Both are on until turned off. Notices of danger, the watch's self-check, and joins have no
+/// switch here. The hour her smile is expected by is the family's one value in `SmileBoard`.
+public struct MemberSettings: Codable, Hashable, Sendable {
+  /// "笑顔が届いたとき": a smile from someone else in the family.
+  public var smileNotify: Bool
+  /// "笑顔が届かないとき": her smile has not come by the family's hour.
+  public var smileMissedNotify: Bool
+
+  public init(smileNotify: Bool = true, smileMissedNotify: Bool = true) {
+    self.smileNotify = smileNotify
+    self.smileMissedNotify = smileMissedNotify
+  }
+}
+
+/// One switch turned on the settings screen. `PUT /members/me/settings` carries only this key, so a
+/// screen that could not read the other one (and shows its default) never writes that default over
+/// what the member chose (review 1 of PR #286).
+public enum MemberSettingsChange: Hashable, Sendable, Encodable {
+  case smileNotify(Bool)
+  case smileMissedNotify(Bool)
+
+  public func applied(to settings: MemberSettings) -> MemberSettings {
+    var next = settings
+    switch self {
+    case .smileNotify(let on): next.smileNotify = on
+    case .smileMissedNotify(let on): next.smileMissedNotify = on
+    }
+    return next
+  }
+
+  private enum CodingKeys: String, CodingKey { case smileNotify, smileMissedNotify }
+
+  public func encode(to encoder: any Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    switch self {
+    case .smileNotify(let on): try container.encode(on, forKey: .smileNotify)
+    case .smileMissedNotify(let on): try container.encode(on, forKey: .smileMissedNotify)
+    }
+  }
+}
+
 /// `GET /smiles`: the family's last week, newest first, and the hour (JST) by which the protected
 /// member's smile is expected.
 public struct SmileBoard: Codable, Hashable, Sendable {

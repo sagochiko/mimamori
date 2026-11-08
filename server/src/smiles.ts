@@ -152,7 +152,8 @@ export async function postSmile(request: Request, env: Env, ctx: ExecutionContex
 /** Everyone in the family but the sender, quietly. The note is shown as it was written. */
 async function tellOthers(env: Env, me: Member, hasPhoto: boolean, note: string | null): Promise<void> {
   try {
-    const others = await env.DB.prepare("SELECT id FROM members WHERE family_id = ? AND id != ?")
+    // Members who turned the smile notice off on their settings screen are left out (#282).
+    const others = await env.DB.prepare("SELECT id FROM members WHERE family_id = ? AND id != ? AND smile_notify = 1")
       .bind(me.familyId, me.id)
       .all<{ id: string }>();
     const ids = others.results.map((r) => r.id);
@@ -223,6 +224,49 @@ export async function setSmileDeadline(request: Request, env: Env): Promise<Resp
   return json({ deadlineHour: hour });
 }
 
+interface NotifySettings {
+  smileNotify: boolean;
+  smileMissedNotify: boolean;
+}
+
+async function readSettings(env: Env, memberId: string): Promise<NotifySettings> {
+  const row = await env.DB.prepare("SELECT smile_notify, smile_missed_notify FROM members WHERE id = ?")
+    .bind(memberId)
+    .first<{ smile_notify: number; smile_missed_notify: number }>();
+  if (!row) throw new HttpError(401, "unauthorized");
+  return { smileNotify: row.smile_notify === 1, smileMissedNotify: row.smile_missed_notify === 1 };
+}
+
+/** GET /members/me/settings: `{ smileNotify, smileMissedNotify }`, this member's own. Family members only. */
+export async function getMemberSettings(request: Request, env: Env): Promise<Response> {
+  const me = await requireMember(request, env);
+  if (me.role !== "family") throw new HttpError(403, "family_only");
+  return json(await readSettings(env, me.id));
+}
+
+/**
+ * PUT /members/me/settings: `{ smileNotify?, smileMissedNotify? }`, booleans, at least one. Only the two
+ * smile notices of this member (#282); notices of danger, the self-check, and joins have no switch.
+ */
+export async function setMemberSettings(request: Request, env: Env): Promise<Response> {
+  const me = await requireMember(request, env);
+  if (me.role !== "family") throw new HttpError(403, "family_only");
+  const { smileNotify, smileMissedNotify } = await readJson(request);
+  const ok = (v: unknown) => v === undefined || typeof v === "boolean";
+  if (!ok(smileNotify) || !ok(smileMissedNotify) || (smileNotify === undefined && smileMissedNotify === undefined)) {
+    throw new HttpError(400, "settings_invalid");
+  }
+  const flag = (v: unknown) => (v === undefined ? null : v ? 1 : 0);
+  await env.DB.prepare(
+    `UPDATE members SET smile_notify = COALESCE(?, smile_notify),
+                        smile_missed_notify = COALESCE(?, smile_missed_notify)
+      WHERE id = ?`,
+  )
+    .bind(flag(smileNotify), flag(smileMissedNotify), me.id)
+    .run();
+  return json(await readSettings(env, me.id));
+}
+
 /**
  * Every tick (src/cron.ts). A family is due when today's hour (JST) has passed, it was not told
  * today, a protected member joined before today's hour, and no smile photo of a protected member
@@ -261,7 +305,10 @@ export async function notifyMissedSmiles(env: Env, now: number, budget: External
       .run();
     if (claim.meta.changes !== 1) continue;
 
-    const members = await env.DB.prepare("SELECT id FROM members WHERE family_id = ? AND role = 'family'")
+    // Members who turned this notice off are left out (#282); the day is still claimed, so it stays once a day.
+    const members = await env.DB.prepare(
+      "SELECT id FROM members WHERE family_id = ? AND role = 'family' AND smile_missed_notify = 1",
+    )
       .bind(family.id)
       .all<{ id: string }>();
     const results = await sendPush(
