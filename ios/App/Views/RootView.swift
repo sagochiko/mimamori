@@ -35,11 +35,11 @@ extension Problem {
   }
 }
 
-/// The menu on both home screens with "この iPhone を外す" and "家族を削除" (#279), each checked
-/// before it runs with one verb or "やめる", nothing else on screen. What goes is read aloud only.
-/// They were one "すべて消す" until the author, tidying only their own iPhone, deleted the whole
-/// family with it. On her screen the menu also opens her settings (`SettingsView`, #222); the
-/// family's iPhone has no daily prompt or reading aloud.
+/// The menu on both home screens (#279). The family's has "この iPhone を外す" and "家族を削除";
+/// hers has her settings (`SettingsView`, #222) and "家族を削除" only (`HomeMenuItem` says why).
+/// Each is checked before it runs with one verb or "やめる", nothing else on screen. What goes is
+/// read aloud only. They were one "すべて消す" until the author, tidying only their own iPhone,
+/// deleted the whole family with it.
 struct WipeMenu: View {
   @Environment(AppModel.self) private var model
   @State private var confirmingLeave = false
@@ -48,14 +48,24 @@ struct WipeMenu: View {
 
   var body: some View {
     Menu {
-      if model.route == .protectedHome {
-        Button("設定", systemImage: "gearshape") { settingsOpen = true }
-          .accessibilityHint("毎日の声かけ、その時刻、読み上げを切り替える画面を開きます")
+      // Which items, by role, is decided in Core (`HomeMenuItem`): her screen has no "この iPhone を外す".
+      ForEach(HomeMenuItem.items(for: model.route), id: \.self) { item in
+        switch item {
+        case .settings:
+          Button("設定", systemImage: "gearshape") { settingsOpen = true }
+            .accessibilityHint("毎日の声かけ、その時刻、読み上げを切り替える画面を開きます")
+        case .leaveDevice:
+          Button("この iPhone を外す", systemImage: "iphone.slash", role: .destructive) {
+            confirmingLeave = true
+          }
+          .accessibilityHint(
+            "この iPhone だけを家族から外し、この iPhone の鍵を消して、役を選ぶ画面に戻ります。ほかの家族と見守られる人の登録はそのまま残ります")
+        case .deleteFamily:
+          Button("家族を削除", systemImage: "trash", role: .destructive) { confirming = true }
+            .accessibilityHint(
+              "家族の知らせ、相談、笑顔、Gmail の許可を裏側からすべて消し、家族全員を外して、役を選ぶ画面に戻ります。家族のみんなが使えなくなります")
+        }
       }
-      Button("この iPhone を外す", systemImage: "iphone.slash", role: .destructive) { confirmingLeave = true }
-        .accessibilityHint("この iPhone だけを家族から外し、この iPhone の鍵と会話を消して、役を選ぶ画面に戻ります。ほかの家族と見守る人の登録はそのまま残ります")
-      Button("家族を削除", systemImage: "trash", role: .destructive) { confirming = true }
-        .accessibilityHint("家族の知らせ、相談、笑顔、Gmail の許可を裏側からすべて消し、家族全員を外して、役を選ぶ画面に戻ります。家族のみんなが使えなくなります")
     } label: {
       Image(systemName: model.isBusy ? "hourglass" : "ellipsis.circle")
         .font(.title2)
@@ -79,7 +89,9 @@ struct WipeMenu: View {
     .sheet(isPresented: $settingsOpen) { SettingsView() }
     .onAppear {
       #if DEBUG
-        if ScreenshotStubTransport.settingsOpen, model.route == .protectedHome { settingsOpen = true }
+        if ScreenshotStubTransport.settingsOpen, model.route == .protectedHome {
+          settingsOpen = true
+        }
         if ScreenshotStubTransport.wipeOpen { confirming = true }
       #endif
     }
