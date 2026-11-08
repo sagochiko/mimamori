@@ -345,7 +345,7 @@ describe("GET and PUT /members/me/settings", () => {
     expect(await hers.json()).toEqual({ smileNotify: true, smileMissedNotify: true });
   });
 
-  it.each([{}, { smileNotify: 0 }, { smileMissedNotify: "false" }, { smileNotify: null }, []])(
+  it.each([{}, { smileNotify: 0 }, { smileMissedNotify: "false" }, { smileNotify: null }, [[]]])(
     "refuses the body %j",
     async (body) => {
       const owner = await createFamily();
