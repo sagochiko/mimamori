@@ -12,7 +12,7 @@ import { errorResponse, HttpError } from "./http";
 import { handleJudgeBatch } from "./judge";
 import { pageRoute } from "./page";
 import { siteAssociation } from "./site-association";
-import { listSmiles, postSmile, setSmileDeadline, smilePhoto } from "./smiles";
+import { getMemberSettings, listSmiles, postSmile, setMemberSettings, setSmileDeadline, smilePhoto } from "./smiles";
 import { smsRoute } from "./sms";
 
 type Handler = (request: Request, env: Env, params: string[], ctx: ExecutionContext) => Promise<Response>;
@@ -34,6 +34,9 @@ const routes: Array<[method: string, pattern: RegExp, handler: Handler]> = [
   ["GET", /^\/smiles$/, (req, env) => listSmiles(req, env)],
   ["GET", /^\/smiles\/([^/]+)\/photo$/, (req, env, [id]) => smilePhoto(req, env, id ?? "")],
   ["PUT", /^\/families\/me\/smile-deadline$/, (req, env) => setSmileDeadline(req, env)],
+  // The family member's own two smile notices (#282, the family's settings screen).
+  ["GET", /^\/members\/me\/settings$/, (req, env) => getMemberSettings(req, env)],
+  ["PUT", /^\/members\/me\/settings$/, (req, env) => setMemberSettings(req, env)],
   ["GET", /^\/gmail\/connect$/, (req, env) => connectRoute(req, env)],
   ["GET", /^\/gmail\/callback$/, (req, env) => callbackRoute(req, env)],
   // The protected member's iPhone says it is still watching (task 17, src/heartbeat.ts).

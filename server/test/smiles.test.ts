@@ -10,7 +10,7 @@ import worker from "../src/index";
 import { resetApnsJwtCache } from "../src/push";
 import { ExternalBudget } from "../src/budget";
 import { MAX_PHOTO_BYTES, notifyMissedSmiles, SMILE_NOTES } from "../src/smiles";
-import { call, createFamily, invite, join, type Created } from "./helpers";
+import { call, createFamily, invite, join, randomIp, type Created } from "./helpers";
 import { network } from "./network";
 
 const SANDBOX = "https://api.sandbox.push.apple.com";
@@ -320,6 +320,91 @@ describe("PUT /families/me/smile-deadline", () => {
   });
 });
 
+/** Turns this member's two smile notices on or off through the route the family's settings screen uses (#282). */
+async function settings(deviceKey: string, body: unknown): Promise<Response> {
+  return call("PUT", "/members/me/settings", { deviceKey, body });
+}
+
+describe("GET and PUT /members/me/settings", () => {
+  it("starts with both smile notices on", async () => {
+    const owner = await createFamily();
+    const res = await call("GET", "/members/me/settings", { deviceKey: owner.deviceKey });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ smileNotify: true, smileMissedNotify: true });
+  });
+
+  it("changes only what the body names, per member, and GET shows it", async () => {
+    const { owner, sister } = await threeOfUs();
+    const res = await settings(owner.deviceKey, { smileNotify: false });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ smileNotify: false, smileMissedNotify: true });
+    await settings(owner.deviceKey, { smileMissedNotify: false });
+    const mine = await call("GET", "/members/me/settings", { deviceKey: owner.deviceKey });
+    expect(await mine.json()).toEqual({ smileNotify: false, smileMissedNotify: false });
+    const hers = await call("GET", "/members/me/settings", { deviceKey: sister.deviceKey });
+    expect(await hers.json()).toEqual({ smileNotify: true, smileMissedNotify: true });
+  });
+
+  it.each([{}, { smileNotify: 0 }, { smileMissedNotify: "false" }, { smileNotify: null }, []])(
+    "refuses the body %j",
+    async (body) => {
+      const owner = await createFamily();
+      expect((await settings(owner.deviceKey, body)).status).toBe(400);
+    },
+  );
+
+  it("is not for the protected member, whose screen has no such settings", async () => {
+    const owner = await createFamily();
+    const mother = await joinAs(owner, "protected", "母");
+    expect((await settings(mother.deviceKey, { smileNotify: false })).status).toBe(403);
+    expect((await call("GET", "/members/me/settings", { deviceKey: mother.deviceKey })).status).toBe(403);
+  });
+
+  it("needs a device key", async () => {
+    expect((await call("GET", "/members/me/settings")).status).toBe(401);
+    expect((await call("PUT", "/members/me/settings", { body: { smileNotify: false } })).status).toBe(401);
+  });
+
+  it("leaves out a member who turned off the smile notice, and still tells the others", async () => {
+    const { owner, mother, tok } = await threeOfUs();
+    await settings(owner.deviceKey, { smileNotify: false });
+    await post(mother.deviceKey, { photo: b64(JPEG), score: 0.9 }, pushEnv);
+    expect(sent.map((s) => s.token)).toEqual([tok.sister]);
+  });
+
+  it("never cuts the notice that someone joined, or the watch's self-check", async () => {
+    const { owner, mother, sister, tok } = await threeOfUs();
+    for (const m of [owner, sister]) await settings(m.deviceKey, { smileNotify: false, smileMissedNotify: false });
+
+    const { code } = await invite(owner.deviceKey);
+    const res = await call("POST", `/invites/${code}/join`, {
+      body: { role: "family", display_name: "弟" },
+      ip: randomIp(),
+      env: pushEnv,
+    });
+    expect(res.status).toBe(201);
+    expect(sent.filter((s) => s.body === "弟が入りました").map((s) => s.token).sort()).toEqual(
+      [tok.owner, tok.mother, tok.sister].sort(),
+    );
+
+    sent = [];
+    const beat = await call("POST", "/heartbeat", {
+      deviceKey: mother.deviceKey,
+      body: { notifications: false, backgroundRefresh: true },
+      env: pushEnv,
+    });
+    expect(beat.status).toBe(204);
+    expect(sent.map((s) => s.token).sort()).toEqual([tok.owner, tok.sister].sort());
+  });
+
+  it("does not stop the smile notice when only the missed-smile notice is off", async () => {
+    const { owner, mother, tok } = await threeOfUs();
+    await settings(owner.deviceKey, { smileMissedNotify: false });
+    await post(mother.deviceKey, { photo: b64(JPEG), score: 0.9 }, pushEnv);
+    expect(sent.map((s) => s.token).sort()).toEqual([tok.owner, tok.sister].sort());
+  });
+});
+
 /** Epoch ms of the given JST wall-clock time on 2026-11-10 plus `days`. */
 function jstAt(hour: number, minute = 0, days = 0): number {
   return Date.UTC(2026, 10, 10 + days, hour, minute) - JST;
@@ -414,6 +499,24 @@ describe("the quiet notice when the protected member's smile has not come", () =
     expect(sent.filter(ours)).toEqual([]);
     await tick(jstAt(11, 0));
     expect(sent.filter(ours)).toHaveLength(2);
+  });
+
+  it("leaves out a member who turned off the missed-smile notice, and still tells the others", async () => {
+    const { owner, tok } = await threeOfUs();
+    await joinedLongAgo(owner.familyId);
+    await settings(owner.deviceKey, { smileMissedNotify: false });
+
+    await tick(jstAt(9, 0));
+    expect(sent.filter(to([tok.owner, tok.sister, tok.mother])).map((s) => s.token)).toEqual([tok.sister]);
+  });
+
+  it("does not stop the missed-smile notice when only the smile notice is off", async () => {
+    const { owner, tok } = await threeOfUs();
+    await joinedLongAgo(owner.familyId);
+    await settings(owner.deviceKey, { smileNotify: false });
+
+    await tick(jstAt(9, 0));
+    expect(sent.filter(to([tok.owner, tok.sister])).map((s) => s.token).sort()).toEqual([tok.owner, tok.sister].sort());
   });
 
   it("still tells when her only word today came without a photo, as her screen does", async () => {
