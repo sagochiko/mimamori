@@ -33,6 +33,16 @@ public enum Level: Int, Codable, Sendable, CaseIterable, Comparable {
 
     /// Lower raw value is more dangerous, so `.doNotOpen` sorts first.
     public static func < (lhs: Level, rhs: Level) -> Bool { lhs.rawValue < rhs.rawValue }
+
+    /// The word on the family's card and notification. "1段階" told the family nothing, so the
+    /// author chose these on 2026-11-08; none of them reads as "safe".
+    public var familyBadge: String {
+        switch self {
+        case .doNotOpen: "危ない"
+        case .waitForFamily: "確かめて"
+        case .lowConcern: "念のため"
+        }
+    }
 }
 
 /// `alerts.source`.
