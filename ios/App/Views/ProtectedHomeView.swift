@@ -114,7 +114,7 @@ struct ProtectedHomeView: View {
             }
         }
         // The family's smiles only, as thin as the strip (#14, set words dropped in #223, her own and
-        // the protected role's dropped in #243). The menu with "すべて消す" (#190) is the row's last
+        // the protected role's dropped in #243). The menu with "この iPhone を外す" and "家族を削除" (#190, #279) is the row's last
         // item, so her screen gets no navigation bar and no extra line, and the row still runs to the
         // edge of the screen.
         SmileStrip(onCamera: { camera = true }, showsMenu: true, compact: true)

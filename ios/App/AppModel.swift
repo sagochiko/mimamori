@@ -186,9 +186,23 @@ final class AppModel {
     }
   }
 
-  // MARK: Deleting everything
+  // MARK: Leaving and deleting
 
-  /// "すべて消す" (`DELETE /families/me`). Once the server answers 2xx the key is cleared, and the
+  /// "この iPhone を外す" (`DELETE /members/me`, #279). Only this device leaves; the family and her stay.
+  /// Once the server answers 2xx the key is cleared, and the route change to role selection clears
+  /// what this run kept (the handler in `init`). On failure this iPhone stays in the family.
+  func leaveFamily() async {
+    isBusy = true
+    defer { isBusy = false }
+    do {
+      try await session.leaveFamily()
+      problem = nil
+    } catch {
+      problem = Problem(leaving: error)
+    }
+  }
+
+  /// "家族を削除" (`DELETE /families/me`). Once the server answers 2xx the key is cleared, and the
   /// route change to role selection clears her conversation and what this run kept (the handler in
   /// `init`). On failure nothing here is deleted and the screen says it was not deleted.
   func deleteEverything() async {
@@ -219,7 +233,7 @@ final class AppModel {
     guard route != .chooseRole else { return }
     now = .now
     guard let fresh = try? await session.cases() else { return }
-    // Checked again after the wait: "すべて消す" can land while this read is in flight, and the old
+    // Checked again after the wait: "家族を削除" or "この iPhone を外す" can land while this read is in flight, and the old
     // family's cases must not mark a new family as joined (review 1 of PR #246).
     guard route != .chooseRole else { return }
     cases = fresh

@@ -281,9 +281,11 @@ AI が知らないアプリや見ていない画面の使い方を聞かれた�
 - 鍵(Claude、APNs、Google)は Workers の秘密の置き場に置き、公開リポジトリには入れない
 - リポジトリに実際の相談やメールは入れず、試験用の例文だけを置く
 
-残す期間は30日。知らせ、相談、笑顔の写真は30日たったら自動で消す。家族を抜けた人の端末の鍵はその場で無効にし、以後は何も見られない。母か家族の誰かが「すべて消す」を押すと、その家族のデータを裏側からすべて消し、Gmail の許可を取り消し、Managed Agents のセッションも削除する。
+残す期間は30日。知らせ、相談、笑顔の写真は30日たったら自動で消す。家族を抜けた人の端末の鍵はその場で無効にし、以後は何も見られない。母か家族の誰かが「家族を削除」を押すと、その家族のデータを裏側からすべて消し、Gmail の許可を取り消し、Managed Agents のセッションも削除する。
 
-「すべて消す」は2026年11月1日の設計で入ったが、そのときの理由は残っていなかった。2026年11月3日に、確かめた次の3つの事実を理由として作者と決め直した。
+メニューには「この iPhone を外す」と「家族を削除」の2つを並べる。「この iPhone を外す」は `DELETE /members/me` だけを呼び、裏側が2xx を返したあとにその端末の鍵を消して役の選択に戻る。ほかの家族と母はそのまま残る。「家族を削除」は `DELETE /families/me` で、確かめのアラートのボタンを「全員を削除」にして、家族全員が外れることを名札で分かるようにした。どちらも説明は読み上げ(VoiceOver)にだけ置く。はじめはメニューに「すべて消す」の1つだけを置いていたが、2026年11月8日に作者が家族役の iPhone で自分の端末だけを片付けるつもりで押し、母の家族が丸ごと消えた。作者は「その全て消すっておかしいとおもう」と言い、AskUserQuestion で「アイフォンを外すと家族の組織を削除するとかかな」と答えたので、2つに分けた(#279)。裏側の `DELETE /families/me` の中身は、下の1の決まりのために変えていない。
+
+「すべて消す」(今の「家族を削除」)は2026年11月1日の設計で入ったが、そのときの理由は残っていなかった。2026年11月3日に、確かめた次の3つの事実を理由として作者と決め直した。
 
 1. Apple の審査の決まりの 5.1.1(v) に「If your app supports account creation, you must also offer account deletion within the app.」とあり、2.2 で TestFlight のベータ版もこの決まりに従うとしている([App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/))。審査員向けのビルドは外部テストの審査を通る。この決まりだけなら「家族を抜ける」で足りる見込み
 2. 裏の調べものには、母に届いた怪しいメッセージの本文を渡す。Anthropic は「Claude Managed Agents is a stateful resource; session transcripts persist until you delete them.」としている([API and data retention](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention))
