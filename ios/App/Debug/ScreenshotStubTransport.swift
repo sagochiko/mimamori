@@ -98,6 +98,8 @@
           (200, StubCases.shared.list())
         case ("POST", let p) where p.hasPrefix("/cases/"):
           StubCases.shared.act(path: p)
+        case ("DELETE", let p) where p.hasPrefix("/cases/"):
+          StubCases.shared.remove(path: p)
         case ("GET", "/smiles"):
           (200, StubSmiles.shared.list())
         case ("POST", "/smiles"):
@@ -388,6 +390,22 @@
           cases[i]["resolvedBy"] = ["memberId": "m-stub", "displayName": "作者"]
         }
         return (200, ScreenshotStubTransport.json(cases[i]))
+      }
+    }
+
+    /// `DELETE /cases/{id}` (#280): a resolved card goes, as on the server; one not resolved is 409.
+    func remove(path: String) -> (Int, String) {
+      let parts = path.split(separator: "/").map(String.init)
+      guard parts.count == 2 else { return (404, #"{"error":"not_found"}"#) }
+      return lock.withLock {
+        guard let i = cases.firstIndex(where: { $0["id"] as? String == parts[1] }) else {
+          return (404, #"{"error":"case_not_found"}"#)
+        }
+        guard cases[i]["state"] as? String == "resolved" else {
+          return (409, #"{"error":"case_not_resolved"}"#)
+        }
+        cases.remove(at: i)
+        return (204, "")
       }
     }
   }

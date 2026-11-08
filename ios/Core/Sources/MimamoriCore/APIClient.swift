@@ -79,6 +79,12 @@ public final class APIClient: Sendable {
     try await send("POST", "cases/\(caseId)/resolve", body: Empty?.none, auth: true)
   }
 
+  /// `DELETE /cases/{id}` (#280). Removes a resolved card from every family device; the server answers
+  /// 409 for a case not resolved and 404 for one already removed or not this family's.
+  public func removeCase(caseId: String) async throws {
+    try await perform("DELETE", "cases/\(caseId)", body: Empty?.none, auth: true)
+  }
+
   /// `POST /consult`. What the protected person said, as text, with the earlier turns of the same
   /// conversation (left out when there are none); the answer to show and read aloud.
   public func consult(text: String, history: [ConsultTurn] = []) async throws -> ConsultAnswer {
