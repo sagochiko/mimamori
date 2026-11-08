@@ -16,7 +16,7 @@
 // message is retried. Queues "offers at-least once delivery" (Workers, Storage options), so the same
 // body can come more than once, and the id it carries is what makes that harmless.
 
-import { startInvestigation, type ResearchInput } from "./agents";
+import { startConsultSummary, startInvestigation, type ResearchInput, type SummaryInput } from "./agents";
 import { ExternalBudget } from "./budget";
 import { CaseNoticeDeferred, openCase } from "./cases";
 import { takeClaudeCall, takeResearchStart } from "./claude-limit";
@@ -73,6 +73,8 @@ export interface JudgeDeps {
    * research is started; the tests' fakes leave it out so they never reach Managed Agents.
    */
   investigate?(env: Env, alertId: string, input: ResearchInput, budget: ExternalBudget): Promise<boolean>;
+  /** Starts the family's summary of a consultation (#271). Left out, none is started. */
+  summarize?(env: Env, alertId: string, input: SummaryInput, budget: ExternalBudget): Promise<boolean>;
 }
 
 export const defaultJudgeDeps: JudgeDeps = {
@@ -81,7 +83,71 @@ export const defaultJudgeDeps: JudgeDeps = {
   openCase,
   now: () => Date.now(),
   investigate: (env, alertId, input, budget) => startInvestigation(env, alertId, input, budget),
+  summarize: (env, alertId, input, budget) => startConsultSummary(env, alertId, input, budget),
 };
+
+/**
+ * What POST /consult puts on JUDGE_QUEUE to have the family's summary started (#271): the ids alone,
+ * never her words. It goes through the queue, as the research does, because ctx.waitUntil is cut 30
+ * seconds after her answer, and making the agent, the environment, and the session can take longer: a
+ * session made on Anthropic's side whose id was never written to D1 could never be deleted (review 2
+ * of PR #275). The consumer has minutes.
+ */
+export interface ConsultSummaryMessage {
+  kind: "consult_summary";
+  familyId: string;
+  alertId: string;
+}
+
+export async function enqueueConsultSummary(env: Env, familyId: string, alertId: string): Promise<void> {
+  const message: ConsultSummaryMessage = { kind: "consult_summary", familyId, alertId };
+  await env.JUDGE_QUEUE.send(message);
+}
+
+/** The message when it is exactly that shape: no other key, so nothing else can ride along. */
+function parseSummaryMessage(body: unknown): ConsultSummaryMessage | null {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return null;
+  const b = body as Record<string, unknown>;
+  if (b.kind !== "consult_summary") return null;
+  if (Object.keys(b).sort().join(",") !== "alertId,familyId,kind") return null;
+  if (typeof b.familyId !== "string" || typeof b.alertId !== "string") return null;
+  return { kind: "consult_summary", familyId: b.familyId, alertId: b.alertId };
+}
+
+/**
+ * Starts the summary with what the family's card carries now (the level, the reasons, the line), never
+ * her words, within the family's Managed Agents starts for the day (src/claude-limit.ts). Only a
+ * consultation of that family, told at level 1 or 2, with no session yet. Never throws.
+ */
+async function startSummaryFor(
+  env: Env,
+  m: ConsultSummaryMessage,
+  budget: ExternalBudget,
+  deps: JudgeDeps,
+): Promise<void> {
+  try {
+    if (deps.summarize === undefined) return;
+    const row = await env.DB.prepare(
+      `SELECT level, reasons, summary FROM alerts
+        WHERE id = ? AND family_id = ? AND source = 'consult' AND notified = 1
+          AND investigation_session_id IS NULL AND investigated_at IS NULL`,
+    )
+      .bind(m.alertId, m.familyId)
+      .first<{ level: number; reasons: string | null; summary: string | null }>();
+    if (!row || (row.level !== 1 && row.level !== 2)) return;
+    if (!(await takeResearchStart(env, m.familyId, deps.now()))) return;
+    let reasons: string[] = [];
+    try {
+      const parsed: unknown = JSON.parse(row.reasons ?? "[]");
+      if (Array.isArray(parsed)) reasons = parsed.filter((r): r is string => typeof r === "string");
+    } catch {
+      reasons = [];
+    }
+    await deps.summarize(env, m.alertId, { level: row.level, reasons, summary: row.summary ?? "" }, budget);
+  } catch (error) {
+    console.error("consult summary failed", error instanceof Error ? error.name : typeof error);
+  }
+}
 
 /** Routes whose message the research may read: never a consultation or a call, which carry her words. */
 const RESEARCHED: readonly AlertSource[] = ["sms", "gmail", "page", "dns"];
@@ -521,7 +587,17 @@ export async function handleJudgeBatch(
 ): Promise<void> {
   const budget = new ExternalBudget();
   const research: PendingResearch[] = [];
+  const summaries: ConsultSummaryMessage[] = [];
   for (const message of batch.messages) {
+    // A summary to start (#271) is not a judgment: it waits with the research for the end of the batch.
+    // Taken once, like the research: one that is lost leaves the card as it is.
+    if (typeof message.body === "object" && message.body !== null && (message.body as { kind?: unknown }).kind === "consult_summary") {
+      const summary = parseSummaryMessage(message.body);
+      if (summary) summaries.push(summary);
+      else console.error("consult summary dropped", "bad_shape");
+      message.ack();
+      continue;
+    }
     try {
       const outcome = await judgeOne(env, message, budget, deps, research);
       if (outcome === "retry") message.retry({ delaySeconds: RETRY_DELAY_SECONDS });
@@ -543,4 +619,5 @@ export async function handleJudgeBatch(
       console.error("investigation failed", error instanceof Error ? error.name : typeof error);
     }
   }
+  for (const summary of summaries) await startSummaryFor(env, summary, budget, deps);
 }

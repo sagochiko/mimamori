@@ -1,11 +1,11 @@
 ---
 name: mm-deploy
-description: Deploys mimamori's Cloudflare Workers backend, first time and later - preflight, deploy, remote D1 migrations, a smoke check, logs, then pointing the iOS app at the deployed host. Remote steps run without waiting for the author; only deleting asks. Use for "デプロイして", "裏側を出して", "/mm-deploy".
+description: Deploys mimamori's Cloudflare Workers backend, first time and later - preflight, deploy, remote D1 migrations, a smoke check, logs, then pointing the iOS app at the deployed host. Remote steps run without waiting for the author; deleting resources stays blocked. Use for "デプロイして", "裏側を出して", "/mm-deploy".
 ---
 
 # Deploy the Workers backend
 
-Since 2026-11-04 the remote steps here (deploy, rollback, `secret list`, remote D1 migrations) run without waiting for the author: the author decided that during development only deleting and what cannot be undone needs their approval. Before each remote step, still say in one line what it changes. wrangler skips its own confirmation in a non-interactive shell, so `guard-prod.sh` is what keeps the rest with the author: it blocks deleting resources and D1 time-travel restore, and asks before `wrangler secret delete` and before remote SQL with DROP, DELETE, or TRUNCATE. Never reshape a command to avoid a prompt or a block. Never read, write, or print a secret value; the author enters the values (issue #30). Piping a random key straight from `openssl rand` into `wrangler secret put` (as for `TOKEN_ENC_KEY`) is fine.
+Since 2026-11-04 the remote steps here (deploy, rollback, `secret list`, remote D1 migrations) run without waiting for the author: the author decided that during development only deleting and what cannot be undone needs their approval. Before each remote step, still say in one line what it changes. wrangler skips its own confirmation in a non-interactive shell, so `guard-prod.sh` is what keeps the rest with the author: it blocks deleting resources and D1 time-travel restore, and, since 2026-11-08, lets `wrangler secret delete` and remote SQL with DROP, DELETE, or TRUNCATE pass without asking, logging each one as `passed:` (the author decided this). Say in one line what such a step deletes before running it. Never reshape a command to avoid a prompt or a block. Never read, write, or print a secret value; the author enters the values (issue #30). Piping a random key straight from `openssl rand` into `wrangler secret put` (as for `TOKEN_ENC_KEY`) is fine.
 
 Run everything from `server/` unless a step says otherwise.
 

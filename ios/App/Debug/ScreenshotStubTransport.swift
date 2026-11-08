@@ -339,7 +339,9 @@
       cases = [
         [
           "id": "c-police", "alertId": "a-1", "state": "notified", "notifiedAt": at(3), "familyNotifiedAt": at(3),
-          "alert": alert(1, "consult", "警察を名乗る電話の相談", "口座が犯罪に使われたという話がある"),
+          // With the summary from fixed choices (#271).
+          "alert": alert(1, "consult", "警察を名乗る電話の相談", "口座が犯罪に使われたという話がある")
+            .merging(["digest": "警察を名乗る連絡 / すぐ電話して確かめる"]) { $1 },
           "aiReply": "詐欺で使われる説明と一致しています。送金せず、いったん電話を切って家族に確かめて",
         ],
         [

@@ -110,16 +110,23 @@ public struct CaseAlert: Codable, Hashable, Sendable {
     /// What the research in the background found on official sites (task 11). Empty until the
     /// research is read, when it found nothing, and from a server that does not send the key.
     public let evidence: [CaseEvidence]
+    /// The consultation's summary from fixed choices (#271), the server's one line ("警察を名乗る連絡 /
+    /// すぐ電話して確かめる"). Nil before it is read, when there is none, and from an older server.
+    public let digest: String?
 
-    public init(level: Level, source: AlertSource, summary: String, reasons: [String], evidence: [CaseEvidence] = []) {
+    public init(
+        level: Level, source: AlertSource, summary: String, reasons: [String], evidence: [CaseEvidence] = [],
+        digest: String? = nil
+    ) {
         self.level = level
         self.source = source
         self.summary = summary
         self.reasons = reasons
         self.evidence = evidence
+        self.digest = digest
     }
 
-    private enum CodingKeys: String, CodingKey { case level, source, summary, reasons, evidence }
+    private enum CodingKeys: String, CodingKey { case level, source, summary, reasons, evidence, digest }
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -130,6 +137,9 @@ public struct CaseAlert: Codable, Hashable, Sendable {
         // One broken entry must not hide the case: each is read on its own, and the rest are kept.
         let raw = try c.decodeIfPresent([LossyEvidence].self, forKey: .evidence) ?? []
         evidence = raw.compactMap(\.value)
+        // A value of another type must not hide the case either.
+        let line = (try? c.decodeIfPresent(String.self, forKey: .digest)) ?? nil
+        digest = line.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
     }
 }
 
