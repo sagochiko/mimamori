@@ -1,0 +1,8 @@
+{"id":"c-pt-01","source":"consult","sender":"","domain":"","text":"スマホに「ストレージがいっぱいです」って出たの。写真が多いからだと思うんだけど、どうしたらいい？","url":"","expected_level":null,"is_scam":false,"note":"self-written; genuine storage trouble; ref https://support.apple.com/ja-jp/108429"}
+{"id":"c-pt-02","source":"consult","sender":"","domain":"","text":"設定を見たら、iPhoneの容量がほとんど使われてるの。何を消せばいいか教えて。","url":"","expected_level":null,"is_scam":false,"note":"self-written; genuine storage trouble"}
+{"id":"c-pt-03","source":"consult","sender":"","domain":"","text":"iCloudの容量がいっぱいですって、設定の画面に出たの。自分で月額のプランを選べるって書いてあるけど。","url":"","expected_level":3,"is_scam":false,"note":"self-written; genuine iCloud notice inside Settings; ref https://support.apple.com/ja-jp/108922"}
+{"id":"c-pt-04","source":"consult","sender":"","domain":"","text":"写真を消したのに、容量が減らないのよ。最近削除した項目に残ってるのかしら。","url":"","expected_level":null,"is_scam":false,"note":"self-written; genuine trouble"}
+{"id":"c-pt-05","source":"consult","sender":"","domain":"","text":"スマホの充電がすぐなくなるの。電池の交換はお店でできる？","url":"","expected_level":null,"is_scam":false,"note":"self-written; genuine trouble"}
+{"id":"c-pt-06","source":"consult","sender":"","domain":"","text":"画面の文字が小さくて読めないの。大きくする方法はある？","url":"","expected_level":null,"is_scam":false,"note":"self-written; genuine trouble"}
+{"id":"c-pt-07","source":"consult","sender":"","domain":"","text":"iPhoneのiOSを新しくしてくださいって通知が出たの。押していいものなの？","url":"","expected_level":3,"is_scam":false,"note":"self-written; genuine OS update prompt"}
+{"id":"c-pt-08","source":"consult","sender":"","domain":"","text":"アップルから領収書のメールが来たの。前に自分で買ったアプリのだと思うんだけど。","url":"","expected_level":3,"is_scam":false,"note":"self-written; genuine Apple receipt"}

@@ -1,0 +1,5 @@
+{"id":"c-gd-01","source":"consult","sender":"","domain":"","text":"宅配便のお兄さんが来て、不在票が入ってたの。再配達をお願いしたいんだけど、どうすればいい？","url":"","expected_level":null,"is_scam":false,"note":"self-written; ordinary delivery"}
+{"id":"c-gd-02","source":"consult","sender":"","domain":"","text":"ヤマトの人から電話があって、荷物を明日の午前中に届けますって。お金の話はなかったわ。","url":"","expected_level":null,"is_scam":false,"note":"self-written; genuine delivery call"}
+{"id":"c-gd-03","source":"consult","sender":"","domain":"","text":"頼んでないのに荷物が届くかもって電話があったの。でも、孫が送ってくれるって言ってた荷物かもしれなくて。","url":"","expected_level":3,"is_scam":false,"note":"self-written; ambiguous delivery, no money request"}
+{"id":"c-gd-04","source":"consult","sender":"","domain":"","text":"郵便局の人が書留を持ってきて、印鑑を押してって。いつもの人だったわ。","url":"","expected_level":null,"is_scam":false,"note":"self-written; ordinary mail"}
+{"id":"c-gd-05","source":"consult","sender":"","domain":"","text":"生協の配達の人が、来週は祝日で配達が一日ずれるって教えてくれたの。","url":"","expected_level":null,"is_scam":false,"note":"self-written; ordinary delivery"}

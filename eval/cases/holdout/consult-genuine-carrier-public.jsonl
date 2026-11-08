@@ -1,0 +1,8 @@
+{"id":"c-gc-01","source":"consult","sender":"","domain":"","text":"ドコモのお店から、機種変更のキャンペーンの案内の電話があったわ。お店に来てくださいって。断ったらすぐ切れたの。","url":"","expected_level":3,"is_scam":false,"note":"self-written; genuine-like carrier sales call"}
+{"id":"c-gc-02","source":"consult","sender":"","domain":"","text":"携帯会社から、料金プランの見直しのお知らせがはがきで来たの。電話番号は書いてあるけど、かけなくてもいいって書いてあったわ。","url":"","expected_level":null,"is_scam":false,"note":"self-written; genuine mail notice"}
+{"id":"c-gc-03","source":"consult","sender":"","domain":"","text":"3Gのサービスが終わるから、スマホを替えてくださいってお知らせが来たの。お店で相談すればいいのよね。","url":"","expected_level":null,"is_scam":false,"note":"self-written; carrier service-end notice"}
+{"id":"c-gc-04","source":"consult","sender":"","domain":"","text":"携帯の料金の請求が今月は少し高かったの。電話で聞きたいんだけど、どこにかければいい？","url":"","expected_level":null,"is_scam":false,"note":"self-written; ordinary inquiry"}
+{"id":"c-gc-05","source":"consult","sender":"","domain":"","text":"電気会社から、検針票が届いて、使用量のお知らせだったの。毎月と同じ形のもので。","url":"","expected_level":null,"is_scam":false,"note":"self-written; ordinary utility notice"}
+{"id":"c-gc-06","source":"consult","sender":"","domain":"","text":"市役所から、介護保険の更新のはがきが届いたの。窓口に問い合わせの番号があるわ。","url":"","expected_level":null,"is_scam":false,"note":"self-written; ordinary municipal notice"}
+{"id":"c-gc-07","source":"consult","sender":"","domain":"","text":"病院から、検診の結果ができたから取りに来てくださいって電話があったの。","url":"","expected_level":null,"is_scam":false,"note":"self-written; ordinary hospital call"}
+{"id":"c-gc-08","source":"consult","sender":"","domain":"","text":"市の包括支援センターの人が、訪問のお約束の電話をくれたの。お金の話はなかったわ。","url":"","expected_level":null,"is_scam":false,"note":"self-written; ordinary municipal contact"}
