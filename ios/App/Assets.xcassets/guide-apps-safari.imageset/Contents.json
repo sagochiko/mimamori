@@ -1,0 +1,12 @@
+{
+  "images": [
+    {
+      "filename": "guide-apps-safari.png",
+      "idiom": "universal"
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  }
+}
