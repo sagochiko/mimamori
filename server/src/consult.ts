@@ -45,7 +45,8 @@
 import { requireMember, type Member } from "./auth";
 import { ExternalBudget } from "./budget";
 import { CaseNoticeDeferred, NOT_REACHED, openCase, recordAiReply, tellFamilyHeavier } from "./cases";
-import { takeClaudeCall } from "./claude-limit";
+import { startConsultSummary, type SummaryInput } from "./agents";
+import { takeClaudeCall, takeResearchStart } from "./claude-limit";
 import {
   allOf,
   chars,
@@ -134,6 +135,10 @@ export interface ConsultDeps {
   ): Promise<ClaudeConsult | null>;
   openCase(env: Env, alertId: string, budget: ExternalBudget): Promise<unknown>;
   now(): number;
+  /** Starts the family's summary of the case (#271); absent, none is started. */
+  summarize?(env: Env, alertId: string, input: SummaryInput, budget: ExternalBudget): Promise<boolean>;
+  /** Runs a task after her answer has gone back (ctx.waitUntil); absent, the task is awaited. */
+  defer?(task: Promise<unknown>): void;
   /**
    * The second call with the web search tool (#251), with what is left of the deadline. Absent, as in
    * most tests, no search is made. Returns null for any failure; a throw is treated the same way.
@@ -147,6 +152,7 @@ export const defaultConsultDeps: ConsultDeps = {
     requestClaudeConsult(env, text, rule, history, undefined, image, findings),
   openCase,
   now: () => Date.now(),
+  summarize: (env, alertId, input, budget) => startConsultSummary(env, alertId, input, budget),
   searchAnswer: (env, text, query, timeoutMs) => requestSearchAnswer(env, text, query, timeoutMs),
 };
 
@@ -341,6 +347,7 @@ export async function consult(
   }
 
   let caseId: string | null = null;
+  let alertId: string | null = null;
   if (p.toFamily && open) {
     // Same conversation: her open case gets the heavier level and its line. The family hears again
     // only when it became heavier; a first notice still waiting goes out now, with the level as it is.
@@ -365,17 +372,59 @@ export async function consult(
       )
       .run();
     caseId = open.id;
+    alertId = open.alert_id;
     if (open.family_notified_at === null) await openFor(env, open.alert_id, budget, deps);
     else if (heavier.meta.changes === 1) await tellFamilyHeavier(env, open.id, budget);
   } else {
-    const alertId = await insertAlert(env, member.familyId, p, now);
+    alertId = await insertAlert(env, member.familyId, p, now);
     if (p.toFamily) caseId = await openFor(env, alertId, budget, deps);
+  }
+  // The family's summary (#271): only for a sign of a scam the family was told of at level 1 or 2. A
+  // topic the AI only hands over, and a question it could not answer, have no sign. It runs after her
+  // answer, since starting a session can take seconds she should not wait.
+  if (caseId !== null && alertId !== null && p.toFamily && p.sign && !p.unguided && p.level <= 2) {
+    const task = startSummary(env, member.familyId, alertId, budget, deps);
+    if (deps.defer) deps.defer(task);
+    else await task;
   }
   const reply = p.toFamily && !(await familyWasTold(env, caseId)) ? notReachedReply(p.reply) : p.reply;
   // She hears the whole answer; the card gets a fixed line instead when the answer repeats her words.
   if (caseId !== null) await recordAiReply(env, caseId, repeats(reply, allOf(said)) ? AI_REPLY_ON_CARD : reply);
   logTrace(p, ms);
   return answer(reply, p.toFamily, tapOn(image, p.tap));
+}
+
+/**
+ * Starts the summary with what the family's card carries now (the level, the reasons, the line), never
+ * her words, within the family's Managed Agents starts for the day (src/claude-limit.ts). Never throws.
+ */
+async function startSummary(
+  env: Env,
+  familyId: string,
+  alertId: string,
+  budget: ExternalBudget,
+  deps: ConsultDeps,
+): Promise<void> {
+  try {
+    if (deps.summarize === undefined) return;
+    const row = await env.DB.prepare(
+      "SELECT level, reasons, summary FROM alerts WHERE id = ? AND investigation_session_id IS NULL AND investigated_at IS NULL",
+    )
+      .bind(alertId)
+      .first<{ level: number; reasons: string | null; summary: string | null }>();
+    if (!row || (row.level !== 1 && row.level !== 2)) return;
+    if (!(await takeResearchStart(env, familyId, deps.now()))) return;
+    let reasons: string[] = [];
+    try {
+      const parsed: unknown = JSON.parse(row.reasons ?? "[]");
+      if (Array.isArray(parsed)) reasons = parsed.filter((r): r is string => typeof r === "string");
+    } catch {
+      reasons = [];
+    }
+    await deps.summarize(env, alertId, { level: row.level, reasons, summary: row.summary ?? "" }, budget);
+  } catch (error) {
+    console.error("consult summary failed", error instanceof Error ? error.name : typeof error);
+  }
 }
 
 // The fixed lines her answer may be, by name, for the log line.
@@ -473,7 +522,7 @@ export function parseImage(value: unknown): ConsultImage | undefined {
  * her words may be left out; without one they are required. The image is passed to Claude and kept
  * nowhere (docs/design.md: スクショはその場で処理して残さない).
  */
-export async function consultRoute(request: Request, env: Env): Promise<Response> {
+export async function consultRoute(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
   const me = await requireMember(request, env);
   if (me.role !== "protected") throw new HttpError(403, "protected_only");
   const { text, history, image: rawImage } = await readJson(request);
@@ -483,5 +532,6 @@ export async function consultRoute(request: Request, env: Env): Promise<Response
   if ((trimmed === "" && image === undefined) || chars(trimmed) > CONSULT_TEXT_MAX_CHARS) {
     throw new HttpError(400, "consult_text_invalid");
   }
-  return json(await consult(env, me, trimmed, new ExternalBudget(), defaultConsultDeps, parseHistory(history), image));
+  const deps: ConsultDeps = ctx ? { ...defaultConsultDeps, defer: (task) => ctx.waitUntil(task) } : defaultConsultDeps;
+  return json(await consult(env, me, trimmed, new ExternalBudget(), deps, parseHistory(history), image));
 }
