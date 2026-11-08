@@ -19,6 +19,7 @@
 
 import { storedEvidence, type Evidence } from "./agents";
 import { requireMember, type Role } from "./auth";
+import { summaryLine } from "./consult-summary";
 import { D1_CALLS_PER_TICK, ExternalBudget } from "./budget";
 import { HttpError, json } from "./http";
 import { sendPush } from "./push";
@@ -58,7 +59,15 @@ export interface CaseView {
    */
   familyNotifiedAt: string | null;
   /** The summary is one line made by the rules or Claude, never her words or the received text cut out. */
-  alert: { level: 1 | 2 | 3; source: string; summary: string; reasons: string[]; evidence: Evidence[] } | null;
+  alert: {
+    level: 1 | 2 | 3;
+    source: string;
+    summary: string;
+    reasons: string[];
+    evidence: Evidence[];
+    /** A consultation's summary from fixed choices (#271): the fixed line, or null when there is none. */
+    digest: string | null;
+  } | null;
   /** The last answer the AI gave the protected person in this case. */
   aiReply: string | null;
 }
@@ -79,6 +88,8 @@ interface CaseRow {
   summary: string | null;
   reasons: string | null;
   evidence: string | null;
+  summary_topic: string | null;
+  summary_step: string | null;
 }
 
 interface MemberRow {
@@ -124,7 +135,8 @@ async function loadViews(
   const rows = await env.DB.prepare(
     `SELECT c.id, c.alert_id, c.state, c.assignee_member_id, m.display_name AS resolver_name,
             c.notified_at, c.resolved_at, c.renotified_at, c.family_notified_at, c.ai_reply,
-            a.level, a.source, a.summary, a.reasons, a.evidence
+            a.level, a.source, a.summary, a.reasons, a.evidence,
+            a.summary_topic, a.summary_step
        FROM cases c
        LEFT JOIN alerts a ON a.id = c.alert_id
        LEFT JOIN members m ON m.id = c.assignee_member_id
@@ -159,6 +171,7 @@ async function loadViews(
               reasons: parseReasons(r.reasons),
               // What the research in the background found (task 11); [] until it is read, or when none.
               evidence: storedEvidence(r.evidence),
+              digest: summaryLine(r.summary_topic, r.summary_step, r.level),
             },
       aiReply: r.ai_reply,
     };

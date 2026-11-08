@@ -75,6 +75,7 @@ import {
   TOLD_FAMILY,
 } from "./consult-judge";
 import { HttpError, json, readJson } from "./http";
+import { enqueueConsultSummary } from "./judge";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
 import { carriesContact, repeats } from "./summary";
 
@@ -135,6 +136,13 @@ export interface ConsultDeps {
   openCase(env: Env, alertId: string, budget: ExternalBudget): Promise<unknown>;
   now(): number;
   /**
+   * Puts the family's summary of the case on the judge queue (#271), with the ids alone; absent, none is
+   * queued. The consumer starts the session (src/judge.ts, enqueueConsultSummary).
+   */
+  summarize?(env: Env, familyId: string, alertId: string): Promise<void>;
+  /** Runs a task after her answer has gone back (ctx.waitUntil); absent, the task is awaited. */
+  defer?(task: Promise<unknown>): void;
+  /**
    * The second call with the web search tool (#251), with what is left of the deadline. Absent, as in
    * most tests, no search is made. Returns null for any failure; a throw is treated the same way.
    */
@@ -147,6 +155,7 @@ export const defaultConsultDeps: ConsultDeps = {
     requestClaudeConsult(env, text, rule, history, undefined, image, findings),
   openCase,
   now: () => Date.now(),
+  summarize: (env, familyId, alertId) => enqueueConsultSummary(env, familyId, alertId),
   searchAnswer: (env, text, query, timeoutMs) => requestSearchAnswer(env, text, query, timeoutMs),
 };
 
@@ -341,6 +350,7 @@ export async function consult(
   }
 
   let caseId: string | null = null;
+  let alertId: string | null = null;
   if (p.toFamily && open) {
     // Same conversation: her open case gets the heavier level and its line. The family hears again
     // only when it became heavier; a first notice still waiting goes out now, with the level as it is.
@@ -365,11 +375,22 @@ export async function consult(
       )
       .run();
     caseId = open.id;
+    alertId = open.alert_id;
     if (open.family_notified_at === null) await openFor(env, open.alert_id, budget, deps);
     else if (heavier.meta.changes === 1) await tellFamilyHeavier(env, open.id, budget);
   } else {
-    const alertId = await insertAlert(env, member.familyId, p, now);
+    alertId = await insertAlert(env, member.familyId, p, now);
     if (p.toFamily) caseId = await openFor(env, alertId, budget, deps);
+  }
+  // The family's summary (#271): only for a sign of a scam the family was told of at level 1 or 2. A
+  // topic the AI only hands over, and a question it could not answer, have no sign. It runs after her
+  // answer. Only the ids go on the queue; the consumer reads the card's level, reasons, and line.
+  if (caseId !== null && alertId !== null && p.toFamily && p.sign && !p.unguided && p.level <= 2 && deps.summarize) {
+    const task = deps.summarize(env, member.familyId, alertId).catch((error: unknown) => {
+      console.error("consult summary not queued", error instanceof Error ? error.name : typeof error);
+    });
+    if (deps.defer) deps.defer(task);
+    else await task;
   }
   const reply = p.toFamily && !(await familyWasTold(env, caseId)) ? notReachedReply(p.reply) : p.reply;
   // She hears the whole answer; the card gets a fixed line instead when the answer repeats her words.
@@ -473,7 +494,7 @@ export function parseImage(value: unknown): ConsultImage | undefined {
  * her words may be left out; without one they are required. The image is passed to Claude and kept
  * nowhere (docs/design.md: スクショはその場で処理して残さない).
  */
-export async function consultRoute(request: Request, env: Env): Promise<Response> {
+export async function consultRoute(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
   const me = await requireMember(request, env);
   if (me.role !== "protected") throw new HttpError(403, "protected_only");
   const { text, history, image: rawImage } = await readJson(request);
@@ -483,5 +504,6 @@ export async function consultRoute(request: Request, env: Env): Promise<Response
   if ((trimmed === "" && image === undefined) || chars(trimmed) > CONSULT_TEXT_MAX_CHARS) {
     throw new HttpError(400, "consult_text_invalid");
   }
-  return json(await consult(env, me, trimmed, new ExternalBudget(), defaultConsultDeps, parseHistory(history), image));
+  const deps: ConsultDeps = ctx ? { ...defaultConsultDeps, defer: (task) => ctx.waitUntil(task) } : defaultConsultDeps;
+  return json(await consult(env, me, trimmed, new ExternalBudget(), deps, parseHistory(history), image));
 }
