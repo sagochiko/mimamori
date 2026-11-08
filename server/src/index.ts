@@ -2,7 +2,7 @@
 
 import { webhookRoute } from "./agents";
 import { ExternalBudget } from "./budget";
-import { listCases, resolveRoute } from "./cases";
+import { hideRoute, listCases, resolveRoute } from "./cases";
 import { consultRoute } from "./consult";
 import { runScheduled } from "./cron";
 import { createFamily, createInvite, deleteEverything, joinInvite, leaveFamily, registerApns } from "./families";
@@ -30,6 +30,8 @@ const routes: Array<[method: string, pattern: RegExp, handler: Handler]> = [
   ["POST", /^\/consult$/, (req, env, _, ctx) => consultRoute(req, env, ctx)],
   ["GET", /^\/cases$/, (req, env) => listCases(req, env)],
   ["POST", /^\/cases\/([^/]+)\/resolve$/, (req, env, [id]) => resolveRoute(req, env, id ?? "")],
+  // A family member removes a resolved card from every family device (#280).
+  ["DELETE", /^\/cases\/([^/]+)$/, (req, env, [id]) => hideRoute(req, env, id ?? "")],
   ["POST", /^\/smiles$/, (req, env, _, ctx) => postSmile(req, env, ctx)],
   ["GET", /^\/smiles$/, (req, env) => listSmiles(req, env)],
   ["GET", /^\/smiles\/([^/]+)\/photo$/, (req, env, [id]) => smilePhoto(req, env, id ?? "")],
