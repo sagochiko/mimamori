@@ -8,8 +8,20 @@ struct FamilyHomeView: View {
   @Environment(AppModel.self) private var model
   @State private var camera = false
   @State private var inviting = false
+  @Environment(OnboardingGuide.self) private var guide: OnboardingGuide?
 
   var body: some View {
+    ScrollViewReader { scroller in
+      home
+        // A card's buttons may sit below the screen: bring them in before their balloon (#285).
+        .onChange(of: guide?.tour?.current) { _, step in
+          guard step == .call || step == .resolve, let id = model.guidedCardID else { return }
+          withAnimation { scroller.scrollTo(id, anchor: .bottom) }
+        }
+    }
+  }
+
+  private var home: some View {
     ScrollView {
       if model.protectedJoined {
         JoinedSection()
@@ -102,10 +114,6 @@ private struct WaitingSection: View {
 private struct JoinedSection: View {
   @Environment(AppModel.self) private var model
 
-  private var guidedCardID: Case.ID? {
-    model.familyCards.first { !$0.actions.isEmpty }?.item.id
-  }
-
   var body: some View {
     VStack(spacing: 20) {
       if let today = model.smileBoard.todaysProtectedSmile(now: model.now) {
@@ -121,7 +129,8 @@ private struct JoinedSection: View {
       }
       ForEach(model.familyCards, id: \.item.id) { card in
         // The balloons point at the buttons of the newest card that has them only.
-        CaseCardView(card: card, guides: card.item.id == guidedCardID)
+        CaseCardView(card: card, guides: card.item.id == model.guidedCardID)
+          .id(card.item.id)
       }
       if !model.smileBoard.photos.isEmpty {
         SmileStrip()
@@ -220,5 +229,12 @@ struct InviteCodeView: View {
       .accessibilityLabel("コードを送る")
       .accessibilityHint("メッセージなどで招待のコードを送ります")
     }
+  }
+}
+
+extension AppModel {
+  /// The card whose "電話する" and "解決" get the balloons: the newest that still has them.
+  var guidedCardID: Case.ID? {
+    familyCards.first { !$0.actions.isEmpty }?.item.id
   }
 }

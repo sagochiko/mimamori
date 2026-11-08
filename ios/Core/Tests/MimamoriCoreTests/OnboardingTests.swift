@@ -89,6 +89,22 @@ struct OnboardingTests {
     #expect(tour.current == nil)
   }
 
+  @Test("照らしていたボタンが消えたら、残っているボタンまで進める")
+  func skipsVanished() {
+    var tour = CoachMarkTour(steps: OnboardingStep.steps(for: .family, hasCards: true))
+    tour.next()
+    tour.next()
+    tour.next()
+    #expect(tour.current == .call)
+    // Another member resolved the card: "電話する" and "解決" are gone.
+    tour.skip { $0 == .call || $0 == .resolve }
+    #expect(tour.current == nil)
+
+    var other = CoachMarkTour(steps: OnboardingStep.steps(for: .family, hasCards: true))
+    other.skip { $0 == .call }
+    #expect(other.current == .invite)
+  }
+
   @Test("一度出したら次からは出ない。役ごとに覚える")
   func onlyOnce() {
     let record = OnboardingRecord(store: InMemoryOnboardingStore())
@@ -112,6 +128,20 @@ struct OnboardingTests {
     _ = record.tourIfFirst(role: .family, hasCards: false)
     record.forget()
     #expect(record.tourIfFirst(role: .family, hasCards: false) != nil)
+  }
+
+  @Test("ホームから役を選ぶ画面に移ったときだけ忘れる。起動したときの役を選ぶ画面では忘れない")
+  func forgetsOnlyOnLeavingHome() {
+    let record = OnboardingRecord(store: InMemoryOnboardingStore())
+    _ = record.tourIfFirst(role: .protected, hasCards: false)
+    // Before the first unlock after a restart the Keychain looks empty and the route starts here.
+    record.routeChanged(from: nil, to: .chooseRole)
+    record.routeChanged(from: .chooseRole, to: .chooseRole)
+    #expect(record.tourIfFirst(role: .protected, hasCards: false) == nil)
+    record.routeChanged(from: .chooseRole, to: .protectedHome)
+    #expect(record.tourIfFirst(role: .protected, hasCards: false) == nil)
+    record.routeChanged(from: .protectedHome, to: .chooseRole)
+    #expect(record.tourIfFirst(role: .protected, hasCards: false) != nil)
   }
 
   @Test("スクショ用に出し直すときは記録を見ず、記録も残さない")

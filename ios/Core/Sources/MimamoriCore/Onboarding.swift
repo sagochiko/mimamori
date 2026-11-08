@@ -70,6 +70,12 @@ public struct CoachMarkTour: Equatable, Sendable {
   public mutating func close() {
     index = steps.count
   }
+
+  /// Moves past the current step while its button is gone (a card resolved by someone else), so the
+  /// balloon never points at a place that is no longer there.
+  public mutating func skip(while gone: (OnboardingStep) -> Bool) {
+    while let current, gone(current) { index += 1 }
+  }
 }
 
 /// Which roles' balloons this device has shown. UserDefaults in the App.
@@ -110,5 +116,13 @@ public struct OnboardingRecord: Sendable {
   /// After "すべて消す": the next role on this iPhone starts fresh.
   public func forget() {
     store.clear()
+  }
+
+  /// Forgets only when a home screen gave way to role selection ("すべて消す", a lost key). A launch
+  /// that starts on role selection does not count: before the first unlock after a restart the
+  /// Keychain looks empty, the same reason `AppModel` forgets only on `onRouteChange`.
+  public func routeChanged(from old: AppRoute?, to new: AppRoute) {
+    guard new == .chooseRole, let old, old != .chooseRole else { return }
+    forget()
   }
 }
