@@ -34,6 +34,13 @@ export const NO_REPLY_YET = "家族から返事がまだ。急ぐなら電話し
 export const NOT_REACHED = "家族に届いていません。急ぐなら電話して";
 /** The title of the family's second notice, 30 minutes after the first. */
 export const NOT_RESOLVED_YET = "まだ解決していません";
+/**
+ * The title of the case's notice: a word for the level, as on the family's card (`Level.familyBadge`
+ * in ios/Core). "1段階" told the family nothing; the author chose these on 2026-11-08. None reads as safe.
+ */
+export function familyBadge(level: number): string {
+  return level === 1 ? "危ない" : level === 2 ? "確かめて" : "念のため";
+}
 const AI_REPLY_MAX = 500;
 const LIST_LIMIT = 50;
 const WATCH_BATCH = 20;
@@ -281,7 +288,7 @@ async function tellFamily(
   return sent;
 }
 
-/** The case's notice to every family device: "N段階" and the one-line summary. Never throws. */
+/** The case's notice to every family device: the level as a word and the one-line summary. Never throws. */
 async function sendCaseNotice(
   env: Env,
   c: { id: string; familyId: string; level: number | null; summary: string | null },
@@ -298,7 +305,7 @@ async function sendCaseNotice(
       env,
       family.map((m) => m.id),
       {
-        ...(c.level === null ? {} : { title: `${c.level}段階` }),
+        ...(c.level === null ? {} : { title: familyBadge(c.level) }),
         body: c.summary && c.summary.trim() !== "" ? c.summary : "相談が届きました",
         data: { caseId: c.id },
         threadId: `case-${c.id}`,
