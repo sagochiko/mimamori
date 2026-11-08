@@ -16,7 +16,7 @@ These are the demo mode screens on the iOS 26.5 simulator, from the first screen
 | First screen | After a long call | Her words and the family's card |
 | <img src="docs/screens/demo-05-resolved.png" width="200" alt="The card after 解決"> | <img src="docs/screens/demo-06-sms.png" width="200" alt="An SMS judged as junk with the family's card"> | |
 | After 解決 | An SMS judged | |
-<!-- Demo video: link goes here. -->
+Demo video (3 minutes, Japanese): <https://youtu.be/INrydyJ4HYM>
 
 ## Why fake-police scams
 

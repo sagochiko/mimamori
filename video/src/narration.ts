@@ -16,10 +16,34 @@ export const NARRATION = [
     ssml: "特殊詐欺の被害額の約7割が、ニセ警察詐欺だ。<break time=\"300ms\"/>離れて住む母の<sub alias=\"アイフォーン\">iPhone</sub>を、家族が代わりに見守る。",
   },
   {
+    id: "01b-mother-words",
+    scene: "motherWords",
+    at: 0.3,
+    ssml: "母からは、スマホの困りごとの相談が、よく届いていた。",
+  },
+  {
     id: "02-call-consult",
     scene: "callConsult",
     at: 0.3,
     ssml: "長い電話のあとに、アプリから声をかける。",
+  },
+  {
+    id: "02b-call-talk",
+    scene: "callConsult",
+    at: 5,
+    ssml: "母は、電話で言われたことを、そのまま話すだけでいい。",
+  },
+  {
+    id: "02c-call-reply",
+    scene: "callConsult",
+    at: 15,
+    ssml: "アプリは、お金の話には応じず、家族に確かめるよう返す。",
+  },
+  {
+    id: "02d-call-family",
+    scene: "callConsult",
+    at: 26,
+    ssml: "同時に、家族の<sub alias=\"アイフォーン\">iPhone</sub>に、知らせとカードが届く。",
   },
   {
     id: "03-family-card",
@@ -43,7 +67,13 @@ export const NARRATION = [
     id: "06-sms",
     scene: "sms",
     at: 0.6,
-    ssml: "知らない相手からの<sub alias=\"エスエムエス\">SMS</sub>も、母の代わりに見る。<break time=\"300ms\"/>本文に「家族には知らせないで」と書いてあっても、従わない。<break time=\"200ms\"/>むしろ詐欺の印として、危なさを上げる。",
+    ssml: "知らない相手からの<sub alias=\"エスエムエス\">SMS</sub>も、母の代わりに見る。",
+  },
+  {
+    id: "06b-sms-junk",
+    scene: "sms",
+    at: 6,
+    ssml: "はっきりした詐欺は迷惑フォルダに回し、家族にカードを出す。",
   },
   {
     id: "07-smile",
@@ -56,6 +86,12 @@ export const NARRATION = [
     scene: "accuracy",
     at: 0.6,
     ssml: "試験用の例文で測ると、規則だけでは60件中6件を見逃し、<sub alias=\"クロード\">Claude</sub>を組み合わせると1件になった。<break time=\"300ms\"/>最後に、別の62件で一度だけ測ると、見逃しは4件だった。",
+  },
+  {
+    id: "08b-observation",
+    scene: "observation",
+    at: 0.5,
+    ssml: "母が使ってつまずいた所は、その日のうちに直した。",
   },
   {
     id: "09-dev-record",
