@@ -125,6 +125,17 @@ public final class APIClient: Sendable {
     return answer.deadlineHour
   }
 
+  /// `GET /members/me/settings`. This family member's two smile notices (#282).
+  public func memberSettings() async throws -> MemberSettings {
+    try await send("GET", "members/me/settings", body: Empty?.none, auth: true)
+  }
+
+  /// `PUT /members/me/settings`. Sends both switches; the answer is what the server stored.
+  @discardableResult
+  public func setMemberSettings(_ settings: MemberSettings) async throws -> MemberSettings {
+    try await send("PUT", "members/me/settings", body: settings, auth: true)
+  }
+
   /// `POST /heartbeat`. Only the protected member's iPhone calls it; the body is `HeartbeatReport`.
   public func heartbeat(_ report: HeartbeatReport) async throws {
     try await perform("POST", "heartbeat", body: report, auth: true)

@@ -48,6 +48,10 @@ struct WipeMenu: View {
         Button("設定", systemImage: "gearshape") { settingsOpen = true }
           .accessibilityHint("毎日の声かけ、その時刻、読み上げを切り替える画面を開きます")
       }
+      if model.route == .familyHome {
+        Button("設定", systemImage: "gearshape") { settingsOpen = true }
+          .accessibilityHint("笑顔が届いたときと届かないときの知らせ、笑顔を待つ時刻を切り替える画面を開きます。危ない知らせは切れません")
+      }
       Button("すべて消す", systemImage: "trash", role: .destructive) { confirming = true }
         .accessibilityHint("家族の知らせ、相談、笑顔、Gmail の許可を裏側からすべて消し、この iPhone の鍵と会話も消して、役を選ぶ画面に戻ります。家族のみんなが使えなくなります")
     } label: {
@@ -63,10 +67,12 @@ struct WipeMenu: View {
       Button("消す", role: .destructive) { Task { await model.deleteEverything() } }
       Button("やめる", role: .cancel) {}
     }
-    .sheet(isPresented: $settingsOpen) { SettingsView() }
+    .sheet(isPresented: $settingsOpen) {
+      if model.route == .familyHome { FamilySettingsView() } else { SettingsView() }
+    }
     .onAppear {
       #if DEBUG
-        if ScreenshotStubTransport.settingsOpen, model.route == .protectedHome { settingsOpen = true }
+        if ScreenshotStubTransport.settingsOpen, model.route != .chooseRole { settingsOpen = true }
         if ScreenshotStubTransport.wipeOpen { confirming = true }
       #endif
     }

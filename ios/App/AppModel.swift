@@ -41,6 +41,8 @@ final class AppModel {
   private(set) var checkupPrompt: String?
   /// Everyone's smiles and replies (`GET /smiles`), newest first, with the hour her smile is expected by.
   private(set) var smileBoard = SmileBoard()
+  /// This family member's two smile notices (`GET /members/me/settings`, #282). Both on until read.
+  private(set) var memberSettings = MemberSettings()
   /// Whether the protected member has joined, as this family iPhone can tell from the smiles and
   /// cases (#244). Before, the family screen shows only "招待".
   private(set) var protectedJoined: Bool
@@ -287,6 +289,24 @@ final class AppModel {
       let saved = try await session.setSmileDeadline(hour: hour)
       self?.smileBoard.deadlineHour = saved
     }
+  }
+
+  /// The family's settings screen reads what the server has; quiet on failure (the switches stay).
+  func loadMemberSettings() async {
+    guard route == .familyHome else { return }
+    if let fresh = try? await session.memberSettings() { memberSettings = fresh }
+  }
+
+  /// Shows the switch at once, then keeps what the server stored. A failed write reads it back.
+  func setMemberSettings(_ settings: MemberSettings) async {
+    memberSettings = settings
+    var saved = false
+    await run(joining: false) { [weak self] session in
+      let stored = try await session.setMemberSettings(settings)
+      saved = true
+      self?.memberSettings = stored
+    }
+    if !saved { await loadMemberSettings() }
   }
 
   // MARK: Gmail

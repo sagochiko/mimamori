@@ -2,8 +2,9 @@ import MimamoriCore
 import SwiftUI
 
 /// The family's screen. Until the protected member joins, only "招待" in the middle (#244); after, her
-/// smile today on top, a card per case, newest first, then everyone's smiles and the hour her smile is
-/// expected by, with "笑顔" and "招待" as small buttons at the top right next to the menu.
+/// smile today on top, a card per case, newest first, then everyone's smiles, with "笑顔" and "招待" as
+/// small buttons at the top right next to the menu. The hour her smile is expected by and the smile
+/// notices are in the menu's "設定" (`FamilySettingsView`, #282).
 struct FamilyHomeView: View {
   @Environment(AppModel.self) private var model
   @State private var camera = false
@@ -96,7 +97,7 @@ private struct WaitingSection: View {
   }
 }
 
-/// After she joined: her smile today, the cards, everyone's smiles, and the hour.
+/// After she joined: her smile today, the cards, and everyone's smiles.
 private struct JoinedSection: View {
   @Environment(AppModel.self) private var model
 
@@ -119,7 +120,6 @@ private struct JoinedSection: View {
       if !model.smileBoard.photos.isEmpty {
         SmileStrip()
       }
-      DeadlineMenu()
     }
     .padding(24)
   }
@@ -161,26 +161,6 @@ private struct NewCodeButton: View {
     .disabled(model.isBusy)
     .accessibilityLabel("新しい招待のコードを出す")
     .accessibilityHint("今のコードとは別の6桁のコードを出します。24時間使えます")
-  }
-}
-
-/// The hour (JST) by which her smile is expected. Only the number shows; what it means is read aloud.
-private struct DeadlineMenu: View {
-  @Environment(AppModel.self) private var model
-
-  var body: some View {
-    let hour = model.smileBoard.deadlineHour
-    Menu {
-      Picker("時刻", selection: Binding(get: { hour }, set: { new in Task { await model.setSmileDeadline(new) } })) {
-        ForEach(Array(SmileBoard.deadlineHours), id: \.self) { Text("\($0)時").tag($0) }
-      }
-    } label: {
-      Label("\(hour)時", systemImage: "bell")
-        .font(.headline)
-        .foregroundStyle(.secondary)
-    }
-    .accessibilityLabel("見守られる人の笑顔を待つ時刻、\(hour)時")
-    .accessibilityHint("この時刻までにその日の笑顔が届かなければ、家族にそっと知らせます。押すと時刻を変えられます")
   }
 }
 

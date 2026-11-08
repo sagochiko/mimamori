@@ -110,6 +110,15 @@ public final class Session {
     try await call { try await $0.setSmileDeadline(hour: hour) }
   }
 
+  public func memberSettings() async throws -> MemberSettings {
+    try await call { try await $0.memberSettings() }
+  }
+
+  @discardableResult
+  public func setMemberSettings(_ settings: MemberSettings) async throws -> MemberSettings {
+    try await call { try await $0.setMemberSettings(settings) }
+  }
+
   public func gmailConnect() async throws -> GmailGrant? {
     try await call { try await $0.gmailConnect() }
   }

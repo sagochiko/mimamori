@@ -51,6 +51,21 @@ public struct Smile: Codable, Hashable, Sendable, Identifiable {
   }
 }
 
+/// `GET` and `PUT /members/me/settings` (#282): whether this family member gets the two smile
+/// notices. Both are on until turned off. Notices of danger, the watch's self-check, and joins have no
+/// switch here. The hour her smile is expected by is the family's one value in `SmileBoard`.
+public struct MemberSettings: Codable, Hashable, Sendable {
+  /// "笑顔が届いたとき": a smile from someone else in the family.
+  public var smileNotify: Bool
+  /// "笑顔が届かないとき": her smile has not come by the family's hour.
+  public var smileMissedNotify: Bool
+
+  public init(smileNotify: Bool = true, smileMissedNotify: Bool = true) {
+    self.smileNotify = smileNotify
+    self.smileMissedNotify = smileMissedNotify
+  }
+}
+
 /// `GET /smiles`: the family's last week, newest first, and the hour (JST) by which the protected
 /// member's smile is expected.
 public struct SmileBoard: Codable, Hashable, Sendable {
