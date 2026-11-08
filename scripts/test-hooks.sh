@@ -128,9 +128,11 @@ fi
 # guard-prod: since 2026-11-04 deploys, secrets, remote D1, and uploads run without asking. Since
 # 2026-11-08 what used to ask the author passes too, leaving a "passed:" line in the log
 # (docs/harness.md, "guard-prod の確認をやめた"); what is blocked stays blocked.
-# prod <quiet|pass|block> <command> <label> [cwd]
+# prod <quiet|pass|ask|block> <command> <label> [cwd]
 #   quiet: exit 0, no answer, nothing logged.
 #   pass:  exit 0, no answer (so no ask), and one new guard-prod "passed:" line in the log.
+#   ask:   exit 0 and a permissionDecision "ask" answer (gh api merge, visibility, main, forms the hook
+#          cannot read well enough to rule those out, and a push behind xargs).
 #   block: exit 2.
 prod_passed() { grep -c '"name":"guard-prod","detail":"passed: ' "$MM_LOG_DIR/usage.jsonl" 2>/dev/null || true; }
 prod() {
@@ -142,10 +144,19 @@ prod() {
   case $1 in
     quiet) [[ $got -eq 0 && -z "$out" && ${after:-0} -eq ${before:-0} ]] ;;
     pass) [[ $got -eq 0 && -z "$out" && ${after:-0} -eq $((${before:-0} + 1)) ]] ;;
+    ask) [[ $got -eq 0 && "$out" == *'"permissionDecision":"ask"'* ]] ;;
     block) [[ $got -eq 2 ]] ;;
+    *) false ;;
   esac || { echo "hook test failed: guard-prod: $3 (expected $1, got exit $got${out:+ and an answer})"; fail=1; }
 }
 prod block 'npx wrangler delete' "wrangler delete is blocked"
+prod ask 'gh api -X PUT repos/o/r/pulls/3/merge' "a merge through gh api asks (the ask branch is live)"
+prod ask 'npx wrangler secret delete X && gh api -X PATCH repos/o/r -f visibility=public' "a passing reason first and a kept one after still asks"
+prod ask 'gh api -X PATCH repos/o/r -f visibility=public && npx wrangler secret delete X' "a kept reason first and a passing one after asks"
+prod ask 'gh api -X DELETE repos/o/r/git/refs/heads/main' "deleting the main ref through gh api asks"
+prod ask 'gh api -X DELETE repos/o/r/branches/main/protection' "deleting main's protection through gh api asks"
+prod ask 'gh api graphql -f query="mutation { deleteRef(input:{refId:\"x\"}) { clientMutationId } }"' "a graphql deleteRef asks, since it may be main"
+prod pass 'gh api -X DELETE repos/o/r/git/refs/heads/x' "deleting another branch's ref through gh api passes"
 prod block 'npx wrangler d1 delete mimamori' "deleting the database is blocked"
 prod block 'npx wrangler queues delete mimamori-judge' "deleting the queue is blocked"
 prod block 'npx wrangler r2 bucket delete photos' "deleting the bucket is blocked"
@@ -251,7 +262,7 @@ prod ask 'gh api -X PATCH repos/sagochiko/mimamori -f visibility=public' "making
 prod ask 'gh api -X PATCH repos/o/r/git/refs/heads/main -f sha=abc -F force=true' "moving a ref through gh api asks"
 prod ask 'gh api -X PUT repos/o/r/pulls/3/merge' "merging through gh api asks"
 prod quiet 'gh api -X POST repos/o/r/issues -f title=t -f body=b' "an issue written through gh api with -X POST runs without asking"
-prod pass "gh api graphql -f query='mutation{deleteRef(input:{refId:\"x\"}){clientMutationId}}'" "a graphql mutation asks"
+prod ask "gh api graphql -f query='mutation{deleteRef(input:{refId:\"x\"}){clientMutationId}}'" "a graphql mutation asks"
 prod pass 'gh api -iX DELETE repos/o/r/x' "-X inside a cluster of short flags asks"
 prod quiet 'gh api -iXPOST repos/o/r/issues' "a POST written right after X in a cluster runs without asking"
 prod quiet 'gh api -XPATCH repos/o/r/issues/1' "-XPATCH on an issue runs without asking"
@@ -291,7 +302,7 @@ prod quiet 'gh api -X PATCH repos/o/r/git/refs/heads/issue-1 -f sha=abc' "moving
 # PR #161 review: graphql by path or URL, commits to main through contents, renaming main, bodies the hook
 # cannot read.
 prod ask "gh api https://api.github.com/graphql -f query='mutation{mergePullRequest(input:{pullRequestId:\"x\"}){clientMutationId}}'" "a graphql merge sent to the full URL asks"
-prod pass "gh api /graphql -f query='mutation{deleteRef(input:{refId:\"x\"}){clientMutationId}}'" "a graphql delete sent to /graphql asks"
+prod ask "gh api /graphql -f query='mutation{deleteRef(input:{refId:\"x\"}){clientMutationId}}'" "a graphql delete sent to /graphql asks"
 prod ask "gh api graphql -f query='mutation{createCommitOnBranch(input:{branch:{branchName:\"main\"}}){clientMutationId}}'" "a graphql commit on a branch asks"
 prod ask "gh api graphql -f query='mutation{updateRef(input:{refId:\"x\",oid:\"y\"}){clientMutationId}}'" "a graphql ref move asks"
 prod ask 'gh api -X PUT repos/o/r/contents/README.md -f message=x -f content=eA==' "a file written without a branch commits to main and asks"
@@ -372,8 +383,8 @@ prod quiet 'command -v git push' "command -v only looks a command up"
 prod block 'command -- git push -f origin x' "command -- is looked through"
 prod block 'nohup -- git push --mirror' "nohup -- is looked through"
 # A bare xargs adds words from stdin that the hook cannot read, so what it runs asks.
-prod pass 'echo -f | xargs git push origin x' "push behind xargs asks, since stdin may add -f"
-prod pass 'echo main | xargs git push origin' "push behind xargs asks, since stdin may name main"
+prod ask 'echo -f | xargs git push origin x' "push behind xargs asks, since stdin may add -f"
+prod ask 'echo main | xargs git push origin' "push behind xargs asks, since stdin may name main"
 prod ask "printf '%s\n' -X PUT | xargs gh api repos/o/r/pulls/3/merge" "gh api behind xargs asks, whatever its method"
 # When the command moves around in a way the hook cannot follow (a subshell, cd -, popd, cd --, a
 # variable), every directory it names counts, as does the session's cwd.

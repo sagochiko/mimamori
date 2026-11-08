@@ -30,7 +30,12 @@ asked=""
 keep_ask=0
 ask() {
   [[ -n "$asked" ]] || asked=$1
-  [[ "$1" == "gh api"* && "$1" =~ (merge|visibility|main|cannot read|cannot check|moves a ref) ]] && keep_ask=1
+  # The first reason that keeps the question also becomes the reason the author sees.
+  if [[ ( "$1" == "gh api"* && "$1" =~ (merge|visibility|main|cannot read|cannot check|moves a ref) ) ||
+    "$1" == "git push behind xargs"* ]]; then
+    ((keep_ask)) || asked=$1
+    keep_ask=1
+  fi
   return 0
 }
 
@@ -203,7 +208,7 @@ field() { # <-f|-F> <name=value>: -F reads @file, -f takes the text as it is
     [[ "$v" == *MERGE* ]] && merges=1
     [[ "$v" == *VISIBILITY* ]] && publishes=1
     # A commit or a ref move by graphql can land on main; the hook does not read which branch.
-    [[ "$v" == *CREATECOMMITONBRANCH* || "$v" == *UPDATEREF* ]] && moves=1
+    [[ "$v" == *CREATECOMMITONBRANCH* || "$v" == *UPDATEREF* || "$v" == *DELETEREF* ]] && moves=1
   fi
 }
 while read -r k _; do
@@ -258,6 +263,8 @@ while read -r k _; do
       :
     elif [[ "$M" == *'$'* || "$M" == *'`'* ]]; then
       ask "gh api with a method the hook cannot read, which may be DELETE: confirm with the author"
+    elif [[ "$M" == DELETE && ( "$endpoint" =~ (^|/)git/refs/heads/main/?(\?|$) || "$endpoint" =~ (^|/)branches/main(/|\?|$) ) ]]; then
+      ask "gh api DELETE on main moves or changes main: confirm with the author. Changes reach main through a reviewed PR."
     elif [[ "$M" == DELETE ]]; then
       ask "gh api DELETE cannot be undone: confirm with the author"
     elif [[ -z "$endpoint" || "$endpoint" == *'$'* || "$endpoint" == *'`'* ]]; then
