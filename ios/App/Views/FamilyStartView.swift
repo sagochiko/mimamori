@@ -11,7 +11,9 @@ struct FamilyStartView: View {
   var body: some View {
     VStack(spacing: 24) {
       Spacer()
-      TextField("名前", text: $name)
+      // "あなたの名前", not "名前": the author could not tell whether it asked for the family's name or
+      // their own (#279). It is members.display_name, shown on the other members' screens.
+      TextField("あなたの名前", text: $name)
         .font(.title2)
         .textContentType(.givenName)
         .submitLabel(.done)
@@ -22,8 +24,8 @@ struct FamilyStartView: View {
         }
         .padding()
         .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
-        .accessibilityLabel("名前")
-        .accessibilityHint("家族に見える名前です。40文字までです。相談を解決にしたときにこの名前が出ます")
+        .accessibilityLabel("あなたの名前")
+        .accessibilityHint("家族の画面に出る名前です。家族の名前ではなく、あなた自身の名前を入れます。40文字までです。相談を解決にしたときにこの名前が出ます")
 
       Button {
         Task { await model.createFamily(displayName: trimmed) }
