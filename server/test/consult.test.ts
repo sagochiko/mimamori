@@ -237,7 +237,7 @@ describe("fake police consultation", () => {
     expect(opened).toMatchObject({ alert_id: alert?.id, state: "notified", ai_reply: answer.reply });
     expect(opened?.family_notified_at).not.toBeNull();
     expect(familyPushes(fam)).toHaveLength(2);
-    expect(familyPushes(fam)[0]?.title).toBe("1段階");
+    expect(familyPushes(fam)[0]?.title).toBe("危ない");
     // Nobody pushes to the mother's phone: the answer is on her screen already.
     expect(pushes).toHaveLength(2);
   });
@@ -397,7 +397,7 @@ describe("fake police consultation", () => {
     expect(deps.claudeCalls).toBe(1);
     expect(answer.reply).not.toBe(POLICE_REPLY);
     expect((await alertsOf(fam.familyId)).every((a) => a.level !== 1)).toBe(true);
-    expect(familyPushes(fam).every((p) => p.title !== "1段階")).toBe(true);
+    expect(familyPushes(fam).every((p) => p.title !== "危ない")).toBe(true);
   });
 
   // Genuine warnings from banks and the police put "a call that says it is the police" next to "your
@@ -965,7 +965,7 @@ describe("consult.ts", () => {
     // The card now shows the heavier level, and the family hears about it.
     expect((await alertsOf(fam.familyId)).find((a) => a.id === first?.id)?.level).toBe(1);
     expect(familyPushes(fam)).toHaveLength(2);
-    expect(familyPushes(fam).map((p) => p.title)).toEqual(["1段階", "1段階"]);
+    expect(familyPushes(fam).map((p) => p.title)).toEqual(["危ない", "危ない"]);
   });
 
   it.each([
@@ -1008,7 +1008,7 @@ describe("consult.ts", () => {
     );
     pushes = [];
     await sendFirstNotices(consultEnv, Date.now(), new ExternalBudget());
-    expect(familyPushes(fam).map((p) => p.title)).toEqual(["1段階", "1段階"]);
+    expect(familyPushes(fam).map((p) => p.title)).toEqual(["危ない", "危ない"]);
     expect((await casesOf(fam.familyId))[0]?.family_notified_at).not.toBeNull();
   });
 
@@ -1570,8 +1570,8 @@ describe("the one line the family gets", () => {
     await consult(consultEnv, motherOf(fam), POLICE, new ExternalBudget(), fakes(null));
 
     expect(familyPushes(fam).map((p) => [p.title, p.body])).toEqual([
-      ["1段階", "警察を名乗る電話の相談"],
-      ["1段階", "警察を名乗る電話の相談"],
+      ["危ない", "警察を名乗る電話の相談"],
+      ["危ない", "警察を名乗る電話の相談"],
     ]);
     const card = await cardOf(fam);
     expect(card?.alert?.summary).toBe("警察を名乗る電話の相談");
@@ -3026,8 +3026,8 @@ describe("a question with nothing to point at, and a sign after a case without o
       expect(joined).toMatchObject({ id: opened?.id, level: 2, summary: "警察を名乗る電話の相談" });
       expect(JSON.parse(joined?.reasons ?? "[]")).toEqual(["警察を名乗る相手が潔白の証明を求めた"]);
       expect(familyPushes(fam).map((p) => [p.title, p.body])).toEqual([
-        ["2段階", "警察を名乗る電話の相談"],
-        ["2段階", "警察を名乗る電話の相談"],
+        ["確かめて", "警察を名乗る電話の相談"],
+        ["確かめて", "警察を名乗る電話の相談"],
       ]);
     },
   );
@@ -3169,8 +3169,8 @@ describe("a question with nothing to point at, and a sign after a case without o
     const alert = (await alertsOf(fam.familyId)).find((a) => a.id === cases[0]?.alert_id);
     expect(alert).toMatchObject({ level: 1, summary: "警察を名乗る電話の相談" });
     expect(familyPushes(fam).map((p) => [p.title, p.body])).toEqual([
-      ["1段階", "警察を名乗る電話の相談"],
-      ["1段階", "警察を名乗る電話の相談"],
+      ["危ない", "警察を名乗る電話の相談"],
+      ["危ない", "警察を名乗る電話の相談"],
     ]);
   });
 });
@@ -3224,8 +3224,8 @@ describe("a question that points back at the day before's conversation (#118)", 
     const alert = (await alertsOf(fam.familyId)).find((a) => a.id === cases[1]?.alert_id);
     expect(alert).toMatchObject({ level: 1, summary: "警察を名乗る電話の相談" });
     expect(familyPushes(fam).map((p) => [p.title, p.body])).toEqual([
-      ["1段階", "警察を名乗る電話の相談"],
-      ["1段階", "警察を名乗る電話の相談"],
+      ["危ない", "警察を名乗る電話の相談"],
+      ["危ない", "警察を名乗る電話の相談"],
     ]);
   });
 
@@ -3399,8 +3399,8 @@ describe("the title of a question that points back at the script (#128)", () => 
     expect(count).toBe(2);
     expect(alert).toMatchObject({ level: 2, summary: "警察を名乗る電話の相談", notified: 1 });
     expect(familyPushes(fam).map((p) => [p.title, p.body])).toEqual([
-      ["2段階", "警察を名乗る電話の相談"],
-      ["2段階", "警察を名乗る電話の相談"],
+      ["確かめて", "警察を名乗る電話の相談"],
+      ["確かめて", "警察を名乗る電話の相談"],
     ]);
     // The title cuts out nothing of what she said (the reasons may be the rules' fixed wording).
     const c = [...POLICE.replace(/\s+/g, "")];
@@ -3867,8 +3867,8 @@ describe("words that do not go on with the script told before (#219)", () => {
     await consult(consultEnv, motherOf(fam), "それってどういうこと?", new ExternalBudget(), deps, told);
     expect(seen).toEqual([told]);
     expect(familyPushes(fam).map((p) => [p.title, p.body])).toEqual([
-      ["2段階", "警察を名乗る電話の相談"],
-      ["2段階", "警察を名乗る電話の相談"],
+      ["確かめて", "警察を名乗る電話の相談"],
+      ["確かめて", "警察を名乗る電話の相談"],
     ]);
   });
 
@@ -3882,7 +3882,7 @@ describe("words that do not go on with the script told before (#219)", () => {
       const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps, told);
       expect(deps.claudeCalls).toBe(0);
       expect(answer.reply).toBe(POLICE_REPLY);
-      expect(familyPushes(fam).map((p) => p.title)).toEqual(["1段階", "1段階"]);
+      expect(familyPushes(fam).map((p) => p.title)).toEqual(["危ない", "危ない"]);
     },
   );
 
@@ -3904,7 +3904,7 @@ describe("words that do not go on with the script told before (#219)", () => {
     expect(answer.handoff).toBe(true);
     const alert = (await alertsOf(fam.familyId)).at(-1);
     expect(alert).toMatchObject({ level: 2, notified: 1 });
-    expect(familyPushes(fam).map((p) => p.title)).toEqual(["2段階", "2段階"]);
+    expect(familyPushes(fam).map((p) => p.title)).toEqual(["確かめて", "確かめて"]);
   });
 
   // Review 1 of PR #220: the second half of a scam told in two turns looks harmless alone. Claude must
@@ -3934,7 +3934,7 @@ describe("words that do not go on with the script told before (#219)", () => {
     const answer = await consult(consultEnv, motherOf(fam), text, new ExternalBudget(), deps, son);
     expect(seen).toEqual([son]);
     expect(answer.handoff).toBe(true);
-    expect(familyPushes(fam).map((p) => p.title)).toEqual(["1段階", "1段階"]);
+    expect(familyPushes(fam).map((p) => p.title)).toEqual(["危ない", "危ない"]);
   });
 
   // Review 2 of PR #220: her voice has no "?", so a rising "大丈夫" is her question after the scam.
@@ -3959,7 +3959,7 @@ describe("words that do not go on with the script told before (#219)", () => {
         expect(
           familyPushes(fam).map((p) => p.title),
           text,
-        ).toEqual(["1段階", "1段階"]);
+        ).toEqual(["危ない", "危ない"]);
       }
     },
   );

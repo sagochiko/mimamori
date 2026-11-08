@@ -8,6 +8,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { countD1, ExternalBudget } from "../src/budget";
 import {
   CLAIM_TTL_MS,
+  familyBadge,
   NO_REPLY_YET,
   NOT_REACHED,
   NOT_RESOLVED_YET,
@@ -193,6 +194,15 @@ function apnsFailsFor(tokens: string[]): { ok: boolean } {
   return state;
 }
 
+describe("familyBadge", () => {
+  it("names the level in words the family can read, never as a number or as safe", () => {
+    expect([1, 2, 3].map(familyBadge)).toEqual(["危ない", "確かめて", "念のため"]);
+    for (const word of [1, 2, 3].map(familyBadge)) {
+      expect(word).not.toMatch(/段階|安全|大丈夫|問題な|心配な/);
+    }
+  });
+});
+
 describe("openCase", () => {
   it("records a notified case and tells every family member, not the protected person", async () => {
     const f = await family();
@@ -332,7 +342,7 @@ describe("openCase", () => {
       .run();
     sent = [];
     await tick(Date.now());
-    expect(to(f.sister)).toEqual([expect.objectContaining({ title: "1段階", body: "警察を名乗る電話の相談" })]);
+    expect(to(f.sister)).toEqual([expect.objectContaining({ title: "危ない", body: "警察を名乗る電話の相談" })]);
     expect((await caseOf(alertId))?.family_notified_at).not.toBeNull();
   });
 });
@@ -448,8 +458,8 @@ describe("the claim on the first notice", () => {
     apns.ok = true;
     sent = [];
     await tick(Date.now());
-    expect(to(f.author)).toEqual([expect.objectContaining({ title: "1段階" })]);
-    expect(to(f.sister)).toEqual([expect.objectContaining({ title: "1段階" })]);
+    expect(to(f.author)).toEqual([expect.objectContaining({ title: "危ない" })]);
+    expect(to(f.sister)).toEqual([expect.objectContaining({ title: "危ない" })]);
   });
 
   // #49 (the 4th line): a case the family already resolved is not sent its first notice by a retry.
@@ -901,7 +911,7 @@ describe("the 30-minute watch", () => {
     expect(to(f.author)).toHaveLength(1);
     expect(to(f.sister)).toHaveLength(1);
     expect(to(f.mother)).toHaveLength(0);
-    expect(to(f.author)[0]).toMatchObject({ title: "1段階", body: "警察を名乗る電話の相談" });
+    expect(to(f.author)[0]).toMatchObject({ title: "危ない", body: "警察を名乗る電話の相談" });
     expect(to(f.author)[0]?.data.caseId).toBe((await caseOf(alertId))?.id);
     sent = [];
     await tick(Date.now() + 5 * 60_000);

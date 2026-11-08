@@ -1,0 +1,2 @@
+{"id":"s-sc-18","source":"sms","sender":"+81 90-0000-0018","domain":"","text":"未納料金があります。本日中に03-0000-0000までお電話ください。法的手続きに移行します。","url":"","expected_level":1,"is_scam":true,"note":"self-written; unpaid-fee callback SMS"}
+{"id":"s-sc-22","source":"sms","sender":"+81 90-0000-0022","domain":"","text":"お母さん、携帯を替えたので新しい番号に登録して。あと急ぎでお金が必要で、コンビニで電子マネーを買ってほしい。","url":"","expected_level":1,"is_scam":true,"note":"self-written; family impersonation; ref https://www.npa.go.jp/bureau/safetylife/sos47/"}

@@ -28,6 +28,13 @@ struct CaseCardView: View {
           .fixedSize(horizontal: false, vertical: true)
           .accessibilityLabel(summaryLabel(alert))
           .accessibilityHint(evidenceHint(alert))
+        // The summary from fixed choices (#271), the server's own line; nothing when there is none.
+        if let digest = alert.digest {
+          Text(digest)
+            .font(.headline)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityLabel("話題と次にすること、\(digest.replacingOccurrences(of: " / ", with: "、"))")
+        }
       }
       if let reply = item.aiReply {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -97,13 +104,13 @@ struct CaseCardView: View {
   private var header: some View {
     HStack {
       if let level = item.alert?.level {
-        Text("\(level.rawValue)段階")
+        Text(level.familyBadge)
           .font(.headline)
           .padding(.horizontal, 10)
           .padding(.vertical, 4)
           .background(Capsule().fill(levelColor.opacity(0.2)))
           .foregroundStyle(levelColor)
-          .accessibilityLabel("危なさ\(level.rawValue)段階、\(level.meaning)")
+          .accessibilityLabel("\(level.familyBadge)、\(level.meaning)")
       }
       Spacer()
       Text(item.notifiedAt, format: .dateTime.hour().minute())

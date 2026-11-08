@@ -17,8 +17,9 @@ client_secret*.json
 .claude/state/
 .claude/logs/
 # A hook run with server/ as its root writes its state under server/.claude/; it was swept into commits
-# three times (2026-11-06 twice, PR #183 on 2026-11-07).
-server/.claude/
+# three times (2026-11-06 twice, PR #183 on 2026-11-07). Late on 2026-11-07 the same happened under video/,
+# so any top-level folder's .claude/ is ignored. The root .claude/ is not matched.
+/*/.claude/
 CLAUDE.local.md
 
 # Apple's skills exported from Xcode (`make apple-skills`). Apple's content, not ours to redistribute.
@@ -26,12 +27,9 @@ CLAUDE.local.md
 .claude/skills/swiftui-whats-new-27/
 .claude/skills/modernize-tests/
 
-# eval: the holdout set and the unsplit pool stay out of git (and out of grep) until the final
-# measurement; /mm-endgame publishes them after that run.
-eval/cases/holdout/*
-eval/cases/pool/*
-!eval/cases/holdout/.gitkeep
-!eval/cases/pool/.gitkeep
+# eval: the holdout set and the unsplit pool stayed out of git (and out of grep) until the final
+# measurement on 2026-11-07 (PR #263); /mm-endgame published the holdout after that run. The pool
+# was already empty after the split, so only its .gitkeep is tracked.
 eval/out/
 
 # build output

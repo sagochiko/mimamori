@@ -23,7 +23,21 @@ cwd=${cwd:-$PWD}
 [[ -n "$cmd" ]] || exit 0
 # The first reason to ask is kept and answered at the end, so a block later in the command still wins.
 asked=""
-ask() { [[ -n "$asked" ]] || asked=$1; }
+# Since 2026-11-08 the author is no longer asked about most of these (main pushes, remote D1 DROP or
+# DELETE, secret deletes, gh api DELETE): they pass and go to the log. Only gh api calls that may
+# merge, publish the repository, or move main (or that this hook cannot read well enough to rule
+# those out) still ask, until the repository is public and submitted.
+keep_ask=0
+ask() {
+  [[ -n "$asked" ]] || asked=$1
+  # The first reason that keeps the question also becomes the reason the author sees.
+  if [[ ( "$1" == "gh api"* && "$1" =~ (merge|visibility|main|cannot read|cannot check|moves a ref) ) ||
+    "$1" == "git push behind xargs"* ]]; then
+    ((keep_ask)) || asked=$1
+    keep_ask=1
+  fi
+  return 0
+}
 
 shell_words "$cmd"
 m=${#WORDS[@]}
@@ -194,7 +208,7 @@ field() { # <-f|-F> <name=value>: -F reads @file, -f takes the text as it is
     [[ "$v" == *MERGE* ]] && merges=1
     [[ "$v" == *VISIBILITY* ]] && publishes=1
     # A commit or a ref move by graphql can land on main; the hook does not read which branch.
-    [[ "$v" == *CREATECOMMITONBRANCH* || "$v" == *UPDATEREF* ]] && moves=1
+    [[ "$v" == *CREATECOMMITONBRANCH* || "$v" == *UPDATEREF* || "$v" == *DELETEREF* ]] && moves=1
   fi
 }
 while read -r k _; do
@@ -249,6 +263,8 @@ while read -r k _; do
       :
     elif [[ "$M" == *'$'* || "$M" == *'`'* ]]; then
       ask "gh api with a method the hook cannot read, which may be DELETE: confirm with the author"
+    elif [[ "$M" == DELETE && ( "$endpoint" =~ (^|/)git/refs/heads/main/?(\?|$) || "$endpoint" =~ (^|/)branches/main(/|\?|$) ) ]]; then
+      ask "gh api DELETE on main moves or changes main: confirm with the author. Changes reach main through a reviewed PR."
     elif [[ "$M" == DELETE ]]; then
       ask "gh api DELETE cannot be undone: confirm with the author"
     elif [[ -z "$endpoint" || "$endpoint" == *'$'* || "$endpoint" == *'`'* ]]; then
@@ -367,7 +383,11 @@ if [[ "$text" =~ wrangler[[:space:]]+d1[[:space:]]+migrations[[:space:]]+apply &
 fi
 
 if [[ -n "$asked" ]]; then
-  log_event guard guard-prod "asked: $asked"
-  jq -nc --arg r "$asked" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
+  if ((keep_ask)); then
+    log_event guard guard-prod "asked: $asked"
+    jq -nc --arg r "$asked" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
+  else
+    log_event guard guard-prod "passed: $asked"
+  fi
 fi
 exit 0

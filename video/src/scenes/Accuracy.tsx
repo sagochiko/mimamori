@@ -67,10 +67,13 @@ export const Accuracy: React.FC = () => (
               fontWeight: 700,
             }}
           >
-            最後に測る組(holdout {HOLDOUT.cases}件、{HOLDOUT.date}) 規則だけ 見逃し{" "}
-            {HOLDOUT.rules.miss}%({HOLDOUT.rules.missN}) 規則と Claude 見逃し{" "}
-            {HOLDOUT.claude.miss}%({HOLDOUT.claude.missN}) 誤報 {HOLDOUT.claude.fp}%(
-            {HOLDOUT.claude.fpN})
+            最後に1回だけ測った組(holdout {HOLDOUT.cases}件、{HOLDOUT.date})
+            <br />
+            規則だけ 見逃し {HOLDOUT.rules.miss}%({HOLDOUT.rules.missN}) 誤報{" "}
+            {HOLDOUT.rules.fp}%({HOLDOUT.rules.fpN})
+            <br />
+            規則と Claude 見逃し {HOLDOUT.claude.miss}%({HOLDOUT.claude.missN}) 誤報{" "}
+            {HOLDOUT.claude.fp}%({HOLDOUT.claude.fpN})
           </div>
         ) : (
           <div
@@ -101,29 +104,32 @@ export const Observation: React.FC = () => (
       <Rise delay={0.8}>
         <div
           style={{
-            border: "4px dashed #9CA3AF",
+            border: `4px solid ${C.blue}`,
             borderRadius: 24,
             padding: "30px 40px",
             fontSize: 40,
-            color: C.sub,
+            fontWeight: 700,
             lineHeight: 1.5,
           }}
         >
-          ここに母の利用から直した1点を入れる(docs/mother-feedback.md から選ぶ)
+          知らないアプリの使い方の相談が家族に回っていた
+          <br />
+          → 「その画面を写真で見せてね」と聞き返す(#251)
+          <br />
+          使い方の相談を家族に回すのは案内のあとも困っているときだけ
         </div>
       </Rise>
       <Rise delay={1.6}>
         <div
           style={{
-            border: "4px dashed #9CA3AF",
+            border: `4px solid #9CA3AF`,
             borderRadius: 24,
             padding: "30px 40px",
             fontSize: 40,
-            color: C.sub,
-            lineHeight: 1.5,
+                        lineHeight: 1.5,
           }}
         >
-          ここに母、妹、作者で試した観察を入れる(何人で何回試したかを添える)
+          2026年11月7日 母が1人で誘導なしに2回相談した(家族の側は作者の iPhone)
         </div>
       </Rise>
     </AbsoluteFill>
