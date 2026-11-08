@@ -3,6 +3,7 @@ import SwiftUI
 
 struct RootView: View {
   @Environment(AppModel.self) private var model
+  @State private var guide = OnboardingGuide()
 
   var body: some View {
     NavigationStack {
@@ -15,6 +16,16 @@ struct RootView: View {
     // A new stack per route: after joining (or a 401) the pushed code or name screen must not stay on top.
     .id(model.route)
     .animation(.default, value: model.route)
+    // The balloons over the buttons of the home screen, once per role (the overlay covers the toolbar too).
+    .environment(guide)
+    .overlay { if guide.tour != nil { CoachMarkOverlay().environment(guide) } }
+    .task(id: GuideKey(route: model.route, joined: model.protectedJoined)) {
+      // The cards first, so a family screen with a card lights "電話する" and "解決" too.
+      if model.route == .familyHome, model.protectedJoined { await model.loadCases() }
+      guide.start(
+        for: model.route, joined: model.protectedJoined,
+        hasCards: model.familyCards.contains { !$0.actions.isEmpty })
+    }
     .alert(
       model.problem.map(\.title) ?? "",
       isPresented: Binding(get: { model.problem != nil }, set: { if !$0 { model.problem = nil } })
@@ -22,6 +33,11 @@ struct RootView: View {
       Button("OK", role: .cancel) {}
     }
   }
+}
+
+private struct GuideKey: Equatable {
+  let route: AppRoute
+  let joined: Bool
 }
 
 extension Problem {

@@ -264,6 +264,7 @@ struct ProtectedHomeView: View {
       }
       .background(Capsule().fill(Color(.secondarySystemBackground)))
       .overlay(Capsule().strokeBorder(Color(.separator), lineWidth: 0.5))
+      .guideTarget(.talk)
     }
     .padding(.horizontal, 12)
     .padding(.vertical, 8)
@@ -325,6 +326,7 @@ struct ProtectedHomeView: View {
   private var writingBar: some View {
     HStack(alignment: .bottom, spacing: 4) {
       photoButton
+        .guideTarget(.photo)
         .padding(.leading, 4)
         .padding(.bottom, 4)
       MessageField(

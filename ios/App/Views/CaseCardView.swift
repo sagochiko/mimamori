@@ -10,6 +10,8 @@ struct CaseCardView: View {
   let card: FamilyCard
   /// "解決にする". Nil sends `POST /cases/{id}/resolve`; the judges' tour resolves in its own state.
   var onResolve: ((Case) -> Void)? = nil
+  /// The card whose "電話する" and "解決" get the balloons (`OnboardingGuide`).
+  var guides = false
   @Environment(AppModel.self) private var model
   @Environment(\.openURL) private var openURL
   @State private var askingNumber = false
@@ -95,8 +97,8 @@ struct CaseCardView: View {
 
   private var statusHint: String {
     item.state == .resolved
-      ? "母と話して解決したと、家族の誰かが押しました"
-      : "家族の誰かが母と話して解決を押すまで、このままです"
+      ? "問題なさそうだと分かって、家族の誰かが解決を押しました"
+      : "問題なさそうだと分かった家族の誰かが解決を押すまで、このままです"
   }
 
   private var header: some View {
@@ -143,6 +145,7 @@ struct CaseCardView: View {
         .buttonStyle(CardButtonStyle(prominent: action == .call))
         .disabled(model.isBusy)
         .accessibilityHint(action.hint)
+        .guideTarget(guides ? (action == .call ? .call : .resolve) : nil)
         .contextMenu {
           if action == .call {
             Button("番号を変える") { askingNumber = true }
@@ -170,7 +173,7 @@ extension CardAction {
   var hint: String {
     switch self {
     case .call: "母に電話します。長押しで番号を変えられます"
-    case .resolve: "母と話して解決したら押します。押すと確かめます"
+    case .resolve: "問題なさそうなら押します。押すと確かめます"
     }
   }
 }

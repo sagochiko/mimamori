@@ -21,6 +21,7 @@ struct SmileStrip: View {
       HStack(alignment: compact ? .center : .top, spacing: compact ? 8 : 12) {
         if let onCamera {
           CameraButton(size: size, action: onCamera)
+            .guideTarget(.smile)
         }
         ForEach(compact ? model.smileBoard.familyPhotos : model.smileBoard.photos) { smile in
           Button {

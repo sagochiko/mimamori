@@ -9,8 +9,21 @@ struct FamilyHomeView: View {
   @Environment(AppModel.self) private var model
   @State private var camera = false
   @State private var inviting = false
+  @Environment(OnboardingGuide.self) private var guide: OnboardingGuide?
 
   var body: some View {
+    ScrollViewReader { scroller in
+      home
+        // A card's buttons may sit below the screen: bring them in before their balloon (#285).
+        // scrollTo finds the card's row in the List by its id.
+        .onChange(of: guide?.tour?.current) { _, step in
+          guard step == .call || step == .resolve, let id = model.guidedCardID else { return }
+          withAnimation { scroller.scrollTo(id, anchor: .bottom) }
+        }
+    }
+  }
+
+  private var home: some View {
     Group {
       if model.protectedJoined {
         // A List, not a ScrollView: swipeActions on a card (#280) only work on the rows of a List.
@@ -35,6 +48,7 @@ struct FamilyHomeView: View {
             .buttonBorderShape(.capsule)
             .accessibilityLabel("笑顔で返す")
             .accessibilityHint("前のカメラに向かって笑うと、その場で撮って家族みんなに送ります")
+            .guideTarget(.familySmile)
         }
         ToolbarItem(placement: .topBarTrailing) {
           Button("招待") { inviting = true }
@@ -42,9 +56,10 @@ struct FamilyHomeView: View {
             .buttonBorderShape(.capsule)
             .accessibilityLabel("ほかの家族を招待する")
             .accessibilityHint("6桁の招待のコードを出します。ほかの家族がこのコードで入ります。24時間使えます")
+            .guideTarget(.invite)
         }
       }
-      ToolbarItem(placement: .topBarTrailing) { WipeMenu() }
+      ToolbarItem(placement: .topBarTrailing) { WipeMenu().guideTarget(.settings) }
     }
     .fullScreenCover(isPresented: $camera) { SmileCaptureView() }
     .sheet(isPresented: $inviting) {
@@ -124,7 +139,8 @@ private struct JoinedSection: View {
       // The swipe's "消す" is also a VoiceOver action of the card: List lists swipe actions
       // there itself, so a second accessibilityAction would read it twice (verifier, PR #284).
       ForEach(model.familyCards, id: \.item.id) { card in
-        CaseCardView(card: card)
+        // The balloons point at the buttons of the newest card that has them only.
+        CaseCardView(card: card, guides: card.item.id == model.guidedCardID)
           .homeRow()
           .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             if card.removable {
@@ -133,6 +149,7 @@ private struct JoinedSection: View {
               }
             }
           }
+          .id(card.item.id)
       }
       if !model.smileBoard.photos.isEmpty {
         SmileStrip()
@@ -224,5 +241,12 @@ struct InviteCodeView: View {
       .accessibilityLabel("コードを送る")
       .accessibilityHint("アプリのリンク、入り方、招待のコードと期限をメッセージなどで送ります")
     }
+  }
+}
+
+extension AppModel {
+  /// The card whose "電話する" and "解決" get the balloons: the newest that still has them.
+  var guidedCardID: Case.ID? {
+    familyCards.first { !$0.actions.isEmpty }?.item.id
   }
 }

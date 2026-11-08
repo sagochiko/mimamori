@@ -2,8 +2,9 @@ import Foundation
 
 // What the family cards and the protected person's screen show for a case ("家族への知らせと解決" in
 // docs/design.md). The family only learns what she is troubled by, how dangerous it is, and whether
-// it was solved: every member sees the same card, and whoever talked with her presses "解決". The
-// screens only lay these out; every rule is here so it can be tested.
+// it was solved: every member sees the same card, and whoever finds it looks fine presses "解決",
+// with or without reaching her (#283). The screens only lay these out; every rule is here so it can
+// be tested.
 
 /// A button on a family card. One-word verbs; the meaning goes to VoiceOver in the App.
 public enum CardAction: String, CaseIterable, Sendable {
