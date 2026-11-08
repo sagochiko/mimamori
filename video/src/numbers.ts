@@ -33,14 +33,14 @@ export const HOLDOUT: null | {
   claude: { miss: "6.5", missN: "4/62", fp: "9.4", fpN: "6/64" },
 };
 
-// docs/submission.md の「Claude Code」の節。2026年11月8日に origin/main の c9366d0 で数えた値(フックの記録は make usage の docs/claude-usage.md、hookStops はそのフックの表の合計)。
+// docs/submission.md の「Claude Code」の節。2026年11月8日に origin/main の c9366d0 で数えた値(フックの記録は make usage の docs/claude-usage.md、hookStops はそのフックの表の合計から、許した記録と通した記録の56件を除いた数)。
 // 提出の前に数え直す(数え方は docs/submission.md)。
 export const DEV_RECORD = {
   period: "2026年11月3日〜8日",
   reviewer: 249,
   implementer: 110,
   verifier: 86,
-  hookStops: 356,
+  hookStops: 300,
   mergedPrs: 167,
   commits: 1263,
 } as const;
