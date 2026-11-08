@@ -367,7 +367,8 @@ export async function tellFamilyHeavier(env: Env, caseId: string, budget: Extern
 /**
  * Opens the case for an alert and tells every family member (not the protected person, whose screen
  * shows "家族に伝えました", or NOT_REACHED while no family device took it). One case per alert.
- * Returns null when the alert does not exist.
+ * Returns null when the alert does not exist, and when its case was resolved and then removed from the
+ * family's list (#280): the hidden row is kept, so the case is not opened or told again.
  *
  * The case row is kept from the start, so the protected person's screen, the family's list, and the
  * 30-minute watch see it whatever happens to the notice. When the shared budget cannot cover every
