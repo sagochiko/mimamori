@@ -27,4 +27,11 @@ struct ProblemTests {
     #expect(Problem(deleting: URLError(.notConnectedToInternet)) == .notDeleted)
     #expect(Problem(deleting: APIError.unauthorized) == nil)
   }
+
+  @Test("「この iPhone を外す」の失敗は「外せなかった」と伝え、401 だけは画面の切り替えに任せる")
+  func leavingFailureIsNotLeft() {
+    #expect(Problem(leaving: APIError.http(status: 500)) == .notLeft)
+    #expect(Problem(leaving: URLError(.notConnectedToInternet)) == .notLeft)
+    #expect(Problem(leaving: APIError.unauthorized) == nil)
+  }
 }

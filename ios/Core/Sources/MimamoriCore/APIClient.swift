@@ -141,7 +141,15 @@ public final class APIClient: Sendable {
     try await perform("POST", "heartbeat", body: report, auth: true)
   }
 
-  /// `DELETE /families/me` ("すべて消す"). The server deletes the whole family, this device's member
+  /// `DELETE /members/me` ("この iPhone を外す", #279). Only this device's member row goes; the family,
+  /// her, and the other members stay. The stored key is cleared only after a 2xx, so a failure (offline,
+  /// a refusal) leaves this iPhone in the family and pressing again finishes the job.
+  public func leaveFamily() async throws {
+    try await perform("DELETE", "members/me", body: Empty?.none, auth: true)
+    store.clear()
+  }
+
+  /// `DELETE /families/me` ("家族を削除"). The server deletes the whole family, this device's member
   /// included, so the stored key is cleared only after a 2xx. Any failure (502 `cleanup_failed` when
   /// Google or Anthropic refused, offline) leaves the key as it was, and pressing again finishes the job.
   public func deleteEverything() async throws {

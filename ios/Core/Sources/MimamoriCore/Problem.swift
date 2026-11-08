@@ -6,8 +6,10 @@ public enum Problem: Equatable, Sendable {
   case badCode
   /// Anything else: offline, server down, or a request the server refused.
   case unreachable
-  /// "すべて消す" did not finish. Nothing on this iPhone was deleted, and pressing again continues.
+  /// "家族を削除" did not finish. Nothing on this iPhone was deleted, and pressing again continues.
   case notDeleted
+  /// "この iPhone を外す" did not finish. This iPhone is still in the family, and pressing again continues.
+  case notLeft
 
   public init?(_ error: any Error, joining: Bool) {
     switch error {
@@ -17,7 +19,14 @@ public enum Problem: Equatable, Sendable {
     }
   }
 
-  /// For "すべて消す": any failure is told as not deleted, even offline, since that is what matters
+  /// For "この iPhone を外す": any failure is told as not removed, even offline. A 401 shows nothing:
+  /// the key no longer works, so role selection appears instead.
+  public init?(leaving error: any Error) {
+    if case APIError.unauthorized = error { return nil }
+    self = .notLeft
+  }
+
+  /// For "家族を削除": any failure is told as not deleted, even offline, since that is what matters
   /// to the person. A 401 shows nothing: role selection appears instead.
   public init?(deleting error: any Error) {
     if case APIError.unauthorized = error { return nil }

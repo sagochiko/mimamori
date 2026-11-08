@@ -182,16 +182,18 @@ struct InviteCodeView: View {
         // Read digit by digit, not as "four hundred eighty-two".
         .accessibilityLabel("招待のコード \(invite.code.value.map(String.init).joined(separator: " "))")
         .accessibilityHint("見守られる人やほかの家族のスマホで、この6桁を入れます")
-      Text(invite.expiresAt, format: .dateTime.month().day().hour().minute())
+      // "まで": a bare time under the code read as nothing in particular to the author (#279).
+      Text("\(InviteMessage.expiry(invite.expiresAt))まで")
         .font(.title3)
         .foregroundStyle(.secondary)
-        .accessibilityLabel("\(invite.expiresAt.formatted(.dateTime.month().day().hour().minute()))まで使えます")
-      ShareLink(item: invite.code.value) {
+        .accessibilityLabel("\(InviteMessage.expiry(invite.expiresAt))まで使えます")
+      // The link to the app and the steps go with the code (#279); see `InviteMessage`.
+      ShareLink(item: InviteMessage.text(for: invite)) {
         Text("送る")
       }
       .buttonStyle(BigButtonStyle())
       .accessibilityLabel("コードを送る")
-      .accessibilityHint("メッセージなどで招待のコードを送ります")
+      .accessibilityHint("アプリのリンク、入り方、招待のコードと期限をメッセージなどで送ります")
     }
   }
 }
