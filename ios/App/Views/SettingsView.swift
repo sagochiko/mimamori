@@ -32,6 +32,13 @@ struct SettingsView: View {
           Toggle(ReadAloudSettings.title, isOn: $readAloud.isOn)
             .accessibilityHint("オンにすると、声で聞いたときだけ答えを声で読みます。文字で聞いたときは読みません")
         }
+        // The extensions work only once turned on in iPhone Settings (#287).
+        Section {
+          ForEach(ExtensionGuide.allCases) { guide in
+            NavigationLink(guide.title) { ExtensionGuideView(guide: guide) }
+              .accessibilityHint("iPhone の設定でオンにする順を、画面の写真で見られます")
+          }
+        }
       }
       .navigationTitle("設定")
       .navigationBarTitleDisplayMode(.inline)
