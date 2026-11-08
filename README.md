@@ -26,7 +26,7 @@ The scammer calls and says her bank account was used in a crime. Then they tell 
 
 ## The main scene
 
-1. A call of three minutes or more ends while the app is open. The app tells her: "知らない人や勧誘の電話で困ったら教えてね" (If a stranger or a sales call troubles you, tell me). It is not a question, and it comes at most once a day. For the scene filmed on her iPhone on 2026-11-08, a filming-only build 19 showed it after any call of 10 seconds or more, every time. That change was not committed, and her build goes back to the product rule after filming (#133).
+1. A call of three minutes or more ends while the app is open. The app tells her: "知らない人や勧誘の電話で困ったら教えてね" (If a stranger or a sales call troubles you, tell me). It is not a question, and it comes at most once a day. For filming the scene on her iPhone on 2026-11-08, she installed a filming-only build 19 that shows it after any call of 10 seconds or more, every time. That change was not committed, and her build goes back to the product rule after filming (#133).
 2. She says, in her own words, that the police called about her account.
 3. Rules on the server recognize the fake-police script (police, account used in a crime, keep it secret, a video call, moving money). They answer at once with level 1: hang up and check with the family before sending any money.
 4. Every family member's iPhone gets a card with a badge for the level, a one-line topic ("警察を名乗る電話の相談", a consultation about a call from someone claiming to be the police), and what the AI told her. The card has two buttons, Call and Resolve.

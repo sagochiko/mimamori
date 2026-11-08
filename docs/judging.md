@@ -16,6 +16,6 @@
 | | モデルや機能(Skills、サブエージェント、MCP、フック)を目的に応じて使い分けているか | `.claude/`、`CLAUDE.md` のモデルの表、`docs/harness.md` |
 | 深さと実行力(20%) | 試行錯誤を重ねて磨き上げた跡が見えるか | [`README.md`](../README.md) の「From the development log」と「Accuracy」、[`docs/dev-log.md`](dev-log.md)、[`eval/RESULTS.md`](../eval/RESULTS.md) の推移、Issues と PR |
 | | 設計と実装がしっかりしていて丁寧か | テスト(数は README の「Built during the hackathon」)、[`docs/plan.md`](plan.md) のつなぎ目の約束、README の「Tried on the author's iPhone」「Built, not yet tried on a real iPhone」「Not built yet」で、実機で確かめた範囲と作った範囲を分けて書いたこと |
-| | 困っている人が安心してそのまま使える形か | 母が手助けなしで使えたかの記録は、2026年11月7日に誘導なしで相談した1回([`docs/mother-feedback.md`](mother-feedback.md))。作者の iPhone を母の役にした2026年11月7日の確かめは、#48(主役の流れ)、#200(空き容量の声かけ)、#187(写真からの共有)のコメントと、[`README.md`](../README.md) の「Tried on the author's iPhone」。データの扱い([`README.md`](../README.md) の「Her data」) |
+| | 困っている人が安心してそのまま使える形か | 母が手助けなしで使えたかの記録は、2026年11月7日に誘導なしで相談した日の記録(相談は2回で、1回目は家族に回った。[`docs/mother-feedback.md`](mother-feedback.md))。作者の iPhone を母の役にした2026年11月7日の確かめは、#48(主役の流れ)、#200(空き容量の声かけ)、#187(写真からの共有)のコメントと、[`README.md`](../README.md) の「Tried on the author's iPhone」。データの扱い([`README.md`](../README.md) の「Her data」) |
 
 運営はキックオフで、深さと実行力は「リポジトリの中まで見て判断する」と説明した。デモ動画は作ったものを伝える「唯一と言って過言ではない」手段だとも話していた。
