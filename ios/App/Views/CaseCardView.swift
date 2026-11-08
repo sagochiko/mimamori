@@ -26,6 +26,13 @@ struct CaseCardView: View {
           .fixedSize(horizontal: false, vertical: true)
           .accessibilityLabel(summaryLabel(alert))
           .accessibilityHint(evidenceHint(alert))
+        // The summary from fixed choices (#271), the server's own line; nothing when there is none.
+        if let digest = alert.digest {
+          Text(digest)
+            .font(.headline)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityLabel("話題と次にすること、\(digest.replacingOccurrences(of: " / ", with: "、"))")
+        }
       }
       if let reply = item.aiReply {
         HStack(alignment: .firstTextBaseline, spacing: 8) {

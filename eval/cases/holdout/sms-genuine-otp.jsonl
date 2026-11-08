@@ -1,0 +1,8 @@
+{"id":"s-gn-01","source":"sms","sender":"AMAZON","domain":"","text":"Amazonのセキュリティコードは 000000 です。他人には絶対に教えないでください。","url":"","expected_level":null,"is_scam":false,"note":"self-written; one-time code"}
+{"id":"s-gn-02","source":"sms","sender":"MUFG","domain":"","text":"【認証コード】000000 ご本人確認のため入力してください。このコードを他人に教えないでください。","url":"","expected_level":null,"is_scam":false,"note":"self-written; one-time code"}
+{"id":"s-gn-03","source":"sms","sender":"Google","domain":"","text":"G-000000 は Google 確認コードです。","url":"","expected_level":null,"is_scam":false,"note":"self-written; one-time code"}
+{"id":"s-gn-04","source":"sms","sender":"Apple","domain":"","text":"あなたのApple IDの確認コードは 000000 です。他の人に教えないでください。","url":"","expected_level":null,"is_scam":false,"note":"self-written; one-time code"}
+{"id":"s-gn-05","source":"sms","sender":"LINE","domain":"","text":"【LINE】認証番号: 0000 他人に教えないでください。","url":"","expected_level":null,"is_scam":false,"note":"self-written; one-time code"}
+{"id":"s-gn-14","source":"sms","sender":"JP-BANK","domain":"","text":"【ゆうちょ銀行】ワンタイムパスワードは 000000 です。有効期限は10分です。","url":"","expected_level":null,"is_scam":false,"note":"self-written; one-time code"}
+{"id":"s-gn-15","source":"sms","sender":"Rakuten","domain":"","text":"【楽天】認証コードは 000000 です。","url":"","expected_level":null,"is_scam":false,"note":"self-written; one-time code"}
+{"id":"s-gn-16","source":"sms","sender":"PayPay","domain":"","text":"PayPayの認証コード 0000 を入力してください。","url":"","expected_level":null,"is_scam":false,"note":"self-written; one-time code"}
