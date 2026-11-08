@@ -9,7 +9,7 @@ import SwiftUI
 struct SmileStrip: View {
   @Environment(AppModel.self) private var model
   var onCamera: (() -> Void)?
-  /// With it, the menu with "すべて消す" comes last in the row (her screen, which has no toolbar).
+  /// With it, the menu with "設定" and "家族を削除" comes last in the row (her screen, which has no toolbar).
   var showsMenu = false
   /// Her screen: the family's smiles only (`SmileBoard.familyPhotos`), small.
   var compact = false

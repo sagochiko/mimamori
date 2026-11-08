@@ -118,7 +118,12 @@ public final class Session {
     try await call { try await $0.heartbeat(report) }
   }
 
-  /// "すべて消す". After a 2xx the key is gone, so the route becomes role selection; on failure it stays.
+  /// "この iPhone を外す". After a 2xx the key is gone, so the route becomes role selection; on failure it stays.
+  public func leaveFamily() async throws {
+    try await call { try await $0.leaveFamily() }
+  }
+
+  /// "家族を削除". After a 2xx the key is gone, so the route becomes role selection; on failure it stays.
   public func deleteEverything() async throws {
     try await call { try await $0.deleteEverything() }
   }
