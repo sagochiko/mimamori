@@ -688,6 +688,109 @@ describe("resolve", () => {
   });
 });
 
+describe("DELETE /cases/{id} (#280)", () => {
+  async function listed(p: Person): Promise<string[]> {
+    const res = await call("GET", "/cases", { deviceKey: p.deviceKey, env: pushEnv });
+    return ((await res.json()) as { cases: Array<{ id: string }> }).cases.map((c) => c.id);
+  }
+
+  async function relaysOf(caseId: string): Promise<number> {
+    const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM relays WHERE case_id = ?")
+      .bind(caseId)
+      .first<{ n: number }>();
+    return row?.n ?? 0;
+  }
+
+  it("removes a resolved card for every family device, with the AI's answer and the old relays", async () => {
+    const f = await family();
+    const alertId = await newAlert(f.familyId);
+    const caseId = (await open(alertId))?.id ?? "";
+    await recordAiReply(pushEnv, caseId, "警察は電話でお金の話をしません");
+    await env.DB.prepare("INSERT INTO relays (id, case_id, from_member_id, body, created_at) VALUES (?, ?, ?, 'x', ?)")
+      .bind(crypto.randomUUID(), caseId, f.sister.memberId, Date.now())
+      .run();
+    await resolveCase(pushEnv, caseId, f.sister.memberId);
+    sent = [];
+
+    const res = await call("DELETE", `/cases/${caseId}`, { deviceKey: f.author.deviceKey, env: pushEnv });
+    expect(res.status).toBe(204);
+    // Gone from the author's list and from the sister's other device.
+    expect(await listed(f.author)).not.toContain(caseId);
+    expect(await listed(f.sister)).not.toContain(caseId);
+    expect(await relaysOf(caseId)).toBe(0);
+    expect((await caseRow(caseId))?.ai_reply ?? null).toBeNull();
+    // Removing a card tells nobody.
+    expect(sent).toHaveLength(0);
+    // The alert stays: the one-an-hour rule, her recent findings, and any research session still read it.
+    expect(await env.DB.prepare("SELECT 1 AS ok FROM alerts WHERE id = ?").bind(alertId).first()).not.toBeNull();
+  });
+
+  it("a removed card does not come back when the queue retries its alert, and nobody is told again", async () => {
+    const f = await family();
+    const alertId = await newAlert(f.familyId);
+    const caseId = (await open(alertId))?.id ?? "";
+    await resolveCase(pushEnv, caseId, f.sister.memberId);
+    expect((await call("DELETE", `/cases/${caseId}`, { deviceKey: f.author.deviceKey, env: pushEnv })).status).toBe(
+      204,
+    );
+    // As a retried judge message would do: the case of this alert is not opened a second time.
+    await env.DB.prepare("UPDATE cases SET family_notified_at = NULL WHERE id = ?").bind(caseId).run();
+    sent = [];
+
+    expect(await open(alertId)).toBeNull();
+    expect(await casesFor(alertId)).toBe(1);
+    expect(sent).toHaveLength(0);
+    expect(await listed(f.author)).not.toContain(caseId);
+  });
+
+  it("refuses a card that is not resolved, including one left in the old 'accepted' state", async () => {
+    const f = await family();
+    const open1 = (await open(await newAlert(f.familyId)))?.id ?? "";
+    const old = (await open(await newAlert(f.familyId)))?.id ?? "";
+    await env.DB.prepare("UPDATE cases SET state = 'accepted', assignee_member_id = ?, accepted_at = ? WHERE id = ?")
+      .bind(f.sister.memberId, Date.now(), old)
+      .run();
+
+    for (const id of [open1, old]) {
+      const res = await call("DELETE", `/cases/${id}`, { deviceKey: f.author.deviceKey, env: pushEnv });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ error: "case_not_resolved" });
+      expect(await listed(f.author)).toContain(id);
+    }
+  });
+
+  it("another family cannot remove the card, and the protected person cannot either", async () => {
+    const f = await family();
+    const other = await family();
+    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
+    await resolveCase(pushEnv, caseId, f.sister.memberId);
+
+    const byStranger = await call("DELETE", `/cases/${caseId}`, { deviceKey: other.author.deviceKey, env: pushEnv });
+    expect(byStranger.status).toBe(404);
+    const byMother = await call("DELETE", `/cases/${caseId}`, { deviceKey: f.mother.deviceKey, env: pushEnv });
+    expect(byMother.status).toBe(403);
+    expect(await listed(f.author)).toContain(caseId);
+  });
+
+  it("removing it twice answers 404 the second time, and needs a device key", async () => {
+    const f = await family();
+    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
+    await resolveCase(pushEnv, caseId, f.sister.memberId);
+
+    expect((await call("DELETE", `/cases/${caseId}`, { deviceKey: f.author.deviceKey, env: pushEnv })).status).toBe(
+      204,
+    );
+    expect((await call("DELETE", `/cases/${caseId}`, { deviceKey: f.sister.deviceKey, env: pushEnv })).status).toBe(
+      404,
+    );
+    expect((await call("DELETE", `/cases/${caseId}`, { env: pushEnv })).status).toBe(401);
+    // A removed card cannot be pressed again either.
+    expect((await call("POST", `/cases/${caseId}/resolve`, { deviceKey: f.author.deviceKey, env: pushEnv })).status).toBe(
+      404,
+    );
+  });
+});
+
 describe("GET /cases", () => {
   it("lists the family's cases with the alert and the AI's answer, and nothing from other families", async () => {
     const f = await family();
