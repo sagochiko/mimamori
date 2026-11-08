@@ -720,6 +720,18 @@ final class AppModel {
     }
   }
 
+  /// "消す" on a resolved card (#280). The server removes it for every family device; the card leaves
+  /// this list only once it answered, or answered 404 because another device removed it first. A 409
+  /// (not resolved) keeps the card and shows the problem like any failed call.
+  func remove(_ item: Case) async {
+    await run(joining: false) { [weak self] session in
+      do {
+        try await session.removeCase(caseId: item.id)
+      } catch APIError.http(status: 404) {}
+      self?.cases.removeAll { $0.id == item.id }
+    }
+  }
+
   private func replace(_ item: Case) {
     if let i = cases.firstIndex(where: { $0.id == item.id }) { cases[i] = item }
   }

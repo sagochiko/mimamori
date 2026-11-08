@@ -82,6 +82,10 @@ public final class Session {
     try await call { try await $0.resolve(caseId: caseId) }
   }
 
+  public func removeCase(caseId: String) async throws {
+    try await call { try await $0.removeCase(caseId: caseId) }
+  }
+
   public func consult(text: String, history: [ConsultTurn] = []) async throws -> ConsultAnswer {
     try await call { try await $0.consult(text: text, history: history) }
   }

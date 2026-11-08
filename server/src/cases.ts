@@ -129,7 +129,8 @@ async function loadViews(
   familyId: string,
   filter: { caseId?: string; alertId?: string } = {},
 ): Promise<CaseView[]> {
-  const where = ["c.family_id = ?"];
+  // A card a family member removed (#280) is not listed, and so cannot be resolved again either.
+  const where = ["c.family_id = ?", "c.hidden_at IS NULL"];
   const binds: unknown[] = [familyId];
   if (filter.caseId !== undefined) {
     where.push("c.id = ?");
@@ -366,7 +367,8 @@ export async function tellFamilyHeavier(env: Env, caseId: string, budget: Extern
 /**
  * Opens the case for an alert and tells every family member (not the protected person, whose screen
  * shows "家族に伝えました", or NOT_REACHED while no family device took it). One case per alert.
- * Returns null when the alert does not exist.
+ * Returns null when the alert does not exist, and when its case was resolved and then removed from the
+ * family's list (#280): the hidden row is kept, so the case is not opened or told again.
  *
  * The case row is kept from the start, so the protected person's screen, the family's list, and the
  * 30-minute watch see it whatever happens to the notice. When the shared budget cannot cover every
@@ -477,9 +479,47 @@ export async function resolveCase(
   return view;
 }
 
-/** Keeps the AI's latest answer to the protected person for the family's card. The AI always answers her. */
+/**
+ * Removes a resolved card from the family's list (#280), for every family device. Any family member;
+ * the protected person's screen has no resolved cases. The row stays with hidden_at set, so a judge
+ * message still retried for the alert does not open the case again (openCase's NOT EXISTS sees it, as
+ * #49 does for a resolved case); the AI's answer and the old relays go now, and the 30-day cleanup
+ * deletes the row. Another family's case, a missing one, and one already removed are 404; a case not
+ * resolved (the old 'accepted' state too) is 409. Nobody is notified.
+ */
+export async function hideCase(env: Env, caseId: string, memberId: string): Promise<void> {
+  const me = await loadMember(env, memberId);
+  if (me.role !== "family") throw new HttpError(403, "family_only");
+
+  const [hidden] = await env.DB.batch<{ id: string }>([
+    env.DB.prepare(
+      `UPDATE cases SET hidden_at = ?, ai_reply = NULL
+        WHERE id = ? AND family_id = ? AND state = 'resolved' AND hidden_at IS NULL RETURNING id`,
+    ).bind(Date.now(), caseId, me.family_id),
+    // Only once the case above is hidden: a refused removal leaves everything as it was.
+    env.DB.prepare(
+      `DELETE FROM relays WHERE case_id IN
+         (SELECT id FROM cases WHERE id = ? AND family_id = ? AND hidden_at IS NOT NULL)`,
+    ).bind(caseId, me.family_id),
+  ]);
+  if (hidden && hidden.results.length === 1) return;
+
+  const row = await env.DB.prepare("SELECT state, hidden_at FROM cases WHERE id = ? AND family_id = ?")
+    .bind(caseId, me.family_id)
+    .first<{ state: string; hidden_at: number | null }>();
+  if (!row || row.hidden_at !== null) throw new HttpError(404, "case_not_found");
+  throw new HttpError(409, "case_not_resolved");
+}
+
+/**
+ * Keeps the AI's latest answer to the protected person for the family's card. The AI always answers her.
+ * A card the family removed (#280) is not written to: a consultation that was running when they removed
+ * it would otherwise put the answer back on a row whose answer the removal cleared.
+ */
 export async function recordAiReply(env: Env, caseId: string, text: string): Promise<void> {
-  await env.DB.prepare("UPDATE cases SET ai_reply = ? WHERE id = ?").bind(text.slice(0, AI_REPLY_MAX), caseId).run();
+  await env.DB.prepare("UPDATE cases SET ai_reply = ? WHERE id = ? AND hidden_at IS NULL")
+    .bind(text.slice(0, AI_REPLY_MAX), caseId)
+    .run();
 }
 
 /**
@@ -556,4 +596,11 @@ export async function listCases(request: Request, env: Env): Promise<Response> {
 export async function resolveRoute(request: Request, env: Env, caseId: string): Promise<Response> {
   const me = await requireMember(request, env);
   return json(await resolveCase(env, caseId, me.id));
+}
+
+/** DELETE /cases/{id}: removes a resolved card from the family's list (#280). */
+export async function hideRoute(request: Request, env: Env, caseId: string): Promise<Response> {
+  const me = await requireMember(request, env);
+  await hideCase(env, caseId, me.id);
+  return new Response(null, { status: 204 });
 }

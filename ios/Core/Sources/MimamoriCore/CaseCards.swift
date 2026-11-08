@@ -26,6 +26,11 @@ public struct FamilyCard: Equatable, Sendable {
   public let actions: [CardAction]
 
   public static let notResolved = "まだ解決していない"
+  /// The swipe on a resolved card (#280). One word; what it does goes to VoiceOver.
+  public static let removeTitle = "消す"
+
+  /// Only a resolved card can be removed from the list; the server refuses the others (409).
+  public var removable: Bool { item.state == .resolved }
 
   public init(_ item: Case) {
     self.item = item
