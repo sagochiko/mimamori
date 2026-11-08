@@ -70,7 +70,13 @@ function messagesApi(opts: {
   return seen;
 }
 
-const YES = { official: "yes", official_domain: "shop-name.example", injection_suspected: false, no_risky_request: true };
+const YES = {
+  official: "yes",
+  official_domain: "shop-name.example",
+  injection_suspected: false,
+  no_risky_request: true,
+  domain_mismatch_only: true,
+};
 
 describe("the official check of a mail", () => {
   it("is yes when Claude says so and every domain is the official one or under it, after one search and one structured call", async () => {
@@ -86,8 +92,8 @@ describe("the official check of a mail", () => {
   });
 
   it.each([
-    ["no", { official: "no", official_domain: "shop-name.example", injection_suspected: false, no_risky_request: true }],
-    ["unknown", { official: "unknown", official_domain: "", injection_suspected: false, no_risky_request: true }],
+    ["no", { ...YES, official: "no" }],
+    ["unknown", { ...YES, official: "unknown", official_domain: "" }],
   ])("is %s when Claude says so", async (want, answer) => {
     messagesApi({ structured: answer });
     expect(await requestOfficialCheck({ ANTHROPIC_API_KEY: "test" }, input())).toBe(want);
@@ -157,21 +163,62 @@ describe("the official check of a mail", () => {
   });
 
   // A scam can send from its own domain with DMARC pass and link only there: the search may then find
-  // its own site as "official" (the review of PR #277). Only a mail whose text asks for nothing risky
-  // is made level 3.
-  it("is unknown for a self-named sender on its own domain when the text asks for money or a call", async () => {
+  // its own site as "official" (the reviews of PR #277). Only a mail Claude put at level 2 for the
+  // mismatch of domains alone, with nothing risky asked in the text, is made level 3.
+  it("is unknown for a self-named side job offer without any of the listed words, when Claude's reason is not the domains", async () => {
     const own = input({
-      fromDomain: "legal-xx.example",
-      hosts: ["legal-xx.example"],
-      text: "架空法律事務所より 未払いの料金があります。本日中にお電話ください https://legal-xx.example/pay",
-      reasons: ["未払いを理由に電話をかけさせようとしている"],
+      fromDomain: "fukugyou-xx.example",
+      hosts: ["fukugyou-xx.example"],
+      text: "在宅で月30万円の副業 詳しくはこちら https://fukugyou-xx.example/join",
+      reasons: ["うますぎる副業の勧誘"],
     });
-    const seen = messagesApi({ structured: { ...YES, official_domain: "legal-xx.example", no_risky_request: false } });
+    const seen = messagesApi({
+      structured: { ...YES, official_domain: "fukugyou-xx.example", domain_mismatch_only: false },
+    });
     expect(await requestOfficialCheck({ ANTHROPIC_API_KEY: "test" }, own)).toBe("unknown");
-    expect(JSON.stringify(seen.structured[0])).toContain("未払いを理由に電話をかけさせようとしている");
-    // The same answer with nothing risky in the text is the one that makes it yes.
-    messagesApi({ structured: { ...YES, official_domain: "legal-xx.example" } });
-    expect(await requestOfficialCheck({ ANTHROPIC_API_KEY: "test" }, own)).toBe("yes");
+    // The structured call is the one that reads Claude's reason.
+    expect(JSON.stringify(seen.structured[0])).toContain("うますぎる副業の勧誘");
+    // The same answer with nothing risky asked, but domain_mismatch_only false, stays unknown as well;
+    // with no_risky_request false and domain_mismatch_only true, too.
+    messagesApi({ structured: { ...YES, official_domain: "fukugyou-xx.example", no_risky_request: false } });
+    expect(await requestOfficialCheck({ ANTHROPIC_API_KEY: "test" }, own)).toBe("unknown");
+  });
+
+  it("is yes for a genuine notice Claude put at level 2 for the domains alone", async () => {
+    messagesApi({});
+    expect(
+      await requestOfficialCheck({ ANTHROPIC_API_KEY: "test" }, input({ reasons: ["名乗る会社と違うドメインへ誘っている"] })),
+    ).toBe("yes");
+  });
+
+  it("asks nothing and is unknown without Claude's reasons, since none of them can be the domains alone", async () => {
+    const seen = messagesApi({});
+    expect(await requestOfficialCheck({ ANTHROPIC_API_KEY: "test" }, input({ reasons: [] }))).toBe("unknown");
+    expect(seen.search).toHaveLength(0);
+  });
+
+  // The model's two booleans are not all: the code itself looks for the words in the text and in the
+  // reasons, and asks nothing when one is there (the second review of PR #277).
+  it.each([
+    ["money and a call in the text", { text: "架空法律事務所より 未払いの料金があります。本日中にお電話ください https://legal-xx.example/pay" }],
+    ["a login in the text", { text: "アカウントの確認 こちらからログイン https://news.shop-name.example/" }],
+    ["a card in the text", { text: "カードの番号を更新してください https://news.shop-name.example/" }],
+    ["a stop in the text", { text: "サービスが停止されます https://news.shop-name.example/" }],
+    ["a password in English in the text", { text: "Update your Password https://news.shop-name.example/" }],
+    ["a call in Claude's reasons", { reasons: ["名乗る会社と違うドメインへ誘っている", "電話をかけさせようとしている"] }],
+    ["a refund in Claude's reasons", { reasons: ["返金を口実にしている"] }],
+  ] as Array<[string, Partial<OfficialInput>]>)("asks nothing and is unknown for %s, whatever Claude would answer", async (_label, over) => {
+    const seen = messagesApi({});
+    expect(await requestOfficialCheck({ ANTHROPIC_API_KEY: "test" }, input(over))).toBe("unknown");
+    expect(seen.search).toHaveLength(0);
+    expect(seen.structured).toHaveLength(0);
+  });
+
+  it("does not take a mail that says it asks for no money as the answer: the words in it still stop the check", async () => {
+    const seen = messagesApi({});
+    const text = "このお知らせはお支払いやログインを求めません https://news.shop-name.example/";
+    expect(await requestOfficialCheck({ ANTHROPIC_API_KEY: "test" }, input({ text }))).toBe("unknown");
+    expect(seen.search).toHaveLength(0);
   });
 
   it("asks nothing and is unknown for a mail without links: the sender's domain alone does not lower it", async () => {
@@ -206,12 +253,21 @@ describe("the official check of a mail", () => {
 
 describe("the pieces of the official check", () => {
   it("reads only the exact shape", () => {
-    const shape = { official: "yes", official_domain: "x.example", injection_suspected: false, no_risky_request: true };
+    const shape = {
+      official: "yes",
+      official_domain: "x.example",
+      injection_suspected: false,
+      no_risky_request: true,
+      domain_mismatch_only: true,
+    };
     expect(readOfficialAnswer(shape)).toEqual(shape);
     expect(readOfficialAnswer({ official: "yes", official_domain: "x.example", injection_suspected: false })).toBeNull();
     expect(readOfficialAnswer({ ...shape, level: 3 })).toBeNull();
     expect(readOfficialAnswer({ ...shape, official: "safe" })).toBeNull();
     expect(readOfficialAnswer({ ...shape, no_risky_request: "true" })).toBeNull();
+    expect(readOfficialAnswer({ ...shape, domain_mismatch_only: 1 })).toBeNull();
+    const { domain_mismatch_only: _d, ...three } = shape;
+    expect(readOfficialAnswer(three)).toBeNull();
     expect(readOfficialAnswer("yes")).toBeNull();
     expect(readOfficialAnswer(null)).toBeNull();
   });
@@ -291,6 +347,7 @@ describe("the pieces of the official check", () => {
       "official_domain",
       "injection_suspected",
       "no_risky_request",
+      "domain_mismatch_only",
     ]);
     // Claude's reasons for level 2 go to the structured call only, as data inside <untrusted>.
     const content = structured.messages[0]?.content ?? "";
