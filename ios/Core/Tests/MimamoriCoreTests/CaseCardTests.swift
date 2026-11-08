@@ -124,6 +124,25 @@ struct CaseAPITests {
     #expect(transport.requests.first?.url?.path == "/cases/c-1/resolve")
     #expect(transport.requests.first?.httpMethod == "POST")
   }
+
+  @Test("解決したカードを消すのは DELETE /cases/{id} を鍵つきで送り、204 を受ける(#280)")
+  func removes() async throws {
+    let transport = StubTransport(status: 204, body: "")
+    try await client(transport).removeCase(caseId: "c-1")
+    let request = try #require(transport.requests.first)
+    #expect(request.httpMethod == "DELETE")
+    #expect(request.url?.path == "/cases/c-1")
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer dk_test_0123456789")
+    #expect(request.httpBody == nil)
+  }
+
+  @Test("解決していないカードは 409 で断られ、呼んだ側に伝わる")
+  func removeRefused() async throws {
+    let transport = StubTransport(status: 409, body: #"{"error":"case_not_resolved"}"#)
+    await #expect(throws: APIError.http(status: 409)) {
+      try await client(transport).removeCase(caseId: "c-1")
+    }
+  }
 }
 
 @Suite("家族のカード")
@@ -153,6 +172,14 @@ struct FamilyCardTests {
   func resolvedByUnknown() throws {
     let card = FamilyCard(try decodeCase(caseJSON(state: "resolved")))
     #expect(card.status == "家族が解決")
+  }
+
+  @Test("消せるのは解決したカードだけで、文字は「消す」の1語(#280)")
+  func removable() throws {
+    #expect(FamilyCard(try decodeCase(caseJSON(state: "resolved", resolvedBy: ("m-2", "妹")))).removable)
+    #expect(!FamilyCard(try decodeCase(caseJSON())).removable)
+    #expect(!FamilyCard(try decodeCase(caseJSON(state: "accepted"))).removable)
+    #expect(FamilyCard.removeTitle == "消す")
   }
 
   @Test("ボタンは電話すると解決の2つだけ")

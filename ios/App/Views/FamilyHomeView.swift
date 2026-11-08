@@ -10,12 +10,15 @@ struct FamilyHomeView: View {
   @State private var inviting = false
 
   var body: some View {
-    ScrollView {
+    Group {
       if model.protectedJoined {
+        // A List, not a ScrollView: swipeActions on a card (#280) only work on the rows of a List.
         JoinedSection()
       } else {
-        WaitingSection()
-          .containerRelativeFrame(.vertical)
+        ScrollView {
+          WaitingSection()
+            .containerRelativeFrame(.vertical)
+        }
       }
     }
     .refreshable {
@@ -96,12 +99,14 @@ private struct WaitingSection: View {
   }
 }
 
-/// After she joined: her smile today, the cards, everyone's smiles, and the hour.
+/// After she joined: her smile today, the cards, everyone's smiles, and the hour. Each is a row of a
+/// plain List drawn without separators or row backgrounds, so it looks as the stack it was; a List is
+/// what lets a resolved card be swiped to "消す" (#280).
 private struct JoinedSection: View {
   @Environment(AppModel.self) private var model
 
   var body: some View {
-    VStack(spacing: 20) {
+    List {
       if let today = model.smileBoard.todaysProtectedSmile(now: model.now) {
         VStack(spacing: 8) {
           SmilePhoto(smile: today)
@@ -110,18 +115,44 @@ private struct JoinedSection: View {
             .clipShape(RoundedRectangle(cornerRadius: 28))
           Text(today.displayName).font(.title3.bold())
         }
+        .frame(maxWidth: .infinity)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("今日の\(today.spokenLabel)")
+        .homeRow(top: 24)
       }
+      // The swipe's "消す" is also a VoiceOver action of the card: List lists swipe actions
+      // there itself, so a second accessibilityAction would read it twice (verifier, PR #284).
       ForEach(model.familyCards, id: \.item.id) { card in
         CaseCardView(card: card)
+          .homeRow()
+          .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            if card.removable {
+              Button(FamilyCard.removeTitle, role: .destructive) {
+                Task { await model.remove(card.item) }
+              }
+            }
+          }
       }
       if !model.smileBoard.photos.isEmpty {
         SmileStrip()
+          .homeRow()
       }
       DeadlineMenu()
+        .frame(maxWidth: .infinity)
+        .homeRow(bottom: 24)
     }
-    .padding(24)
+    .listStyle(.plain)
+    .scrollContentBackground(.hidden)
+  }
+}
+
+extension View {
+  /// A row of the family's home drawn as part of a stack: 24 at the sides, 20 between rows, no
+  /// separator and no row background.
+  fileprivate func homeRow(top: CGFloat = 10, bottom: CGFloat = 10) -> some View {
+    listRowInsets(EdgeInsets(top: top, leading: 24, bottom: bottom, trailing: 24))
+      .listRowSeparator(.hidden)
+      .listRowBackground(Color.clear)
   }
 }
 
