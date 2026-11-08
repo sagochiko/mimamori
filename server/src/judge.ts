@@ -35,7 +35,14 @@ import {
   type Level,
   type MailAuth,
 } from "./claude";
-import { linkHosts, OFFICIAL_CALLS, requestOfficialCheck, type OfficialInput, type OfficialResult } from "./mail-official";
+import {
+  linkHosts,
+  OFFICIAL_CALLS,
+  officialCheckable,
+  requestOfficialCheck,
+  type OfficialInput,
+  type OfficialResult,
+} from "./mail-official";
 import { sendPush, type PushPayload } from "./push";
 import { dedupeDigest } from "./secretbox";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
@@ -523,27 +530,42 @@ async function judgeOne(
   // A mail only Claude put at level 2 (the rules decided nothing, no sign of text aimed at the judge) and
   // whose sender passed DMARC is checked against the official domain of the company it names before
   // the family is told (2026-11-08, src/mail-official.ts). Only "yes" makes it level 3, which tells no
-  // one and leaves no row, as any level 3 mail. Without the outside calls for the check, or past the
-  // family's calls for the day, it is told about at level 2 as before.
+  // one and leaves no row, as any level 3 mail. A mail without links is not checked (officialCheckable).
+  // Without the outside calls for the check, or past the family's calls for the day, it is told about at
+  // level 2 as before. The family's day is asked first, so a check that cannot run takes nothing from
+  // the batch (the review of PR #277).
+  const official: OfficialInput | null =
+    job.source === "gmail" && mailAuth?.dmarc === "pass" && mailAuth.from !== undefined && claude !== null
+      ? {
+          fromDomain: mailAuth.from.toLowerCase(),
+          hosts: linkHosts(job.payload.url, job.payload.text ?? ""),
+          text: job.payload.text ?? "",
+          reasons: claude.reasons,
+        }
+      : null;
   if (
     deps.verifyOfficial &&
-    job.source === "gmail" &&
+    official !== null &&
     rule.level === null &&
-    claude !== null &&
     level === 2 &&
     !steered &&
-    mailAuth?.dmarc === "pass" &&
-    mailAuth.from !== undefined &&
-    budget.remaining >= OFFICIAL_CALLS + members.length
+    officialCheckable(official) &&
+    budget.remaining >= OFFICIAL_CALLS + members.length &&
+    (await takeClaudeCall(env, job.familyId, deps.now()))
   ) {
     budget.takeMany(OFFICIAL_CALLS);
+    // The first call's share of the day is taken above; the second asks again.
+    let first = true;
+    const takeCall = async () => {
+      if (first) {
+        first = false;
+        return true;
+      }
+      return takeClaudeCall(env, job.familyId, deps.now());
+    };
     let result: OfficialResult = "unknown";
     try {
-      result = await deps.verifyOfficial(
-        env,
-        { fromDomain: mailAuth.from.toLowerCase(), hosts: linkHosts(job.payload.url, job.payload.text ?? ""), text: job.payload.text ?? "" },
-        () => takeClaudeCall(env, job.familyId, deps.now()),
-      );
+      result = await deps.verifyOfficial(env, official, takeCall);
     } catch {
       result = "unknown";
     }
