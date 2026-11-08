@@ -35,6 +35,7 @@ import {
   type Level,
   type MailAuth,
 } from "./claude";
+import { linkHosts, OFFICIAL_CALLS, requestOfficialCheck, type OfficialInput, type OfficialResult } from "./mail-official";
 import { sendPush, type PushPayload } from "./push";
 import { dedupeDigest } from "./secretbox";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
@@ -75,6 +76,12 @@ export interface JudgeDeps {
   investigate?(env: Env, alertId: string, input: ResearchInput, budget: ExternalBudget): Promise<boolean>;
   /** Starts the family's summary of a consultation (#271). Left out, none is started. */
   summarize?(env: Env, alertId: string, input: SummaryInput, budget: ExternalBudget): Promise<boolean>;
+  /**
+   * The check after the mail judgment (2026-11-08, src/mail-official.ts). takeCall is called before each
+   * Claude call and says whether the family's day still has one. Left out, no mail is checked; the
+   * tests' fakes leave it out so they never reach the Messages API.
+   */
+  verifyOfficial?(env: Env, input: OfficialInput, takeCall: () => Promise<boolean>): Promise<OfficialResult>;
 }
 
 export const defaultJudgeDeps: JudgeDeps = {
@@ -84,6 +91,7 @@ export const defaultJudgeDeps: JudgeDeps = {
   now: () => Date.now(),
   investigate: (env, alertId, input, budget) => startInvestigation(env, alertId, input, budget),
   summarize: (env, alertId, input, budget) => startConsultSummary(env, alertId, input, budget),
+  verifyOfficial: (env, input, takeCall) => requestOfficialCheck(env, input, takeCall),
 };
 
 /**
@@ -512,6 +520,37 @@ async function judgeOne(
     return "wait";
   }
   const steered = rule.reasons.includes(INJECTION.reason) || (claude?.injection_suspected ?? false);
+  // A mail only Claude put at level 2 (the rules decided nothing, no sign of text aimed at the judge) and
+  // whose sender passed DMARC is checked against the official domain of the company it names before
+  // the family is told (2026-11-08, src/mail-official.ts). Only "yes" makes it level 3, which tells no
+  // one and leaves no row, as any level 3 mail. Without the outside calls for the check, or past the
+  // family's calls for the day, it is told about at level 2 as before.
+  if (
+    deps.verifyOfficial &&
+    job.source === "gmail" &&
+    rule.level === null &&
+    claude !== null &&
+    level === 2 &&
+    !steered &&
+    mailAuth?.dmarc === "pass" &&
+    mailAuth.from !== undefined &&
+    budget.remaining >= OFFICIAL_CALLS + members.length
+  ) {
+    budget.takeMany(OFFICIAL_CALLS);
+    let result: OfficialResult = "unknown";
+    try {
+      result = await deps.verifyOfficial(
+        env,
+        { fromDomain: mailAuth.from.toLowerCase(), hosts: linkHosts(job.payload.url, job.payload.text ?? ""), text: job.payload.text ?? "" },
+        () => takeClaudeCall(env, job.familyId, deps.now()),
+      );
+    } catch {
+      result = "unknown";
+    }
+    // The route and the result only: no address, domain, text, or family.
+    console.log("mail official check", job.source, result);
+    if (result === "yes") return "done";
+  }
   const reasons = cardReasons(job, rule, decision.reasons, steered);
 
   const now = deps.now();
