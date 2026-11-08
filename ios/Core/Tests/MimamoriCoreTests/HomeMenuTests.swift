@@ -4,9 +4,9 @@ import Testing
 
 @Suite("ホームのメニュー")
 struct HomeMenuTests {
-  @Test("家族の画面には「この iPhone を外す」と「家族を削除」が並ぶ")
+  @Test("家族の画面には設定(#282)、「この iPhone を外す」、「家族を削除」が並ぶ")
   func familyCanLeave() {
-    #expect(HomeMenuItem.items(for: .familyHome) == [.leaveDevice, .deleteFamily])
+    #expect(HomeMenuItem.items(for: .familyHome) == [.settings, .leaveDevice, .deleteFamily])
   }
 
   @Test("見守られる人の画面には「この iPhone を外す」を出さない(設定と「家族を削除」だけ)")

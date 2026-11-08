@@ -110,6 +110,44 @@ struct SmileAPITests {
     #expect(hour == 11)
   }
 
+  @Test("自分の笑顔の知らせの設定を GET /members/me/settings で読む")
+  func readSettings() async throws {
+    let transport = StubTransport(status: 200, body: #"{"smileNotify":false,"smileMissedNotify":true}"#)
+    let settings = try await client(transport).memberSettings()
+    let request = try #require(transport.requests.first)
+    #expect(request.httpMethod == "GET")
+    #expect(request.url?.path == "/members/me/settings")
+    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer dk_test_0123456789")
+    #expect(settings == MemberSettings(smileNotify: false, smileMissedNotify: true))
+  }
+
+  @Test("PUT /members/me/settings には切り替えたキーだけを送り、裏側の答えを返す")
+  func writeSettings() async throws {
+    let transport = StubTransport(status: 200, body: #"{"smileNotify":true,"smileMissedNotify":false}"#)
+    let saved = try await client(transport).setMemberSettings(.smileMissedNotify(false))
+    let request = try #require(transport.requests.first)
+    #expect(request.httpMethod == "PUT")
+    #expect(request.url?.path == "/members/me/settings")
+    let body = try bodyJSON(request)
+    #expect(body["smileMissedNotify"] as? Bool == false)
+    // The other switch is left out, so a screen that could not read it never writes its default.
+    #expect(body["smileNotify"] == nil)
+    #expect(body.count == 1)
+    #expect(saved == MemberSettings(smileNotify: true, smileMissedNotify: false))
+  }
+
+  @Test("切り替えを今の設定に当てると、そのキーだけが変わる")
+  func applyChange() {
+    let now = MemberSettings(smileNotify: true, smileMissedNotify: true)
+    #expect(MemberSettingsChange.smileNotify(false).applied(to: now) == MemberSettings(smileNotify: false, smileMissedNotify: true))
+    #expect(MemberSettingsChange.smileMissedNotify(false).applied(to: now) == MemberSettings(smileNotify: true, smileMissedNotify: false))
+  }
+
+  @Test("設定の既定は2つともオン")
+  func settingsDefault() {
+    #expect(MemberSettings() == MemberSettings(smileNotify: true, smileMissedNotify: true))
+  }
+
   @Test("今日の母の笑顔は、その日に母が撮った写真のうち一番新しいもの")
   func todaysProtected() throws {
     let tokyo = try #require(TimeZone(identifier: "Asia/Tokyo"))

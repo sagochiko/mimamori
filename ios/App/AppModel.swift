@@ -41,6 +41,11 @@ final class AppModel {
   private(set) var checkupPrompt: String?
   /// Everyone's smiles and replies (`GET /smiles`), newest first, with the hour her smile is expected by.
   private(set) var smileBoard = SmileBoard()
+  /// This family member's two smile notices (`GET /members/me/settings`, #282). Both on until read.
+  private(set) var memberSettings = MemberSettings()
+  /// Counts reads and writes of `memberSettings`, so an answer that comes back after a newer switch
+  /// was turned is dropped instead of turning the switch back (review 1 of PR #286).
+  @ObservationIgnored private var memberSettingsTurn = 0
   /// Whether the protected member has joined, as this family iPhone can tell from the smiles and
   /// cases (#244). Before, the family screen shows only "招待".
   private(set) var protectedJoined: Bool
@@ -301,6 +306,31 @@ final class AppModel {
       let saved = try await session.setSmileDeadline(hour: hour)
       self?.smileBoard.deadlineHour = saved
     }
+  }
+
+  /// The family's settings screen reads what the server has; quiet on failure (the switches stay).
+  func loadMemberSettings() async {
+    guard route == .familyHome else { return }
+    memberSettingsTurn += 1
+    let turn = memberSettingsTurn
+    guard let fresh = try? await session.memberSettings(), turn == memberSettingsTurn else { return }
+    memberSettings = fresh
+  }
+
+  /// Shows the switch at once and sends only that key, then keeps what the server stored, unless a
+  /// newer switch was turned meanwhile. A failed write reads both back, if it is still the newest.
+  func setMemberSettings(_ change: MemberSettingsChange) async {
+    memberSettings = change.applied(to: memberSettings)
+    memberSettingsTurn += 1
+    let turn = memberSettingsTurn
+    var saved = false
+    await run(joining: false) { [weak self] session in
+      let stored = try await session.setMemberSettings(change)
+      saved = true
+      guard let self, turn == self.memberSettingsTurn else { return }
+      self.memberSettings = stored
+    }
+    if !saved, turn == memberSettingsTurn { await loadMemberSettings() }
   }
 
   // MARK: Gmail

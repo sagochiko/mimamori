@@ -242,6 +242,20 @@ describe("fake police consultation", () => {
     expect(pushes).toHaveLength(2);
   });
 
+  it("still reaches a family member who turned both smile notices off (#282)", async () => {
+    const fam = await setupFamily();
+    for (const m of [fam.owner, fam.sister]) {
+      const res = await call("PUT", "/members/me/settings", {
+        deviceKey: m.deviceKey,
+        body: { smileNotify: false, smileMissedNotify: false },
+      });
+      expect(res.status).toBe(200);
+    }
+    await consult(consultEnv, motherOf(fam), POLICE, new ExternalBudget(), fakes(scam()));
+    expect(familyPushes(fam).map((p) => p.token).sort()).toEqual([...fam.familyTokens].sort());
+    expect(familyPushes(fam)[0]?.title).toBe("危ない");
+  });
+
   // She is waiting with the phone in her hand, and closing the app would cut the request before the
   // family is told: the script in her own words is answered by the rules, without waiting for Claude.
   it.each([
