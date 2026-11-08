@@ -342,7 +342,7 @@ export async function startInvestigation(
 
 /** Bump when the prompt or the tool changes: a new name makes a new agent. */
 export const CONSULT_SUMMARY_AGENT_NAME = "consult-summary-agent-v1";
-/** Picking two keys takes one turn; the same ceiling as the research is more than enough. */
+/** US cents. Picking two keys takes one turn with no tools, so a lower ceiling than the research's. */
 const SUMMARY_BUDGET_CENTS = "20";
 
 const SUMMARY_SYSTEM = `あなたは、離れて住む母の iPhone のスマホ相談について、家族への要約の選択肢を選ぶ係です。
