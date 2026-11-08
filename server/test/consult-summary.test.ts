@@ -2,9 +2,11 @@
 // Agents is mocked with msw; nothing reaches Anthropic. What is checked: the session gets the level,
 // the reasons, and the line the family already has, never her words; only a topic and a next step from
 // our own lists come back, and anything else adds nothing; level 1 always reads "すぐ電話して確かめる";
-// GET /cases carries the fixed line only; a consultation starts one only when the family was told of
-// a sign at level 1 or 2, within the family's research starts for the day.
+// GET /cases carries the fixed line only; a consultation queues one only when the family was told of
+// a sign at level 1 or 2, and the judge queue's consumer starts it within the family's research starts
+// for the day (review 2 of PR #275: ctx.waitUntil is cut 30 s after the answer).
 
+import { createExecutionContext, createMessageBatch, getQueueResult } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -13,12 +15,14 @@ import {
   CONSULT_SUMMARY_AGENT_NAME,
   RESEARCH_ENVIRONMENT_NAME,
   startConsultSummary,
+  type SummaryInput,
   watchInvestigations,
 } from "../src/agents";
 import { ExternalBudget } from "../src/budget";
 import { RESEARCH_STARTS_PER_FAMILY_DAY } from "../src/claude-limit";
 import { consult, type ClaudeConsult, type ConsultDeps } from "../src/consult";
 import { parseSummary, SUMMARY_STEPS, SUMMARY_TOPICS, summaryLine } from "../src/consult-summary";
+import { enqueueConsultSummary, handleJudgeBatch, type JudgeDeps } from "../src/judge";
 import { judgeByRules } from "../src/rules";
 import { soundsSafe } from "../src/claude";
 import { jstDate } from "../src/time";
@@ -323,23 +327,59 @@ describe("a consultation starts the summary", () => {
     return { owner, member: { id: m.memberId, familyId: owner.familyId, role: "protected", displayName: "母" } };
   }
 
-  function deps(claude: ClaudeConsult | null): ConsultDeps & { started: string[]; later: Array<Promise<unknown>> } {
+  /** A queue that keeps what was sent, as the other route tests use. */
+  function fakeQueue(): { sent: unknown[]; queueEnv: Env } {
+    const sent: unknown[] = [];
+    const queue = { send: async (body: unknown) => void sent.push(body) } as unknown as Queue;
+    return { sent, queueEnv: { ...env, JUDGE_QUEUE: queue } as Env };
+  }
+
+  function deps(
+    claude: ClaudeConsult | null,
+    queueEnv?: Env,
+  ): ConsultDeps & { started: Array<{ familyId: string; alertId: string }>; later: Array<Promise<unknown>> } {
     const d = {
-      started: [] as string[],
+      started: [] as Array<{ familyId: string; alertId: string }>,
       later: [] as Array<Promise<unknown>>,
       judgeByRules,
       askClaude: async () => claude,
       openCase: async (e: Env, alertId: string, budget: ExternalBudget) => (await import("../src/cases")).openCase(e, alertId, budget),
       now: () => T0,
-      summarize: async (_e: Env, alertId: string) => {
-        d.started.push(alertId);
-        return true;
+      summarize: async (e: Env, familyId: string, alertId: string) => {
+        d.started.push({ familyId, alertId });
+        // The real enqueue, into the fake queue, when one is given.
+        if (queueEnv) await enqueueConsultSummary(queueEnv, familyId, alertId);
       },
       defer: (task: Promise<unknown>) => {
         d.later.push(task);
       },
     };
     return d;
+  }
+
+  /** The consumer's side: the real startConsultSummary behind a recorder of what it was given. */
+  function judgeDeps(): JudgeDeps & { inputs: SummaryInput[] } {
+    const d = {
+      inputs: [] as SummaryInput[],
+      judgeByRules,
+      askClaude: async () => null,
+      openCase: async () => undefined,
+      now: () => T0,
+      summarize: async (e: Env, alertId: string, input: SummaryInput, budget: ExternalBudget) => {
+        d.inputs.push(input);
+        return startConsultSummary(e, alertId, input, budget, T0);
+      },
+    };
+    return d;
+  }
+
+  async function consume(bodies: unknown[], d: JudgeDeps) {
+    const batch = createMessageBatch<unknown>(
+      "mimamori-judge",
+      bodies.map((body, i) => ({ id: `msg-${i}-${crypto.randomUUID()}`, timestamp: new Date(T0), attempts: 1, body })),
+    );
+    await handleJudgeBatch(batch, env, d);
+    return getQueueResult(batch, createExecutionContext());
   }
 
   const help: ClaudeConsult = {
@@ -353,20 +393,52 @@ describe("a consultation starts the summary", () => {
     topic: "ストレージの空きの相談",
   };
 
-  it("starts one, after the answer, for the fake-police script at level 1", async () => {
+  // Stretches of POLICE that only her words carry. The rules' fixed reasons share words with her
+  // ("潔白を証明させる話がある", "ビデオ通話や LINE に誘われている") and may go; these runs of hers may not.
+  const HERS = ["さっき警察から電話", "LINE のビデオ通話", "潔白を証明するため", "事情聴取", "安全な口座に移す", "ほかの人には言わないで"];
+
+  it("queues one, after the answer, for the fake-police script at level 1", async () => {
     const { member } = await mother();
-    const d = deps(null);
+    const { sent, queueEnv } = fakeQueue();
+    const d = deps(null, queueEnv);
     await consult(env, member, POLICE, new ExternalBudget(), d);
     await Promise.all(d.later);
     const alert = await env.DB.prepare("SELECT id, level FROM alerts WHERE family_id = ?")
       .bind(member.familyId)
       .first<{ id: string; level: number }>();
     expect(alert?.level).toBe(1);
-    expect(d.started).toEqual([alert?.id]);
+    expect(d.started).toEqual([{ familyId: member.familyId, alertId: alert?.id }]);
     expect(d.later).toHaveLength(1);
+    expect(sent).toEqual([{ kind: "consult_summary", familyId: member.familyId, alertId: alert?.id }]);
   });
 
-  it("starts none for level 3, for a topic the AI only hands to the family, or when the AI could not answer", async () => {
+  it("never sends her words: not on the queue, not to the summary, not in the session", async () => {
+    mockApi();
+    const { member } = await mother();
+    const { sent, queueEnv } = fakeQueue();
+    const d = deps(null, queueEnv);
+    await consult(env, member, POLICE, new ExternalBudget(), d);
+    await Promise.all(d.later);
+    expect(sent).toHaveLength(1);
+
+    const j = judgeDeps();
+    const result = await consume(sent, j);
+    expect(result.explicitAcks).toHaveLength(1);
+    expect(j.inputs).toHaveLength(1);
+    expect(j.inputs[0]?.level).toBe(1);
+    expect(seen.sessions).toHaveLength(1);
+    const session = JSON.stringify(seen.sessions[0]?.body);
+    // The checks below would pass on an empty body; the level shows the message is really there.
+    expect(session).toContain("1段階");
+    for (const words of HERS) {
+      expect(POLICE).toContain(words);
+      expect(JSON.stringify(sent), words).not.toContain(words);
+      expect(JSON.stringify(j.inputs), words).not.toContain(words);
+      expect(session, words).not.toContain(words);
+    }
+  });
+
+  it("queues none for level 3, for a topic the AI only hands to the family, or when the AI could not answer", async () => {
     const { member } = await mother();
     const d = deps(help);
     await consult(env, member, "iPhone の空きを作りたい", new ExternalBudget(), d);
@@ -379,13 +451,39 @@ describe("a consultation starts the summary", () => {
   });
 
   it("starts none past the family's research starts for the day", async () => {
-    const { member } = await mother();
+    mockApi();
+    const family = await createFamily();
+    const alertId = await seedConsult(family);
     await env.DB.prepare("INSERT INTO claude_daily (family_id, day, claude_calls, research_starts) VALUES (?, ?, 0, ?)")
-      .bind(member.familyId, jstDate(T0), RESEARCH_STARTS_PER_FAMILY_DAY)
+      .bind(family.familyId, jstDate(T0), RESEARCH_STARTS_PER_FAMILY_DAY)
       .run();
-    const d = deps(null);
-    await consult(env, member, POLICE, new ExternalBudget(), d);
-    await Promise.all(d.later);
-    expect(d.started).toEqual([]);
+    const j = judgeDeps();
+    const result = await consume([{ kind: "consult_summary", familyId: family.familyId, alertId }], j);
+    expect(result.explicitAcks).toHaveLength(1);
+    expect(j.inputs).toEqual([]);
+    expect(seen.sessions).toEqual([]);
+  });
+
+  it("takes only its own family's consultation, and a message of another shape starts nothing", async () => {
+    mockApi();
+    const family = await createFamily();
+    const other = await createFamily();
+    const alertId = await seedConsult(family);
+    const sms = await seedConsult(family, { source: "sms" });
+    const j = judgeDeps();
+    await consume(
+      [
+        { kind: "consult_summary", familyId: other.familyId, alertId },
+        { kind: "consult_summary", familyId: family.familyId, alertId: sms },
+        { kind: "consult_summary", familyId: family.familyId },
+        { kind: "consult_summary", familyId: family.familyId, alertId, text: POLICE },
+      ],
+      j,
+    );
+    expect(seen.sessions).toEqual([]);
+    const result = await consume([{ kind: "consult_summary", familyId: family.familyId, alertId }], j);
+    expect(result.explicitAcks).toHaveLength(1);
+    expect(seen.sessions).toHaveLength(1);
+    expect(j.inputs).toEqual([{ level: 2, reasons: REASONS, summary: "警察を名乗る電話の相談" }]);
   });
 });

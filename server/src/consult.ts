@@ -45,8 +45,7 @@
 import { requireMember, type Member } from "./auth";
 import { ExternalBudget } from "./budget";
 import { CaseNoticeDeferred, NOT_REACHED, openCase, recordAiReply, tellFamilyHeavier } from "./cases";
-import { startConsultSummary, type SummaryInput } from "./agents";
-import { takeClaudeCall, takeResearchStart } from "./claude-limit";
+import { takeClaudeCall } from "./claude-limit";
 import {
   allOf,
   chars,
@@ -76,6 +75,7 @@ import {
   TOLD_FAMILY,
 } from "./consult-judge";
 import { HttpError, json, readJson } from "./http";
+import { enqueueConsultSummary } from "./judge";
 import { judgeByRules, type RuleInput, type RuleResult } from "./rules";
 import { carriesContact, repeats } from "./summary";
 
@@ -135,8 +135,11 @@ export interface ConsultDeps {
   ): Promise<ClaudeConsult | null>;
   openCase(env: Env, alertId: string, budget: ExternalBudget): Promise<unknown>;
   now(): number;
-  /** Starts the family's summary of the case (#271); absent, none is started. */
-  summarize?(env: Env, alertId: string, input: SummaryInput, budget: ExternalBudget): Promise<boolean>;
+  /**
+   * Puts the family's summary of the case on the judge queue (#271), with the ids alone; absent, none is
+   * queued. The consumer starts the session (src/judge.ts, enqueueConsultSummary).
+   */
+  summarize?(env: Env, familyId: string, alertId: string): Promise<void>;
   /** Runs a task after her answer has gone back (ctx.waitUntil); absent, the task is awaited. */
   defer?(task: Promise<unknown>): void;
   /**
@@ -152,7 +155,7 @@ export const defaultConsultDeps: ConsultDeps = {
     requestClaudeConsult(env, text, rule, history, undefined, image, findings),
   openCase,
   now: () => Date.now(),
-  summarize: (env, alertId, input, budget) => startConsultSummary(env, alertId, input, budget),
+  summarize: (env, familyId, alertId) => enqueueConsultSummary(env, familyId, alertId),
   searchAnswer: (env, text, query, timeoutMs) => requestSearchAnswer(env, text, query, timeoutMs),
 };
 
@@ -381,9 +384,11 @@ export async function consult(
   }
   // The family's summary (#271): only for a sign of a scam the family was told of at level 1 or 2. A
   // topic the AI only hands over, and a question it could not answer, have no sign. It runs after her
-  // answer, since starting a session can take seconds she should not wait.
-  if (caseId !== null && alertId !== null && p.toFamily && p.sign && !p.unguided && p.level <= 2) {
-    const task = startSummary(env, member.familyId, alertId, budget, deps);
+  // answer. Only the ids go on the queue; the consumer reads the card's level, reasons, and line.
+  if (caseId !== null && alertId !== null && p.toFamily && p.sign && !p.unguided && p.level <= 2 && deps.summarize) {
+    const task = deps.summarize(env, member.familyId, alertId).catch((error: unknown) => {
+      console.error("consult summary not queued", error instanceof Error ? error.name : typeof error);
+    });
     if (deps.defer) deps.defer(task);
     else await task;
   }
@@ -392,39 +397,6 @@ export async function consult(
   if (caseId !== null) await recordAiReply(env, caseId, repeats(reply, allOf(said)) ? AI_REPLY_ON_CARD : reply);
   logTrace(p, ms);
   return answer(reply, p.toFamily, tapOn(image, p.tap));
-}
-
-/**
- * Starts the summary with what the family's card carries now (the level, the reasons, the line), never
- * her words, within the family's Managed Agents starts for the day (src/claude-limit.ts). Never throws.
- */
-async function startSummary(
-  env: Env,
-  familyId: string,
-  alertId: string,
-  budget: ExternalBudget,
-  deps: ConsultDeps,
-): Promise<void> {
-  try {
-    if (deps.summarize === undefined) return;
-    const row = await env.DB.prepare(
-      "SELECT level, reasons, summary FROM alerts WHERE id = ? AND investigation_session_id IS NULL AND investigated_at IS NULL",
-    )
-      .bind(alertId)
-      .first<{ level: number; reasons: string | null; summary: string | null }>();
-    if (!row || (row.level !== 1 && row.level !== 2)) return;
-    if (!(await takeResearchStart(env, familyId, deps.now()))) return;
-    let reasons: string[] = [];
-    try {
-      const parsed: unknown = JSON.parse(row.reasons ?? "[]");
-      if (Array.isArray(parsed)) reasons = parsed.filter((r): r is string => typeof r === "string");
-    } catch {
-      reasons = [];
-    }
-    await deps.summarize(env, alertId, { level: row.level, reasons, summary: row.summary ?? "" }, budget);
-  } catch (error) {
-    console.error("consult summary failed", error instanceof Error ? error.name : typeof error);
-  }
 }
 
 // The fixed lines her answer may be, by name, for the log line.
