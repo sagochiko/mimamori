@@ -28,7 +28,8 @@ CLAUDE.local.md
 .claude/skills/modernize-tests/
 
 # eval: the holdout set and the unsplit pool stayed out of git (and out of grep) until the final
-# measurement on 2026-11-07 (PR #263); /mm-endgame published them after that run.
+# measurement on 2026-11-07 (PR #263); /mm-endgame published the holdout after that run. The pool
+# was already empty after the split, so only its .gitkeep is tracked.
 eval/out/
 
 # build output
