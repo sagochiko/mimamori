@@ -66,6 +66,33 @@ public struct MemberSettings: Codable, Hashable, Sendable {
   }
 }
 
+/// One switch turned on the settings screen. `PUT /members/me/settings` carries only this key, so a
+/// screen that could not read the other one (and shows its default) never writes that default over
+/// what the member chose (review 1 of PR #286).
+public enum MemberSettingsChange: Hashable, Sendable, Encodable {
+  case smileNotify(Bool)
+  case smileMissedNotify(Bool)
+
+  public func applied(to settings: MemberSettings) -> MemberSettings {
+    var next = settings
+    switch self {
+    case .smileNotify(let on): next.smileNotify = on
+    case .smileMissedNotify(let on): next.smileMissedNotify = on
+    }
+    return next
+  }
+
+  private enum CodingKeys: String, CodingKey { case smileNotify, smileMissedNotify }
+
+  public func encode(to encoder: any Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    switch self {
+    case .smileNotify(let on): try container.encode(on, forKey: .smileNotify)
+    case .smileMissedNotify(let on): try container.encode(on, forKey: .smileMissedNotify)
+    }
+  }
+}
+
 /// `GET /smiles`: the family's last week, newest first, and the hour (JST) by which the protected
 /// member's smile is expected.
 public struct SmileBoard: Codable, Hashable, Sendable {

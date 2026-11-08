@@ -130,10 +130,10 @@ public final class APIClient: Sendable {
     try await send("GET", "members/me/settings", body: Empty?.none, auth: true)
   }
 
-  /// `PUT /members/me/settings`. Sends both switches; the answer is what the server stored.
+  /// `PUT /members/me/settings`. Sends only the switch that was turned; the answer is both, as stored.
   @discardableResult
-  public func setMemberSettings(_ settings: MemberSettings) async throws -> MemberSettings {
-    try await send("PUT", "members/me/settings", body: settings, auth: true)
+  public func setMemberSettings(_ change: MemberSettingsChange) async throws -> MemberSettings {
+    try await send("PUT", "members/me/settings", body: change, auth: true)
   }
 
   /// `POST /heartbeat`. Only the protected member's iPhone calls it; the body is `HeartbeatReport`.

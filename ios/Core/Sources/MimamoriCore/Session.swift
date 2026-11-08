@@ -115,8 +115,8 @@ public final class Session {
   }
 
   @discardableResult
-  public func setMemberSettings(_ settings: MemberSettings) async throws -> MemberSettings {
-    try await call { try await $0.setMemberSettings(settings) }
+  public func setMemberSettings(_ change: MemberSettingsChange) async throws -> MemberSettings {
+    try await call { try await $0.setMemberSettings(change) }
   }
 
   public func gmailConnect() async throws -> GmailGrant? {

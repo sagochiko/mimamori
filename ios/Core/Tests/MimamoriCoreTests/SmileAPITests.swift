@@ -121,18 +121,26 @@ struct SmileAPITests {
     #expect(settings == MemberSettings(smileNotify: false, smileMissedNotify: true))
   }
 
-  @Test("設定を PUT /members/me/settings に2つとも送り、裏側の答えを返す")
+  @Test("PUT /members/me/settings には切り替えたキーだけを送り、裏側の答えを返す")
   func writeSettings() async throws {
     let transport = StubTransport(status: 200, body: #"{"smileNotify":true,"smileMissedNotify":false}"#)
-    let saved = try await client(transport).setMemberSettings(
-      MemberSettings(smileNotify: true, smileMissedNotify: false))
+    let saved = try await client(transport).setMemberSettings(.smileMissedNotify(false))
     let request = try #require(transport.requests.first)
     #expect(request.httpMethod == "PUT")
     #expect(request.url?.path == "/members/me/settings")
     let body = try bodyJSON(request)
-    #expect(body["smileNotify"] as? Bool == true)
     #expect(body["smileMissedNotify"] as? Bool == false)
+    // The other switch is left out, so a screen that could not read it never writes its default.
+    #expect(body["smileNotify"] == nil)
+    #expect(body.count == 1)
     #expect(saved == MemberSettings(smileNotify: true, smileMissedNotify: false))
+  }
+
+  @Test("切り替えを今の設定に当てると、そのキーだけが変わる")
+  func applyChange() {
+    let now = MemberSettings(smileNotify: true, smileMissedNotify: true)
+    #expect(MemberSettingsChange.smileNotify(false).applied(to: now) == MemberSettings(smileNotify: false, smileMissedNotify: true))
+    #expect(MemberSettingsChange.smileMissedNotify(false).applied(to: now) == MemberSettings(smileNotify: true, smileMissedNotify: false))
   }
 
   @Test("設定の既定は2つともオン")

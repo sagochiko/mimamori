@@ -19,7 +19,7 @@ struct FamilySettingsView: View {
             "笑顔が届いたとき",
             isOn: Binding(
               get: { settings.smileNotify },
-              set: { on in update { $0.smileNotify = on } })
+              set: { on in Task { await model.setMemberSettings(.smileNotify(on)) } })
           )
           .accessibilityHint("オンにすると、家族の誰かが笑顔を送ったときに、音を鳴らさない通知で知らせます")
         }
@@ -28,19 +28,21 @@ struct FamilySettingsView: View {
             "笑顔が届かないとき",
             isOn: Binding(
               get: { settings.smileMissedNotify },
-              set: { on in update { $0.smileMissedNotify = on } })
+              set: { on in Task { await model.setMemberSettings(.smileMissedNotify(on)) } })
           )
           .accessibilityHint("オンにすると、下の時刻までに見守られる人のその日の笑顔が届かなければ、1日1回そっと知らせます")
+          // The name is read once, from the label itself, and the hour as the picker's value
+          // (review 1 of PR #286: a second label on the picker was read after "時刻").
           Picker(
-            "時刻",
             selection: Binding(
               get: { model.smileBoard.deadlineHour },
               set: { new in Task { await model.setSmileDeadline(new) } })
           ) {
             ForEach(Array(SmileBoard.deadlineHours), id: \.self) { Text("\($0)時").tag($0) }
+          } label: {
+            Text("時刻").accessibilityLabel("笑顔を待つ時刻")
           }
           .disabled(!settings.smileMissedNotify)
-          .accessibilityLabel("笑顔を待つ時刻、\(model.smileBoard.deadlineHour)時")
           .accessibilityHint("見守られる人の笑顔をこの時刻まで待ちます。家族みんなで1つの時刻です")
         }
       }
@@ -53,11 +55,5 @@ struct FamilySettingsView: View {
       }
     }
     .task { await model.loadMemberSettings() }
-  }
-
-  private func update(_ change: (inout MemberSettings) -> Void) {
-    var next = model.memberSettings
-    change(&next)
-    Task { await model.setMemberSettings(next) }
   }
 }
