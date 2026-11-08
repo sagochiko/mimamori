@@ -120,6 +120,8 @@ private struct JoinedSection: View {
         .accessibilityLabel("今日の\(today.spokenLabel)")
         .homeRow(top: 24)
       }
+      // The swipe's "消す" is also a VoiceOver action of the card: List lists swipe actions
+      // there itself, so a second accessibilityAction would read it twice (verifier, PR #284).
       ForEach(model.familyCards, id: \.item.id) { card in
         CaseCardView(card: card)
           .homeRow()
@@ -128,10 +130,8 @@ private struct JoinedSection: View {
               Button(FamilyCard.removeTitle, role: .destructive) {
                 Task { await model.remove(card.item) }
               }
-              .accessibilityLabel("このカードを消す")
             }
           }
-          .modifier(RemoveAction(card: card))
       }
       if !model.smileBoard.photos.isEmpty {
         SmileStrip()
@@ -143,22 +143,6 @@ private struct JoinedSection: View {
     }
     .listStyle(.plain)
     .scrollContentBackground(.hidden)
-  }
-}
-
-/// The swipe's "消す" for VoiceOver and other assistive input, only on a resolved card (#280).
-private struct RemoveAction: ViewModifier {
-  @Environment(AppModel.self) private var model
-  let card: FamilyCard
-
-  func body(content: Content) -> some View {
-    if card.removable {
-      content.accessibilityAction(named: FamilyCard.removeTitle) {
-        Task { await model.remove(card.item) }
-      }
-    } else {
-      content
-    }
   }
 }
 
