@@ -743,6 +743,19 @@ describe("DELETE /cases/{id} (#280)", () => {
     expect(await listed(f.author)).not.toContain(caseId);
   });
 
+  it("an AI answer recorded after the card was removed (a consultation still running) is not written back", async () => {
+    const f = await family();
+    const caseId = (await open(await newAlert(f.familyId)))?.id ?? "";
+    await resolveCase(pushEnv, caseId, f.sister.memberId);
+    expect((await call("DELETE", `/cases/${caseId}`, { deviceKey: f.author.deviceKey, env: pushEnv })).status).toBe(
+      204,
+    );
+
+    await recordAiReply(pushEnv, caseId, "警察は電話でお金の話をしません");
+
+    expect((await caseRow(caseId))?.ai_reply ?? null).toBeNull();
+  });
+
   it("refuses a card that is not resolved, including one left in the old 'accepted' state", async () => {
     const f = await family();
     const open1 = (await open(await newAlert(f.familyId)))?.id ?? "";

@@ -511,9 +511,15 @@ export async function hideCase(env: Env, caseId: string, memberId: string): Prom
   throw new HttpError(409, "case_not_resolved");
 }
 
-/** Keeps the AI's latest answer to the protected person for the family's card. The AI always answers her. */
+/**
+ * Keeps the AI's latest answer to the protected person for the family's card. The AI always answers her.
+ * A card the family removed (#280) is not written to: a consultation that was running when they removed
+ * it would otherwise put the answer back on a row whose answer the removal cleared.
+ */
 export async function recordAiReply(env: Env, caseId: string, text: string): Promise<void> {
-  await env.DB.prepare("UPDATE cases SET ai_reply = ? WHERE id = ?").bind(text.slice(0, AI_REPLY_MAX), caseId).run();
+  await env.DB.prepare("UPDATE cases SET ai_reply = ? WHERE id = ? AND hidden_at IS NULL")
+    .bind(text.slice(0, AI_REPLY_MAX), caseId)
+    .run();
 }
 
 /**
