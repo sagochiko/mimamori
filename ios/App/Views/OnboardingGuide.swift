@@ -1,87 +1,69 @@
 import MimamoriCore
 import SwiftUI
-import TipKit
 
-/// Balloons on the real buttons that say what each one does, the first time a home screen opens
-/// (asked by the author on 2026-11-07). Two samples to compare, sharing `OnboardingStep`'s words and
-/// order: TipKit's popover tips, one at a time with ×, and a coach mark of our own that darkens the
-/// screen and lights one button at a time with "1/3" and "次へ". Until the author picks one, only
-/// Debug builds show them, with `-mimamori-onboarding tipkit` or `-mimamori-onboarding spotlight`.
+/// Balloons on the real buttons that say what each one is for, the first time a home screen opens on
+/// this iPhone (#283). The author chose the coach mark on 2026-11-08: the screen darkens, one button at
+/// a time is lit with "1/3" and "次へ". Each role's tour shows once (`OnboardingRecord`); Debug builds
+/// show it again with `-mimamori-onboarding`, for screenshots.
 @MainActor @Observable
 final class OnboardingGuide {
-  static let style: OnboardingStyle? = {
-    #if DEBUG
-      OnboardingStyle(arguments: ProcessInfo.processInfo.arguments)
-    #else
-      nil
-    #endif
-  }()
-
-  /// Before any tip shows (`Tips.configure` must run at launch). The samples forget what was closed,
-  /// so each launch shows them again.
-  static func configure() {
-    guard style == .tipKit else { return }
-    #if DEBUG
-      try? Tips.resetDatastore()
-    #endif
-    try? Tips.configure([.displayFrequency(.immediate)])
-  }
-
-  /// TipKit: the tips of the open home screen, shown in order; the next comes after × on the last.
-  private(set) var tips: TipGroup?
-  /// The coach mark: which button is lit, and where each target sits on the screen.
+  /// Which button is lit, and where each target sits on the screen.
   var tour: CoachMarkTour?
   var frames: [OnboardingStep: CGRect] = [:]
+  @ObservationIgnored private let record = OnboardingRecord(store: UserDefaultsOnboardingStore())
 
-  func start(for route: AppRoute) {
-    let role: Role? =
-      switch route {
-      case .protectedHome: .protected
-      case .familyHome: .family
-      case .chooseRole: nil
-      }
-    frames = [:]
-    tips = nil
-    tour = nil
-    guard let role, let style = Self.style else { return }
-    switch style {
-    case .tipKit: tips = Self.group(for: role)
-    case .spotlight: tour = CoachMarkTour(role: role)
+  /// Debug only: show the tour on every launch and leave the record alone.
+  private static var forced: Bool {
+    #if DEBUG
+      ProcessInfo.processInfo.arguments.contains("-mimamori-onboarding")
+    #else
+      false
+    #endif
+  }
+
+  /// The stub's screenshot runs would all be covered by the tour, so it shows there only when asked.
+  private static var suppressed: Bool {
+    #if DEBUG
+      ScreenshotStubTransport.isRequested && !forced
+    #else
+      false
+    #endif
+  }
+
+  /// Called when the route changes and once the home screen is ready. A tour already going on stays.
+  /// The family's toolbar buttons appear only after the protected member joined, so the family's tour
+  /// waits for that; "電話する" and "解決" are lit only when an unresolved card is on screen.
+  func start(for route: AppRoute, joined: Bool, hasCards: Bool) {
+    switch route {
+    case .chooseRole:
+      // After "すべて消す" (or a lost key) this iPhone starts over, so the next role sees its tour.
+      tour = nil
+      frames = [:]
+      if !Self.forced { record.forget() }
+    case .protectedHome:
+      begin(role: .protected, hasCards: false)
+    case .familyHome:
+      if joined { begin(role: .family, hasCards: hasCards) }
     }
   }
 
-  func tip(for step: OnboardingStep) -> GuideTip? {
-    guard let tip = tips?.currentTip as? GuideTip, tip.step == step else { return nil }
-    return tip
-  }
-
-  private static func group(for role: Role) -> TipGroup {
-    switch role {
-    case .protected:
-      TipGroup(.ordered) {
-        GuideTip(step: .smile)
-        GuideTip(step: .talk)
-        GuideTip(step: .photo)
-      }
-    case .family:
-      TipGroup(.ordered) {
-        GuideTip(step: .invite)
-        GuideTip(step: .call)
-        GuideTip(step: .resolve)
-      }
-    }
+  private func begin(role: Role, hasCards: Bool) {
+    guard tour == nil, !Self.suppressed else { return }
+    tour = record.tourIfFirst(role: role, hasCards: hasCards, force: Self.forced)
   }
 }
 
-/// One balloon of the TipKit sample: the short words only, the explanation read by VoiceOver.
-struct GuideTip: Tip {
-  let step: OnboardingStep
-  var id: String { step.rawValue }
-  var title: Text { Text(step.words).accessibilityLabel(step.spoken) }
+struct UserDefaultsOnboardingStore: OnboardingStore {
+  private func key(_ role: Role) -> String { "mimamori.onboardingSeen.\(role.rawValue)" }
+  func seen(_ role: Role) -> Bool { UserDefaults.standard.bool(forKey: key(role)) }
+  func markSeen(_ role: Role) { UserDefaults.standard.set(true, forKey: key(role)) }
+  func clear() {
+    for role in Role.allCases { UserDefaults.standard.removeObject(forKey: key(role)) }
+  }
 }
 
 extension View {
-  /// Marks the button a balloon points at. Nil, or with no sample chosen, changes nothing.
+  /// Marks the button a balloon points at. Nil changes nothing.
   func guideTarget(_ step: OnboardingStep?) -> some View {
     modifier(GuideTarget(step: step))
   }
@@ -93,28 +75,20 @@ private struct GuideTarget: ViewModifier {
 
   func body(content: Content) -> some View {
     if let step, let guide {
-      switch OnboardingGuide.style {
-      case .tipKit:
-        // Above the field at the bottom, so the balloon does not cover the field.
-        content.popoverTip(
-          guide.tip(for: step), arrowEdge: step == .photo || step == .talk ? .bottom : nil)
-      case .spotlight:
-        content.onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) {
-          guide.frames[step] = $0
-        }
-      case nil:
-        content
-      }
+      content.onGeometryChange(
+        for: CGRect.self, of: { $0.frame(in: .global) }, action: { guide.frames[step] = $0 })
     } else {
       content
     }
   }
 }
 
-/// The coach mark sample over the whole screen: dark everywhere but the lit button, and a balloon
-/// with the words, "1/3", and "次へ" (on the last, "閉じる"). Taps on the dark part do nothing.
+/// The coach mark over the whole screen: dark everywhere but the lit button, and a balloon with the
+/// words, "1/3", and "次へ" (on the last, "閉じる"). Taps on the dark part do nothing. VoiceOver reads
+/// only the balloon, and moves to it on each step.
 struct CoachMarkOverlay: View {
   @Environment(OnboardingGuide.self) private var guide
+  @AccessibilityFocusState private var balloonFocused: Bool
 
   /// White in light mode; in dark mode a gray lighter than the black screen under the dimming.
   private static let balloonFill = Color(.tertiarySystemBackground)
@@ -155,6 +129,7 @@ struct CoachMarkOverlay: View {
             .padding(.bottom, below ? 0 : proxy.size.height - hole.minY + 13)
         }
         .animation(.snappy, value: step)
+        .onChange(of: step, initial: true) { balloonFocused = true }
       }
     }
     .ignoresSafeArea()
@@ -165,13 +140,14 @@ struct CoachMarkOverlay: View {
       Text(step.words)
         .font(.title3.bold())
         .fixedSize(horizontal: false, vertical: true)
-        .accessibilityLabel(step.spoken)
+        .accessibilityLabel("\(spokenProgress)。\(step.words)。\(step.spoken)")
+        .accessibilityFocused($balloonFocused)
       HStack {
         Text(guide.tour?.progress ?? "")
           .font(.subheadline)
           .monospacedDigit()
           .foregroundStyle(.secondary)
-          .accessibilityLabel(spokenProgress)
+          .accessibilityHidden(true)
         Spacer()
         Button(guide.tour?.isLast == true ? "閉じる" : "次へ") {
           guide.tour?.next()

@@ -97,8 +97,8 @@ struct CaseCardView: View {
 
   private var statusHint: String {
     item.state == .resolved
-      ? "母と話して解決したと、家族の誰かが押しました"
-      : "家族の誰かが母と話して解決を押すまで、このままです"
+      ? "問題なさそうだと分かって、家族の誰かが解決を押しました"
+      : "問題なさそうだと分かった家族の誰かが解決を押すまで、このままです"
   }
 
   private var header: some View {
@@ -173,7 +173,7 @@ extension CardAction {
   var hint: String {
     switch self {
     case .call: "母に電話します。長押しで番号を変えられます"
-    case .resolve: "母と話して解決したら押します。押すと確かめます"
+    case .resolve: "問題なさそうなら押します。押すと確かめます"
     }
   }
 }

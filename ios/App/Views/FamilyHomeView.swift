@@ -31,6 +31,7 @@ struct FamilyHomeView: View {
             .buttonBorderShape(.capsule)
             .accessibilityLabel("笑顔で返す")
             .accessibilityHint("前のカメラに向かって笑うと、その場で撮って家族みんなに送ります")
+            .guideTarget(.familySmile)
         }
         ToolbarItem(placement: .topBarTrailing) {
           Button("招待") { inviting = true }
@@ -41,7 +42,7 @@ struct FamilyHomeView: View {
             .guideTarget(.invite)
         }
       }
-      ToolbarItem(placement: .topBarTrailing) { WipeMenu() }
+      ToolbarItem(placement: .topBarTrailing) { WipeMenu().guideTarget(.settings) }
     }
     .fullScreenCover(isPresented: $camera) { SmileCaptureView() }
     .sheet(isPresented: $inviting) {
@@ -101,6 +102,10 @@ private struct WaitingSection: View {
 private struct JoinedSection: View {
   @Environment(AppModel.self) private var model
 
+  private var guidedCardID: Case.ID? {
+    model.familyCards.first { !$0.actions.isEmpty }?.item.id
+  }
+
   var body: some View {
     VStack(spacing: 20) {
       if let today = model.smileBoard.todaysProtectedSmile(now: model.now) {
@@ -115,8 +120,8 @@ private struct JoinedSection: View {
         .accessibilityLabel("今日の\(today.spokenLabel)")
       }
       ForEach(model.familyCards, id: \.item.id) { card in
-        // The balloons point at the newest card's buttons only.
-        CaseCardView(card: card, guides: card.item.id == model.familyCards.first?.item.id)
+        // The balloons point at the buttons of the newest card that has them only.
+        CaseCardView(card: card, guides: card.item.id == guidedCardID)
       }
       if !model.smileBoard.photos.isEmpty {
         SmileStrip()
