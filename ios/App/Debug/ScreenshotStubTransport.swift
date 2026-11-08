@@ -11,13 +11,17 @@
     /// simulator has no on-device Japanese recognition. The answer comes from the stub below.
     static var heardText: String? {
       let args = ProcessInfo.processInfo.arguments
-      guard let i = args.firstIndex(of: "-mimamori-stub-heard"), i + 1 < args.count else { return nil }
+      guard let i = args.firstIndex(of: "-mimamori-stub-heard"), i + 1 < args.count else {
+        return nil
+      }
       return args[i + 1]
     }
     /// With `-mimamori-stub-joined protected` (or `family`), the app starts on that home screen
     /// instead of role selection, so a screen can be shot without tapping through joining.
     static var joinedAs: Credentials? {
-      guard let role = value(after: "-mimamori-stub-joined").flatMap(Role.init(rawValue:)) else { return nil }
+      guard let role = value(after: "-mimamori-stub-joined").flatMap(Role.init(rawValue:)) else {
+        return nil
+      }
       // The stub's key lives in memory; a missing marker would clear it on the first refresh.
       _ = marker.mark()
       return Credentials(deviceKey: "dk-stub", memberId: "m-stub", familyId: "f-stub", role: role)
@@ -25,38 +29,63 @@
     /// With `-mimamori-stub-draft <text>`, the text field starts with that text, ready to send.
     static var draftText: String? { value(after: "-mimamori-stub-draft") }
     /// With `-mimamori-stub-notices-open`, the family notices at the top start opened.
-    static var noticesOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-notices-open") }
+    static var noticesOpen: Bool {
+      ProcessInfo.processInfo.arguments.contains("-mimamori-stub-notices-open")
+    }
     /// With `-mimamori-stub-camera-open`, the home screen opens the smile camera at once.
-    static var cameraOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-camera-open") }
+    static var cameraOpen: Bool {
+      ProcessInfo.processInfo.arguments.contains("-mimamori-stub-camera-open")
+    }
     /// With `-mimamori-stub-invite-open`, the family screen shows an invite code at once: in the middle
     /// before the protected member joined, in the sheet of the top-right "招待" after (#244).
-    static var inviteOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-invite-open") }
-    static var gmailButton: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-gmail") }
+    static var inviteOpen: Bool {
+      ProcessInfo.processInfo.arguments.contains("-mimamori-stub-invite-open")
+    }
+    static var gmailButton: Bool {
+      ProcessInfo.processInfo.arguments.contains("-mimamori-stub-gmail")
+    }
     /// With `-mimamori-stub-photo-open`, the home screen opens the photo button's picker at once (#221).
-    static var photoOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-photo-open") }
+    static var photoOpen: Bool {
+      ProcessInfo.processInfo.arguments.contains("-mimamori-stub-photo-open")
+    }
     /// With `-mimamori-stub-photo-pick`, the home screen puts `StubPicture` on the field at once, as if
     /// she had picked it with the photo button (the picker runs outside the app and a test cannot reach
     /// into it). Nothing is sent yet (#234).
-    static var photoPick: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-photo-pick") }
+    static var photoPick: Bool {
+      ProcessInfo.processInfo.arguments.contains("-mimamori-stub-photo-pick")
+    }
     /// With `-mimamori-stub-photo-send` as well, the send button is pressed right after: the image goes
     /// with the words of `-mimamori-stub-draft` (#234).
-    static var photoSend: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-photo-send") }
+    static var photoSend: Bool {
+      ProcessInfo.processInfo.arguments.contains("-mimamori-stub-photo-send")
+    }
     /// With `-mimamori-stub-wipe-open`, the check before "すべて消す" ("消す" or "やめる") opens at once.
-    static var wipeOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-wipe-open") }
+    static var wipeOpen: Bool {
+      ProcessInfo.processInfo.arguments.contains("-mimamori-stub-wipe-open")
+    }
     /// With `-mimamori-stub-wipe-fail`, "すべて消す" answers 502 `cleanup_failed`, as when Google or
     /// Anthropic refused, so the failure can be shot.
-    static var wipeFails: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-wipe-fail") }
+    static var wipeFails: Bool {
+      ProcessInfo.processInfo.arguments.contains("-mimamori-stub-wipe-fail")
+    }
     /// With `-mimamori-stub-camera-hold`, the stand-in camera never "sees" the smile, so the camera
     /// screen itself can be shot.
-    static var cameraHold: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-camera-hold") }
+    static var cameraHold: Bool {
+      ProcessInfo.processInfo.arguments.contains("-mimamori-stub-camera-hold")
+    }
     /// `-mimamori-stub-listening`: the microphone is pressed at launch and keeps "listening" (no
     /// microphone, no silence stop), so the recording field (#224) can be shot and its trash, stop, and
     /// send pressed. With `-mimamori-stub-heard <text>`, that text is what was heard so far.
-    static var listening: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-listening") }
+    static var listening: Bool {
+      ProcessInfo.processInfo.arguments.contains("-mimamori-stub-listening")
+    }
     /// `-mimamori-stub-settings-open`: her settings screen (#222) is open at launch.
-    static var settingsOpen: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-settings-open") }
+    static var settingsOpen: Bool {
+      ProcessInfo.processInfo.arguments.contains("-mimamori-stub-settings-open")
+    }
     /// The stub keeps the key in memory, so the real marker file is left alone.
-    static let marker = FileInstallMarker(url: URL.temporaryDirectory.appending(path: "mimamori-stub-installed"))
+    static let marker = FileInstallMarker(
+      url: URL.temporaryDirectory.appending(path: "mimamori-stub-installed"))
     /// The conversation stays in memory too, so her real one is left alone. With
     /// `-mimamori-stub-chat police` it starts with the fake-police question asked a few minutes ago.
     static let chatStore = StubChatStore(seed: value(after: "-mimamori-stub-chat"))
@@ -64,7 +93,9 @@
     static let pictureStore = StubPictureStore()
     /// `-mimamori-stub-photo-ask`: an image sent with no words gets the server's question
     /// (`ShareConsult.askPicture`), so the image going back onto the field can be shot (#243).
-    static var photoAsk: Bool { ProcessInfo.processInfo.arguments.contains("-mimamori-stub-photo-ask") }
+    static var photoAsk: Bool {
+      ProcessInfo.processInfo.arguments.contains("-mimamori-stub-photo-ask")
+    }
 
     private static func value(after flag: String) -> String? {
       let args = ProcessInfo.processInfo.arguments
@@ -83,7 +114,10 @@
         case ("POST", "/families"):
           (201, Self.joinAnswer(role: "family"))
         case ("POST", "/invites"):
-          (201, #"{"code":"482913","expiresAt":"\#(Date.now.addingTimeInterval(86_400).ISO8601Format())"}"#)
+          (
+            201,
+            #"{"code":"482913","expiresAt":"\#(Date.now.addingTimeInterval(86_400).ISO8601Format())"}"#
+          )
         case ("POST", let p) where p.hasPrefix("/invites/") && p.hasSuffix("/join"):
           p.contains("/000000/")
             ? (404, #"{"error":"not_found"}"#)
@@ -93,7 +127,11 @@
         case ("POST", "/consult") where Self.body(of: request)["image"] != nil:
           (200, Self.pictureAnswer(to: Self.body(of: request)))
         case ("POST", "/consult"):
-          (200, Self.consultAnswer(to: Self.field("text", in: request) ?? "", hasHistory: Self.hasHistory(request)))
+          (
+            200,
+            Self.consultAnswer(
+              to: Self.field("text", in: request) ?? "", hasHistory: Self.hasHistory(request))
+          )
         case ("GET", "/cases"):
           (200, StubCases.shared.list())
         case ("POST", let p) where p.hasPrefix("/cases/"):
@@ -114,7 +152,8 @@
         default:
           (404, "{}")
         }
-      let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+      let response = HTTPURLResponse(
+        url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
       return (Data(body.utf8), response)
     }
 
@@ -161,11 +200,13 @@
       let followUp = "警察を名乗る相手が、口座のことでビデオ通話や送金を求めるのは、詐欺で使われる説明と一致しています。電話を切って、家族に確かめて"
       let storage = "設定の「一般」から「iPhone ストレージ」を開くと、空きを作れます。広告の掃除アプリは入れなくていいよ"
       let (reply, handoff): (String, Bool) =
-        if text.contains("警察") { (police, true) }
-        else if hasHistory && text.contains("どういう") { (followUp, false) }
-        else { (storage, false) }
+        if text.contains("警察") { (police, true) } else if hasHistory && text.contains("どういう") {
+          (followUp, false)
+        } else { (storage, false) }
       return json([
-        "reply": reply, "speak": reply.replacingOccurrences(of: "「", with: "").replacingOccurrences(of: "」", with: ""),
+        "reply": reply,
+        "speak": reply.replacingOccurrences(of: "「", with: "").replacingOccurrences(
+          of: "」", with: ""),
         "handoff": handoff,
       ])
     }
@@ -177,7 +218,9 @@
       let width = image["width"] as? Int ?? 0
       let height = image["height"] as? Int ?? 0
       if photoAsk, (body["text"] as? String ?? "").isEmpty {
-        return json(["reply": ShareConsult.askPicture, "speak": ShareConsult.askPicture, "handoff": false])
+        return json([
+          "reply": ShareConsult.askPicture, "speak": ShareConsult.askPicture, "handoff": false,
+        ])
       }
       let reply = "丸のところを押して"
       return json([
@@ -186,7 +229,9 @@
       ])
     }
 
-    private static func role(in request: URLRequest) -> String { field("role", in: request) ?? "protected" }
+    private static func role(in request: URLRequest) -> String {
+      field("role", in: request) ?? "protected"
+    }
 
     /// Same shape as the task 2 server: `{familyId, memberId, deviceKey, familyToken, role}`.
     private static func joinAnswer(role: String) -> String {
@@ -210,9 +255,15 @@
 
     private init() {
       let args = ProcessInfo.processInfo.arguments
-      if let i = args.firstIndex(of: "-mimamori-stub-smiles"), i + 1 < args.count, args[i + 1] == "none" { return }
+      if let i = args.firstIndex(of: "-mimamori-stub-smiles"), i + 1 < args.count,
+        args[i + 1] == "none"
+      {
+        return
+      }
       let now = Date.now
-      func at(_ minutesAgo: Double) -> String { now.addingTimeInterval(-minutesAgo * 60).ISO8601Format() }
+      func at(_ minutesAgo: Double) -> String {
+        now.addingTimeInterval(-minutesAgo * 60).ISO8601Format()
+      }
       // Her smile is placed earlier today, but never before midnight, so it counts as today's.
       let sinceMidnight = now.timeIntervalSince(Calendar.current.startOfDay(for: now)) / 60
       let hers = min(45, max(1, sinceMidnight - 1))
@@ -228,10 +279,12 @@
     }
 
     private static func row(
-      _ id: String, _ member: String, _ name: String, _ role: String, photo: Bool, note: String?, at: String
+      _ id: String, _ member: String, _ name: String, _ role: String, photo: Bool, note: String?,
+      at: String
     ) -> [String: Any] {
       [
-        "id": id, "memberId": member, "displayName": name, "role": role, "score": photo ? 0.8 : NSNull(),
+        "id": id, "memberId": member, "displayName": name, "role": role,
+        "score": photo ? 0.8 : NSNull(),
         "note": note ?? NSNull(), "hasPhoto": photo, "createdAt": at,
       ]
     }
@@ -253,7 +306,8 @@
       let role = ScreenshotStubTransport.joinedAs?.role ?? .family
       let id = "s-\(UUID().uuidString.prefix(8))"
       let row = Self.row(
-        id, "m-stub", role == .protected ? "母" : "作者", role.rawValue, photo: photo != nil, note: note,
+        id, "m-stub", role == .protected ? "母" : "作者", role.rawValue, photo: photo != nil,
+        note: note,
         at: Date.now.ISO8601Format())
       return lock.withLock {
         smiles.insert(row, at: 0)
@@ -263,7 +317,9 @@
     }
 
     func setHour(_ value: Int?) -> (Int, String) {
-      guard let value, SmileBoard.deadlineHours.contains(value) else { return (400, #"{"error":"hour_invalid"}"#) }
+      guard let value, SmileBoard.deadlineHours.contains(value) else {
+        return (400, #"{"error":"hour_invalid"}"#)
+      }
       return lock.withLock {
         hour = value
         return (200, ScreenshotStubTransport.json(["deadlineHour": value]))
@@ -286,15 +342,20 @@
       if seed == "days" {
         let calendar = Calendar.current
         let yesterday = calendar.date(byAdding: .day, value: -1, to: now) ?? now
-        let asked = calendar.date(bySettingHour: 14, minute: 55, second: 0, of: yesterday) ?? yesterday
+        let asked =
+          calendar.date(bySettingHour: 14, minute: 55, second: 0, of: yesterday) ?? yesterday
         log.append(.protected, "写真を消さずに空きを増やすには?", at: asked)
-        log.append(.ai, "設定の「一般」から「iPhoneストレージ」を開くと、大きいアプリが上から並びます", at: asked.addingTimeInterval(40))
+        log.append(
+          .ai, "設定の「一般」から「iPhoneストレージ」を開くと、大きいアプリが上から並びます", at: asked.addingTimeInterval(40))
       }
-      log.append(.protected, "警察から電話があって、口座が犯罪に使われてるって。ほかの人には言わないでって", at: now.addingTimeInterval(-180))
+      log.append(
+        .protected, "警察から電話があって、口座が犯罪に使われてるって。ほかの人には言わないでって", at: now.addingTimeInterval(-180))
       log.append(.ai, "詐欺で使われる説明と一致しています。送金せず、いったん電話を切って家族に確かめて", at: now.addingTimeInterval(-175))
       if seed == "followup" {
         log.append(.protected, "それってどういうこと?", at: now.addingTimeInterval(-120))
-        log.append(.ai, "警察を名乗る相手が、口座のことでビデオ通話や送金を求めるのは、詐欺で使われる説明と一致しています。電話を切って、家族に確かめて", at: now.addingTimeInterval(-115))
+        log.append(
+          .ai, "警察を名乗る相手が、口座のことでビデオ通話や送金を求めるのは、詐欺で使われる説明と一致しています。電話を切って、家族に確かめて",
+          at: now.addingTimeInterval(-115))
       }
       data = try? log.encoded()
     }
@@ -327,45 +388,63 @@
       // `-mimamori-stub-cases none` starts with none, so the family screen before she joined can be shot
       // (with `-mimamori-stub-smiles none`, #244).
       let args = ProcessInfo.processInfo.arguments
-      if let i = args.firstIndex(of: "-mimamori-stub-cases"), i + 1 < args.count, args[i + 1] == "none" {
+      if let i = args.firstIndex(of: "-mimamori-stub-cases"), i + 1 < args.count,
+        args[i + 1] == "none"
+      {
         cases = []
         return
       }
       let now = Date.now
-      func at(_ minutesAgo: Double) -> String { now.addingTimeInterval(-minutesAgo * 60).ISO8601Format() }
-      func alert(_ level: Int, _ source: String, _ summary: String, _ reason: String) -> [String: Any] {
+      func at(_ minutesAgo: Double) -> String {
+        now.addingTimeInterval(-minutesAgo * 60).ISO8601Format()
+      }
+      func alert(_ level: Int, _ source: String, _ summary: String, _ reason: String) -> [String:
+        Any]
+      {
         ["level": level, "source": source, "summary": summary, "reasons": [reason]]
       }
       cases = [
         [
-          "id": "c-police", "alertId": "a-1", "state": "notified", "notifiedAt": at(3), "familyNotifiedAt": at(3),
-          "alert": alert(1, "consult", "警察を名乗る電話の相談", "口座が犯罪に使われたという話がある"),
+          "id": "c-police", "alertId": "a-1", "state": "notified", "notifiedAt": at(3),
+          "familyNotifiedAt": at(3),
+          // With the summary from fixed choices (#271).
+          "alert": alert(1, "consult", "警察を名乗る電話の相談", "口座が犯罪に使われたという話がある")
+            .merging(["digest": "警察を名乗る連絡 / すぐ電話して確かめる"]) { $1 },
           "aiReply": "詐欺で使われる説明と一致しています。送金せず、いったん電話を切って家族に確かめて",
         ],
         [
           // An SMS whose research in the background came back (task 11); the evidence is read by VoiceOver.
-          "id": "c-sms", "alertId": "a-5", "state": "notified", "notifiedAt": at(6), "familyNotifiedAt": at(6),
+          "id": "c-sms", "alertId": "a-5", "state": "notified", "notifiedAt": at(6),
+          "familyNotifiedAt": at(6),
           "alert": alert(1, "sms", "SMS 宅配便を名乗る example.top", "送り主のドメインが公式と違う")
-            .merging(["evidence": [[
-              "text": "日本郵政グループの注意喚起",
-              "url": "https://www.post.japanpost.jp/notification/",
-            ]]]) { $1 },
+            .merging([
+              "evidence": [
+                [
+                  "text": "日本郵政グループの注意喚起",
+                  "url": "https://www.post.japanpost.jp/notification/",
+                ]
+              ]
+            ]) { $1 },
         ],
         [
-          "id": "c-unreached", "alertId": "a-4", "state": "notified", "notifiedAt": at(2), "familyNotifiedAt": NSNull(),
+          "id": "c-unreached", "alertId": "a-4", "state": "notified", "notifiedAt": at(2),
+          "familyNotifiedAt": NSNull(),
           "alert": alert(2, "consult", "スマホの相談", "AI が答えきれなかった相談"),
           "aiReply": "うまく答えられませんでした。家族に届いていません。急ぐなら電話して",
         ],
         [
-          "id": "c-sister", "alertId": "a-2", "state": "resolved", "notifiedAt": at(20), "resolvedAt": at(12),
+          "id": "c-sister", "alertId": "a-2", "state": "resolved", "notifiedAt": at(20),
+          "resolvedAt": at(12),
           "familyNotifiedAt": at(20),
           "resolvedBy": ["memberId": "m-sister", "displayName": "妹"],
           "alert": alert(1, "sms", "SMS 暗証番号やパスワードを求めている bank-check.example", "暗証番号やパスワードを求めている"),
         ],
         [
-          "id": "c-old", "alertId": "a-3", "state": "notified", "notifiedAt": at(40), "renotifiedAt": at(5),
+          "id": "c-old", "alertId": "a-3", "state": "notified", "notifiedAt": at(40),
+          "renotifiedAt": at(5),
           "familyNotifiedAt": at(40),
-          "alert": alert(2, "sms", "SMS 宅配の不在の知らせをかたっている parcel-notice.example", "宅配の不在の知らせをかたっている"),
+          "alert": alert(
+            2, "sms", "SMS 宅配の不在の知らせをかたっている parcel-notice.example", "宅配の不在の知らせをかたっている"),
         ],
       ]
     }
@@ -379,7 +458,9 @@
       let parts = path.split(separator: "/").map(String.init)
       guard parts.count == 3, parts[2] == "resolve" else { return (404, #"{"error":"not_found"}"#) }
       return lock.withLock {
-        guard let i = cases.firstIndex(where: { $0["id"] as? String == parts[1] }) else { return (404, "{}") }
+        guard let i = cases.firstIndex(where: { $0["id"] as? String == parts[1] }) else {
+          return (404, "{}")
+        }
         if cases[i]["state"] as? String != "resolved" {
           cases[i]["state"] = "resolved"
           cases[i]["resolvedAt"] = Date.now.ISO8601Format()
