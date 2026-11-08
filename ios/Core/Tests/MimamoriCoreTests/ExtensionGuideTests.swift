@@ -12,7 +12,7 @@ struct ExtensionGuideTests {
     #expect(ExtensionGuide.allCases.map(\.title) == ["Safari の機能拡張", "SMS の振り分け"])
   }
 
-  @Test("Safari は5段で、撮った画面の言葉のとおり")
+  @Test("Safari は6段で、5段目までは撮った画面の言葉のとおり、最後はサイトの許可で画像が無い")
   func safariSteps() {
     let steps = ExtensionGuide.safari.steps
     #expect(
@@ -22,8 +22,10 @@ struct ExtensionGuideTests {
         "「機能拡張」を押す",
         "「mimamori」を押す",
         "「機能拡張を許可」をオンにする",
+        "「アクセス権」の下に出る行を押して「許可」を選ぶ",
       ])
-    #expect(steps.allSatisfy { $0.image != nil })
+    #expect(steps.prefix(5).allSatisfy { $0.image != nil })
+    #expect(steps[5].image == nil)
   }
 
   @Test("SMS は「アプリ」「メッセージ」までが画像で、その先は画像が無い")

@@ -17,7 +17,9 @@ public struct ExtensionGuideStep: Equatable, Sendable {
 ///
 /// Shot on the iOS 26.5 "mimamori mother" simulator, and the captions use the words on those screens.
 /// The simulator's Settings > Apps > Messages screen stayed blank, so the SMS filter's last step has
-/// no picture and does not quote a row name it could not read.
+/// no picture and does not quote a row name it could not read. The Safari switch could not be flipped
+/// there either, so the last Safari step (allowing the extension on websites, without which its
+/// content script never runs) has no picture and names only the "アクセス権" heading shot above it.
 public enum ExtensionGuide: String, CaseIterable, Sendable, Identifiable {
   case safari
   case sms
@@ -40,6 +42,7 @@ public enum ExtensionGuide: String, CaseIterable, Sendable, Identifiable {
         ExtensionGuideStep(image: "guide-safari-extensions", caption: "「機能拡張」を押す"),
         ExtensionGuideStep(image: "guide-extensions-mimamori", caption: "「mimamori」を押す"),
         ExtensionGuideStep(image: "guide-extension-allow", caption: "「機能拡張を許可」をオンにする"),
+        ExtensionGuideStep(image: nil, caption: "「アクセス権」の下に出る行を押して「許可」を選ぶ"),
       ]
     case .sms:
       [
