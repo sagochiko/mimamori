@@ -27,12 +27,9 @@ CLAUDE.local.md
 .claude/skills/swiftui-whats-new-27/
 .claude/skills/modernize-tests/
 
-# eval: the holdout set and the unsplit pool stay out of git (and out of grep) until the final
-# measurement; /mm-endgame publishes them after that run.
-eval/cases/holdout/*
-eval/cases/pool/*
-!eval/cases/holdout/.gitkeep
-!eval/cases/pool/.gitkeep
+# eval: the holdout set and the unsplit pool stayed out of git (and out of grep) until the final
+# measurement on 2026-11-07 (PR #263); /mm-endgame published the holdout after that run. The pool
+# was already empty after the split, so only its .gitkeep is tracked.
 eval/out/
 
 # build output

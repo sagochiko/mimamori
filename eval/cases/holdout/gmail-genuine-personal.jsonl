@@ -1,0 +1,3 @@
+{"id":"g-gn-12","source":"gmail","sender":"市役所 <info@city.example.lg.jp>","domain":"city.example.lg.jp","text":"件名: 健康診断のご案内\n日程はご案内の書面をご覧ください。お問い合わせは平日の窓口へ。","url":"","expected_level":null,"is_scam":false,"note":"self-written; municipal notice"}
+{"id":"g-gn-13","source":"gmail","sender":"娘 <daughter@example.com>","domain":"example.com","text":"件名: 日曜のこと\nお母さん、日曜の12時に迎えに行くね。お昼は外で食べよう。","url":"","expected_level":null,"is_scam":false,"note":"self-written; family mail"}
+{"id":"g-gn-14","source":"gmail","sender":"病院 <info@hospital.example.jp>","domain":"hospital.example.jp","text":"件名: 診察予約の確認\n次回の診察は来週月曜の10時です。","url":"","expected_level":null,"is_scam":false,"note":"self-written; hospital"}

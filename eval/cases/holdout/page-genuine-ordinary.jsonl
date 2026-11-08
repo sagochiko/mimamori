@@ -1,0 +1,2 @@
+{"id":"p-gn-14","source":"page","sender":"","domain":"www.city.example.lg.jp","text":"市役所のお知らせ。ごみ収集の日程が変わります。","url":"https://www.city.example.lg.jp/","expected_level":null,"is_scam":false,"note":"self-written; municipal"}
+{"id":"p-gn-15","source":"page","sender":"","domain":"weather.example","text":"今日の天気。晴れ時々くもり。最高気温18度。","url":"https://weather.example/","expected_level":null,"is_scam":false,"note":"self-written; ordinary page"}
