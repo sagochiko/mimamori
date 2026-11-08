@@ -149,7 +149,7 @@ public struct DemoTour: Equatable, Sendable {
     case .consulted, .resolved:
       waited
         ? DemoPush(title: Self.notResolvedYet, body: Self.topic)
-        : DemoPush(title: "1段階", body: Self.topic)
+        : DemoPush(title: Level.doNotOpen.familyBadge, body: Self.topic)
     case .unanswered: DemoPush(title: Self.notResolvedYet, body: Self.topic)
     }
   }

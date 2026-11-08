@@ -20,6 +20,25 @@ struct ModelTests {
     #expect(alert.source == .sms)
   }
 
+  @Test(
+    "家族に見せる札は数字でなく言葉にする",
+    arguments: [(Level.doNotOpen, "危ない"), (.waitForFamily, "確かめて"), (.lowConcern, "念のため")])
+  func familyBadge(level: Level, word: String) {
+    #expect(level.familyBadge == word)
+    #expect(!level.familyBadge.contains("段階"))
+  }
+
+  @Test("家族に見せる札に「安全」や「大丈夫」と読める言葉を使わない")
+  func familyBadgeNeverSafe() {
+    let words = Level.allCases.map(\.familyBadge)
+    #expect(Set(words).count == 3)
+    for word in words {
+      for safe in ["安全", "大丈夫", "問題な", "心配な"] {
+        #expect(!word.contains(safe), "\(word)")
+      }
+    }
+  }
+
   @Test("危なさは 1、2、3 のほかを読まない(「安全」に落ちる道を作らない)", arguments: ["0", "4", "null", #""safe""#])
   func rejectsOtherLevels(bad: String) {
     #expect(throws: (any Error).self) {
